@@ -225,4 +225,3 @@ int TGAImage::height() const {
     return h;
 }
 
-

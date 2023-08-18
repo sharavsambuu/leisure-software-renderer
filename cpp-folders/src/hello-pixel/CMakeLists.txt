@@ -12,3 +12,5 @@ set(CMAKE_CXX_STANDARD 20)
 add_executable(HelloPixel hello_pixel.cpp tgaimage.cpp)
 target_link_libraries(HelloPixel Threads::Threads)
 
+add_executable(HelloLine hello_line.cpp tgaimage.cpp)
+target_link_libraries(HelloLine Threads::Threads)
