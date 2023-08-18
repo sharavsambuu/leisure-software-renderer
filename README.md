@@ -2,9 +2,9 @@
   I'm so bored, just exercizing about software renderer and shaders in my freetime
 
 # Libraries
-  sudo apt install automake m4 libtool cmake
-  sudo apt install libboost-all-dev && sudo ldconfig
-  sudo apt install libsdl2-dev
+    sudo apt install automake m4 libtool cmake
+    sudo apt install libboost-all-dev && sudo ldconfig
+    sudo apt install libsdl2-dev
 
 # References
   Tinyrendere project
