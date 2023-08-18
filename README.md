@@ -1,6 +1,6 @@
 # About
 
-    just excersizing about software renderer and shaders in my freetime
+  I'm so bored, just exercizing about software renderer and shaders in my freetime
 
 
 # Libraries
