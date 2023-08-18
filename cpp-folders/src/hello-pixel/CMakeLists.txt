@@ -1,7 +1,9 @@
 project(HelloPixel)
 
-#FIND_PACKAGE(Boost COMPONENTS REQUIRED)
-#FIND_PACKAGE(Threads COMPONENTS REQUIRED)
+#find_package(Boost COMPONENTS REQUIRED)
+#find_package(Threads COMPONENTS REQUIRED)
+find_package(SDL2 REQUIRED)
+include_directories(${SDL2_INCLUDE_DIRS})
 
 set(CMAKE_CXX_STANDARD 20)
 #set(CMAKE_CXX_FLAGS "")
@@ -14,3 +16,7 @@ target_link_libraries(HelloPixel Threads::Threads)
 
 add_executable(HelloLine hello_line.cpp tgaimage.cpp)
 target_link_libraries(HelloLine Threads::Threads)
+
+add_executable(HelloSDLPixel hello_sdl_pixel.cpp)
+target_link_libraries(HelloSDLPixel Threads::Threads ${SDL2_LIBRARIES})
+
