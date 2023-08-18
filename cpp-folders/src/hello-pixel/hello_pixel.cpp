@@ -1,4 +1,5 @@
 #include <iostream>
+#include "tgaimage.h"
 
 using namespace std;
 

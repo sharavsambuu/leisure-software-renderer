@@ -9,6 +9,6 @@ set(CMAKE_CXX_STANDARD 20)
 #include_directories(${Boost_INCLUDE_DIR})
 #link_directories(${Boost_LIBRARY_DIR})
 
-add_executable(HelloPixel hello_pixel.cpp)
+add_executable(HelloPixel hello_pixel.cpp tgaimage.cpp)
 target_link_libraries(HelloPixel Threads::Threads)
 
