@@ -29,7 +29,7 @@ void generate_random_image(std::vector<std::vector<Pixel>>& image, int width, in
     }
 };
 
-void fill_image_with_color(std::vector<std::vector<Pixel>>& image, int width, int height, Pixel& pixel) {
+void fill_image_with_color(std::vector<std::vector<Pixel>>& image, Pixel&pixel, int width, int height) {
     image.resize(width);
     for (int x = 0; x < width; ++x) {
         image[x].resize(height);
@@ -41,6 +41,31 @@ void fill_image_with_color(std::vector<std::vector<Pixel>>& image, int width, in
         }
     }
 };
+
+void set_color_to_image(std::vector<std::vector<Pixel>>& image, int x, int y, Pixel& pixel) {
+    image[x][y].r = pixel.r;
+    image[x][y].g = pixel.g;
+    image[x][y].b = pixel.b;
+    image[x][y].a = pixel.a;
+};
+
+void flip_vertically(std::vector<std::vector<Pixel>>& image) {
+    int height      = image.size();
+    int half_height = height / 2;
+
+    for (int row = 0; row < half_height; ++row) {
+        std::swap(image[row], image[height - 1 - row]);
+    }
+}
+
+void flip_horizontally(std::vector<std::vector<Pixel>>& image) {
+    int width  = image.size();
+    int height = image[0].size();
+
+    for (int row = 0; row < height; ++row) {
+        std::reverse(image[row].begin(), image[row].end());
+    }
+}
 
 void SDL_SetPixel(SDL_Surface* surface, int x, int y, Uint32 color) {
     Uint32* pixel = (Uint32*)((Uint8*)surface->pixels + y * surface->pitch + x * sizeof(Uint32));
@@ -96,18 +121,28 @@ int main() {
 
     Pixel color_white = {255, 255, 255, 255};
     Pixel color_red   = {255,   0,   0, 255};
+    Pixel color_black = {  0,   0,   0, 255};
 
     std::vector<std::vector<Pixel>> random_image;
     std::vector<std::vector<Pixel>> white_image;
     std::vector<std::vector<Pixel>> red_image;
+    std::vector<std::vector<Pixel>> canvas_image;
 
     generate_random_image(random_image, image_width, image_height             );
-    fill_image_with_color(white_image , image_width, image_height, color_white);
-    fill_image_with_color(red_image   , image_width, image_height, color_red  );
+    fill_image_with_color(white_image , color_white, image_width, image_height);
+    fill_image_with_color(red_image   , color_red  , image_width, image_height);
+    fill_image_with_color(canvas_image, color_black, image_width, image_height);
+
+    set_color_to_image(canvas_image, 10, 10, color_red);
+    set_color_to_image(canvas_image, 20, 20, color_red);
+    set_color_to_image(canvas_image, 30, 30, color_red);
+    set_color_to_image(canvas_image,  5, 60, color_white);
+    flip_horizontally(canvas_image); // origin at the left bottom corner of the image
 
     save_to_png("random_image.png", random_image, image_width, image_height);
     save_to_png("white_image.png" , white_image , image_width, image_height);
     save_to_png("red_image.png"   , red_image   , image_width, image_height);
+    save_to_png("canvas_image.png", canvas_image, image_width, image_height);
 
 
     return 0;
