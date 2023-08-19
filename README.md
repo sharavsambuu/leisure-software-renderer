@@ -45,15 +45,21 @@
 
 # Libraries
     sudo apt install automake m4 libtool cmake
-    sudo apt install libboost-all-dev && sudo ldconfig
+    sudo apt install libboost-all-dev
     sudo apt install libsdl2-dev
+    sudo apt install libpng-dev
+    sudo apt install libsdl2-image-dev
+    sudo ldconfig
 
 # References
     Tinyrendere project
       - https://github.com/ssloy/tinyrenderer
       - https://github.com/ssloy/tinyrenderer/wiki
-    SDL2 Tutorial
+    SDL2 Tutorial and links
       - https://www.youtube.com/watch?v=gOXg1ImX5j0
+      - https://github.com/aminosbh/sdl2-samples-and-projects
+
+
 
       
 
