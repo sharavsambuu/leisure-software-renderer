@@ -54,6 +54,8 @@
     sudo apt install libsdl2-image-dev
     sudo ldconfig
 
+    If you windows 10, you can use WSL2 with Ubuntu 20.04LTS, and everything is almost same.
+
 
 # Compilation steps
     cd cpp-folders && mkdir build && cd build
