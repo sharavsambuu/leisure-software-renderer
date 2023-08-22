@@ -58,6 +58,10 @@
     SDL2 Tutorial and links
       - https://www.youtube.com/watch?v=gOXg1ImX5j0
       - https://github.com/aminosbh/sdl2-samples-and-projects
+    Youtube video about software renderer
+      - https://www.youtube.com/watch?v=A3KUGbkcKgc
+
+
 
 
 
