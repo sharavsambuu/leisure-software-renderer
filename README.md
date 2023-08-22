@@ -52,6 +52,7 @@
     sudo apt install libsdl2-dev
     sudo apt install libpng-dev
     sudo apt install libsdl2-image-dev
+    sudo apt install libglm-dev
     sudo ldconfig
 
     If you windows 10, you can use WSL2 with Ubuntu 20.04LTS, and everything is almost same.

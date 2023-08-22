@@ -2,6 +2,7 @@ project(HelloPixel)
 
 find_package(SDL2 REQUIRED)
 find_package(SDL2_image REQUIRED)
+find_package(glm REQUIRED)
 
 include_directories(${SDL2_INCLUDE_DIRS} ${SDL2_IMAGE_INCLUDE_DIR})
 include_directories(${CMAKE_BINARY_DIR})
@@ -23,5 +24,10 @@ target_link_libraries(HelloSDLPixel Threads::Threads ${SDL2_LIBRARIES})
 
 add_executable(HelloLine hello_line.cpp shs_renderer.hpp)
 target_link_libraries(HelloLine PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES})
+
+# 3D model wireframe rendering related commands
+file(COPY obj DESTINATION "${CMAKE_CURRENT_BINARY_DIR}")
+add_executable(HelloWireframe hello_wireframe.cpp shs_renderer.hpp)
+target_link_libraries(HelloWireframe PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm)
 
 
