@@ -1,5 +1,23 @@
+# First result
 
-![Wireframe on Leisure SW Renderer](https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/hello_wireframe_monkeyobj_canvas.png)
+<p align="center">
+  <img width="250" height="250" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/hello_wireframe_monkeyobj_canvas.png">
+</p>
+
+
+# Tasks to mess in the near future
+    Realtime looper using SDL2
+    Realtime canvas renderer on SDL2 window
+    Map vertext coordinates
+      - Map vertices from local obj space coordinates to scene space coordinates
+      - Map vertices from scene space coordinates to camera space coordinates
+      - Map vertices from camera space coordinates to the homogenous space coordinates
+    Add a few more OBJ in the scene
+    Rotate and Translate 3D model
+    Rotate and Translate camera, drive through scene
+    Control camera zoom in/out 
+    Control camera frustum related params
+    lists go on...
 
 
 # About
