@@ -7,7 +7,12 @@ include_directories(${SDL2_INCLUDE_DIRS} ${SDL2_IMAGE_INCLUDE_DIR})
 include_directories(${CMAKE_BINARY_DIR})
 
 set(CMAKE_CXX_STANDARD 20)
-#set(CMAKE_CXX_FLAGS "")
+if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE Release)
+endif()
+set(CMAKE_CXX_FLAGS "-Wall -Wextra")
+set(CMAKE_CXX_FLAGS_DEBUG "-g")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
 
 add_executable(HelloPixel hello_pixel.cpp shs_renderer.hpp)

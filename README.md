@@ -75,6 +75,7 @@
       - https://www.youtube.com/watch?v=A3KUGbkcKgc
     Bresenham's line drawing algorithm
       - https://en.wikipedia.org/wiki/Bresenham%27s_line_algorithm
+      - https://github.com/ssloy/tinyrenderer/wiki/Lesson-1:-Bresenham%E2%80%99s-Line-Drawing-Algorithm
 
 
 

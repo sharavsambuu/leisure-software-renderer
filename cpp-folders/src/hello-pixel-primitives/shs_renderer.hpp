@@ -266,6 +266,55 @@ namespace shs
             canvas.draw_pixel(x, y, pixel);
         };
 
+        static void draw_line_naive(shs::Canvas &canvas, int x0, int y0, int x1, int y1, shs::Color color)
+        {
+            float step = 0.01;
+            for (float t = 0.0; t < 1.0; t += step)
+            {
+                int x = x0 + (x1 - x0) * t;
+                int y = y0 + (y1 - y0) * t;
+                shs::Canvas::draw_pixel(canvas, x, y, color);
+            }
+        }
+        static void draw_line_second(shs::Canvas &canvas, int x0, int y0, int x1, int y1, shs::Color color)
+        {
+            for (int x = x0; x <= x1; x++)
+            {
+                float t = (x - x0) / (float)(x1 - x0);
+                int y = y0 * (1. - t) + y1 * t;
+                shs::Canvas::draw_pixel(canvas, x, y, color);
+            }
+        }
+        static void draw_line(shs::Canvas &canvas, int x0, int y0, int x1, int y1, shs::Color color)
+        {
+            bool steep = false;
+            if (std::abs(x0 - x1) < std::abs(y0 - y1))
+            { // if the line is steep, we transpose the image
+                std::swap(x0, y0);
+                std::swap(x1, y1);
+                steep = true;
+            }
+            if (x0 > x1)
+            { // make it left−to−right
+                std::swap(x0, x1);
+                std::swap(y0, y1);
+            }
+            for (int x = x0; x <= x1; x++)
+            {
+                float t = (x - x0) / (float)(x1 - x0);
+                int y = y0 * (1. - t) + y1 * t;
+                if (steep)
+                {
+                    // if transposed, de−transpose
+                    shs::Canvas::draw_pixel(canvas, y, x, color);
+                }
+                else
+                {
+                    shs::Canvas::draw_pixel(canvas, x, y, color);
+                }
+            }
+        }
+
         void SDL_SetPixel(SDL_Surface *surface, int x, int y, Uint32 color)
         {
             Uint32 *pixel = (Uint32 *)((Uint8 *)surface->pixels + y * surface->pitch + x * sizeof(Uint32));
