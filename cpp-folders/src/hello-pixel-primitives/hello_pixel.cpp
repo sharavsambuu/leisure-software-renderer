@@ -33,10 +33,10 @@ int main()
     }
     white_canvas.flip_horizontally();
 
-    random_canvas->save_png("random_canvas.png");
-    red_canvas->save_png("red_canvas.png");
-    black_canvas->save_png("canvas_canvas.png");
-    white_canvas.save_png("white_canvas.png");
+    random_canvas->save_png("hello_pixel_random_canvas.png");
+    red_canvas->save_png("hello_pixel_red_canvas.png");
+    black_canvas->save_png("hello_pixel_canvas_canvas.png");
+    white_canvas.save_png("hello_pixel_white_canvas.png");
 
     return 0;
 }
