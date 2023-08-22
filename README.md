@@ -1,3 +1,5 @@
+
+
 # About
     I'm just exercizing about software renderer and shaders in my freetime.
     I think using graphics api is too overrated and writing own software renderer is cool.
@@ -43,6 +45,7 @@
       - Transparency
       - Python port using PyGame or PySDL2
 
+
 # Libraries
     sudo apt install automake m4 libtool cmake
     sudo apt install libboost-all-dev
@@ -50,6 +53,14 @@
     sudo apt install libpng-dev
     sudo apt install libsdl2-image-dev
     sudo ldconfig
+
+
+# Compilation steps
+    cd cpp-folders && mkdir build && cd build
+    cmake ..
+    make
+    cd src/hello-pixel-primitives && ./HelloPixel
+
 
 # References
     Tinyrendere project
