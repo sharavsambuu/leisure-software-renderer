@@ -12,8 +12,8 @@ set(CMAKE_CXX_STANDARD 20)
 add_executable(HelloPixel hello_pixel.cpp)
 target_link_libraries(HelloPixel PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES})
 
-add_executable(HelloRandomColors hello_random_colors.cpp)
-target_link_libraries(HelloRandomColors PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES})
+add_executable(HelloRectangle hello_rectangle.cpp)
+target_link_libraries(HelloRectangle PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES})
 
 add_executable(HelloSDLPixel hello_sdl_pixel.cpp)
 target_link_libraries(HelloSDLPixel Threads::Threads ${SDL2_LIBRARIES})
