@@ -73,6 +73,8 @@
       - https://github.com/aminosbh/sdl2-samples-and-projects
     Youtube video about software renderer
       - https://www.youtube.com/watch?v=A3KUGbkcKgc
+    Bresenham's line drawing algorithm
+      - https://en.wikipedia.org/wiki/Bresenham%27s_line_algorithm
 
 
 
