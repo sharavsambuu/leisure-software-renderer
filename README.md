@@ -53,15 +53,13 @@
     sudo apt install libpng-dev
     sudo apt install libsdl2-image-dev
     sudo apt install libglm-dev
+    sudo apt install libassimp-dev
     sudo ldconfig
 
     If you windows 10, you can use WSL2 with Ubuntu 20.04LTS, and everything is almost same.
 
 # Other dependency installation
-    cd /tmp
-    git clone https://github.com/guybrush77/rapidobj.git
-    cmake -B build .
-    make && sudo make install && sudo ldconfig
+    pass
 
 
 # Compilation steps
@@ -83,8 +81,9 @@
     Bresenham's line drawing algorithm
       - https://en.wikipedia.org/wiki/Bresenham%27s_line_algorithm
       - https://github.com/ssloy/tinyrenderer/wiki/Lesson-1:-Bresenham%E2%80%99s-Line-Drawing-Algorithm
-    Rapidobj library
-      - https://github.com/guybrush77/rapidobj
+    Assimp library for model loader
+      - https://github.com/assimp/assimp
+      
 
 
 

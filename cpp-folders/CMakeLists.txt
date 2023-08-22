@@ -5,6 +5,7 @@ project("leisure-software-renderer")
 set(CMAKE_CXX_STANDARD 20)
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake/sdl2)
+list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake/assimp)
 
 FIND_PACKAGE(Threads COMPONENTS REQUIRED)
 
@@ -12,14 +13,6 @@ FIND_PACKAGE(Threads COMPONENTS REQUIRED)
 #    set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${PROJECT_SOURCE_DIR}/windows-cmakes/")
 #endif()
 
-# actions for rapidobj loader library
-include(FetchContent)
 
-#FetchContent_Declare(
-#    rapidobj
-#    GIT_REPOSITORY  https://github.com/guybrush77/rapidobj.git
-#    GIT_TAG         origin/master
-#    )
-#FetchContent_MakeAvailable(rapidobj)
 
 add_subdirectory("src/hello-pixel-primitives")
