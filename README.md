@@ -1,4 +1,6 @@
 
+![Wireframe on Leisure SW Renderer](https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/hello_wireframe_monkeyobj_canvas.png)
+
 
 # About
     I'm just exercizing about software renderer and shaders in my freetime.
