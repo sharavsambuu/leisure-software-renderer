@@ -11,7 +11,6 @@
 namespace shs
 {
 
-
     struct Pixel
     {
         std::uint8_t r;
@@ -19,7 +18,6 @@ namespace shs
         std::uint8_t b;
         std::uint8_t a;
     };
-
 
     class Color
     {
@@ -81,19 +79,19 @@ namespace shs
             this->pixel.a = a;
         }
 
-        std::uint8_t get_red_channel() 
+        std::uint8_t get_red_channel()
         {
             return this->pixel.r;
         }
-        std::uint8_t get_green_channel() 
+        std::uint8_t get_green_channel()
         {
             return this->pixel.g;
         }
-        std::uint8_t get_blue_channel() 
+        std::uint8_t get_blue_channel()
         {
             return this->pixel.b;
         }
-        std::uint8_t get_alpha_channel() 
+        std::uint8_t get_alpha_channel()
         {
             return this->pixel.a;
         }
@@ -102,7 +100,7 @@ namespace shs
         {
             this->pixel = pixel;
         }
-        shs::Pixel get_pixel() 
+        shs::Pixel get_pixel()
         {
             return this->pixel;
         }
@@ -132,7 +130,6 @@ namespace shs
         shs::Pixel pixel;
     };
 
-
     class Canvas
     {
     public:
@@ -141,7 +138,7 @@ namespace shs
         }
         Canvas(int width, int height)
         {
-            this->width  = width;
+            this->width = width;
             this->height = height;
             srand(static_cast<unsigned>(time(nullptr))); // seeding
             this->canvas.resize(this->width);
@@ -159,7 +156,7 @@ namespace shs
         }
         Canvas(int width, int height, shs::Color color)
         {
-            this->width  = width;
+            this->width = width;
             this->height = height;
             this->canvas.resize(this->width);
             for (int x = 0; x < this->width; ++x)
@@ -176,7 +173,7 @@ namespace shs
         }
         Canvas(int width, int height, shs::Pixel pixel)
         {
-            this->width  = width;
+            this->width = width;
             this->height = height;
             this->canvas.resize(this->width);
             for (int x = 0; x < this->width; ++x)
@@ -195,11 +192,11 @@ namespace shs
         {
         }
 
-        int get_width() 
+        int get_width()
         {
             return this->width;
         }
-        int get_height() 
+        int get_height()
         {
             return this->height;
         }
@@ -212,7 +209,7 @@ namespace shs
                 std::swap(this->canvas[row], this->canvas[height - 1 - row]);
             }
         }
-        static void flip_vertically(shs::Canvas & canvas)
+        static void flip_vertically(shs::Canvas &canvas)
         {
             canvas.flip_vertically();
         }
@@ -223,7 +220,7 @@ namespace shs
                 std::reverse(this->canvas[row].begin(), this->canvas[row].end());
             }
         }
-        static void flip_horizontally(shs::Canvas & canvas)
+        static void flip_horizontally(shs::Canvas &canvas)
         {
             canvas.flip_horizontally();
         }
@@ -257,16 +254,16 @@ namespace shs
         {
             this->draw_pixel(x, y, color.get_pixel());
         };
-        static void draw_pixel(shs::Canvas & canvas, int x, int y, shs::Color color)
+        static void draw_pixel(shs::Canvas &canvas, int x, int y, shs::Color color)
         {
             canvas.draw_pixel(x, y, color.get_pixel());
         };
-        static void draw_pixel(shs::Canvas & canvas, int x, int y, shs::Pixel pixel)
+        static void draw_pixel(shs::Canvas &canvas, int x, int y, shs::Pixel pixel)
         {
             canvas.draw_pixel(x, y, pixel);
         };
 
-        static void draw_line_naive(shs::Canvas &canvas, int x0, int y0, int x1, int y1, shs::Color color)
+        static void draw_line_first(shs::Canvas &canvas, int x0, int y0, int x1, int y1, shs::Color color)
         {
             float step = 0.01;
             for (float t = 0.0; t < 1.0; t += step)
@@ -285,7 +282,7 @@ namespace shs
                 shs::Canvas::draw_pixel(canvas, x, y, color);
             }
         }
-        static void draw_line(shs::Canvas &canvas, int x0, int y0, int x1, int y1, shs::Color color)
+        static void draw_line_third(shs::Canvas &canvas, int x0, int y0, int x1, int y1, shs::Color color)
         {
             bool steep = false;
             if (std::abs(x0 - x1) < std::abs(y0 - y1))
@@ -311,6 +308,80 @@ namespace shs
                 else
                 {
                     shs::Canvas::draw_pixel(canvas, x, y, color);
+                }
+            }
+        }
+        static void draw_line_fourth(shs::Canvas &canvas, int x0, int y0, int x1, int y1, shs::Color color)
+        {
+            bool steep = false;
+            if (std::abs(x0 - x1) < std::abs(y0 - y1))
+            {
+                std::swap(x0, y0);
+                std::swap(x1, y1);
+                steep = true;
+            }
+            if (x0 > x1)
+            {
+                std::swap(x0, x1);
+                std::swap(y0, y1);
+            }
+            int dx = x1 - x0;
+            int dy = y1 - y0;
+            float derror = std::abs(dy / float(dx));
+            float error = 0;
+            int y = y0;
+            for (int x = x0; x <= x1; x++)
+            {
+                if (steep)
+                {
+                    shs::Canvas::draw_pixel(canvas, y, x, color);
+                }
+                else
+                {
+                    shs::Canvas::draw_pixel(canvas, x, y, color);
+                }
+                error += derror;
+                if (error > .5)
+                {
+                    y += (y1 > y0 ? 1 : -1);
+                    error -= 1.;
+                }
+            }
+        }
+        static void draw_line(shs::Canvas &canvas, int x0, int y0, int x1, int y1, shs::Color color)
+        {
+            bool steep = false;
+            if (std::abs(x0 - x1) < std::abs(y0 - y1))
+            {
+                std::swap(x0, y0);
+                std::swap(x1, y1);
+                steep = true;
+            }
+            if (x0 > x1)
+            {
+                std::swap(x0, x1);
+                std::swap(y0, y1);
+            }
+            int dx = x1 - x0;
+            int dy = y1 - y0;
+            int derror2 = std::abs(dy) * 2;
+            int error2 = 0;
+            int y = y0;
+            for (int x = x0; x <= x1; x++)
+            {
+                if (steep)
+                {
+                    shs::Canvas::draw_pixel(canvas, y, x, color);
+                }
+                else
+                {
+                    shs::Canvas::draw_pixel(canvas, x, y, color);
+                }
+                error2 += derror2;
+                if (error2 > dx)
+                {
+                    y += (y1 > y0 ? 1 : -1);
+                    error2 -= dx * 2;
                 }
             }
         }
@@ -374,6 +445,5 @@ namespace shs
         int width;
         int height;
     };
-
 
 }
