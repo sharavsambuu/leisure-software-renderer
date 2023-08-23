@@ -103,6 +103,10 @@
       - https://github.com/ssloy/tinyrenderer/wiki/Lesson-1:-Bresenham%E2%80%99s-Line-Drawing-Algorithm
     Assimp library for model loader
       - https://github.com/assimp/assimp
+    Triangle rasterization
+      - Youtube tutorial
+        https://www.youtube.com/watch?v=k5wtuKWmV48
+      
       
 
 
