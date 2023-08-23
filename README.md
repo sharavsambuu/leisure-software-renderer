@@ -106,6 +106,8 @@
     Triangle rasterization
       - Youtube tutorial
         https://www.youtube.com/watch?v=k5wtuKWmV48
+    Data Oriented Design
+      - https://medium.com/mirum-budapest/introduction-to-data-oriented-programming-85b51b99572d
       
       
 
