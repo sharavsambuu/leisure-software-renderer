@@ -67,7 +67,7 @@
 
 
 # Libraries
-    sudo apt install automake m4 libtool cmake
+    sudo apt install automake m4 libtool cmake build-essential
     sudo apt install libboost-all-dev
     sudo apt install libsdl2-dev
     sudo apt install libpng-dev
