@@ -16,7 +16,7 @@ int main()
 
     int canvas_width  = 600;
     int canvas_height = 600;
-    shs::Canvas canvas = shs::Canvas(canvas_width, canvas_height, shs::Color::black());
+    shs::Canvas canvas = shs::Canvas(canvas_width, canvas_height, shs::Pixel::black_pixel());
 
     Assimp::Importer importer;
     const aiScene *scene = importer.ReadFile("./obj/monkey/monkey.rawobj", aiProcess_Triangulate);
@@ -51,7 +51,7 @@ int main()
                         (y1 > 0 && y1 < canvas_height))
                     {
                         //std::cout << x0 << " " << y0 << " " << x1 << " " << y1 << std::endl;
-                        shs::Canvas::draw_line(canvas, x0, y0, x1, y1, shs::Color::green());
+                        shs::Canvas::draw_line(canvas, x0, y0, x1, y1, shs::Pixel::green_pixel());
                     }
                 }
                 prev_vertex = vertex;

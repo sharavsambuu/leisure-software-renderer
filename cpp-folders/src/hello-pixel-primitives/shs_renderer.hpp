@@ -11,7 +11,7 @@
 namespace shs
 {
 
-    struct Pixel
+    struct Color
     {
         std::uint8_t r;
         std::uint8_t g;
@@ -19,115 +19,115 @@ namespace shs
         std::uint8_t a;
     };
 
-    class Color
+    class Pixel
     {
     public:
-        Color()
+        Pixel()
         {
         }
-        Color(shs::Pixel pixel)
+        Pixel(shs::Color color)
         {
-            this->pixel = pixel;
+            this->color = color;
         }
-        Color(std::uint8_t r, std::uint8_t g, std::uint8_t b)
+        Pixel(std::uint8_t r, std::uint8_t g, std::uint8_t b)
         {
-            this->pixel = shs::Pixel{r, g, b, 255};
+            this->color = shs::Color{r, g, b, 255};
         }
-        Color(std::uint8_t r, std::uint8_t g, std::uint8_t b, std::uint8_t a)
+        Pixel(std::uint8_t r, std::uint8_t g, std::uint8_t b, std::uint8_t a)
         {
-            this->pixel = shs::Pixel{r, g, b, a};
+            this->color = shs::Color{r, g, b, a};
         }
-        ~Color()
+        ~Pixel()
         {
         }
 
-        void change_color(shs::Pixel pixel)
+        void change_color(shs::Color color)
         {
-            this->pixel.r = pixel.r;
-            this->pixel.g = pixel.g;
-            this->pixel.b = pixel.b;
-            this->pixel.a = pixel.a;
+            this->color.r = color.r;
+            this->color.g = color.g;
+            this->color.b = color.b;
+            this->color.a = color.a;
         }
         void change_color(std::uint8_t r, std::uint8_t g, std::uint8_t b)
         {
-            this->pixel.r = r;
-            this->pixel.g = g;
-            this->pixel.b = b;
+            this->color.r = r;
+            this->color.g = g;
+            this->color.b = b;
         }
         void change_color(std::uint8_t r, std::uint8_t g, std::uint8_t b, std::uint8_t a)
         {
-            this->pixel.r = r;
-            this->pixel.g = g;
-            this->pixel.b = b;
-            this->pixel.a = a;
+            this->color.r = r;
+            this->color.g = g;
+            this->color.b = b;
+            this->color.a = a;
         }
 
         void change_red_channel(std::uint8_t r)
         {
-            this->pixel.r = r;
+            this->color.r = r;
         }
         void change_green_channel(std::uint8_t g)
         {
-            this->pixel.g = g;
+            this->color.g = g;
         }
         void change_blue_channel(std::uint8_t b)
         {
-            this->pixel.b = b;
+            this->color.b = b;
         }
         void change_alpha_channel(std::uint8_t a)
         {
-            this->pixel.a = a;
+            this->color.a = a;
         }
 
         std::uint8_t get_red_channel()
         {
-            return this->pixel.r;
+            return this->color.r;
         }
         std::uint8_t get_green_channel()
         {
-            return this->pixel.g;
+            return this->color.g;
         }
         std::uint8_t get_blue_channel()
         {
-            return this->pixel.b;
+            return this->color.b;
         }
         std::uint8_t get_alpha_channel()
         {
-            return this->pixel.a;
+            return this->color.a;
         }
 
-        void set_pixel(shs::Pixel pixel)
+        void set_color(shs::Color color)
         {
-            this->pixel = pixel;
+            this->color = color;
         }
-        shs::Pixel get_pixel()
+        shs::Color get_color()
         {
-            return this->pixel;
+            return this->color;
         }
 
-        static shs::Color red()
+        static shs::Pixel red_pixel()
         {
-            return shs::Color(shs::Pixel{255, 0, 0, 255});
+            return shs::Pixel{255, 0, 0, 255};
         }
-        static shs::Color green()
+        static shs::Pixel green_pixel()
         {
-            return shs::Color(shs::Pixel{0, 255, 0, 255});
+            return shs::Pixel{0, 255, 0, 255};
         }
-        static shs::Color blue()
+        static shs::Pixel blue_pixel()
         {
-            return shs::Color(shs::Pixel{0, 0, 255, 255});
+            return shs::Pixel{0, 0, 255, 255};
         }
-        static shs::Color black()
+        static shs::Pixel black_pixel()
         {
-            return shs::Color(shs::Pixel{0, 0, 0, 255});
+            return shs::Pixel{0, 0, 0, 255};
         }
-        static shs::Color white()
+        static shs::Pixel white_pixel()
         {
-            return shs::Color(shs::Pixel{255, 255, 255, 255});
+            return shs::Pixel{255, 255, 255, 255};
         }
 
     private:
-        shs::Pixel pixel;
+        shs::Color color;
     };
 
     class Canvas
@@ -154,23 +154,6 @@ namespace shs
                 }
             }
         }
-        Canvas(int width, int height, shs::Color color)
-        {
-            this->width = width;
-            this->height = height;
-            this->canvas.resize(this->width);
-            for (int x = 0; x < this->width; ++x)
-            {
-                this->canvas[x].resize(this->height);
-                for (int y = 0; y < this->height; ++y)
-                {
-                    this->canvas[x][y].r = color.get_red_channel();
-                    this->canvas[x][y].g = color.get_green_channel();
-                    this->canvas[x][y].b = color.get_blue_channel();
-                    this->canvas[x][y].a = color.get_alpha_channel();
-                }
-            }
-        }
         Canvas(int width, int height, shs::Pixel pixel)
         {
             this->width = width;
@@ -181,10 +164,27 @@ namespace shs
                 this->canvas[x].resize(this->height);
                 for (int y = 0; y < this->height; ++y)
                 {
-                    this->canvas[x][y].r = pixel.r;
-                    this->canvas[x][y].g = pixel.g;
-                    this->canvas[x][y].b = pixel.b;
-                    this->canvas[x][y].a = pixel.a;
+                    this->canvas[x][y].r = pixel.get_red_channel();
+                    this->canvas[x][y].g = pixel.get_green_channel();
+                    this->canvas[x][y].b = pixel.get_blue_channel();
+                    this->canvas[x][y].a = pixel.get_alpha_channel();
+                }
+            }
+        }
+        Canvas(int width, int height, shs::Color color)
+        {
+            this->width = width;
+            this->height = height;
+            this->canvas.resize(this->width);
+            for (int x = 0; x < this->width; ++x)
+            {
+                this->canvas[x].resize(this->height);
+                for (int y = 0; y < this->height; ++y)
+                {
+                    this->canvas[x][y].r = color.r;
+                    this->canvas[x][y].g = color.g;
+                    this->canvas[x][y].b = color.b;
+                    this->canvas[x][y].a = color.a;
                 }
             }
         }
@@ -245,44 +245,46 @@ namespace shs
             {
                 location_y = this->height;
             }
-            this->canvas[location_x][location_y].r = pixel.r;
-            this->canvas[location_x][location_y].g = pixel.g;
-            this->canvas[location_x][location_y].b = pixel.b;
-            this->canvas[location_x][location_y].a = pixel.a;
+            this->canvas[location_x][location_y].r = pixel.get_red_channel();
+            this->canvas[location_x][location_y].g = pixel.get_green_channel();
+            this->canvas[location_x][location_y].b = pixel.get_blue_channel();
+            this->canvas[location_x][location_y].a = pixel.get_alpha_channel();
         };
-        void draw_pixel(int x, int y, shs::Color color)
+        /*
+        void draw_pixel(int x, int y, shs::Pixel pixel)
         {
-            this->draw_pixel(x, y, color.get_pixel());
+            this->draw_pixel(x, y, pixel);
         };
+        */
         static void draw_pixel(shs::Canvas &canvas, int x, int y, shs::Color color)
         {
-            canvas.draw_pixel(x, y, color.get_pixel());
+            canvas.draw_pixel(x, y, shs::Pixel(color));
         };
         static void draw_pixel(shs::Canvas &canvas, int x, int y, shs::Pixel pixel)
         {
             canvas.draw_pixel(x, y, pixel);
         };
 
-        static void draw_line_first(shs::Canvas &canvas, int x0, int y0, int x1, int y1, shs::Color color)
+        static void draw_line_first(shs::Canvas &canvas, int x0, int y0, int x1, int y1, shs::Pixel pixel)
         {
             float step = 0.01;
             for (float t = 0.0; t < 1.0; t += step)
             {
                 int x = x0 + (x1 - x0) * t;
                 int y = y0 + (y1 - y0) * t;
-                shs::Canvas::draw_pixel(canvas, x, y, color);
+                shs::Canvas::draw_pixel(canvas, x, y, pixel);
             }
         }
-        static void draw_line_second(shs::Canvas &canvas, int x0, int y0, int x1, int y1, shs::Color color)
+        static void draw_line_second(shs::Canvas &canvas, int x0, int y0, int x1, int y1, shs::Pixel pixel)
         {
             for (int x = x0; x <= x1; x++)
             {
                 float t = (x - x0) / (float)(x1 - x0);
                 int y = y0 * (1. - t) + y1 * t;
-                shs::Canvas::draw_pixel(canvas, x, y, color);
+                shs::Canvas::draw_pixel(canvas, x, y, pixel);
             }
         }
-        static void draw_line_third(shs::Canvas &canvas, int x0, int y0, int x1, int y1, shs::Color color)
+        static void draw_line_third(shs::Canvas &canvas, int x0, int y0, int x1, int y1, shs::Pixel pixel)
         {
             bool steep = false;
             if (std::abs(x0 - x1) < std::abs(y0 - y1))
@@ -303,15 +305,15 @@ namespace shs
                 if (steep)
                 {
                     // if transposed, de−transpose
-                    shs::Canvas::draw_pixel(canvas, y, x, color);
+                    shs::Canvas::draw_pixel(canvas, y, x, pixel);
                 }
                 else
                 {
-                    shs::Canvas::draw_pixel(canvas, x, y, color);
+                    shs::Canvas::draw_pixel(canvas, x, y, pixel);
                 }
             }
         }
-        static void draw_line_fourth(shs::Canvas &canvas, int x0, int y0, int x1, int y1, shs::Color color)
+        static void draw_line_fourth(shs::Canvas &canvas, int x0, int y0, int x1, int y1, shs::Pixel pixel)
         {
             bool steep = false;
             if (std::abs(x0 - x1) < std::abs(y0 - y1))
@@ -334,11 +336,11 @@ namespace shs
             {
                 if (steep)
                 {
-                    shs::Canvas::draw_pixel(canvas, y, x, color);
+                    shs::Canvas::draw_pixel(canvas, y, x, pixel);
                 }
                 else
                 {
-                    shs::Canvas::draw_pixel(canvas, x, y, color);
+                    shs::Canvas::draw_pixel(canvas, x, y, pixel);
                 }
                 error += derror;
                 if (error > .5)
@@ -348,7 +350,7 @@ namespace shs
                 }
             }
         }
-        static void draw_line(shs::Canvas &canvas, int x0, int y0, int x1, int y1, shs::Color color)
+        static void draw_line(shs::Canvas &canvas, int x0, int y0, int x1, int y1, shs::Pixel pixel)
         {
             bool steep = false;
             if (std::abs(x0 - x1) < std::abs(y0 - y1))
@@ -371,11 +373,11 @@ namespace shs
             {
                 if (steep)
                 {
-                    shs::Canvas::draw_pixel(canvas, y, x, color);
+                    shs::Canvas::draw_pixel(canvas, y, x, pixel);
                 }
                 else
                 {
-                    shs::Canvas::draw_pixel(canvas, x, y, color);
+                    shs::Canvas::draw_pixel(canvas, x, y, pixel);
                 }
                 error2 += derror2;
                 if (error2 > dx)
@@ -386,10 +388,10 @@ namespace shs
             }
         }
 
-        void SDL_SetPixel(SDL_Surface *surface, int x, int y, Uint32 color)
+        void SDL_SetPixel(SDL_Surface *surface, int x, int y, Uint32 raw_color)
         {
             Uint32 *pixel = (Uint32 *)((Uint8 *)surface->pixels + y * surface->pitch + x * sizeof(Uint32));
-            *pixel = color;
+            *pixel = raw_color;
         }
         void save_png(const std::string &filename)
         {
@@ -420,9 +422,9 @@ namespace shs
             {
                 for (int y = 0; y < this->height; ++y)
                 {
-                    shs::Pixel pixel = canvas[x][y];
-                    Uint32 color = SDL_MapRGBA(surface->format, pixel.r, pixel.g, pixel.b, pixel.a);
-                    this->SDL_SetPixel(surface, x, y, color);
+                    shs::Color color = canvas[x][y];
+                    Uint32 raw_color = SDL_MapRGBA(surface->format, color.r, color.g, color.b, color.a);
+                    this->SDL_SetPixel(surface, x, y, raw_color);
                 }
             }
 
@@ -441,7 +443,7 @@ namespace shs
         }
 
     private:
-        std::vector<std::vector<shs::Pixel>> canvas;
+        std::vector<std::vector<shs::Color>> canvas;
         int width;
         int height;
     };
