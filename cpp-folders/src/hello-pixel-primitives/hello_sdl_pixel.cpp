@@ -1,12 +1,13 @@
 #include <SDL2/SDL.h>
+#include <string>
 #include "shs_renderer.hpp"
 
-#define WINDOW_WIDTH  640
-#define WINDOW_HEIGHT 480
+#define FRAMES_PER_SECOND 60
+#define WINDOW_WIDTH      640
+#define WINDOW_HEIGHT     480
 
-#define CANVAS_WIDTH  256
-#define CANVAS_HEIGHT 256
-
+#define CANVAS_WIDTH      256
+#define CANVAS_HEIGHT     256
 
 
 int main()
@@ -26,8 +27,18 @@ int main()
 
     bool exit = false;
     SDL_Event event_data;
+
+    int   frame_delay            = 1000 / FRAMES_PER_SECOND; // Delay for 60 FPS
+    float frame_time_accumulator = 0;
+    int   frame_counter          = 0;
+    int   fps                    = 0;
+
     while (!exit)
     {
+
+        Uint32 frame_start_ticks = SDL_GetTicks();
+
+        // catching up input events happened on hardware
         while (SDL_PollEvent(&event_data))
         {
             switch (event_data.type)
@@ -50,7 +61,7 @@ int main()
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
 
-        // Software rendering or drawing stuffs goes around here
+        // software rendering or drawing stuffs goes around here
         shs::Canvas::fill_pixel(*main_canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT, shs::Pixel::blue_pixel());
         shs::Canvas::fill_pixel(*main_canvas, 10, 10, 20, 30, shs::Pixel::white_pixel());
         shs::Canvas::fill_random_pixel(*main_canvas, 40, 30, 60, 80);
@@ -62,6 +73,20 @@ int main()
         SDL_Rect destination_rect{0, 0, WINDOW_WIDTH, WINDOW_HEIGHT};
         SDL_RenderCopy(renderer, screen_texture, NULL, &destination_rect);
         SDL_RenderPresent(renderer);
+
+    
+        frame_counter++;
+        Uint32 delta_frame_time  = SDL_GetTicks() - frame_start_ticks;
+        frame_time_accumulator  += delta_frame_time/1000.0;
+        if (delta_frame_time < frame_delay) {
+            SDL_Delay(frame_delay - delta_frame_time);
+        }
+        if (frame_time_accumulator >= 1.0) {
+            std::string window_title = "FPS : "+std::to_string(frame_counter);
+            frame_time_accumulator   = 0.0;
+            frame_counter            = 0;
+            SDL_SetWindowTitle(window, window_title.c_str());
+        }
     }
 
 
