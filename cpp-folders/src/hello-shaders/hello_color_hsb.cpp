@@ -4,6 +4,7 @@
 #include <iostream>
 #include <array>
 #include <cstdlib>
+#include <cmath>
 #include <tuple>
 #include "shs_renderer.hpp"
 
@@ -32,17 +33,6 @@ std::array<double, 4> rescale_vec4_1_255(const std::array<double, 4> &input_arr)
     return output_arr;
 }
 
-double smoothstep(double edge0, double edge1, double x) {
-    x = std::clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
-    return x * x * (3.0 - 2.0 * x);
-}
-
-float plot(std::array<double, 2> st, double pct)
-{
-    return smoothstep(pct - 0.01, pct, st[1]) -
-           smoothstep(pct, pct + 0.01, st[1]);
-}
-
 std::array<double, 3> mix_vec3(const std::array<double, 3> &array1, const std::array<double, 3> &array2, double factor)
 {
     std::array<double, 3> result;
@@ -53,26 +43,33 @@ std::array<double, 3> mix_vec3(const std::array<double, 3> &array1, const std::a
     return result;
 }
 
-std::array<double, 3> mix_vec3(const std::array<double, 3> &array1, const std::array<double, 3> &array2, const std::array<double, 3> &factors)
+std::array<double, 3> hsb_to_rgb(std::array<double, 3> c)
 {
-    std::array<double, 3> result;
-    for (size_t i = 0; i < result.size(); ++i)
-    {
-        result[i] = (1.0 - factors[i]) * array1[i] + factors[i] * array2[i];
-    }
-    return result;
+    
+    std::array<double, 3> vec = {0.0, 4.0, 2.0};
+    std::array<double, 3> rgb = {
+        std::clamp<double>(std::abs(std::fmod(c[0]*6.0+vec[0], 6.0)-3.0)-1.0, 0.0, 1.0),
+        std::clamp<double>(std::abs(std::fmod(c[0]*6.0+vec[1], 6.0)-3.0)-1.0, 0.0, 1.0),
+        std::clamp<double>(std::abs(std::fmod(c[0]*6.0+vec[2], 6.0)-3.0)-1.0, 0.0, 1.0)
+    };
+    rgb[0] = rgb[0]*rgb[0]*(3.0-2.0*rgb[0]);
+    rgb[1] = rgb[1]*rgb[1]*(3.0-2.0*rgb[1]);
+    rgb[2] = rgb[2]*rgb[2]*(3.0-2.0*rgb[2]);
+
+    std::array<double, 3> ones   = {1.0, 1.0, 1.0};
+    std::array<double, 3> output = mix_vec3(ones, rgb, c[2]);
+    output[0] = output[0]*c[2];
+    output[1] = output[1]*c[2];
+    output[2] = output[2]*c[2];
+    
+    return output;
 }
 
 std::array<double, 4> fragment_shader(std::array<double, 2> uniform_uv, double uniform_time)
 {
-    std::array<double, 2> st      = {uniform_uv[0]/CANVAS_WIDTH, uniform_uv[1]/CANVAS_HEIGHT};
-    std::array<double, 3> color_a = {0.149, 0.141, 0.912};
-    std::array<double, 3> color_b = {1.000, 0.833, 0.224};
-    std::array<double, 3> pct     = {st[0], st[0], st[0]};
-    std::array<double, 3> color   = mix_vec3(color_a, color_b, pct);
-    color = mix_vec3(color, std::array<double, 3> {1.0,0.0,0.0}, plot(st, pct[0]));
-    color = mix_vec3(color, std::array<double, 3> {0.0,1.0,0.0}, plot(st, pct[1]));
-    color = mix_vec3(color, std::array<double, 3> {0.0,0.0,1.0}, plot(st, pct[2]));
+    std::array<double, 2> st    = {uniform_uv[0]/CANVAS_WIDTH, uniform_uv[1]/CANVAS_HEIGHT};
+    std::array<double, 3> color = {0.0, 0.0, 0.0};
+    color = hsb_to_rgb(std::array<double, 3> {st[0], 1.0, st[1]});
     std::array<double, 4> output_arr = {color[0], color[1], color[2], 1.0};
     return rescale_vec4_1_255(output_arr);
 };

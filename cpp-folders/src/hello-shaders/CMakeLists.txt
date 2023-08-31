@@ -30,3 +30,6 @@ target_link_libraries(HelloColorMix Threads::Threads ${SDL2_LIBRARIES})
 
 add_executable(HelloColorGradient hello_color_gradient.cpp ../shs-renderer/shs_renderer.hpp)
 target_link_libraries(HelloColorGradient Threads::Threads ${SDL2_LIBRARIES})
+
+add_executable(HelloColorHSB hello_color_hsb.cpp ../shs-renderer/shs_renderer.hpp)
+target_link_libraries(HelloColorHSB Threads::Threads ${SDL2_LIBRARIES})

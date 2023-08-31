@@ -16,7 +16,7 @@
 
 
 /*
-* Color mixing mentioned on :
+* Source :
 * - https://thebookofshaders.com/06/
 */
 
