@@ -17,3 +17,4 @@ FIND_PACKAGE(Threads COMPONENTS REQUIRED)
 
 add_subdirectory("src/shs-renderer")
 add_subdirectory("src/hello-pixel-primitives")
+add_subdirectory("src/hello-shaders")

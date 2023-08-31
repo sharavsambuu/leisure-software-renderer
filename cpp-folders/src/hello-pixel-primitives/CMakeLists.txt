@@ -27,9 +27,6 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 add_executable(HelloPixel hello_pixel.cpp ../shs-renderer/shs_renderer.hpp)
 target_link_libraries(HelloPixel PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES})
 
-add_executable(HelloFragmentShader hello_fragment_shader.cpp ../shs-renderer/shs_renderer.hpp)
-target_link_libraries(HelloFragmentShader Threads::Threads ${SDL2_LIBRARIES})
-
 add_executable(HelloSDLPixel hello_sdl_pixel.cpp ../shs-renderer/shs_renderer.hpp)
 target_link_libraries(HelloSDLPixel Threads::Threads ${SDL2_LIBRARIES})
 
