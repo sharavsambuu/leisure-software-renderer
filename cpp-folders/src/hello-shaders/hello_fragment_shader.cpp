@@ -18,40 +18,52 @@
 * - https://www.shadertoy.com/view/DtXfDr
 */
 
-float shader_smooth_step(float edge0, float edge1, float x) {
-    x = std::clamp((x - edge0) / (edge1 - edge0), 0.0f, 1.0f);
+std::array<double, 4> rescale_vec4_1_255(const std::array<double, 4> &input_arr)
+{
+    std::array<double, 4> output_arr;
+    for (size_t i = 0; i < input_arr.size(); ++i)
+    {
+        double clamped_value = std::max(0.0, std::min(1.0, input_arr[i]));
+        double scaled_value = clamped_value * 255.0;
+        output_arr[i] = scaled_value;
+    }
+    return output_arr;
+}
+
+double shader_smooth_step(double edge0, double edge1, double x) {
+    x = std::clamp<double>((x - edge0) / (edge1 - edge0), 0.0f, 1.0f);
     return x * x * (3.0f - 2.0f * x);
 }
 
-std::array<float, 4> shader_line(std::array<float, 2> uv, float speed, float height, std::array<float, 3> col, float i_time)
+std::array<double, 4> shader_line(std::array<double, 2> uv, double speed, double height, std::array<double, 3> col, double uniform_time)
 {
-    float uv_x = uv[0];
-    float uv_y = uv[1];
-    uv_y += shader_smooth_step(1.0, 0.0, std::abs(uv_x))*std::sin(i_time*speed+uv_x*height)*0.2;
-    std::array<float, 4> output_arr = {0.0, 0.0, 0.0, 1.0};
+    double uv_x = uv[0];
+    double uv_y = uv[1];
+    uv_y += shader_smooth_step(1.0, 0.0, std::abs(uv_x))*std::sin(uniform_time*speed+uv_x*height)*0.2;
+    std::array<double, 4> output_arr = {0.0, 0.0, 0.0, 1.0};
     output_arr[0] = (0.06*shader_smooth_step(0.2, 0.9, std::abs(uv_x)), 0.0, std::abs(uv_y)-0.004)*col[0] * shader_smooth_step(1.0, 0.3, std::abs(uv_x));
     output_arr[1] = (0.06*shader_smooth_step(0.2, 0.9, std::abs(uv_x)), 0.0, std::abs(uv_y)-0.004)*col[1] * shader_smooth_step(1.0, 0.3, std::abs(uv_x));
     output_arr[2] = (0.06*shader_smooth_step(0.2, 0.9, std::abs(uv_x)), 0.0, std::abs(uv_y)-0.004)*col[2] * shader_smooth_step(1.0, 0.3, std::abs(uv_x));
     return output_arr;
 }
 
-std::array<float, 4> fragment_shader(std::array<float, 2> i_uv, float i_time)
+std::array<double, 4> fragment_shader(std::array<double, 2> uniform_uv, double uniform_time)
 {
-    std::array<float, 2> uv = {
-        float((i_uv[0] - 5.0*CANVAS_WIDTH)/CANVAS_HEIGHT),
-        float((i_uv[1] - 5.0*CANVAS_WIDTH)/CANVAS_HEIGHT)
+    std::array<double, 2> uv = {
+        double((uniform_uv[0] - 5.0*CANVAS_WIDTH)/CANVAS_HEIGHT),
+        double((uniform_uv[1] - 5.0*CANVAS_WIDTH)/CANVAS_HEIGHT)
     };
-    std::array<float, 4> output_arr = {0.0, 0.0, 0.0, 1.0};
-    for (float i = 0.0; i <= 5.0; i += 1.0)
+    std::array<double, 4> output_arr = {0.0, 0.0, 0.0, 1.0};
+    for (double i = 0.0; i <= 5.0; i += 1.0)
     {
-        float t = i/5.0;
-        std::array<float, 3> col = {0.2+t*0.7, 0.2+t*0.4, 0.3};
-        std::array<float, 4> line_color = shader_line(uv, 1.0+t, 4.0+t, col, i_time);
+        double t = i/5.0;
+        std::array<double, 3> col = {0.2+t*0.7, 0.2+t*0.4, 0.3};
+        std::array<double, 4> line_color = shader_line(uv, 1.0+t, 4.0+t, col, uniform_time);
         output_arr[0] += line_color[0];
         output_arr[1] += line_color[1];
         output_arr[2] += line_color[2];
     }
-    return output_arr;
+    return rescale_vec4_1_255(output_arr);
 };
 
 int main()
@@ -72,11 +84,11 @@ int main()
     bool exit = false;
     SDL_Event event_data;
 
-    int   frame_delay            = 1000 / FRAMES_PER_SECOND; // Delay for 60 FPS
-    float frame_time_accumulator = 0;
-    int   frame_counter          = 0;
-    int   fps                    = 0;
-    float time_accumulator       = 0.0;
+    int    frame_delay            = 1000 / FRAMES_PER_SECOND; // Delay for 60 FPS
+    double frame_time_accumulator = 0;
+    int    frame_counter          = 0;
+    int    fps                    = 0;
+    double time_accumulator       = 0.0;
 
     while (!exit)
     {
@@ -115,8 +127,8 @@ int main()
             for (int y=0; y<CANVAS_HEIGHT; y++)
             {
                 // preparing shader input
-                std::array<float, 2> uv = {float(x), float(y)};
-                std::array<float, 4> shader_output = fragment_shader(uv, time_accumulator);
+                std::array<double, 2> uv = {double(x), double(y)};
+                std::array<double, 4> shader_output = fragment_shader(uv, time_accumulator);
                 shs::Canvas::draw_pixel(*main_canvas, x, y, shs::Color{shader_output[0], shader_output[1], shader_output[2], shader_output[3]});
             }
         }
