@@ -113,6 +113,8 @@
       - https://thebookofshaders.com/06/
     IQ's articles
       - https://iquilezles.org/articles/
+    Might be useful to parallelize pixel calculations
+      - https://github.com/taskflow/taskflow
       
       
 
