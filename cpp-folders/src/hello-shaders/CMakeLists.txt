@@ -34,3 +34,6 @@ target_link_libraries(HelloColorHSB Threads::Threads ${SDL2_LIBRARIES})
 
 add_executable(HelloColorHSBPolar hello_color_hsb_polar.cpp ../shs-renderer/shs_renderer.hpp)
 target_link_libraries(HelloColorHSBPolar Threads::Threads ${SDL2_LIBRARIES})
+
+add_executable(HelloFractalBrownianMotion hello_fbm.cpp ../shs-renderer/shs_renderer.hpp)
+target_link_libraries(HelloFractalBrownianMotion Threads::Threads ${SDL2_LIBRARIES} glm::glm)
