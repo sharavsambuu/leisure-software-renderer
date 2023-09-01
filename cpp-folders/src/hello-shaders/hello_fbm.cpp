@@ -1,5 +1,6 @@
 #include <SDL2/SDL.h>
 #include <glm/glm.hpp>
+#include <glm/gtc/noise.hpp> 
 #include <algorithm>
 #include <string>
 #include <iostream>
@@ -12,9 +13,10 @@
 #define FRAMES_PER_SECOND 60
 #define WINDOW_WIDTH      640
 #define WINDOW_HEIGHT     520
-#define CANVAS_WIDTH      480
-#define CANVAS_HEIGHT     420
+#define CANVAS_WIDTH      600
+#define CANVAS_HEIGHT     500
 
+#define NUM_OCTAVES       5
 
 /*
 * Source :
@@ -27,10 +29,79 @@ glm::vec4 rescale_vec4_1_255(const glm::vec4 &input_vec) {
     return scaled_value;
 }
 
+// Function to generate a random value based on input vector using GLM
+float random(const glm::vec2& _st) {
+    return glm::fract(glm::sin(glm::dot(_st, glm::vec2(12.9898f, 78.233f))) * 43758.5453123f);
+}
 
-glm::vec4 fragment_shader(glm::vec2 uniform_uv, double uniform_time)
+// Function to calculate noise using GLM
+float noise(const glm::vec2& _st) {
+    glm::vec2 i = glm::floor(_st);
+    glm::vec2 f = glm::fract(_st);
+
+    // Four corners in 2D of a tile
+    float a = random(i);
+    float b = random(i + glm::vec2(1.0f, 0.0f));
+    float c = random(i + glm::vec2(0.0f, 1.0f));
+    float d = random(i + glm::vec2(1.0f, 1.0f));
+
+    glm::vec2 u = f * f * (3.0f - 2.0f * f);
+
+    return glm::mix(a, b, u.x) +
+           (c - a) * u.y * (1.0f - u.x) +
+           (d - b) * u.x * u.y;
+}
+
+float fbm(const glm::vec2& st) {
+    glm::vec2 _st = st;
+    float v = 0.0f;
+    float a = 0.5f;
+    glm::vec2 shift(100.0f);
+    
+    // Rotate to reduce axial bias
+    glm::mat2 rot(cos(0.5f), sin(0.5f),
+                  -sin(0.5f), cos(0.5f));
+
+    for (int i = 0; i < NUM_OCTAVES; ++i) {
+        v += a * glm::simplex(_st); 
+        _st = rot * _st * 2.0f + shift;
+        a *= 0.5f;
+    }
+
+    return v;
+}
+
+glm::vec4 fragment_shader(glm::vec2 uniform_uv, float uniform_time)
 {
-    glm::vec4 output_arr = {1.0, 0.0, 1.0, 1.0};
+    glm::vec2 st = (uniform_uv/glm::vec2(CANVAS_WIDTH, CANVAS_HEIGHT))*3.0f;
+    st += float(glm::abs(glm::sin(uniform_time*0.1f)*3.0f))*st;
+    glm::vec3 color(0.0);
+
+    glm::vec2 q(0.0);
+
+    q.x = fbm(st + 0.00f * uniform_time);
+    q.y = fbm(st + glm::vec2(1.0f));
+
+    glm::vec2 r(0.0f);
+    r.x = fbm(st + 1.0f * q + glm::vec2(1.7f, 9.2f) + 0.15f * uniform_time);
+    r.y = fbm(st + 1.0f * q + glm::vec2(8.3f, 2.8f) + 0.126f * uniform_time);
+
+    float f = fbm(st + r);
+
+    color = glm::mix(glm::vec3(0.101961f, 0.619608f, 0.666667f),
+                     glm::vec3(0.666667f, 0.666667f, 0.498039f),
+                     glm::clamp((f * f) * 4.0f, 0.0f, 1.0f));
+
+    color = glm::mix(color,
+                     glm::vec3(0.0f, 0.0f, 0.164706f),
+                     glm::clamp(glm::length(q), 0.0f, 1.0f));
+
+    color = glm::mix(color,
+                     glm::vec3(0.666667f, 1.0f, 1.0f),
+                     glm::clamp(glm::length(r.x), 0.0f, 1.0f));
+    
+
+    glm::vec4 output_arr = glm::vec4(color*float(f*f*f+0.6f*f*f+0.5*f),1.0f);
     return rescale_vec4_1_255(output_arr);
 };
 
@@ -54,10 +125,10 @@ int main()
     SDL_Event event_data;
 
     int    frame_delay            = 1000 / FRAMES_PER_SECOND; // Delay for 60 FPS
-    double frame_time_accumulator = 0;
+    float frame_time_accumulator = 0;
     int    frame_counter          = 0;
     int    fps                    = 0;
-    double time_accumulator       = 0.0;
+    float time_accumulator       = 0.0;
 
     while (!exit)
     {
