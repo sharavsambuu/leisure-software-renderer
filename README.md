@@ -1,4 +1,4 @@
-# First result
+# Result
 
 <p align="center">
   <img width="320" height="320" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/hello_wireframe_monkeyobj_canvas.png">
@@ -6,7 +6,7 @@
 </p>
 
 
-# Tasks to mess in the near future
+# Tasks to mess around in the near future
     Realtime looper using SDL2
     Realtime canvas renderer on SDL2 window
     Map vertext coordinates
