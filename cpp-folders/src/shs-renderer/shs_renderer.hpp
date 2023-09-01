@@ -206,28 +206,28 @@ namespace shs
             return this->height;
         }
 
-        void flip_vertically()
-        {
-            int half_height = this->height / 2;
-            for (int row = 0; row < half_height; row++)
-            {
-                std::swap(this->canvas[row], this->canvas[height - 1 - row]);
-            }
-        }
-        static void flip_vertically(shs::Canvas &canvas)
-        {
-            canvas.flip_vertically();
-        }
         void flip_horizontally()
         {
-            for (int row = 0; row < this->height; row++)
+            int half_width = this->width / 2;
+            for (int column = 0; column < half_width; column++)
             {
-                std::reverse(this->canvas[row].begin(), this->canvas[row].end());
+                std::swap(this->canvas[column], this->canvas[width - 1 - column]);
             }
         }
         static void flip_horizontally(shs::Canvas &canvas)
         {
             canvas.flip_horizontally();
+        }
+        void flip_vertically()
+        {
+            for (int row = 0; row < this->width; row++)
+            {
+                std::reverse(this->canvas[row].begin(), this->canvas[row].end());
+            }
+        }
+        static void flip_vertically(shs::Canvas &canvas)
+        {
+            canvas.flip_vertically();
         }
 
         shs::Color get_color_at(int x, int y)

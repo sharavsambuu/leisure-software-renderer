@@ -10,10 +10,10 @@
 
 #define FRAMES_PER_SECOND 60
 #define WINDOW_WIDTH      640
-#define WINDOW_HEIGHT     640
+#define WINDOW_HEIGHT     520
 
-#define CANVAS_WIDTH      640
-#define CANVAS_HEIGHT     640
+#define CANVAS_WIDTH      480
+#define CANVAS_HEIGHT     340
 
 
 /*
@@ -131,9 +131,9 @@ int main()
         shs::Canvas::fill_pixel(*main_canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT, shs::Pixel::blue_pixel());
 
         // Run fragment shader
-        for (int x=0; x<CANVAS_HEIGHT; x++)
+        for (int x=0; x<CANVAS_WIDTH; x++)
         {
-            for (int y=0; y<CANVAS_WIDTH; y++)
+            for (int y=0; y<CANVAS_HEIGHT; y++)
             {
                 // preparing shader input
                 std::array<double, 2> uv = {float(x), float(y)};
@@ -147,8 +147,7 @@ int main()
 
 
         // actually prensenting canvas data on hardware surface
-        shs::Canvas::flip_horizontally(*main_canvas); // origin at the left bottom corner of the canvas
-        //shs::Canvas::flip_vertically(*main_canvas);
+        shs::Canvas::flip_vertically(*main_canvas);
         shs::Canvas::copy_to_SDLSurface(main_sdlsurface, main_canvas);
         SDL_UpdateTexture(screen_texture, NULL, main_sdlsurface->pixels, main_sdlsurface->pitch);
         SDL_Rect destination_rect{0, 0, WINDOW_WIDTH, WINDOW_HEIGHT};

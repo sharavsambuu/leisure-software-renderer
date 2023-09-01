@@ -22,8 +22,6 @@ set(CMAKE_CXX_FLAGS "-Wall -Wextra")
 set(CMAKE_CXX_FLAGS_DEBUG "-g")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
-add_executable(HelloFragmentShader hello_fragment_shader.cpp ../shs-renderer/shs_renderer.hpp)
-target_link_libraries(HelloFragmentShader Threads::Threads ${SDL2_LIBRARIES})
 
 add_executable(HelloColorMix hello_color_mix.cpp ../shs-renderer/shs_renderer.hpp)
 target_link_libraries(HelloColorMix Threads::Threads ${SDL2_LIBRARIES})
