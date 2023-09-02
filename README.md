@@ -72,9 +72,6 @@
 
     If you windows 10, you can use WSL2 with Ubuntu 20.04LTS, and everything is almost same.
 
-# Other dependency installation
-    pass
-
 
 # Compilation steps
     cd cpp-folders && mkdir build && cd build
