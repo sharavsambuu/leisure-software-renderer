@@ -53,9 +53,10 @@ public:
 
         std::random_device rd;
         std::mt19937 gen(rd());
-        std::uniform_real_distribution<float> angle_dist(-3.0f, 3.0f);
-        this->angle_radian += angle_dist(gen)*delta_time;
-        this->angle_radian  = glm::clamp(this->angle_radian, min_angle_radian, max_angle_radian);
+        std::uniform_real_distribution<float> angle_dist(-13.0f, 13.0f);
+        float rotation_speed = 0.3f;
+        this->angle_radian  += angle_dist(gen)*delta_time*rotation_speed;
+        this->angle_radian   = glm::clamp(this->angle_radian, min_angle_radian, max_angle_radian);
 
     }
     void render(shs::Canvas &canvas)
@@ -111,7 +112,7 @@ int main()
     TriangleObject* triangle_obj = new TriangleObject(
         glm::vec2(200.0f, 390.0f),
         45.0f,
-        26.5f
+        6.5f
     );
 
 
