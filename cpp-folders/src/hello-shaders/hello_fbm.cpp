@@ -179,6 +179,7 @@ int main()
                     }
                     thread_pool.clear();
                 }
+                /*
                 thread_pool.emplace_back([x, y, time_accumulator, &shader_results, &shader_result_mutex]() {
                     glm::vec2 uv = {float(x), float(y)};
                     glm::vec4 shader_output = fragment_shader(uv, time_accumulator);
@@ -189,6 +190,18 @@ int main()
                         shader_results[x][y] = shs::Color{u_int8_t(shader_output[0]), u_int8_t(shader_output[1]), u_int8_t(shader_output[2]), u_int8_t(shader_output[3])};
                     }
                 });
+                */
+                std::thread task([x, y, time_accumulator, &shader_results, &shader_result_mutex]() {
+                    glm::vec2 uv = {float(x), float(y)};
+                    glm::vec4 shader_output = fragment_shader(uv, time_accumulator);
+                    // mutating shared resource from threads so using mutex
+                    // if the control go outside of this scope lock will automatically released.
+                    {
+                        std::lock_guard<std::mutex> lock(shader_result_mutex);
+                        shader_results[x][y] = shs::Color{u_int8_t(shader_output[0]), u_int8_t(shader_output[1]), u_int8_t(shader_output[2]), u_int8_t(shader_output[3])};
+                    }
+                });
+                thread_pool.emplace_back(std::move(task));
             }
         }
         // waiting for other threads left in the pool finish its jobs
