@@ -16,13 +16,11 @@
 #define FRAMES_PER_SECOND  60
 #define WINDOW_WIDTH       640
 #define WINDOW_HEIGHT      520
-#define CANVAS_WIDTH       600
-#define CANVAS_HEIGHT      500
+#define CANVAS_WIDTH       200
+#define CANVAS_HEIGHT      130
 #define EXECUTOR_POOL_SIZE 8
 #define NUM_OCTAVES        5
 
-
-std::mutex global_mtx;
 
 /*
 * Source :
@@ -164,10 +162,8 @@ int main()
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
 
-        // software rendering or drawing stuffs goes around here
-        shs::Canvas::fill_pixel(*main_canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT, shs::Pixel::blue_pixel());
 
-        // Run fragment shader with parallelized threaded fashion
+        // Run fragment shader with parallel threaded fashion
         std::vector<std::vector<shs::Color>> shader_results(CANVAS_WIDTH, std::vector<shs::Color>(CANVAS_HEIGHT));
         std::mutex shader_result_mutex;
 
@@ -188,26 +184,22 @@ int main()
                     glm::vec2 uv = {float(x), float(y)};
                     glm::vec4 shader_output = fragment_shader(uv, time_accumulator);
 
-                    { // mutating shared resource from threads so using mutex
+                    // mutating shared resource from threads so using mutex
+                    // if the control go outside of this scope lock will automatically released.
+                    {
                         std::lock_guard<std::mutex> lock(shader_result_mutex);
                         shader_results[x][y] = shs::Color{u_int8_t(shader_output[0]), u_int8_t(shader_output[1]), u_int8_t(shader_output[2]), u_int8_t(shader_output[3])};
                     }
-                    /*
-                    {
-                        std::lock_guard<std::mutex> lock(global_mtx);
-                        std::cout << "Thread at " << x << " " << y << std::endl;
-                    }
-                    */
                 });
             }
         }
-        // waiting for finish other threads left in the pool
+        // waiting for other threads left in the pool finish its jobs
         for (auto &thread : thread_pool)
         {
             thread.join();
         }
 
-        // rendering shader result one pixel by one
+        // rendering shader result pixel by pixel
         for (int x = 0; x < CANVAS_WIDTH; x++)
         {
             for (int y = 0; y < CANVAS_HEIGHT; y++)
