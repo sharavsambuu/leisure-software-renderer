@@ -17,7 +17,7 @@ int main()
     shs::Canvas::draw_pixel(*black_canvas, 20, 20, shs::Pixel::green_pixel());
     shs::Canvas::draw_pixel(*black_canvas, 30, 30, shs::Pixel::white_pixel());
     black_canvas->draw_pixel(5, 60, shs::Pixel::blue_pixel());
-    shs::Canvas::flip_horizontally(*black_canvas); // origin at the left bottom corner of the canvas
+    shs::Canvas::flip_vertically(*black_canvas); // origin at the left bottom corner of the canvas
 
     for (int i=0; i<50; i+=2) {
         if (i%3==1) {
@@ -31,7 +31,7 @@ int main()
             white_canvas.draw_pixel(i, i, shs::Pixel::green_pixel());
         }
     }
-    white_canvas.flip_horizontally();
+    white_canvas.flip_vertically();
 
     random_canvas->save_png("hello_pixel_random_canvas.png");
     red_canvas->save_png("hello_pixel_red_canvas.png");
