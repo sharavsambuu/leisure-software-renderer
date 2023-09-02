@@ -40,3 +40,6 @@ target_link_libraries(HelloFractalBrownianMotion Threads::Threads ${SDL2_LIBRARI
 
 add_executable(HelloGreenNoise hello_green_noise.cpp ../shs-renderer/shs_renderer.hpp)
 target_link_libraries(HelloGreenNoise Threads::Threads ${SDL2_LIBRARIES} glm::glm)
+
+add_executable(HelloMongolianFlag hello_mongolian_flag.cpp ../shs-renderer/shs_renderer.hpp)
+target_link_libraries(HelloMongolianFlag Threads::Threads ${SDL2_LIBRARIES} glm::glm)
