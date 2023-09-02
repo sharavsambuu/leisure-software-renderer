@@ -30,6 +30,9 @@ target_link_libraries(HelloPixel PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIE
 add_executable(HelloSDLPixel hello_sdl_pixel.cpp ../shs-renderer/shs_renderer.hpp)
 target_link_libraries(HelloSDLPixel Threads::Threads ${SDL2_LIBRARIES})
 
+add_executable(Hello2DTransformation hello_2d_transformation.cpp ../shs-renderer/shs_renderer.hpp)
+target_link_libraries(Hello2DTransformation Threads::Threads ${SDL2_LIBRARIES} glm::glm)
+
 add_executable(HelloLine hello_line.cpp ../shs-renderer/shs_renderer.hpp)
 target_link_libraries(HelloLine PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES})
 
