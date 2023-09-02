@@ -108,13 +108,14 @@ int main()
     SDL_Surface *main_sdlsurface = main_canvas->create_sdl_surface();
     SDL_Texture *screen_texture  = SDL_CreateTextureFromSurface(renderer, main_sdlsurface);
 
-
-    TriangleObject* triangle_obj = new TriangleObject(
-        glm::vec2(200.0f, 390.0f),
-        45.0f,
-        6.5f
-    );
-
+    std::vector<TriangleObject>  scene = {
+        TriangleObject(glm::vec2(200.0f, 390.0f),  45.0f, 6.5f),
+        TriangleObject(glm::vec2(100.0f, 190.0f), -45.0f, 6.5f),
+        TriangleObject(glm::vec2( 20.0f, 290.0f),  25.0f, 6.5f),
+        TriangleObject(glm::vec2(100.0f, 290.0f),  45.0f, 6.5f),
+        TriangleObject(glm::vec2(150.0f,  90.0f), -45.0f, 6.5f),
+        TriangleObject(glm::vec2( 50.0f, 190.0f),  25.0f, 6.5f)
+        };
 
     bool exit = false;
     SDL_Event event_data;
@@ -156,7 +157,10 @@ int main()
         shs::Canvas::fill_pixel(*main_canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT, shs::Pixel::black_pixel());
         shs::Canvas::fill_pixel(*main_canvas, 10, 10, 20, 30, shs::Pixel::white_pixel());
 
-        triangle_obj->render(*main_canvas);
+        for (TriangleObject triangle_object : scene) 
+        {
+            triangle_object.render(*main_canvas);
+        }
 
         shs::Canvas::fill_random_pixel(*main_canvas, 40, 30, 60, 80);
 
@@ -172,7 +176,10 @@ int main()
         frame_counter++;
         Uint32 delta_frame_time  = SDL_GetTicks() - frame_start_ticks;
 
-        triangle_obj->update(delta_frame_time/1000.0f);
+        for (TriangleObject& triangle_object : scene) 
+        {
+            triangle_object.update(delta_frame_time/1000.0f);
+        }
 
         frame_time_accumulator  += delta_frame_time/1000.0;
         if (delta_frame_time < frame_delay) {
@@ -187,8 +194,6 @@ int main()
     }
 
 
-
-    delete triangle_obj;
     delete main_canvas;
 
     SDL_DestroyTexture(screen_texture);
