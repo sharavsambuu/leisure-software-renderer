@@ -37,7 +37,7 @@ public:
         this->update_angle(delta_time);
         this->update_position(delta_time);
 
-        std::cout << this->position.x << " " << this->position.y << std::endl;
+        //std::cout << this->position.x << " " << this->position.y << std::endl;
     }
     void update_position(float delta_time)
     {
@@ -50,21 +50,26 @@ public:
     {
         float min_angle_radian = 0.0f;
         float max_angle_radian = 2*M_PI; // 360 degree
+
         std::random_device rd;
         std::mt19937 gen(rd());
-        std::uniform_real_distribution<float> angle_dist(min_angle_radian, max_angle_radian);
-        this->angle_radian = angle_dist(gen);
+        std::uniform_real_distribution<float> angle_dist(-3.0f, 3.0f);
+        this->angle_radian += angle_dist(gen)*delta_time;
+        this->angle_radian  = glm::clamp(this->angle_radian, min_angle_radian, max_angle_radian);
+
     }
     void render(shs::Canvas &canvas)
     {
+
         glm::mat4 translation_matrix    = glm::translate(glm::mat4(1.0f), glm::vec3(this->position, 0.0f));
         glm::mat4 rotation_matrix       = glm::rotate(glm::mat4(1.0f), this->angle_radian, glm::vec3(0.0f, 0.0f, 1.0f));
         glm::mat4 scaling_matrix        = glm::scale(glm::mat4(1.0f), glm::vec3(scale, 1.0f));
         glm::mat4 transformation_matrix = translation_matrix * rotation_matrix * scaling_matrix;
 
+
         std::array<glm::vec2, 3> new_vertices;
         for (int i = 0; i < 3; ++i) {
-            glm::vec4 vertex_4d(this->vertices[i].x, this->vertices[i].y, 0.0f, 0.0f);
+            glm::vec4 vertex_4d(this->vertices[i].x, this->vertices[i].y, 0.0f, 1.0f);
             glm::vec4 transformed_vertex = transformation_matrix * vertex_4d;
             new_vertices[i] = glm::vec2(transformed_vertex.x, transformed_vertex.y);
         }
@@ -79,7 +84,7 @@ public:
     float      angle_radian   = 0.0f;
     glm::vec2  velocity       = glm::vec2(0.0f);
     glm::vec2  position       = glm::vec2(0.0f);
-    glm::vec2  scale          = glm::vec2(1.0f);
+    glm::vec2  scale          = glm::vec2(3.0f);
     std::array<glm::vec2, 3> vertices = {
         glm::vec2(-5.5f, -12.0f),
         glm::vec2( 13.3f, -12.0f),
@@ -104,7 +109,7 @@ int main()
 
 
     TriangleObject* triangle_obj = new TriangleObject(
-        glm::vec2(100.0f, 90.0f),
+        glm::vec2(200.0f, 390.0f),
         45.0f,
         26.5f
     );
