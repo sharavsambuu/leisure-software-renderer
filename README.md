@@ -25,7 +25,7 @@
     I'm just exercizing about software renderer and shaders in my freetime.
     I think using graphics api is too overrated and writing own software renderer is cool.
     For simplicity I'm gonna use SDL2, and all the rendering computation should happend 
-    solely on the CPU, no accesselerators, otherwise there is no point to start this repo.
+    solely on the CPU, no accelerators, otherwise there is no point to start this repo.
     The goal is to learn something.
   
     Might implement followings exercises
