@@ -166,7 +166,6 @@ int main()
         // Run fragment shader with parallel threaded fashion
         std::vector<std::vector<shs::Color>> shader_results(CANVAS_WIDTH, std::vector<shs::Color>(CANVAS_HEIGHT));
         std::mutex shader_result_mutex;
-
         std::vector<std::thread> thread_pool;
         for (int x=0; x<CANVAS_WIDTH; x++)
         {
@@ -183,7 +182,6 @@ int main()
                 thread_pool.emplace_back([x, y, time_accumulator, &shader_results, &shader_result_mutex]() {
                     glm::vec2 uv = {float(x), float(y)};
                     glm::vec4 shader_output = fragment_shader(uv, time_accumulator);
-
                     // mutating shared resource from threads so using mutex
                     // if the control go outside of this scope lock will automatically released.
                     {
