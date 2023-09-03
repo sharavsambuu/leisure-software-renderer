@@ -80,12 +80,18 @@ glm::vec3 paint_background(glm::vec2 uv) {
 }
 glm::vec3 paint_soyombo(glm::vec2 uv, float res_xdivy) {
     glm::vec3 out_color(0.0f);
+
     uv   *= 2.0f;
     uv   -= glm::vec2(1.0f);
     uv.x *= res_xdivy;
-    uv.x += 1.175f;
-    uv.y -= 0.05f;
-    uv   *= 1.4f;
+    uv.x *= 1.4f;
+    uv.y *= 1.3f;
+
+    float width  = (1.0*2.0-1.0)*res_xdivy*1.4;
+    float height = (1.0*2.0-1.0)*res_xdivy*1.3;
+    uv.x += width/1.5;
+    uv.y -= height/25.0;
+
     if (is_in_path(uv)) {
         out_color = MONGOLIAN_YELLOW;
     }

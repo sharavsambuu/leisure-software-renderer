@@ -127,7 +127,12 @@ namespace shs
         }
         static shs::Pixel random_pixel() 
         {
-            return shs::Pixel{rand()%256, rand()%256, rand()%256, 255};
+            return shs::Pixel{
+                uint8_t(rand()%256), 
+                uint8_t(rand()%256), 
+                uint8_t(rand()%256), 
+                uint8_t(255)
+                };
 
         }
 
