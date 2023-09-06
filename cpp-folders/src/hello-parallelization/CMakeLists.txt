@@ -1,0 +1,38 @@
+project(HelloParallelization)
+
+find_package(SDL2 REQUIRED)
+find_package(SDL2_image REQUIRED)
+find_package(glm REQUIRED)
+
+find_package(Assimp REQUIRED)
+if(ASSIMP_FOUND)
+  include_directories(${ASSIMP_INCLUDE_DIR})
+endif() 
+
+include_directories(${SDL2_INCLUDE_DIRS} ${SDL2_IMAGE_INCLUDE_DIR})
+include_directories(${CMAKE_BINARY_DIR})
+include_directories(${pal_tasks_SOURCE_DIR}/src/)
+
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../shs-renderer)
+
+set(CMAKE_CXX_STANDARD 20)
+if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE Release)
+endif()
+set(CMAKE_CXX_FLAGS "-Wall -Wextra")
+set(CMAKE_CXX_FLAGS_DEBUG "-g")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3")
+
+
+add_executable(HelloNestedLoops hello_nested_loops.cpp ../shs-renderer/shs_renderer.hpp)
+target_link_libraries(HelloNestedLoops Threads::Threads ${SDL2_LIBRARIES} glm::glm)
+
+add_executable(HelloThreadJobs hello_thread_jobs.cpp ../shs-renderer/shs_renderer.hpp)
+target_link_libraries(HelloThreadJobs Threads::Threads ${SDL2_LIBRARIES} glm::glm)
+
+add_executable(PalTasksDemo pal_tasks_demo.cpp
+  ${pal_tasks_SOURCE_DIR}/src/tasks.cpp
+  ${pal_tasks_SOURCE_DIR}/src/tasks.h
+  ${pal_tasks_SOURCE_DIR}/src/lockfree_ring_buffer.h
+  )
+target_link_libraries(PalTasksDemo Threads::Threads ${SDL2_LIBRARIES} glm::glm)

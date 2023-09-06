@@ -106,6 +106,8 @@
       - https://iquilezles.org/articles/
     Might be useful to parallelize pixel calculations
       - https://github.com/taskflow/taskflow
+    Coroutine Job System
+      - https://poniesandlight.co.uk/reflect/coroutines_job_system/
       
       
 # Result
