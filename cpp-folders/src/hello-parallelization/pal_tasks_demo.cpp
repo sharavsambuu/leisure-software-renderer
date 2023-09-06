@@ -1,5 +1,6 @@
 #include "tasks.h"
 #include <iostream>
+#include <coroutine>
 
 #include <thread>
 
@@ -8,18 +9,14 @@ int main()
 
 	Scheduler *scheduler = Scheduler::create(-1);
 
-	if (false)
 	{
 
 		TaskList tasks{};
 		auto task_generator = [](int i) -> Task
 		{
-			std::cout << "doing some work: " << i++ << std::endl;
-
+			std::cout << "doing some work: " << i++ << std::endl << std::flush;
 			co_await suspend_task();
-
-			std::cout << "resuming work: " << i++ << std::endl;
-
+			std::cout << "resuming work: " << i++ << std::endl << std::flush;
 			co_return;
 		};
 
@@ -35,7 +32,6 @@ int main()
 
 	std::cout << "MAIN thread is: " << std::hex << std::this_thread::get_id() << std::endl;
 
-	if (true)
 	{
 
 		TaskList another_task_list{};
@@ -75,7 +71,6 @@ int main()
 
 			std::cout << "executing first level coroutine: " << std::dec << i << " on thread: " << std::hex << std::this_thread::get_id() << std::endl;
 
-			// Execute, and wait for tasks that we spin out from this task
 			sched->wait_for_task_list(inner_task_list);
 
 			co_await suspend_task();
@@ -98,7 +93,6 @@ int main()
 
 	std::cout << "Back with main program." << std::endl
 			  << std::flush;
-
 	delete scheduler;
 
 	return 0;
