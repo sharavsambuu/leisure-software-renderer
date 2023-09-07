@@ -5,14 +5,16 @@
 #include <array>
 #include <cstdlib>
 #include <tuple>
+#include <thread>
 #include "shs_renderer.hpp"
 
-#define FRAMES_PER_SECOND 60
-#define WINDOW_WIDTH      640
-#define WINDOW_HEIGHT     360
+#define FRAMES_PER_SECOND  60
+#define WINDOW_WIDTH       640
+#define WINDOW_HEIGHT      520
+#define CANVAS_WIDTH       360
+#define CANVAS_HEIGHT      240
+#define CONCURRENCY_COUNT  8
 
-#define CANVAS_WIDTH      340
-#define CANVAS_HEIGHT     260
 
 
 /*
@@ -105,20 +107,44 @@ int main()
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
 
-        // software rendering or drawing stuffs goes around here
-        shs::Canvas::fill_pixel(*main_canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT, shs::Pixel::blue_pixel());
 
-        // Run fragment shader
-        for (int x=0; x<CANVAS_WIDTH; x++)
-        {
-            for (int y=0; y<CANVAS_HEIGHT; y++)
-            {
-                // preparing shader input
-                std::array<double, 2> uv = {float(x), float(y)};
-                std::array<double, 4> shader_output = fragment_shader(uv, time_accumulator);
-                shs::Canvas::draw_pixel(*main_canvas, x, y, shs::Color{shader_output[0], shader_output[1], shader_output[2], shader_output[3]});
+        // Run fragment shader with parallel threaded fashion
+        std::mutex canvas_mutex;
+        std::vector<std::thread> thread_pool;
+
+        int region_width  = CANVAS_WIDTH  / CONCURRENCY_COUNT;
+        int region_height = CANVAS_HEIGHT / CONCURRENCY_COUNT;
+
+        for (int i = 0; i < CONCURRENCY_COUNT; i++) {
+            int start_x = i       * region_width;
+            int end_x   = (i + 1) * region_width;
+
+            for (int j = 0; j < CONCURRENCY_COUNT; j++) {
+                int start_y = j       * region_height;
+                int end_y   = (j + 1) * region_height;
+
+                std::thread task([start_x, end_x, start_y, end_y, time_accumulator, &main_canvas, &canvas_mutex]() {
+                    for (int x = start_x; x < end_x; x++) {
+                        for (int y = start_y; y < end_y; y++) {
+                            std::array<double, 2> uv = {float(x), float(y)};
+                            std::array<double, 4> shader_output = fragment_shader(uv, time_accumulator);
+                            {
+                                //std::lock_guard<std::mutex> lock(canvas_mutex);
+                                shs::Canvas::draw_pixel(*main_canvas, x, y, shs::Color{u_int8_t(shader_output[0]), u_int8_t(shader_output[1]), u_int8_t(shader_output[2]), u_int8_t(shader_output[3])});
+                            }
+                        }
+                    }
+                });
+                thread_pool.emplace_back(std::move(task));
             }
         }
+
+        // waiting for other threads left in the pool finish its jobs
+        for (auto &thread : thread_pool)
+        {
+            thread.join();
+        }
+
 
         // debug draw for if it rendering something
         shs::Canvas::fill_random_pixel(*main_canvas, 40, 30, 60, 80);
