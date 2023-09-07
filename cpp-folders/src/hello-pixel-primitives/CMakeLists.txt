@@ -37,6 +37,11 @@ add_executable(Hello2DTransformation hello_2d_transformation.cpp
   )
 target_link_libraries(Hello2DTransformation Threads::Threads ${SDL2_LIBRARIES} glm::glm)
 
+add_executable(HelloTriangle hello_triangle.cpp 
+  ${SHSRenderer_SOURCE_DIR}/shs_renderer.hpp
+  )
+target_link_libraries(HelloTriangle Threads::Threads ${SDL2_LIBRARIES} glm::glm)
+
 add_executable(HelloLine hello_line.cpp 
   ${SHSRenderer_SOURCE_DIR}/shs_renderer.hpp
   )

@@ -1,5 +1,8 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #include <iostream>
 #include <vector>
 #include <cstdio>
@@ -7,6 +10,7 @@
 #include <cstdlib>
 #include <string>
 #include <algorithm>
+
 
 namespace shs
 {
@@ -427,6 +431,74 @@ namespace shs
                 {
                     y += (y1 > y0 ? 1 : -1);
                     error2 -= dx * 2;
+                }
+            }
+        }
+
+        static glm::vec3 barycentric_coordinate(glm::vec2 &p, glm::vec2 &v0, glm::vec2 &v1, glm::vec2 &v2)
+        {
+            glm::vec2 v0p = p - v0;
+            glm::vec2 v1p = p - v1;
+            glm::vec2 v2p = p - v2;
+
+            float d00 = glm::dot(v0 - v2, v0 - v2);
+            float d01 = glm::dot(v0 - v2, v1 - v2);
+            float d11 = glm::dot(v1 - v2, v1 - v2);
+            float d20 = glm::dot(v2 - v0, v2 - v0);
+            float d21 = glm::dot(v2 - v0, v1 - v0);
+
+            float denom = d00 * d11 - d01 * d01;
+
+            float w0 = (d11 * glm::dot(v0p, v1 - v2) - d01 * glm::dot(v1p, v1 - v2)) / denom;
+            float w1 = (d00 * glm::dot(v1p, v1 - v2) - d01 * glm::dot(v0p, v1 - v2)) / denom;
+            float w2 = 1.0f - w0 - w1;
+
+            return glm::vec3(w0, w1, w2);
+        }
+        inline static glm::vec3 barycentric_coordinate(glm::vec2 &p, std::vector<glm::vec2> &vertices)
+        {
+            glm::vec2 v0p = p - vertices[0];
+            glm::vec2 v1p = p - vertices[1];
+            glm::vec2 v2p = p - vertices[2];
+
+            float d00 = glm::dot(vertices[0] - vertices[2], vertices[0] - vertices[2]);
+            float d01 = glm::dot(vertices[0] - vertices[2], vertices[1] - vertices[2]);
+            float d11 = glm::dot(vertices[1] - vertices[2], vertices[1] - vertices[2]);
+            float d20 = glm::dot(vertices[2] - vertices[0], vertices[2] - vertices[0]);
+            float d21 = glm::dot(vertices[2] - vertices[0], vertices[1] - vertices[0]);
+
+            float denom = d00 * d11 - d01 * d01;
+
+            float w0 = (d11 * glm::dot(v0p, vertices[1] - vertices[2]) - d01 * glm::dot(v1p, vertices[1] - vertices[2])) / denom;
+            float w1 = (d00 * glm::dot(v1p, vertices[1] - vertices[2]) - d01 * glm::dot(v0p, vertices[1] - vertices[2])) / denom;
+            float w2 = 1.0f - w0 - w1;
+
+            return glm::vec3(w0, w1, w2);
+        }
+
+        static void draw_triangle(shs::Canvas &canvas, std::vector<glm::vec2> &vertices, shs::Pixel pixel)
+        {
+            glm::vec2 bboxmin(canvas.get_width() - 1, canvas.get_height() - 1);
+            glm::vec2 bboxmax(0, 0);
+            glm::vec2 clamp(canvas.get_width() - 1, canvas.get_height() - 1);
+
+            for (int i = 0; i < 3; i++)
+            {
+                bboxmin = glm::max(glm::vec2(0), glm::min(bboxmin, vertices[i]));
+                bboxmax = glm::min(clamp, glm::max(bboxmax, vertices[i]));
+            }
+
+            glm::vec2 p;
+            for (p.x = bboxmin.x; p.x <= bboxmax.x; p.x++)
+            {
+                for (p.y = bboxmin.y; p.y <= bboxmax.y; p.y++)
+                {
+                    glm::vec3 bc_screen = shs::Canvas::barycentric_coordinate(p, vertices);
+
+                    //if (bc_screen.x < 0 || bc_screen.y < 0 || bc_screen.z < 0)
+                    //    continue;
+
+                    shs::Canvas::draw_pixel(canvas, p.x, p.y, pixel);
                 }
             }
         }
