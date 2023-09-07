@@ -3,17 +3,19 @@ project(HelloParallelization)
 find_package(SDL2 REQUIRED)
 find_package(SDL2_image REQUIRED)
 find_package(glm REQUIRED)
-
 find_package(Assimp REQUIRED)
+find_package(Boost REQUIRED COMPONENTS)
+
 if(ASSIMP_FOUND)
   include_directories(${ASSIMP_INCLUDE_DIR})
 endif() 
-
 include_directories(${SDL2_INCLUDE_DIRS} ${SDL2_IMAGE_INCLUDE_DIR})
 include_directories(${CMAKE_BINARY_DIR})
 include_directories(${SHSRenderer_SOURCE_DIR}/)
 include_directories(${pal_tasks_SOURCE_DIR}/src/)
-
+include_directories(${Boost_INCLUDE_DIR})
+link_directories(${Boost_LIBRARY_DIR})
+set(Boost_USE_STATIC_LIBS ON)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -51,3 +53,12 @@ target_link_libraries(PrimitiveThreads Threads::Threads)
 
 add_executable(PrimitiveCoroutines primitive_coroutines.cpp)
 target_link_libraries(PrimitiveCoroutines Threads::Threads libcoro)
+
+add_executable(PrimitiveFibers primitive_fibers.cpp)
+target_link_libraries(PrimitiveFibers Threads::Threads 
+  -lboost_fiber
+  -lboost_thread
+  -lboost_context 
+  -lboost_system 
+  -lpthread
+  )

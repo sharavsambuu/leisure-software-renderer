@@ -36,7 +36,7 @@ int main()
         std::uniform_int_distribution<> d{0, 1};
 
         size_t calculation{0};
-        for (size_t i = 0; i < 1'000'000; ++i)
+        for (size_t i = 0; i < 100'000'000; ++i)
         {
             calculation += d(gen);
 
