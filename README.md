@@ -99,6 +99,7 @@
       - Youtube tutorial
         https://www.youtube.com/watch?v=k5wtuKWmV48
         https://www.youtube.com/watch?v=t7Ztio8cwqM
+      - http://www.sunshine2k.de/coding/java/TriangleRasterization/TriangleRasterization.html
     Data Oriented Design
       - https://medium.com/mirum-budapest/introduction-to-data-oriented-programming-85b51b99572d
     Mentioned color spaces
