@@ -435,7 +435,7 @@ namespace shs
             }
         }
 
-        static glm::vec3 barycentric_coordinate(glm::vec2 &p, glm::vec2 &v0, glm::vec2 &v1, glm::vec2 &v2)
+        inline static glm::vec3 barycentric_coordinate(glm::vec2 &p, glm::vec2 &v0, glm::vec2 &v1, glm::vec2 &v2)
         {
             glm::vec2 v0p = p - v0;
             glm::vec2 v1p = p - v1;
@@ -493,10 +493,12 @@ namespace shs
             {
                 for (p.y = bboxmin.y; p.y <= bboxmax.y; p.y++)
                 {
-                    glm::vec3 bc_screen = shs::Canvas::barycentric_coordinate(p, vertices);
+                    //glm::vec3 bc_screen = shs::Canvas::barycentric_coordinate(p, vertices);
+                    glm::vec3 bc_screen = shs::Canvas::barycentric_coordinate(p, vertices[0], vertices[1], vertices[2]);
+                    std::cout << bc_screen.x << " " << bc_screen.y << " " << bc_screen.z << std::endl;
 
-                    //if (bc_screen.x < 0 || bc_screen.y < 0 || bc_screen.z < 0)
-                    //    continue;
+                    if (bc_screen.x < 0 || -bc_screen.y < 0 || bc_screen.z < 0)
+                        continue;
 
                     shs::Canvas::draw_pixel(canvas, p.x, p.y, pixel);
                 }
