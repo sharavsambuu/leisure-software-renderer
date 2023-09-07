@@ -12,17 +12,18 @@ int main()
 	{
 
 		TaskList tasks{};
-		auto task_generator = [](int i) -> Task
+
+		auto task = [](int i) -> Task
 		{
 			std::cout << "doing some work: " << i++ << std::endl << std::flush;
 			co_await suspend_task();
-			std::cout << "resuming work: " << i++ << std::endl << std::flush;
+			//std::cout << "resuming work: " << i++ << std::endl << std::flush;
 			co_return;
 		};
 
-		for (int i = 0; i != 5; i++)
+		for (unsigned long long i = 0; i != 10; i++)
 		{
-			tasks.add_task(task_generator(i));
+			tasks.add_task(task(i));
 		}
 
 		scheduler->wait_for_task_list(tasks);
@@ -91,8 +92,8 @@ int main()
 		scheduler->wait_for_task_list(another_task_list);
 	}
 
-	std::cout << "Back with main program." << std::endl
-			  << std::flush;
+	std::cout << "Back with main program." << std::endl << std::flush;
+
 	delete scheduler;
 
 	return 0;

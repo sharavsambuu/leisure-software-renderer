@@ -16,6 +16,7 @@ include_directories(${pal_tasks_SOURCE_DIR}/src/)
 
 
 set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
@@ -40,3 +41,13 @@ add_executable(PalTasksDemo pal_tasks_demo.cpp
   ${pal_tasks_SOURCE_DIR}/src/lockfree_ring_buffer.h
   )
 target_link_libraries(PalTasksDemo Threads::Threads ${SDL2_LIBRARIES} glm::glm)
+
+
+add_executable(PrimitiveLoops primitive_loops.cpp)
+target_link_libraries(PrimitiveLoops Threads::Threads)
+
+add_executable(PrimitiveThreads primitive_threads.cpp)
+target_link_libraries(PrimitiveThreads Threads::Threads)
+
+add_executable(PrimitiveCoroutinePool primitive_coroutine_pool.cpp)
+target_link_libraries(PrimitiveCoroutinePool Threads::Threads)
