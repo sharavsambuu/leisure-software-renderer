@@ -4,6 +4,10 @@
 #include <boost/fiber/future.hpp>
 #include <boost/thread/thread.hpp>
 
+#define CONCURRENCY_COUNT 4
+#define WORKER_COUNT      5000
+
+
 void sub_task(boost::fibers::promise<long> &p, long j)
 {
     long sum = 0;
@@ -38,25 +42,25 @@ void parent_task(int pidx)
 
 int main()
 {
-    boost::thread worker_threads[4];
-    for (int i = 0; i < 4; ++i)
+    boost::thread worker_threads[CONCURRENCY_COUNT];
+
+    for (int i = 0; i < CONCURRENCY_COUNT; ++i)
     {
         worker_threads[i] = boost::thread([i] {
-            boost::fibers::use_scheduling_algorithm<boost::fibers::algo::work_stealing>(4);
+            boost::fibers::use_scheduling_algorithm<boost::fibers::algo::work_stealing>(CONCURRENCY_COUNT);
 
-            for (int j = i * 100; j < (i + 1) * 100; ++j) {
+            for (int j = i * WORKER_COUNT; j < (i + 1) * WORKER_COUNT; ++j) {
                 boost::fibers::fiber(parent_task, j).detach();
             }
-            for (int j = i * 100; j < (i + 1) * 100; ++j)
+            for (int j = i * WORKER_COUNT; j < (i + 1) * WORKER_COUNT; ++j)
             {
                 boost::fibers::fiber(parent_task, j).join();
             }
             std::cout << "thread"<< i <<" is done" << std::endl << std::flush; 
-
         });
     }
 
-    for (int i = 0; i < 4; ++i)
+    for (int i = 0; i < CONCURRENCY_COUNT; ++i)
     {
         worker_threads[i].join();
     }
