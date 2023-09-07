@@ -169,8 +169,8 @@ int main()
         std::mutex canvas_mutex;
         std::vector<std::thread> thread_pool;
 
-        const int region_width  = CANVAS_WIDTH  / CONCURRENCY_COUNT;
-        const int region_height = CANVAS_HEIGHT / CONCURRENCY_COUNT;
+        int region_width  = CANVAS_WIDTH  / CONCURRENCY_COUNT;
+        int region_height = CANVAS_HEIGHT / CONCURRENCY_COUNT;
 
         for (int i = 0; i < CONCURRENCY_COUNT; i++) {
             int start_x = i       * region_width;
