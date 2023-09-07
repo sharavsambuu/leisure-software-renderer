@@ -90,9 +90,9 @@ public:
     glm::vec2  position       = glm::vec2(0.0f);
     glm::vec2  scale          = glm::vec2(3.0f);
     std::vector<glm::vec2> vertices = {
-        glm::vec2(-5.5f, -12.0f),
-        glm::vec2( 13.3f, -12.0f),
-        glm::vec2( 2.4f,  13.2f)
+        glm::vec2( 0.0f,  12.0f),
+        glm::vec2( 5.4f,  -3.2f),
+        glm::vec2( -4.0f, -4.0f),
     };
 
 };
