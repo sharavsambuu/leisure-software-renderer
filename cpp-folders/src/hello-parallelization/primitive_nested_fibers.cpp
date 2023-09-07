@@ -4,6 +4,16 @@
 #include <boost/fiber/future.hpp>
 #include <boost/thread/thread.hpp>
 
+void sub_task(boost::fibers::promise<long> &p, long j)
+{
+    long sum = 0;
+    for (long i = 0; i < j; ++i)
+    {
+        sum += i;
+        boost::this_fiber::yield();
+    }
+    p.set_value(sum);
+}
 
 void parent_task(int pidx)
 {
@@ -11,13 +21,8 @@ void parent_task(int pidx)
     for (long j = 0; j < 50; ++j)
     {
         boost::fibers::promise<long> p;
-        boost::fibers::fiber([&p, j] {
-            long sum = 0;
-            for (long i=0; i<j; ++i) {
-                sum += i;
-                boost::this_fiber::yield();
-            }
-            p.set_value(sum); 
+        boost::fibers::fiber([&p, j]() {
+            sub_task(p, j);
         }).detach();
 
         boost::this_fiber::yield();
