@@ -19,8 +19,8 @@ static boost::fibers::condition_variable_any condition_count{};
 /**
  * 
  * Олон fiber-үүдийг олон thread-ээр хувааж ажиллуулах.
- * work stealing горимоор fiber-уудыг ажиллуулах өөрөөр хэлбэл шинээр fiber үүсгэх бүр ажилуулах 
- * thread цохон оноох тул процессорын цөм хооронд fiber-ууд зөөх нь бага гэсэн үг.
+ * work stealing горимоор fiber-уудыг ажиллуулах буюу шинээр fiber үүсгэх бүрт thread цохон 
+ * оноох тул процессорын цөм хооронд fiber-ууд зөөх нь бага гэсэн үг.
  * 
  * Boost-ийн fiber гэдэг бол тус бүрдээ өөр өөрсдийн гэсэн stack-тэй, CPU register, flag, 
  * instruction pointer, stack pointer гэх мэт ажиллагааг хадгалах шаардлагатай бүх төлвүүдийг 

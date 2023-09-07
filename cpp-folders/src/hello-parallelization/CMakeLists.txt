@@ -62,3 +62,12 @@ target_link_libraries(PrimitiveFibers Threads::Threads
   -lboost_system 
   -lpthread
   )
+
+add_executable(PrimitiveNestedFibers primitive_nested_fibers.cpp)
+target_link_libraries(PrimitiveNestedFibers Threads::Threads 
+  -lboost_fiber
+  -lboost_thread
+  -lboost_context 
+  -lboost_system 
+  -lpthread
+  )
