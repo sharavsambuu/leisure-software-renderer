@@ -24,6 +24,13 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(pal_tasks)
 
+# C++20 coroutine library for general use
+FetchContent_Declare(
+    libcoro
+    GIT_REPOSITORY https://github.com/jbaldwin/libcoro.git
+    GIT_TAG        main
+)
+FetchContent_MakeAvailable(libcoro)
 
 add_subdirectory("src/shs-renderer")
 add_subdirectory("src/hello-pixel-primitives")

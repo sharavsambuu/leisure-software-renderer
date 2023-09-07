@@ -48,3 +48,6 @@ target_link_libraries(PrimitiveLoops Threads::Threads)
 
 add_executable(PrimitiveThreads primitive_threads.cpp)
 target_link_libraries(PrimitiveThreads Threads::Threads)
+
+add_executable(PrimitiveCoroutines primitive_coroutines.cpp)
+target_link_libraries(PrimitiveCoroutines Threads::Threads libcoro)
