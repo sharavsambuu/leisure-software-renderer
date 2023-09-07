@@ -37,6 +37,11 @@ add_executable(HelloThreadJobs hello_thread_jobs.cpp
 )
 target_link_libraries(HelloThreadJobs Threads::Threads ${SDL2_LIBRARIES} glm::glm)
 
+add_executable(HelloThreadZoned hello_thread_zoned.cpp 
+  ${SHSRenderer_SOURCE_DIR}/shs_renderer.hpp
+)
+target_link_libraries(HelloThreadZoned Threads::Threads ${SDL2_LIBRARIES} glm::glm)
+
 add_executable(PalTasksDemo pal_tasks_demo.cpp
   ${pal_tasks_SOURCE_DIR}/src/tasks.cpp
   ${pal_tasks_SOURCE_DIR}/src/tasks.h

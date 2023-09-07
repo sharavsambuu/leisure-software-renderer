@@ -18,13 +18,14 @@
 #define WINDOW_HEIGHT      520
 #define CANVAS_WIDTH       360
 #define CANVAS_HEIGHT      240
-#define EXECUTOR_POOL_SIZE 8
+#define CONCURRENCY_COUNT  8
 #define NUM_OCTAVES        5
 
 
 /*
- * Just simple nested loops for pixel processing, it is fast because compiler knows how to
- * optimize those nested loops with some CPU extension magic since there is a -O3 flag doe.
+ * First things comes to my mind is like oh yes I have to use many thread as much as possible since
+ * I have old i7 CPU with 8 cores. But in reality context switching on between threads is expensive thing
+ * so that explains why this program so slow compared to dummy nested loop based one.
  */
 
 glm::vec4 rescale_vec4_1_255(const glm::vec4 &input_vec) {
@@ -164,14 +165,40 @@ int main()
 
 
         // Run fragment shader with parallel threaded fashion
-        for (int x=0; x<CANVAS_WIDTH; x++)
-        {
-            for (int y=0; y<CANVAS_HEIGHT; y++)
-            {
-                glm::vec2 uv = {float(x), float(y)};
-                glm::vec4 shader_output = fragment_shader(uv, time_accumulator);
-                shs::Canvas::draw_pixel(*main_canvas, x, y, shs::Color{u_int8_t(shader_output[0]), u_int8_t(shader_output[1]), u_int8_t(shader_output[2]), u_int8_t(shader_output[3])});
+        std::mutex canvas_mutex;
+        std::vector<std::thread> thread_pool;
+
+        const int region_width  = CANVAS_WIDTH  / CONCURRENCY_COUNT;
+        const int region_height = CANVAS_HEIGHT / CONCURRENCY_COUNT;
+
+        for (int i = 0; i < CONCURRENCY_COUNT; i++) {
+            int start_x = i       * region_width;
+            int end_x   = (i + 1) * region_width;
+
+            for (int j = 0; j < CONCURRENCY_COUNT; j++) {
+                int start_y = j       * region_height;
+                int end_y   = (j + 1) * region_height;
+
+                std::thread task([start_x, end_x, start_y, end_y, time_accumulator, &main_canvas, &canvas_mutex]() {
+                    for (int x = start_x; x < end_x; x++) {
+                        for (int y = start_y; y < end_y; y++) {
+                            glm::vec2 uv = {float(x), float(y)};
+                            glm::vec4 shader_output = fragment_shader(uv, time_accumulator);
+                            {
+                                //std::lock_guard<std::mutex> lock(canvas_mutex);
+                                shs::Canvas::draw_pixel(*main_canvas, x, y, shs::Color{u_int8_t(shader_output[0]), u_int8_t(shader_output[1]), u_int8_t(shader_output[2]), u_int8_t(shader_output[3])});
+                            }
+                        }
+                    }
+                });
+                thread_pool.emplace_back(std::move(task));
             }
+        }
+
+        // waiting for other threads left in the pool finish its jobs
+        for (auto &thread : thread_pool)
+        {
+            thread.join();
         }
 
         // debug draw for if it is rendering something
