@@ -25,7 +25,8 @@
 /*
  * First things comes to my mind is like oh yes I have to use many thread as much as possible since
  * I have old i7 CPU with 8 cores. But in reality context switching on between threads is expensive thing
- * so that explains why this program so slow compared to dummy nested loop based one.
+ * But in this example I'm using threads only for certain area of image region, and only 8 threads
+ * are utilized, meaning fewer context switch on threads therefore more faster
  */
 
 glm::vec4 rescale_vec4_1_255(const glm::vec4 &input_vec) {
