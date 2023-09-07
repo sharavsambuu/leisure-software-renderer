@@ -15,9 +15,10 @@
 
 #define FRAMES_PER_SECOND  60
 #define WINDOW_WIDTH       640
-#define WINDOW_HEIGHT      460
-#define CANVAS_WIDTH       640
-#define CANVAS_HEIGHT      360
+#define WINDOW_HEIGHT      320
+#define CANVAS_WIDTH       320
+#define CANVAS_HEIGHT      160
+#define CONCURRENCY_COUNT  8
 
 
 /*
@@ -38,6 +39,11 @@ const std::vector<glm::ivec3> triangles = {
 };
 const int len = 307;
 
+float hash(glm::vec2 p) {
+    glm::uvec2 q = glm::uvec2(glm::ivec2(p)) * glm::uvec2(1597334673U, 3812015801U);
+    uint32_t n = (q.x ^ q.y) * 1597334673U;
+    return static_cast<float>(n) / static_cast<float>(0xffffffffU);
+}
 
 glm::vec4 rescale_vec4_1_255(const glm::vec4 &input_vec) {
     glm::vec4 clamped_value = glm::clamp(input_vec, 0.0f, 1.0f);
@@ -101,13 +107,25 @@ glm::vec3 paint_soyombo(glm::vec2 uv, float res_xdivy) {
 glm::vec4 fragment_shader(glm::vec2 u_uv, float u_time)
 {
     glm::vec2 uv = u_uv/glm::vec2(CANVAS_WIDTH, CANVAS_HEIGHT);
-    uv *= 1. + (.026f - .026f * glm::sin((uv.x + uv.y - u_time * .95f + glm::sin(1.5f * uv.x + 3.5f * uv.y) * PI * .2f) * PI * .7f));
+    glm::vec2 st = u_uv/glm::vec2(CANVAS_WIDTH, CANVAS_HEIGHT);
+
+    float w = glm::sin((uv.x + uv.y - u_time * 2.95 + glm::sin(15.5 * uv.x + 4.5 * uv.y) * PI * 0.1) * PI * 0.6);
+	uv *= 1.0 + (.026 - .026 * w);
+
     glm::vec3 out_color(0.0f);
+
     // Mongolian flag color computations
     out_color += paint_background(uv);
     out_color += paint_soyombo(uv, CANVAS_WIDTH/ static_cast<float>(CANVAS_HEIGHT));
-    out_color += 0.225f; // some shade
-    return rescale_vec4_1_255(glm::vec4(out_color, 1.0f));
+
+    out_color += w * .225;
+    float v = 16. * st.x * (1. - st.x) * st.y * (1. - st.y);
+	out_color *= 1. - .6 * exp2(-1.75 * v);
+    out_color -= hash(u_uv)*0.004;
+    
+    glm::vec4 frag_color = glm::vec4(out_color, 1.0);
+    
+    return rescale_vec4_1_255(frag_color);
 };
 
 
@@ -164,18 +182,47 @@ int main()
         SDL_RenderClear(renderer);
 
 
-        for (int x = 0; x < CANVAS_WIDTH; x++)
-        {
-            for (int y = 0; y < CANVAS_HEIGHT; y++)
-            {
-                glm::vec2 uv = {float(x), float(y)};
-                glm::vec4 shader_output = fragment_shader(uv, time_accumulator);
-                shs::Canvas::draw_pixel(*main_canvas, x, y, shs::Color{u_int8_t(shader_output[0]), u_int8_t(shader_output[1]), u_int8_t(shader_output[2]), u_int8_t(shader_output[3])});
+        // Run fragment shader with parallel threaded fashion
+        std::mutex canvas_mutex;
+        std::vector<std::thread> thread_pool;
+
+        int region_width  = CANVAS_WIDTH  / CONCURRENCY_COUNT;
+        int region_height = CANVAS_HEIGHT / CONCURRENCY_COUNT;
+
+        for (int i = 0; i < CONCURRENCY_COUNT; i++) {
+            int start_x = i       * region_width;
+            int end_x   = (i + 1) * region_width;
+
+            for (int j = 0; j < CONCURRENCY_COUNT; j++) {
+                int start_y = j       * region_height;
+                int end_y   = (j + 1) * region_height;
+
+                std::thread task([start_x, end_x, start_y, end_y, time_accumulator, &main_canvas, &canvas_mutex]() {
+                    for (int x = start_x; x < end_x; x++) {
+                        for (int y = start_y; y < end_y; y++) {
+                            glm::vec2 uv = {float(x), float(y)};
+                            glm::vec4 shader_output = fragment_shader(uv, time_accumulator);
+                            {
+                                //std::lock_guard<std::mutex> lock(canvas_mutex);
+                                shs::Canvas::draw_pixel(*main_canvas, x, y, shs::Color{u_int8_t(shader_output[0]), u_int8_t(shader_output[1]), u_int8_t(shader_output[2]), u_int8_t(shader_output[3])});
+                            }
+                        }
+                    }
+                });
+                thread_pool.emplace_back(std::move(task));
             }
         }
 
+        // waiting for other threads left in the pool finish its jobs
+        for (auto &thread : thread_pool)
+        {
+            thread.join();
+        }
+
+
+
         // debug draw for if it rendering something
-        shs::Canvas::fill_random_pixel(*main_canvas, 40, 30, 60, 80);
+        // shs::Canvas::fill_random_pixel(*main_canvas, 40, 30, 60, 80);
 
 
         // actually prensenting canvas data on hardware surface
