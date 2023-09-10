@@ -580,13 +580,13 @@ namespace shs
     class AbstractScene
     {
     public:
-        virtual void process(float delta_time) = 0;
+        virtual void process() = 0;
     };
 
     class AbstractSystem
     {
     public:
-        virtual void process() = 0;
+        virtual void process(float delta_time) = 0;
     };
 
     class Command

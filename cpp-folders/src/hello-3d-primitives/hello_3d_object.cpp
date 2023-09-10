@@ -125,48 +125,6 @@ public:
 };
 
 
-class HelloScene;
-
-class RendererSystem : public shs::AbstractSystem
-{
-public:
-    RendererSystem(std::function<HelloScene *()> getHelloSceneCallback)
-        : getHelloSceneCallback(getHelloSceneCallback) {}
-
-    void process() override
-    {
-        HelloScene *hello_scene = getHelloSceneCallback();
-        if (hello_scene)
-        {
-            //float delta_time = hello_scene->delta_time;
-            std::cout << "RendererSystem is processing..." << std::endl;
-        }
-    }
-
-private:
-    std::function<HelloScene *()> getHelloSceneCallback;
-};
-
-class LogicSystem : public shs::AbstractSystem
-{
-public:
-    LogicSystem(std::function<HelloScene *()> getHelloSceneCallback)
-        : getHelloSceneCallback(getHelloSceneCallback) {}
-    void process() override
-    {
-        HelloScene *hello_scene = getHelloSceneCallback();
-        if (hello_scene)
-        {
-            //float delta_time = hello_scene->delta_time;
-            std::cout << "Logic system is processing..." << std::endl;
-        }
-    }
-
-private:
-    std::function<HelloScene *()> getHelloSceneCallback;
-};
-
-
 class HelloScene : public shs::AbstractScene
 {
 public:
@@ -177,29 +135,73 @@ public:
         MonkeyObject *monkey_object = new MonkeyObject();
         this->scene_objects.push_back(monkey_object);
 
-
-        this->systems.push_back(new LogicSystem   ([this]() { return this; }));
-        this->systems.push_back(new RendererSystem([this]() { return this; }));
-
     }
     ~HelloScene()
     {
     }
 
-    void process(float delta_time) override
+    void process() override
     {
-        this->delta_time = delta_time;
-        for (auto &system : this->systems)
-        {
-            system->process();
-        }
     }
 
     std::vector<shs::AbstractObject3D *> scene_objects;
-    std::vector<shs::AbstractSystem   *> systems;
     shs::Canvas  *canvas;
-    float         delta_time;
 
+};
+
+
+class RendererSystem : public shs::AbstractSystem
+{
+public:
+    RendererSystem(HelloScene *scene) : scene(scene) {}
+    void process(float delta_time) override
+    {
+        std::cout << "render systen " << delta_time << std::endl;
+        for (auto &object : this->scene->scene_objects)
+        {
+        }
+    }
+private:
+    HelloScene *scene;
+};
+
+class LogicSystem : public shs::AbstractSystem
+{
+public:
+    LogicSystem(HelloScene *scene) : scene(scene) {}
+    void process(float delta_time) override
+    {
+        std::cout << "logic systen " << delta_time << std::endl;
+        for (auto &object : this->scene->scene_objects)
+        {
+        }
+    }
+
+private:
+    HelloScene *scene;
+};
+
+
+
+class SystemProcessor
+{
+public:
+    SystemProcessor(HelloScene *scene) 
+    {
+        this->systems.push_back(new LogicSystem   (scene));
+        this->systems.push_back(new RendererSystem(scene));
+    }
+    ~SystemProcessor()
+    {
+    }
+    void process(float delta_time) 
+    {
+        for (auto &system : this->systems)
+        {
+            system->process(delta_time);
+        }
+    }
+    std::vector<shs::AbstractSystem *> systems;
 };
 
 
@@ -222,7 +224,8 @@ int main()
     Viewer *viewer = new Viewer(glm::vec3(0.0, 0.0, -3.0), 25.0f);
     shs::CommandProcessor *command_processor = new shs::CommandProcessor();
 
-    HelloScene *hello_scene = new HelloScene(main_canvas);
+    HelloScene      *hello_scene      = new HelloScene(main_canvas);
+    SystemProcessor *system_processor = new SystemProcessor(hello_scene);
 
 
     bool exit = false;
@@ -282,7 +285,7 @@ int main()
         // software rendering or drawing stuffs goes around here
         shs::Canvas::fill_pixel(*main_canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT, shs::Pixel::blue_pixel());
 
-        hello_scene->process(delta_time_float);
+        system_processor->process(delta_time_float);
 
         shs::Canvas::fill_random_pixel(*main_canvas, 40, 30, 60, 80);
 
@@ -313,6 +316,7 @@ int main()
     }
 
 
+    delete system_processor;
     delete hello_scene;
     delete main_canvas;
     delete viewer;
