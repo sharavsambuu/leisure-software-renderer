@@ -76,11 +76,17 @@ public:
             new_vertices[i] = glm::vec2(transformed_vertex.x, transformed_vertex.y);
         }
 
-        shs::Canvas::draw_line(canvas, new_vertices[0].x, new_vertices[0].y, new_vertices[1].x, new_vertices[1].y, this->color);
-        shs::Canvas::draw_line(canvas, new_vertices[0].x, new_vertices[0].y, new_vertices[2].x, new_vertices[2].y, this->color);
-        shs::Canvas::draw_line(canvas, new_vertices[1].x, new_vertices[1].y, new_vertices[2].x, new_vertices[2].y, this->color);
+        shs::Canvas::draw_triangle(canvas, new_vertices, this->color);
 
-        shs::Canvas::draw_triangle(canvas, new_vertices, shs::Pixel::random_pixel());
+    }
+
+    void set_color(shs::Color new_color)
+    {
+        this->color = new_color;
+    }
+    void set_color(shs::Pixel new_pixel)
+    {
+        this->color = new_pixel.get_color();
     }
 
     shs::Color color{0, 255, 0, 255};
@@ -113,6 +119,9 @@ int main()
 
     std::vector<TriangleObject> scene = {
         TriangleObject(glm::vec2(200.0f, 390.0f),  45.0f, 6.5f),
+        TriangleObject(glm::vec2(150.0f, 200.0f),  45.0f, 6.5f),
+        TriangleObject(glm::vec2(100.0f, 150.0f),  45.0f, 6.5f),
+        TriangleObject(glm::vec2(100.0f, 100.0f),  45.0f, 6.5f),
         };
 
     bool exit = false;
@@ -155,10 +164,25 @@ int main()
         shs::Canvas::fill_pixel(*main_canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT, shs::Pixel::black_pixel());
         shs::Canvas::fill_pixel(*main_canvas, 10, 10, 20, 30, shs::Pixel::white_pixel());
 
-        for (TriangleObject triangle_object : scene) 
-        {
-            triangle_object.render(*main_canvas);
-        }
+
+        // rendering scene objects
+
+        TriangleObject& first_object = scene[0];
+        first_object.set_color(shs::Pixel::green_pixel());
+        first_object.render(*main_canvas);
+
+        TriangleObject& second_object = scene[1];
+        second_object.set_color(shs::Pixel::random_pixel());
+        second_object.render(*main_canvas);
+
+        TriangleObject& third_object = scene[2];
+        third_object.set_color(shs::Pixel::red_pixel());
+        third_object.render(*main_canvas);
+
+        TriangleObject& fourth_object = scene[3];
+        fourth_object.set_color(shs::Pixel::blue_pixel());
+        fourth_object.render(*main_canvas);
+
 
         shs::Canvas::fill_random_pixel(*main_canvas, 40, 30, 60, 80);
 

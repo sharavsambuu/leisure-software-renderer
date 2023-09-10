@@ -312,91 +312,6 @@ namespace shs
             }
         }
 
-        static void draw_line_first(shs::Canvas &canvas, int x0, int y0, int x1, int y1, shs::Pixel pixel)
-        {
-            float step = 0.01;
-            for (float t = 0.0; t < 1.0; t += step)
-            {
-                int x = x0 + (x1 - x0) * t;
-                int y = y0 + (y1 - y0) * t;
-                shs::Canvas::draw_pixel(canvas, x, y, pixel);
-            }
-        }
-        static void draw_line_second(shs::Canvas &canvas, int x0, int y0, int x1, int y1, shs::Pixel pixel)
-        {
-            for (int x = x0; x <= x1; x++)
-            {
-                float t = (x - x0) / (float)(x1 - x0);
-                int y = y0 * (1. - t) + y1 * t;
-                shs::Canvas::draw_pixel(canvas, x, y, pixel);
-            }
-        }
-        static void draw_line_third(shs::Canvas &canvas, int x0, int y0, int x1, int y1, shs::Pixel pixel)
-        {
-            bool steep = false;
-            if (std::abs(x0 - x1) < std::abs(y0 - y1))
-            { // if the line is steep, we transpose the image
-                std::swap(x0, y0);
-                std::swap(x1, y1);
-                steep = true;
-            }
-            if (x0 > x1)
-            { // make it left−to−right
-                std::swap(x0, x1);
-                std::swap(y0, y1);
-            }
-            for (int x = x0; x <= x1; x++)
-            {
-                float t = (x - x0) / (float)(x1 - x0);
-                int y = y0 * (1. - t) + y1 * t;
-                if (steep)
-                {
-                    // if transposed, de−transpose
-                    shs::Canvas::draw_pixel(canvas, y, x, pixel);
-                }
-                else
-                {
-                    shs::Canvas::draw_pixel(canvas, x, y, pixel);
-                }
-            }
-        }
-        static void draw_line_fourth(shs::Canvas &canvas, int x0, int y0, int x1, int y1, shs::Pixel pixel)
-        {
-            bool steep = false;
-            if (std::abs(x0 - x1) < std::abs(y0 - y1))
-            {
-                std::swap(x0, y0);
-                std::swap(x1, y1);
-                steep = true;
-            }
-            if (x0 > x1)
-            {
-                std::swap(x0, x1);
-                std::swap(y0, y1);
-            }
-            int dx = x1 - x0;
-            int dy = y1 - y0;
-            float derror = std::abs(dy / float(dx));
-            float error = 0;
-            int y = y0;
-            for (int x = x0; x <= x1; x++)
-            {
-                if (steep)
-                {
-                    shs::Canvas::draw_pixel(canvas, y, x, pixel);
-                }
-                else
-                {
-                    shs::Canvas::draw_pixel(canvas, x, y, pixel);
-                }
-                error += derror;
-                if (error > .5)
-                {
-                    y += (y1 > y0 ? 1 : -1);
-                    error -= 1.;
-                }
-            }
-        }
         static void draw_line(shs::Canvas &canvas, int x0, int y0, int x1, int y1, shs::Pixel pixel)
         {
             bool steep = false;
@@ -435,49 +350,47 @@ namespace shs
             }
         }
 
-        inline static glm::vec3 barycentric_coordinate(glm::vec2 &p, glm::vec2 &v0, glm::vec2 &v1, glm::vec2 &v2)
+        inline static glm::vec3 barycentric_coordinate(const glm::vec2 &P, const std::vector<glm::vec2> &triangle_vertices)
         {
-            glm::vec2 v0p = p - v0;
-            glm::vec2 v1p = p - v1;
-            glm::vec2 v2p = p - v2;
+            if (triangle_vertices.size() != 3)
+            {
+                // Ensure there are exactly three vertices in the triangle
+                throw std::invalid_argument("The triangle must have exactly three vertices.");
+            }
 
-            float d00 = glm::dot(v0 - v2, v0 - v2);
-            float d01 = glm::dot(v0 - v2, v1 - v2);
-            float d11 = glm::dot(v1 - v2, v1 - v2);
-            float d20 = glm::dot(v2 - v0, v2 - v0);
-            float d21 = glm::dot(v2 - v0, v1 - v0);
+            // Extract the vertices A, B, and C
+            const glm::vec2 &A = triangle_vertices[0];
+            const glm::vec2 &B = triangle_vertices[1];
+            const glm::vec2 &C = triangle_vertices[2];
 
-            float denom = d00 * d11 - d01 * d01;
+            // Calculate the area of the full triangle
+            float areaABC = glm::cross(glm::vec3(B - A, 0), glm::vec3(C - A, 0)).z;
 
-            float w0 = (d11 * glm::dot(v0p, v1 - v2) - d01 * glm::dot(v1p, v1 - v2)) / denom;
-            float w1 = (d00 * glm::dot(v1p, v1 - v2) - d01 * glm::dot(v0p, v1 - v2)) / denom;
-            float w2 = 1.0f - w0 - w1;
+            // Calculate the barycentric coordinates
+            glm::vec3 barycentric;
 
-            return glm::vec3(w0, w1, w2);
-        }
-        inline static glm::vec3 barycentric_coordinate(glm::vec2 &p, std::vector<glm::vec2> &vertices)
-        {
-            glm::vec2 v0p = p - vertices[0];
-            glm::vec2 v1p = p - vertices[1];
-            glm::vec2 v2p = p - vertices[2];
+            barycentric.x = glm::cross(glm::vec3(B - P, 0), glm::vec3(C - P, 0)).z / areaABC;
+            barycentric.y = glm::cross(glm::vec3(C - P, 0), glm::vec3(A - P, 0)).z / areaABC;
+            barycentric.z = 1.0f - barycentric.x - barycentric.y;
 
-            float d00 = glm::dot(vertices[0] - vertices[2], vertices[0] - vertices[2]);
-            float d01 = glm::dot(vertices[0] - vertices[2], vertices[1] - vertices[2]);
-            float d11 = glm::dot(vertices[1] - vertices[2], vertices[1] - vertices[2]);
-            float d20 = glm::dot(vertices[2] - vertices[0], vertices[2] - vertices[0]);
-            float d21 = glm::dot(vertices[2] - vertices[0], vertices[1] - vertices[0]);
-
-            float denom = d00 * d11 - d01 * d01;
-
-            float w0 = (d11 * glm::dot(v0p, vertices[1] - vertices[2]) - d01 * glm::dot(v1p, vertices[1] - vertices[2])) / denom;
-            float w1 = (d00 * glm::dot(v1p, vertices[1] - vertices[2]) - d01 * glm::dot(v0p, vertices[1] - vertices[2])) / denom;
-            float w2 = 1.0f - w0 - w1;
-
-            return glm::vec3(w0, w1, w2);
+            return barycentric;
         }
 
-        static void draw_triangle(shs::Canvas &canvas, std::vector<glm::vec2> &vertices, shs::Pixel pixel)
+        static void draw_triangle(shs::Canvas &canvas, std::vector<glm::vec2> &in_vertices, shs::Pixel pixel)
         {
+            int max_y = canvas.get_height();
+
+            // converting from my coordinate system to popular rasterizer's coordinate system
+            // my coordinate system is origin is bottom left corner, y axis moves to upward and x axis moves to the right
+            // rasterizer's coordinate system is origin is top left corner, y axis moves to downward and x axis move to the right
+            std::vector<glm::vec2> vertices;
+            std::copy(in_vertices.begin(), in_vertices.end(), std::back_inserter(vertices));
+            for (auto& point : vertices)
+            {
+                point.y = max_y-point.y;
+            }
+
+
             glm::vec2 bboxmin(canvas.get_width() - 1, canvas.get_height() - 1);
             glm::vec2 bboxmax(0, 0);
             glm::vec2 clamp(canvas.get_width() - 1, canvas.get_height() - 1);
@@ -493,13 +406,15 @@ namespace shs
             {
                 for (p.y = bboxmin.y; p.y <= bboxmax.y; p.y++)
                 {
-                    //glm::vec3 bc_screen = shs::Canvas::barycentric_coordinate(p, vertices);
-                    glm::vec3 bc_screen = shs::Canvas::barycentric_coordinate(p, vertices[0], vertices[1], vertices[2]);
+                    glm::vec3 bc_screen = shs::Canvas::barycentric_coordinate(p, vertices);
 
                     if (bc_screen.x < 0 || bc_screen.y < 0 || bc_screen.z < 0)
                         continue;
 
-                    shs::Canvas::draw_pixel(canvas, p.x, p.y, pixel);
+                    // draw pixel in my coordinate system
+                    glm::ivec2 p_my_coordinate_system = p;
+                    p_my_coordinate_system.y = std::clamp<int>(max_y - p_my_coordinate_system.y, 0, max_y);
+                    shs::Canvas::draw_pixel(canvas, p_my_coordinate_system.x, p_my_coordinate_system.y, pixel);
                 }
             }
         }
