@@ -577,7 +577,7 @@ namespace shs
         virtual glm::mat4 get_model_matrix() = 0;
     };
 
-    class AbstractScene
+    class AbstractSceneState
     {
     public:
         virtual void process() = 0;

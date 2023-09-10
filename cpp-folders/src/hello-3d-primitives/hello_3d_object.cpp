@@ -125,7 +125,7 @@ public:
 };
 
 
-class HelloScene : public shs::AbstractScene
+class HelloScene : public shs::AbstractSceneState
 {
 public:
     HelloScene(shs::Canvas *canvas) 
