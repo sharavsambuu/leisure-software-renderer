@@ -378,6 +378,7 @@ namespace shs
 
         static void draw_triangle(shs::Canvas &canvas, std::vector<glm::vec2> &in_vertices, shs::Pixel pixel)
         {
+            int max_x = canvas.get_width ();
             int max_y = canvas.get_height();
 
             // converting from my coordinate system to popular rasterizer's coordinate system
@@ -413,6 +414,7 @@ namespace shs
 
                     // draw pixel in my coordinate system
                     glm::ivec2 p_my_coordinate_system = p;
+                    p_my_coordinate_system.x = std::clamp<int>(        p_my_coordinate_system.x, 0, max_x);
                     p_my_coordinate_system.y = std::clamp<int>(max_y - p_my_coordinate_system.y, 0, max_y);
                     shs::Canvas::draw_pixel(canvas, p_my_coordinate_system.x, p_my_coordinate_system.y, pixel);
                 }
