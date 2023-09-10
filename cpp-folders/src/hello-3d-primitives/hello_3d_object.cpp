@@ -15,69 +15,6 @@
 #define CANVAS_WIDTH      640
 #define CANVAS_HEIGHT     480
 
-class MoveForwardCommand : public shs::Command
-{
-public:
-    MoveForwardCommand(glm::vec3 &position, glm::vec3 direction, float speed, float delta_time) : position(position), direction(direction), speed(speed), delta_time(delta_time) {}
-    void execute() override
-    {
-        this->position += this->direction * this->speed * delta_time;
-    }
-
-private:
-    glm::vec3 &position;
-    glm::vec3 direction;
-    float speed;
-    float delta_time;
-};
-
-class MoveBackwardCommand : public shs::Command
-{
-public:
-    MoveBackwardCommand(glm::vec3 &position, glm::vec3 direction, float speed, float delta_time) : position(position), direction(direction), speed(speed), delta_time(delta_time) {}
-    void execute() override
-    {
-        this->position -= this->direction * this->speed * delta_time;
-    }
-
-private:
-    glm::vec3 &position;
-    glm::vec3 direction;
-    float speed;
-    float delta_time;
-};
-
-class MoveRightCommand : public shs::Command
-{
-public:
-    MoveRightCommand(glm::vec3 &position, glm::vec3 right_vector, float speed, float delta_time) : position(position), right_vector(right_vector), speed(speed), delta_time(delta_time) {}
-    void execute() override
-    {
-        this->position += this->right_vector * this->speed * this->delta_time;
-    }
-
-private:
-    glm::vec3 &position;
-    glm::vec3 right_vector;
-    float speed;
-    float delta_time;
-};
-
-class MoveLeftCommand : public shs::Command
-{
-public:
-    MoveLeftCommand(glm::vec3 &position, glm::vec3 right_vector, float speed, float delta_time) : position(position), right_vector(right_vector), speed(speed), delta_time(delta_time) {}
-    void execute() override
-    {
-        this->position -= this->right_vector * this->speed * this->delta_time;
-    }
-
-private:
-    glm::vec3 &position;
-    glm::vec3 right_vector;
-    float speed;
-    float delta_time;
-};
 
 class Viewer
 {
@@ -115,26 +52,6 @@ public:
 private:
 };
 
-class CommandProcessor
-{
-public:
-    void add_command(shs::Command *new_command)
-    {
-        this->commands.push(new_command);
-    }
-    void process()
-    {
-        while (!this->commands.empty())
-        {
-            shs::Command *command = this->commands.front();
-            command->execute();
-            delete command;
-            this->commands.pop();
-        }
-    }
-private:
-    std::queue<shs::Command *> commands;
-};
 
 int main()
 {
@@ -152,7 +69,7 @@ int main()
 
 
     Viewer *viewer = new Viewer(glm::vec3(0.0, 0.0, -3.0), 25.0f);
-    CommandProcessor *command_processor = new CommandProcessor();
+    shs::CommandProcessor *command_processor = new shs::CommandProcessor();
 
 
     bool exit = false;
@@ -185,16 +102,16 @@ int main()
                         exit = true;
                         break;
                     case SDLK_w:
-                        command_processor->add_command(new MoveForwardCommand(viewer->position, viewer->get_direction_vector(), viewer->speed, delta_time_float));
+                        command_processor->add_command(new shs::MoveForwardCommand(viewer->position, viewer->get_direction_vector(), viewer->speed, delta_time_float));
                         break;
                     case SDLK_s:
-                        command_processor->add_command(new MoveBackwardCommand(viewer->position, viewer->get_direction_vector(), viewer->speed, delta_time_float));
+                        command_processor->add_command(new shs::MoveBackwardCommand(viewer->position, viewer->get_direction_vector(), viewer->speed, delta_time_float));
                         break;
                     case SDLK_a:
-                        command_processor->add_command(new MoveLeftCommand(viewer->position, viewer->get_right_vector(), viewer->speed, delta_time_float));
+                        command_processor->add_command(new shs::MoveLeftCommand(viewer->position, viewer->get_right_vector(), viewer->speed, delta_time_float));
                         break;
                     case SDLK_d:
-                        command_processor->add_command(new MoveRightCommand(viewer->position, viewer->get_right_vector(), viewer->speed, delta_time_float));
+                        command_processor->add_command(new shs::MoveRightCommand(viewer->position, viewer->get_right_vector(), viewer->speed, delta_time_float));
                         break;
                 }
                 break;

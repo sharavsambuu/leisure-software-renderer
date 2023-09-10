@@ -5,13 +5,13 @@
 #include <cstdlib>
 #include <string>
 #include <algorithm>
+#include <queue>
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/constants.hpp>
-
 
 namespace shs
 {
@@ -130,15 +130,13 @@ namespace shs
         {
             return shs::Pixel{255, 255, 255, 255};
         }
-        static shs::Pixel random_pixel() 
+        static shs::Pixel random_pixel()
         {
             return shs::Pixel{
-                uint8_t(rand()%256), 
-                uint8_t(rand()%256), 
-                uint8_t(rand()%256), 
-                uint8_t(255)
-                };
-
+                uint8_t(rand() % 256),
+                uint8_t(rand() % 256),
+                uint8_t(rand() % 256),
+                uint8_t(255)};
         }
 
     private:
@@ -379,7 +377,7 @@ namespace shs
 
         static void draw_triangle(shs::Canvas &canvas, std::vector<glm::vec2> &in_vertices, shs::Pixel pixel)
         {
-            int max_x = canvas.get_width ();
+            int max_x = canvas.get_width();
             int max_y = canvas.get_height();
 
             // converting from my coordinate system to popular rasterizer's coordinate system
@@ -387,11 +385,10 @@ namespace shs
             // rasterizer's coordinate system is origin is top left corner, y axis moves to downward and x axis move to the right
             std::vector<glm::vec2> vertices;
             std::copy(in_vertices.begin(), in_vertices.end(), std::back_inserter(vertices));
-            for (auto& point : vertices)
+            for (auto &point : vertices)
             {
-                point.y = max_y-point.y;
+                point.y = max_y - point.y;
             }
-
 
             glm::vec2 bboxmin(canvas.get_width() - 1, canvas.get_height() - 1);
             glm::vec2 bboxmax(0, 0);
@@ -415,7 +412,7 @@ namespace shs
 
                     // draw pixel in my coordinate system
                     glm::ivec2 p_my_coordinate_system = p;
-                    p_my_coordinate_system.x = std::clamp<int>(        p_my_coordinate_system.x, 0, max_x);
+                    p_my_coordinate_system.x = std::clamp<int>(p_my_coordinate_system.x, 0, max_x);
                     p_my_coordinate_system.y = std::clamp<int>(max_y - p_my_coordinate_system.y, 0, max_y);
                     shs::Canvas::draw_pixel(canvas, p_my_coordinate_system.x, p_my_coordinate_system.y, pixel);
                 }
@@ -436,7 +433,7 @@ namespace shs
         {
             shs::Canvas::set_color_at_SDLSurface(surface, x, y, pixel.get_color());
         }
-        static void copy_to_SDLSurface(SDL_Surface *surface, shs::Canvas* canvas)
+        static void copy_to_SDLSurface(SDL_Surface *surface, shs::Canvas *canvas)
         {
             for (int x = 0; x < canvas->get_width(); x++)
             {
@@ -448,22 +445,22 @@ namespace shs
             }
         }
 
-        SDL_Surface* create_sdl_surface() 
+        SDL_Surface *create_sdl_surface()
         {
             SDL_Surface *surface = SDL_CreateRGBSurface(0, this->width, this->height, 32, 0, 0, 0, 0);
             return surface;
         }
-        static SDL_Surface* create_sdl_surface(int width, int height) 
+        static SDL_Surface *create_sdl_surface(int width, int height)
         {
             SDL_Surface *surface = SDL_CreateRGBSurface(0, width, height, 32, 0, 0, 0, 0);
             return surface;
         }
-        static SDL_Surface* create_sdl_surface(int width, int height, shs::Color color) 
+        static SDL_Surface *create_sdl_surface(int width, int height, shs::Color color)
         {
             SDL_Surface *surface = SDL_CreateRGBSurface(0, width, height, 32, color.r, color.g, color.b, color.a);
             return surface;
         }
-        SDL_Surface* create_sdl_surface(shs::Color color) 
+        SDL_Surface *create_sdl_surface(shs::Color color)
         {
             SDL_Surface *surface = SDL_CreateRGBSurface(0, this->width, this->height, 32, color.r, color.g, color.b, color.a);
             return surface;
@@ -524,7 +521,6 @@ namespace shs
         int height;
     };
 
-
     class Camera3D
     {
     public:
@@ -540,17 +536,15 @@ namespace shs
             this->direction_vector = glm::vec3(
                 cos(this->vertical_angle) * sin(this->horizontal_angle),
                 sin(this->vertical_angle),
-                cos(this->vertical_angle) * cos(this->horizontal_angle)
-            );
+                cos(this->vertical_angle) * cos(this->horizontal_angle));
             this->right_vector = glm::vec3(
                 sin(horizontal_angle - glm::pi<float>() / 2.0f),
                 0.0,
-                cos(horizontal_angle - glm::pi<float>() / 2.0f)
-            );
+                cos(horizontal_angle - glm::pi<float>() / 2.0f));
             this->up_vector = glm::cross(this->right_vector, direction_vector);
 
             this->projection_matrix = glm::perspective(this->field_of_view, this->width / this->height, this->z_near, z_far);
-            this->view_matrix       = glm::lookAt(this->position, this->position + this->direction_vector, this->up_vector);
+            this->view_matrix = glm::lookAt(this->position, this->position + this->direction_vector, this->up_vector);
         }
 
         glm::mat4 view_matrix;
@@ -572,15 +566,100 @@ namespace shs
         float z_far;
 
     private:
-
     };
 
     class Command
     {
-    // See https://gameprogrammingpatterns.com/command.html
+        // See https://gameprogrammingpatterns.com/command.html
     public:
         virtual ~Command() {}
         virtual void execute() = 0;
-        //virtual void undo   () = 0;
+        // virtual void undo   () = 0;
+    };
+
+    class MoveForwardCommand : public shs::Command
+    {
+    public:
+        MoveForwardCommand(glm::vec3 &position, glm::vec3 direction, float speed, float delta_time) : position(position), direction(direction), speed(speed), delta_time(delta_time) {}
+        void execute() override
+        {
+            this->position += this->direction * this->speed * delta_time;
+        }
+
+    private:
+        glm::vec3 &position;
+        glm::vec3 direction;
+        float speed;
+        float delta_time;
+    };
+
+    class MoveBackwardCommand : public shs::Command
+    {
+    public:
+        MoveBackwardCommand(glm::vec3 &position, glm::vec3 direction, float speed, float delta_time) : position(position), direction(direction), speed(speed), delta_time(delta_time) {}
+        void execute() override
+        {
+            this->position -= this->direction * this->speed * delta_time;
+        }
+
+    private:
+        glm::vec3 &position;
+        glm::vec3 direction;
+        float speed;
+        float delta_time;
+    };
+
+    class MoveRightCommand : public shs::Command
+    {
+    public:
+        MoveRightCommand(glm::vec3 &position, glm::vec3 right_vector, float speed, float delta_time) : position(position), right_vector(right_vector), speed(speed), delta_time(delta_time) {}
+        void execute() override
+        {
+            this->position += this->right_vector * this->speed * this->delta_time;
+        }
+
+    private:
+        glm::vec3 &position;
+        glm::vec3 right_vector;
+        float speed;
+        float delta_time;
+    };
+
+    class MoveLeftCommand : public shs::Command
+    {
+    public:
+        MoveLeftCommand(glm::vec3 &position, glm::vec3 right_vector, float speed, float delta_time) : position(position), right_vector(right_vector), speed(speed), delta_time(delta_time) {}
+        void execute() override
+        {
+            this->position -= this->right_vector * this->speed * this->delta_time;
+        }
+
+    private:
+        glm::vec3 &position;
+        glm::vec3 right_vector;
+        float speed;
+        float delta_time;
+    };
+
+    class CommandProcessor
+    {
+    public:
+        void add_command(shs::Command *new_command)
+        {
+            this->commands.push(new_command);
+        }
+        void process()
+        {
+            while (!this->commands.empty())
+            {
+                shs::Command *command = this->commands.front();
+                command->execute();
+                delete command;
+                this->commands.pop();
+            }
+        }
+
+    private:
+        std::queue<shs::Command *> commands;
     };
 }
