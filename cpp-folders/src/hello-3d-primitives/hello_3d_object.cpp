@@ -125,33 +125,83 @@ public:
 };
 
 
-class HelloScene
+class HelloScene;
+
+class RendererSystem : public shs::AbstractSystem
 {
 public:
-    HelloScene() 
+    RendererSystem(std::function<HelloScene *()> getHelloSceneCallback)
+        : getHelloSceneCallback(getHelloSceneCallback) {}
+
+    void process() override
     {
+        HelloScene *hello_scene = getHelloSceneCallback();
+        if (hello_scene)
+        {
+            //float delta_time = hello_scene->delta_time;
+            std::cout << "RendererSystem is processing..." << std::endl;
+        }
+    }
+
+private:
+    std::function<HelloScene *()> getHelloSceneCallback;
+};
+
+class LogicSystem : public shs::AbstractSystem
+{
+public:
+    LogicSystem(std::function<HelloScene *()> getHelloSceneCallback)
+        : getHelloSceneCallback(getHelloSceneCallback) {}
+    void process() override
+    {
+        HelloScene *hello_scene = getHelloSceneCallback();
+        if (hello_scene)
+        {
+            //float delta_time = hello_scene->delta_time;
+            std::cout << "Logic system is processing..." << std::endl;
+        }
+    }
+
+private:
+    std::function<HelloScene *()> getHelloSceneCallback;
+};
+
+
+class HelloScene : public shs::AbstractScene
+{
+public:
+    HelloScene(shs::Canvas *canvas) 
+    {
+        this->canvas = canvas;
+
         MonkeyObject *monkey_object = new MonkeyObject();
         this->scene_objects.push_back(monkey_object);
+
+
+        this->systems.push_back(new LogicSystem   ([this]() { return this; }));
+        this->systems.push_back(new RendererSystem([this]() { return this; }));
+
     }
     ~HelloScene()
     {
     }
-    void update(float delta_time)
+
+    void process(float delta_time) override
     {
-        for (auto &object : this->scene_objects)
+        this->delta_time = delta_time;
+        for (auto &system : this->systems)
         {
-            object->update(delta_time);
-        }
-    }
-    void render(shs::Canvas &canvas, float delta_time)
-    {
-        for (auto &object : this->scene_objects)
-        {
+            system->process();
         }
     }
 
     std::vector<shs::AbstractObject3D *> scene_objects;
+    std::vector<shs::AbstractSystem   *> systems;
+    shs::Canvas  *canvas;
+    float         delta_time;
+
 };
+
 
 
 int main()
@@ -172,7 +222,7 @@ int main()
     Viewer *viewer = new Viewer(glm::vec3(0.0, 0.0, -3.0), 25.0f);
     shs::CommandProcessor *command_processor = new shs::CommandProcessor();
 
-    HelloScene *hello_scene = new HelloScene();
+    HelloScene *hello_scene = new HelloScene(main_canvas);
 
 
     bool exit = false;
@@ -223,7 +273,6 @@ int main()
 
         viewer->update();
         command_processor->process();
-        hello_scene->update(delta_time_float);
 
 
         // preparing to render on SDL2
@@ -233,7 +282,7 @@ int main()
         // software rendering or drawing stuffs goes around here
         shs::Canvas::fill_pixel(*main_canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT, shs::Pixel::blue_pixel());
 
-        hello_scene->render(*main_canvas, delta_time_float);
+        hello_scene->process(delta_time_float);
 
         shs::Canvas::fill_random_pixel(*main_canvas, 40, 30, 60, 80);
 

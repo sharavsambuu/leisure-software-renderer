@@ -568,15 +568,25 @@ namespace shs
     private:
     };
 
+
     class AbstractObject3D
     {
     public:
-        AbstractObject3D() {}
-        //virtual ~AbstractObject3D() = 0;
-
         virtual void update(float delta_time) = 0;
         virtual void render() = 0;
         virtual glm::mat4 get_model_matrix() = 0;
+    };
+
+    class AbstractScene
+    {
+    public:
+        virtual void process(float delta_time) = 0;
+    };
+
+    class AbstractSystem
+    {
+    public:
+        virtual void process() = 0;
     };
 
     class Command
