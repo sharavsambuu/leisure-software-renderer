@@ -58,6 +58,22 @@
       - Maybe if my kung-fu skill good enough, might implement deferred rendering
       - Transparency
       - Python port using PyGame or PySDL2
+    
+    Cool things would be nice to try out
+      - Lens Flare
+      - Depth of field
+      - Motion Blur
+      - Global Illumination
+      - God rays
+      - Volumetric Fog
+      - Shadow maps, soft shadows
+      - Screen Space Ambient Occlusion
+      - Various Physically Based Rendering models
+          - Cook-Torrance
+          - Torrance-Sparrow
+          - Beard-Maxwell
+          - Oren-Nayar
+          - Poulin-Fournier
 
 
 # Libraries
