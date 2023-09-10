@@ -1,8 +1,3 @@
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_image.h>
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
 #include <iostream>
 #include <vector>
 #include <cstdio>
@@ -10,6 +5,12 @@
 #include <cstdlib>
 #include <string>
 #include <algorithm>
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_image.h>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+#include <glm/gtc/constants.hpp>
 
 
 namespace shs
@@ -523,4 +524,53 @@ namespace shs
         int height;
     };
 
+
+    class Camera3D
+    {
+    public:
+        Camera3D()
+        {
+        }
+        ~Camera3D()
+        {
+        }
+
+        void update()
+        {
+            this->direction = glm::vec3(
+                cos(this->vertical_angle) * sin(this->horizontal_angle),
+                sin(this->vertical_angle),
+                cos(this->vertical_angle) * cos(this->horizontal_angle)
+            );
+            glm::vec3 right = glm::vec3(
+                sin(horizontal_angle - glm::pi<float>() / 2.0f),
+                0.0,
+                cos(horizontal_angle - glm::pi<float>() / 2.0f)
+            );
+            this->up = glm::cross(right, direction);
+
+            this->projection_matrix = glm::perspective(this->field_of_view, this->width / this->height, this->z_near, z_far);
+            this->view_matrix       = glm::lookAt(this->position, this->position + this->direction, this->up);
+        }
+
+        glm::mat4 view_matrix;
+        glm::mat4 projection_matrix;
+
+        glm::vec3 position;
+        glm::vec3 direction;
+        glm::vec3 up;
+
+        float horizontal_angle;
+        float vertical_angle;
+
+        float width;
+        float height;
+
+        float field_of_view;
+        float z_near;
+        float z_far;
+
+    private:
+
+    };
 }
