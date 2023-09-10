@@ -49,9 +49,17 @@ target_link_libraries(HelloLine PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES
 
 # 3D model wireframe rendering related commands
 file(COPY obj DESTINATION "${CMAKE_CURRENT_BINARY_DIR}")
+
+
 add_executable(HelloWireframe hello_wireframe.cpp 
   ${SHSRenderer_SOURCE_DIR}/shs_renderer.hpp
   )
 target_link_libraries(HelloWireframe PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)
+
+
+add_executable(Hello3DObject hello_3d_object.cpp 
+  ${SHSRenderer_SOURCE_DIR}/shs_renderer.hpp
+  )
+target_link_libraries(Hello3DObject PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)
 
 

@@ -5,8 +5,7 @@
 #include "shs_renderer.hpp"
 
 /*
- *
- *
+ * Rendering 3D object on the 2D surface by line by line.
  */
 
 int main()
