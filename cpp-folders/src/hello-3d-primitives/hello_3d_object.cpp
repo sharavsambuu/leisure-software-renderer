@@ -1,12 +1,15 @@
-#include <SDL2/SDL.h>
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
 #include <string>
 #include <cstdlib>
 #include <ctime>
 #include <cmath>
 #include <random>
 #include <queue>
+#include <SDL2/SDL.h>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <assimp/Importer.hpp>
+#include <assimp/scene.h>
+#include <assimp/postprocess.h>
 #include "shs_renderer.hpp"
 
 #define FRAMES_PER_SECOND 60
@@ -22,8 +25,8 @@ public:
     Viewer(glm::vec3 position, float speed)
     {
         this->position = position;
-        this->speed = speed;
-        this->camera = new shs::Camera3D();
+        this->speed    = speed;
+        this->camera   = new shs::Camera3D();
         this->camera->position = this->position;
     }
     ~Viewer() {}
@@ -32,7 +35,6 @@ public:
     {
         this->camera->position = this->position;
         this->camera->update();
-        std::cout << this->position.x << " " << this->position.y << " " << this->position.z << std::endl;
     }
 
     glm::vec3 get_direction_vector()
@@ -52,6 +54,55 @@ public:
 private:
 };
 
+class Model3D
+{
+public:
+    Model3D(std::string model_path)
+    {
+        Assimp::Importer importer;
+        const aiScene *scene = importer.ReadFile(model_path.c_str(), aiProcess_Triangulate);
+        if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
+        {
+            std::cerr << "Error loading OBJ file: " << importer.GetErrorString() << std::endl;
+        }
+
+        aiVector3D prev_vertex;
+
+        for (unsigned int i = 0; i < scene->mNumMeshes; i++)
+        {
+            aiMesh *mesh = scene->mMeshes[i];
+            for (unsigned int j = 0; j < mesh->mNumFaces; j++)
+            {
+                aiFace face = mesh->mFaces[j];
+                for (unsigned int k = 0; k < face.mNumIndices; k++)
+                {
+                    unsigned int vertex_index = face.mIndices[k];
+                    aiVector3D vertex = mesh->mVertices[vertex_index];
+                    if (k > 0)
+                    {
+                        int x0 = (prev_vertex.x + 1.0) * CANVAS_WIDTH / 2.0;
+                        int y0 = (prev_vertex.y + 1.0) * CANVAS_HEIGHT / 2.0;
+                        int x1 = (vertex.x + 1.0) * CANVAS_WIDTH / 2.0;
+                        int y1 = (vertex.y + 1.0) * CANVAS_HEIGHT / 2.0;
+                        if (
+                            (x0 > 0 && x0 < CANVAS_WIDTH) &&
+                            (y0 > 0 && y0 < CANVAS_HEIGHT) &&
+                            (x1 > 0 && x1 < CANVAS_WIDTH) &&
+                            (y1 > 0 && y1 < CANVAS_HEIGHT))
+                        {
+                            std::cout << x0 << " " << y0 << " " << x1 << " " << y1 << std::endl;
+                            // shs::Canvas::draw_line(canvas, x0, y0, x1, y1, shs::Pixel::green_pixel());
+                        }
+                    }
+                    prev_vertex = vertex;
+                }
+            }
+        }
+    }
+    ~Model3D()
+    {
+    }
+};
 
 int main()
 {
@@ -67,6 +118,7 @@ int main()
     SDL_Surface *main_sdlsurface = main_canvas->create_sdl_surface();
     SDL_Texture *screen_texture  = SDL_CreateTextureFromSurface(renderer, main_sdlsurface);
 
+    Model3D *model_3d = new Model3D("./obj/monkey/monkey.rawobj");
 
     Viewer *viewer = new Viewer(glm::vec3(0.0, 0.0, -3.0), 25.0f);
     shs::CommandProcessor *command_processor = new shs::CommandProcessor();
@@ -160,6 +212,7 @@ int main()
     }
 
 
+    delete model_3d;
     delete main_canvas;
     delete viewer;
     delete command_processor;
