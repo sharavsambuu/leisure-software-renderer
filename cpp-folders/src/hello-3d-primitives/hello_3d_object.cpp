@@ -70,7 +70,7 @@ int main()
         SDL_RenderClear(renderer);
 
         // software rendering or drawing stuffs goes around here
-        shs::Canvas::fill_pixel(*main_canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT, shs::Pixel::black_pixel());
+        shs::Canvas::fill_pixel(*main_canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT, shs::Pixel::blue_pixel());
 
 
 
@@ -89,10 +89,7 @@ int main()
         frame_counter++;
         Uint32 delta_frame_time  = SDL_GetTicks() - frame_start_ticks;
 
-        for (TriangleObject& triangle_object : scene) 
-        {
-            triangle_object.update(delta_frame_time/1000.0f);
-        }
+
 
         frame_time_accumulator  += delta_frame_time/1000.0;
         if (delta_frame_time < frame_delay) {

@@ -1,4 +1,4 @@
-project(HelloPixel)
+project(Hello3D)
 
 find_package(SDL2 REQUIRED)
 find_package(SDL2_image REQUIRED)
@@ -22,27 +22,19 @@ set(CMAKE_CXX_FLAGS_DEBUG "-g")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
 
+# 3D model wireframe rendering related commands
+file(COPY obj DESTINATION "${CMAKE_CURRENT_BINARY_DIR}")
 
-add_executable(HelloPixel hello_pixel.cpp 
+
+add_executable(HelloWireframe hello_wireframe.cpp 
   ${SHSRenderer_SOURCE_DIR}/shs_renderer.hpp
   )
-target_link_libraries(HelloPixel PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES})
+target_link_libraries(HelloWireframe PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)
 
 
-add_executable(HelloSDLPixel hello_sdl_pixel.cpp 
+add_executable(Hello3DObject hello_3d_object.cpp 
   ${SHSRenderer_SOURCE_DIR}/shs_renderer.hpp
   )
-target_link_libraries(HelloSDLPixel Threads::Threads ${SDL2_LIBRARIES})
+target_link_libraries(Hello3DObject PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)
 
-
-add_executable(HelloLine hello_line.cpp 
-  ${SHSRenderer_SOURCE_DIR}/shs_renderer.hpp
-  )
-target_link_libraries(HelloLine PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES})
-
-
-add_executable(HelloTriangle hello_triangle.cpp 
-  ${SHSRenderer_SOURCE_DIR}/shs_renderer.hpp
-  )
-target_link_libraries(HelloTriangle Threads::Threads ${SDL2_LIBRARIES} glm::glm)
 
