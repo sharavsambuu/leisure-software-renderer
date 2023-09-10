@@ -22,7 +22,6 @@ public:
     void execute() override
     {
         this->position += this->direction * this->speed * delta_time;
-        std::cout << "moving forward" << std::endl;
     }
 
 private:
@@ -39,7 +38,6 @@ public:
     void execute() override
     {
         this->position -= this->direction * this->speed * delta_time;
-        std::cout << "moving backward" << std::endl;
     }
 
 private:
@@ -56,7 +54,6 @@ public:
     void execute() override
     {
         this->position += this->right_vector * this->speed * this->delta_time;
-        std::cout << "moving right" << std::endl;
     }
 
 private:
@@ -73,7 +70,6 @@ public:
     void execute() override
     {
         this->position -= this->right_vector * this->speed * this->delta_time;
-        std::cout << "moving left" << std::endl;
     }
 
 private:
@@ -88,18 +84,18 @@ class Viewer
 public:
     Viewer(glm::vec3 position, float speed)
     {
-        this->position  = position;
-        this->speed     = speed;
-
+        this->position = position;
+        this->speed = speed;
         this->camera = new shs::Camera3D();
         this->camera->position = this->position;
-
     }
     ~Viewer() {}
 
     void update()
     {
+        this->camera->position = this->position;
         this->camera->update();
+        std::cout << this->position.x << " " << this->position.y << " " << this->position.z << std::endl;
     }
 
     glm::vec3 get_direction_vector()
@@ -111,7 +107,22 @@ public:
         return this->camera->right_vector;
     }
 
-    void process_commands()
+    shs::Camera3D *camera;
+    glm::vec3 position;
+    glm::vec3 direction;
+    float speed;
+
+private:
+};
+
+class CommandProcessor
+{
+public:
+    void add_command(shs::Command *new_command)
+    {
+        this->commands.push(new_command);
+    }
+    void process()
     {
         while (!this->commands.empty())
         {
@@ -121,14 +132,8 @@ public:
             this->commands.pop();
         }
     }
-
-    shs::Camera3D *camera;
-    glm::vec3 position;
-    glm::vec3 direction;
-    float speed;
-    std::queue<shs::Command *> commands;
-
 private:
+    std::queue<shs::Command *> commands;
 };
 
 int main()
@@ -147,6 +152,7 @@ int main()
 
 
     Viewer *viewer = new Viewer(glm::vec3(0.0, 0.0, -3.0), 25.0f);
+    CommandProcessor *command_processor = new CommandProcessor();
 
 
     bool exit = false;
@@ -179,16 +185,16 @@ int main()
                         exit = true;
                         break;
                     case SDLK_w:
-                        viewer->commands.push(new MoveForwardCommand(viewer->position, viewer->get_direction_vector(), viewer->speed, delta_time_float));
+                        command_processor->add_command(new MoveForwardCommand(viewer->position, viewer->get_direction_vector(), viewer->speed, delta_time_float));
                         break;
                     case SDLK_s:
-                        viewer->commands.push(new MoveBackwardCommand(viewer->position, viewer->get_direction_vector(), viewer->speed, delta_time_float));
+                        command_processor->add_command(new MoveBackwardCommand(viewer->position, viewer->get_direction_vector(), viewer->speed, delta_time_float));
                         break;
                     case SDLK_a:
-                        viewer->commands.push(new MoveLeftCommand(viewer->position, viewer->get_right_vector(), viewer->speed, delta_time_float));
+                        command_processor->add_command(new MoveLeftCommand(viewer->position, viewer->get_right_vector(), viewer->speed, delta_time_float));
                         break;
                     case SDLK_d:
-                        viewer->commands.push(new MoveRightCommand(viewer->position, viewer->get_right_vector(), viewer->speed, delta_time_float));
+                        command_processor->add_command(new MoveRightCommand(viewer->position, viewer->get_right_vector(), viewer->speed, delta_time_float));
                         break;
                 }
                 break;
@@ -196,7 +202,7 @@ int main()
         }
 
         viewer->update();
-        viewer->process_commands();
+        command_processor->process();
 
 
         // preparing to render on SDL2
@@ -238,6 +244,8 @@ int main()
 
 
     delete main_canvas;
+    delete viewer;
+    delete command_processor;
 
     SDL_DestroyTexture(screen_texture);
     SDL_FreeSurface(main_sdlsurface);
