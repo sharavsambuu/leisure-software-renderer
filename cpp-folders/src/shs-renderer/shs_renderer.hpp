@@ -495,7 +495,6 @@ namespace shs
                 {
                     //glm::vec3 bc_screen = shs::Canvas::barycentric_coordinate(p, vertices);
                     glm::vec3 bc_screen = shs::Canvas::barycentric_coordinate(p, vertices[0], vertices[1], vertices[2]);
-                    std::cout << bc_screen.x << " " << bc_screen.y << " " << bc_screen.z << std::endl;
 
                     if (bc_screen.x < 0 || bc_screen.y < 0 || bc_screen.z < 0)
                         continue;
