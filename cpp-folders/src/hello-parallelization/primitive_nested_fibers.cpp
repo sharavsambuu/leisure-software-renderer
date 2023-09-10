@@ -5,7 +5,7 @@
 #include <boost/thread/thread.hpp>
 
 #define CONCURRENCY_COUNT 4
-#define WORKER_COUNT      5000
+#define WORKER_COUNT      500
 
 
 void sub_task(boost::fibers::promise<long> &p, long j)

@@ -22,30 +22,30 @@ set(CMAKE_CXX_FLAGS_DEBUG "-g")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
 
+
 add_executable(HelloPixel hello_pixel.cpp 
   ${SHSRenderer_SOURCE_DIR}/shs_renderer.hpp
   )
 target_link_libraries(HelloPixel PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES})
+
 
 add_executable(HelloSDLPixel hello_sdl_pixel.cpp 
   ${SHSRenderer_SOURCE_DIR}/shs_renderer.hpp
   )
 target_link_libraries(HelloSDLPixel Threads::Threads ${SDL2_LIBRARIES})
 
-add_executable(Hello2DTransformation hello_2d_transformation.cpp 
-  ${SHSRenderer_SOURCE_DIR}/shs_renderer.hpp
-  )
-target_link_libraries(Hello2DTransformation Threads::Threads ${SDL2_LIBRARIES} glm::glm)
 
 add_executable(HelloTriangle hello_triangle.cpp 
   ${SHSRenderer_SOURCE_DIR}/shs_renderer.hpp
   )
 target_link_libraries(HelloTriangle Threads::Threads ${SDL2_LIBRARIES} glm::glm)
 
+
 add_executable(HelloLine hello_line.cpp 
   ${SHSRenderer_SOURCE_DIR}/shs_renderer.hpp
   )
 target_link_libraries(HelloLine PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES})
+
 
 # 3D model wireframe rendering related commands
 file(COPY obj DESTINATION "${CMAKE_CURRENT_BINARY_DIR}")

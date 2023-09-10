@@ -12,7 +12,6 @@ endif()
 include_directories(${SDL2_INCLUDE_DIRS} ${SDL2_IMAGE_INCLUDE_DIR})
 include_directories(${CMAKE_BINARY_DIR})
 include_directories(${SHSRenderer_SOURCE_DIR}/)
-include_directories(${pal_tasks_SOURCE_DIR}/src/)
 include_directories(${Boost_INCLUDE_DIR})
 link_directories(${Boost_LIBRARY_DIR})
 set(Boost_USE_STATIC_LIBS ON)
@@ -42,22 +41,11 @@ add_executable(HelloThreadZoned hello_thread_zoned.cpp
 )
 target_link_libraries(HelloThreadZoned Threads::Threads ${SDL2_LIBRARIES} glm::glm)
 
-add_executable(PalTasksDemo pal_tasks_demo.cpp
-  ${pal_tasks_SOURCE_DIR}/src/tasks.cpp
-  ${pal_tasks_SOURCE_DIR}/src/tasks.h
-  ${pal_tasks_SOURCE_DIR}/src/lockfree_ring_buffer.h
-  )
-target_link_libraries(PalTasksDemo Threads::Threads ${SDL2_LIBRARIES} glm::glm)
-
-
 add_executable(PrimitiveLoops primitive_loops.cpp)
 target_link_libraries(PrimitiveLoops Threads::Threads)
 
 add_executable(PrimitiveThreads primitive_threads.cpp)
 target_link_libraries(PrimitiveThreads Threads::Threads)
-
-add_executable(PrimitiveCoroutines primitive_coroutines.cpp)
-target_link_libraries(PrimitiveCoroutines Threads::Threads libcoro)
 
 add_executable(PrimitiveFibers primitive_fibers.cpp)
 target_link_libraries(PrimitiveFibers Threads::Threads 

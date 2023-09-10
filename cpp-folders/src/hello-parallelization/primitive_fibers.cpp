@@ -38,7 +38,7 @@ void worker_fiber(char me) {
         std::cout<<buffer.str()<<std::flush;
     }
 
-    for (int i=0; i<100; ++i) {
+    for (int i=0; i<30; ++i) {
         //boost::this_fiber::yield();
         boost::this_fiber::sleep_for(100ms);
 
