@@ -6,16 +6,130 @@
 #include <ctime>
 #include <cmath>
 #include <random>
+#include <queue>
 #include "shs_renderer.hpp"
 
 #define FRAMES_PER_SECOND 60
 #define WINDOW_WIDTH      640
 #define WINDOW_HEIGHT     480
-
 #define CANVAS_WIDTH      640
 #define CANVAS_HEIGHT     480
 
+class MoveForwardCommand : public shs::Command
+{
+public:
+    MoveForwardCommand(glm::vec3 &position, glm::vec3 direction, float speed, float delta_time) : position(position), direction(direction), speed(speed), delta_time(delta_time) {}
+    void execute() override
+    {
+        this->position += this->direction * this->speed * delta_time;
+        std::cout << "moving forward" << std::endl;
+    }
 
+private:
+    glm::vec3 &position;
+    glm::vec3 direction;
+    float speed;
+    float delta_time;
+};
+
+class MoveBackwardCommand : public shs::Command
+{
+public:
+    MoveBackwardCommand(glm::vec3 &position, glm::vec3 direction, float speed, float delta_time) : position(position), direction(direction), speed(speed), delta_time(delta_time) {}
+    void execute() override
+    {
+        this->position -= this->direction * this->speed * delta_time;
+        std::cout << "moving backward" << std::endl;
+    }
+
+private:
+    glm::vec3 &position;
+    glm::vec3 direction;
+    float speed;
+    float delta_time;
+};
+
+class MoveRightCommand : public shs::Command
+{
+public:
+    MoveRightCommand(glm::vec3 &position, glm::vec3 right_vector, float speed, float delta_time) : position(position), right_vector(right_vector), speed(speed), delta_time(delta_time) {}
+    void execute() override
+    {
+        this->position += this->right_vector * this->speed * this->delta_time;
+        std::cout << "moving right" << std::endl;
+    }
+
+private:
+    glm::vec3 &position;
+    glm::vec3 right_vector;
+    float speed;
+    float delta_time;
+};
+
+class MoveLeftCommand : public shs::Command
+{
+public:
+    MoveLeftCommand(glm::vec3 &position, glm::vec3 right_vector, float speed, float delta_time) : position(position), right_vector(right_vector), speed(speed), delta_time(delta_time) {}
+    void execute() override
+    {
+        this->position -= this->right_vector * this->speed * this->delta_time;
+        std::cout << "moving left" << std::endl;
+    }
+
+private:
+    glm::vec3 &position;
+    glm::vec3 right_vector;
+    float speed;
+    float delta_time;
+};
+
+class Viewer
+{
+public:
+    Viewer(glm::vec3 position, float speed)
+    {
+        this->position  = position;
+        this->speed     = speed;
+
+        this->camera = new shs::Camera3D();
+        this->camera->position = this->position;
+
+    }
+    ~Viewer() {}
+
+    void update()
+    {
+        this->camera->update();
+    }
+
+    glm::vec3 get_direction_vector()
+    {
+        return this->camera->direction_vector;
+    }
+    glm::vec3 get_right_vector()
+    {
+        return this->camera->right_vector;
+    }
+
+    void process_commands()
+    {
+        while (!this->commands.empty())
+        {
+            shs::Command *command = this->commands.front();
+            command->execute();
+            delete command;
+            this->commands.pop();
+        }
+    }
+
+    shs::Camera3D *camera;
+    glm::vec3 position;
+    glm::vec3 direction;
+    float speed;
+    std::queue<shs::Command *> commands;
+
+private:
+};
 
 int main()
 {
@@ -32,6 +146,8 @@ int main()
     SDL_Texture *screen_texture  = SDL_CreateTextureFromSurface(renderer, main_sdlsurface);
 
 
+    Viewer *viewer = new Viewer(glm::vec3(0.0, 0.0, -3.0), 25.0f);
+
 
     bool exit = false;
     SDL_Event event_data;
@@ -40,13 +156,16 @@ int main()
     float frame_time_accumulator = 0;
     int   frame_counter          = 0;
     int   fps                    = 0;
+    Uint32 delta_frame_time      = 0;
 
     while (!exit)
     {
 
         Uint32 frame_start_ticks = SDL_GetTicks();
 
-        // catching up input events happened on hardware
+        float delta_time_float = delta_frame_time/1000.0f;
+
+        // catching up input events happened on hardware and feeding commands 
         while (SDL_PollEvent(&event_data))
         {
             switch (event_data.type)
@@ -59,10 +178,25 @@ int main()
                     case SDLK_ESCAPE: 
                         exit = true;
                         break;
+                    case SDLK_w:
+                        viewer->commands.push(new MoveForwardCommand(viewer->position, viewer->get_direction_vector(), viewer->speed, delta_time_float));
+                        break;
+                    case SDLK_s:
+                        viewer->commands.push(new MoveBackwardCommand(viewer->position, viewer->get_direction_vector(), viewer->speed, delta_time_float));
+                        break;
+                    case SDLK_a:
+                        viewer->commands.push(new MoveLeftCommand(viewer->position, viewer->get_right_vector(), viewer->speed, delta_time_float));
+                        break;
+                    case SDLK_d:
+                        viewer->commands.push(new MoveRightCommand(viewer->position, viewer->get_right_vector(), viewer->speed, delta_time_float));
+                        break;
                 }
                 break;
             }
         }
+
+        viewer->update();
+        viewer->process_commands();
 
 
         // preparing to render on SDL2
@@ -74,8 +208,8 @@ int main()
 
 
 
-
         shs::Canvas::fill_random_pixel(*main_canvas, 40, 30, 60, 80);
+
 
         // actually prensenting canvas data on hardware surface
         shs::Canvas::flip_vertically(*main_canvas); // origin at the left bottom corner of the canvas
@@ -85,11 +219,10 @@ int main()
         SDL_RenderCopy(renderer, screen_texture, NULL, &destination_rect);
         SDL_RenderPresent(renderer);
 
+
     
         frame_counter++;
-        Uint32 delta_frame_time  = SDL_GetTicks() - frame_start_ticks;
-
-
+        delta_frame_time  = SDL_GetTicks() - frame_start_ticks;
 
         frame_time_accumulator  += delta_frame_time/1000.0;
         if (delta_frame_time < frame_delay) {

@@ -537,28 +537,29 @@ namespace shs
 
         void update()
         {
-            this->direction = glm::vec3(
+            this->direction_vector = glm::vec3(
                 cos(this->vertical_angle) * sin(this->horizontal_angle),
                 sin(this->vertical_angle),
                 cos(this->vertical_angle) * cos(this->horizontal_angle)
             );
-            glm::vec3 right = glm::vec3(
+            this->right_vector = glm::vec3(
                 sin(horizontal_angle - glm::pi<float>() / 2.0f),
                 0.0,
                 cos(horizontal_angle - glm::pi<float>() / 2.0f)
             );
-            this->up = glm::cross(right, direction);
+            this->up_vector = glm::cross(this->right_vector, direction_vector);
 
             this->projection_matrix = glm::perspective(this->field_of_view, this->width / this->height, this->z_near, z_far);
-            this->view_matrix       = glm::lookAt(this->position, this->position + this->direction, this->up);
+            this->view_matrix       = glm::lookAt(this->position, this->position + this->direction_vector, this->up_vector);
         }
 
         glm::mat4 view_matrix;
         glm::mat4 projection_matrix;
 
         glm::vec3 position;
-        glm::vec3 direction;
-        glm::vec3 up;
+        glm::vec3 direction_vector;
+        glm::vec3 right_vector;
+        glm::vec3 up_vector;
 
         float horizontal_angle;
         float vertical_angle;
@@ -572,5 +573,14 @@ namespace shs
 
     private:
 
+    };
+
+    class Command
+    {
+    // See https://gameprogrammingpatterns.com/command.html
+    public:
+        virtual ~Command() {}
+        virtual void execute() = 0;
+        //virtual void undo   () = 0;
     };
 }
