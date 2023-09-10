@@ -54,10 +54,10 @@ public:
 private:
 };
 
-class Model3D
+class ModelTriangles3D
 {
 public:
-    Model3D(std::string model_path)
+    ModelTriangles3D(std::string model_path)
     {
         Assimp::Importer importer;
         const aiScene *scene = importer.ReadFile(model_path.c_str(), aiProcess_Triangulate);
@@ -65,44 +65,94 @@ public:
         {
             std::cerr << "Error loading OBJ file: " << importer.GetErrorString() << std::endl;
         }
-
-        aiVector3D prev_vertex;
-
-        for (unsigned int i = 0; i < scene->mNumMeshes; i++)
+        for (unsigned int i = 0; i < scene->mNumMeshes; ++i)
         {
             aiMesh *mesh = scene->mMeshes[i];
-            for (unsigned int j = 0; j < mesh->mNumFaces; j++)
+
+            for (unsigned int j = 0; j < mesh->mNumFaces; ++j)
             {
                 aiFace face = mesh->mFaces[j];
-                for (unsigned int k = 0; k < face.mNumIndices; k++)
+
+                // Check if the face is a triangle
+                if (face.mNumIndices == 3)
                 {
-                    unsigned int vertex_index = face.mIndices[k];
-                    aiVector3D vertex = mesh->mVertices[vertex_index];
-                    if (k > 0)
-                    {
-                        int x0 = (prev_vertex.x + 1.0) * CANVAS_WIDTH / 2.0;
-                        int y0 = (prev_vertex.y + 1.0) * CANVAS_HEIGHT / 2.0;
-                        int x1 = (vertex.x + 1.0) * CANVAS_WIDTH / 2.0;
-                        int y1 = (vertex.y + 1.0) * CANVAS_HEIGHT / 2.0;
-                        if (
-                            (x0 > 0 && x0 < CANVAS_WIDTH) &&
-                            (y0 > 0 && y0 < CANVAS_HEIGHT) &&
-                            (x1 > 0 && x1 < CANVAS_WIDTH) &&
-                            (y1 > 0 && y1 < CANVAS_HEIGHT))
-                        {
-                            std::cout << x0 << " " << y0 << " " << x1 << " " << y1 << std::endl;
-                            // shs::Canvas::draw_line(canvas, x0, y0, x1, y1, shs::Pixel::green_pixel());
-                        }
-                    }
-                    prev_vertex = vertex;
+                    aiVector3D vertex1 = mesh->mVertices[face.mIndices[0]];
+                    aiVector3D vertex2 = mesh->mVertices[face.mIndices[1]];
+                    aiVector3D vertex3 = mesh->mVertices[face.mIndices[2]];
+
+                    this->triangles.push_back(vertex1);
+                    this->triangles.push_back(vertex2);
+                    this->triangles.push_back(vertex3);
                 }
             }
         }
+        std::cout << model_path.c_str() << " is loaded." << std::endl;
     }
-    ~Model3D()
+    ~ModelTriangles3D()
     {
     }
+    std::vector<aiVector3D> triangles;
+
+private:
 };
+
+class MonkeyObject : public shs::AbstractObject3D
+{
+public:
+    MonkeyObject()
+    {
+        this->geometry = new ModelTriangles3D("./obj/monkey/monkey.rawobj");
+    }
+    ~MonkeyObject()
+    {
+        delete this->geometry;
+    }
+    glm::mat4 get_model_matrix() override
+    {
+        return this->model_matrix;
+    }
+    void update(float delta_time) override 
+    {
+
+    }
+    void render() override
+    {
+
+    }
+
+    ModelTriangles3D *geometry;
+    glm::mat4         model_matrix;
+};
+
+
+class HelloScene
+{
+public:
+    HelloScene() 
+    {
+        MonkeyObject *monkey_object = new MonkeyObject();
+        this->scene_objects.push_back(monkey_object);
+    }
+    ~HelloScene()
+    {
+    }
+    void update(float delta_time)
+    {
+        for (auto &object : this->scene_objects)
+        {
+            object->update(delta_time);
+        }
+    }
+    void render(shs::Canvas &canvas, float delta_time)
+    {
+        for (auto &object : this->scene_objects)
+        {
+        }
+    }
+
+    std::vector<shs::AbstractObject3D *> scene_objects;
+};
+
 
 int main()
 {
@@ -118,10 +168,11 @@ int main()
     SDL_Surface *main_sdlsurface = main_canvas->create_sdl_surface();
     SDL_Texture *screen_texture  = SDL_CreateTextureFromSurface(renderer, main_sdlsurface);
 
-    Model3D *model_3d = new Model3D("./obj/monkey/monkey.rawobj");
 
     Viewer *viewer = new Viewer(glm::vec3(0.0, 0.0, -3.0), 25.0f);
     shs::CommandProcessor *command_processor = new shs::CommandProcessor();
+
+    HelloScene *hello_scene = new HelloScene();
 
 
     bool exit = false;
@@ -172,6 +223,7 @@ int main()
 
         viewer->update();
         command_processor->process();
+        hello_scene->update(delta_time_float);
 
 
         // preparing to render on SDL2
@@ -181,7 +233,7 @@ int main()
         // software rendering or drawing stuffs goes around here
         shs::Canvas::fill_pixel(*main_canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT, shs::Pixel::blue_pixel());
 
-
+        hello_scene->render(*main_canvas, delta_time_float);
 
         shs::Canvas::fill_random_pixel(*main_canvas, 40, 30, 60, 80);
 
@@ -212,7 +264,7 @@ int main()
     }
 
 
-    delete model_3d;
+    delete hello_scene;
     delete main_canvas;
     delete viewer;
     delete command_processor;
