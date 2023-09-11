@@ -467,13 +467,12 @@ namespace shs
                     if (bc_screen.x < 0 || bc_screen.y < 0 || bc_screen.z < 0)
                         continue;
 
-                    // draw pixel in my coordinate system
-                    glm::vec3 interpolated_color = bc_screen.x * in_colors[0] + bc_screen.y * in_colors[1] + bc_screen.z * in_colors[3];
-
                     glm::ivec2 p_my_coordinate_system = p;
                     p_my_coordinate_system.x = std::clamp<int>(p_my_coordinate_system.x, 0, max_x);
                     p_my_coordinate_system.y = std::clamp<int>(max_y - p_my_coordinate_system.y, 0, max_y);
 
+                    // draw pixel in my coordinate system
+                    glm::vec3 interpolated_color = bc_screen.x * in_colors[0] + bc_screen.y * in_colors[1] + bc_screen.z * in_colors[3];
                     glm::vec4 rescaled_color = shs::Canvas::rescale_vec4_1_255(glm::vec4(interpolated_color, 1.0));
 
                     shs::Canvas::draw_pixel(canvas, p_my_coordinate_system.x, p_my_coordinate_system.y, shs::Color{std::uint8_t(rescaled_color.x), std::uint8_t(rescaled_color.y), std::uint8_t(rescaled_color.z), std::uint8_t(rescaled_color.w)});
