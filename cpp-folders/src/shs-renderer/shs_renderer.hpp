@@ -313,6 +313,11 @@ namespace shs
 
         static void draw_line(shs::Canvas &canvas, int x0, int y0, int x1, int y1, shs::Pixel pixel)
         {
+            x0 = std::clamp(x0, 0, canvas.get_width()-1);
+            y0 = std::clamp(y0, 0, canvas.get_height()-1);
+            x1 = std::clamp(x1, 0, canvas.get_width()-1);
+            y1 = std::clamp(y1, 0, canvas.get_height()-1);
+
             bool steep = false;
             if (std::abs(x0 - x1) < std::abs(y0 - y1))
             {
