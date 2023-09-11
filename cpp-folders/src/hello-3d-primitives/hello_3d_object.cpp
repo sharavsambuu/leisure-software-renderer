@@ -80,9 +80,9 @@ public:
                     aiVector3D vertex2 = mesh->mVertices[face.mIndices[1]];
                     aiVector3D vertex3 = mesh->mVertices[face.mIndices[2]];
 
-                    this->triangles.push_back(vertex1);
-                    this->triangles.push_back(vertex2);
-                    this->triangles.push_back(vertex3);
+                    this->triangles.push_back(glm::vec3(vertex1.x, vertex1.y, vertex1.z));
+                    this->triangles.push_back(glm::vec3(vertex2.x, vertex2.y, vertex2.z));
+                    this->triangles.push_back(glm::vec3(vertex3.x, vertex3.y, vertex3.z));
                 }
             }
         }
@@ -91,7 +91,7 @@ public:
     ~ModelTriangles3D()
     {
     }
-    std::vector<aiVector3D> triangles;
+    std::vector<glm::vec3> triangles;
 
 private:
 };
@@ -138,6 +138,10 @@ public:
     }
     ~HelloScene()
     {
+        for (auto *obj : this->scene_objects)
+        {
+            delete obj;
+        }
     }
 
     void process() override
@@ -157,8 +161,23 @@ public:
     void process(float delta_time) override
     {
         std::cout << "render systen " << delta_time << std::endl;
-        for (auto &object : this->scene->scene_objects)
+
+        for (shs::AbstractObject3D *object : this->scene->scene_objects)
         {
+            if (typeid(*object) == typeid(MonkeyObject))
+            {
+                MonkeyObject *monkey = dynamic_cast<MonkeyObject *>(object);
+                if (monkey)
+                {
+                    for (size_t i = 0; i < monkey->geometry->triangles.size(); i += 3)
+                    {
+                        glm::vec3 vertex1 = monkey->geometry->triangles[i    ];
+                        glm::vec3 vertex2 = monkey->geometry->triangles[i + 1];
+                        glm::vec3 vertex3 = monkey->geometry->triangles[i + 2];
+                        
+                    }
+                }
+            }
         }
     }
 private:
@@ -172,9 +191,6 @@ public:
     void process(float delta_time) override
     {
         std::cout << "logic systen " << delta_time << std::endl;
-        for (auto &object : this->scene->scene_objects)
-        {
-        }
     }
 
 private:
