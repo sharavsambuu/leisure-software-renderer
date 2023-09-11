@@ -111,6 +111,7 @@ public:
         this->position        = position;
         this->scale           = scale;
         this->geometry        = new ModelTriangles3D("./obj/monkey/monkey.rawobj");
+        this->rotation_angle  = 180.0;
     }
     ~MonkeyObject()
     {
@@ -119,12 +120,18 @@ public:
     glm::mat4 get_world_matrix() override
     {
         glm::mat4 translation_matrix = glm::translate(glm::mat4(1.0), this->position);
-        glm::mat4 rotation_matrix    = glm::rotate   (glm::mat4(1.0), glm::radians(180.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+        glm::mat4 rotation_matrix    = glm::rotate   (glm::mat4(1.0), glm::radians(this->rotation_angle), glm::vec3(0.0f, 1.0f, 0.0f));
         glm::mat4 scaling_matrix     = glm::scale    (glm::mat4(1.0), scale);
         return translation_matrix * rotation_matrix * scaling_matrix;
     }
-    void update(float delta_time) override 
+    void update(float delta_time) override
     {
+        float rotation_speed = 30.0;
+        this->rotation_angle += rotation_speed * delta_time;
+        if (this->rotation_angle > 360.0f)
+        {
+            this->rotation_angle = 0.0f;
+        }
     }
     void render() override
     {
@@ -133,6 +140,7 @@ public:
     ModelTriangles3D *geometry;
     glm::vec3         scale;
     glm::vec3         position;
+    float             rotation_angle;
 };
 
 
@@ -220,6 +228,17 @@ public:
     void process(float delta_time) override
     {
         this->scene->viewer->update();
+        for (shs::AbstractObject3D *object : this->scene->scene_objects)
+        {
+            if (typeid(*object) == typeid(MonkeyObject))
+            {
+                MonkeyObject *monkey = dynamic_cast<MonkeyObject *>(object);
+                if (monkey)
+                {
+                    monkey->update(delta_time);
+                }
+            }
+        }
     }
 
 private:
