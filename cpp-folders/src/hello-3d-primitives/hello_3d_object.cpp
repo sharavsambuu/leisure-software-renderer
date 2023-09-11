@@ -40,7 +40,9 @@ public:
 
     void update()
     {
-        this->camera->position = this->position;
+        this->camera->position         = this->position;
+        this->camera->horizontal_angle = this->horizontal_angle;
+        this->camera->vertical_angle   = this->vertical_angle;
         this->camera->update();
     }
 
@@ -56,6 +58,8 @@ public:
     shs::Camera3D *camera;
     glm::vec3 position;
     glm::vec3 direction;
+    float horizontal_angle;
+    float vertical_angle;
     float speed;
 
 private:
@@ -212,6 +216,7 @@ public:
                         shs::Canvas::draw_line(*this->scene->canvas, vertices_2d[0].x, vertices_2d[0].y, vertices_2d[2].x, vertices_2d[2].y, shs::Pixel::green_pixel());
                         shs::Canvas::draw_line(*this->scene->canvas, vertices_2d[1].x, vertices_2d[1].y, vertices_2d[2].x, vertices_2d[2].y, shs::Pixel::green_pixel());
                         shs::Canvas::draw_triangle(*this->scene->canvas, vertices_2d, shs::Pixel::random_pixel());
+                        //shs::Canvas::draw_triangle(*this->scene->canvas, vertices_2d, shs::Pixel::blue_pixel());
                     }
                 }
             }
@@ -341,6 +346,15 @@ int main()
                     case SDLK_d:
                         system_processor->command_processor->add_command(new shs::MoveRightCommand(viewer->position, viewer->get_right_vector(), viewer->speed, delta_time_float));
                         break;
+                    case SDLK_UP:
+                        break;
+                    case SDLK_DOWN:
+                        break;
+                    case SDLK_LEFT:
+                        break;
+                    case SDLK_RIGHT:
+                        break;
+                    
                 }
                 break;
             }
