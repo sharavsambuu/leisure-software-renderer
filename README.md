@@ -126,6 +126,9 @@
       - https://github.com/taskflow/taskflow
     Coroutine Job System
       - https://poniesandlight.co.uk/reflect/coroutines_job_system/
+    Nice explanation about Model View Projection spaces
+      - https://jsantell.com/model-view-projection/
+
       
       
 # Result
