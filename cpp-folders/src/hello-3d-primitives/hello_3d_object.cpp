@@ -30,9 +30,10 @@ public:
         this->camera->position         = this->position;
         this->camera->width            = float(CANVAS_WIDTH);
         this->camera->height           = float(CANVAS_HEIGHT);
+        this->camera->field_of_view    = 45.0;
         this->camera->horizontal_angle = 0.0;
         this->camera->vertical_angle   = 0.0;
-        this->camera->z_near           = 1.0;
+        this->camera->z_near           = 0.1;
         this->camera->z_far            = 1000.0f;
     }
     ~Viewer() {}
@@ -118,7 +119,7 @@ public:
     glm::mat4 get_world_matrix() override
     {
         glm::mat4 translation_matrix = glm::translate(glm::mat4(1.0), this->position);
-        glm::mat4 rotation_matrix    = glm::rotate   (glm::mat4(1.0), glm::radians(35.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        glm::mat4 rotation_matrix    = glm::rotate   (glm::mat4(1.0), glm::radians(180.0f), glm::vec3(0.0f, 1.0f, 0.0f));
         glm::mat4 scaling_matrix     = glm::scale    (glm::mat4(1.0), scale);
         return translation_matrix * rotation_matrix * scaling_matrix;
     }
@@ -143,7 +144,7 @@ public:
         this->canvas = canvas;
         this->viewer = viewer;
 
-        MonkeyObject *monkey_object = new MonkeyObject(glm::vec3(650.2, 200.2, 150.0), glm::vec3(5.5, 20.0, 1.0));
+        MonkeyObject *monkey_object = new MonkeyObject(glm::vec3(0.0, 0.0, 60.0), glm::vec3(10.0, 10.0, 10.0));
         this->scene_objects.push_back(monkey_object);
 
     }
@@ -186,25 +187,23 @@ public:
                 if (monkey)
                 {
                     glm::mat4 world_matrix = monkey->get_world_matrix();
+                    glm::mat4 mvp_matrix   = projection_matrix*view_matrix*world_matrix;
+
                     for (size_t i = 0; i < monkey->geometry->triangles.size(); i += 3)
                     {
-                        glm::vec4 vertex1 = glm::vec4(monkey->geometry->triangles[i    ], 1.0);
-                        glm::vec4 vertex2 = glm::vec4(monkey->geometry->triangles[i + 1], 1.0);
-                        glm::vec4 vertex3 = glm::vec4(monkey->geometry->triangles[i + 2], 1.0);
-
-                        glm::vec3 transformed_vertex1 = glm::vec3(world_matrix * view_matrix * projection_matrix * vertex1);
-                        glm::vec3 transformed_vertex2 = glm::vec3(world_matrix * view_matrix * projection_matrix * vertex2);
-                        glm::vec3 transformed_vertex3 = glm::vec3(world_matrix * view_matrix * projection_matrix * vertex3);
+                        glm::vec4 vertex1_clip_space = mvp_matrix * glm::vec4(monkey->geometry->triangles[i    ], 1.0);
+                        glm::vec4 vertex2_clip_space = mvp_matrix * glm::vec4(monkey->geometry->triangles[i + 1], 1.0);
+                        glm::vec4 vertex3_clip_space = mvp_matrix * glm::vec4(monkey->geometry->triangles[i + 2], 1.0);
 
                         std::vector<glm::vec2> vertices_2d(3);
-                        vertices_2d[0] = glm::vec2(transformed_vertex1.x, transformed_vertex1.y);
-                        vertices_2d[1] = glm::vec2(transformed_vertex2.x, transformed_vertex2.y);
-                        vertices_2d[2] = glm::vec2(transformed_vertex3.x, transformed_vertex3.y);
+                        vertices_2d[0] = shs::Canvas::clip_to_screen(vertex1_clip_space, CANVAS_WIDTH,  CANVAS_HEIGHT);
+                        vertices_2d[1] = shs::Canvas::clip_to_screen(vertex2_clip_space, CANVAS_WIDTH,  CANVAS_HEIGHT);
+                        vertices_2d[2] = shs::Canvas::clip_to_screen(vertex2_clip_space, CANVAS_WIDTH,  CANVAS_HEIGHT);
 
                         shs::Canvas::draw_line(*this->scene->canvas, vertices_2d[0].x, vertices_2d[0].y, vertices_2d[1].x, vertices_2d[1].y, shs::Pixel::green_pixel());
                         shs::Canvas::draw_line(*this->scene->canvas, vertices_2d[0].x, vertices_2d[0].y, vertices_2d[2].x, vertices_2d[2].y, shs::Pixel::green_pixel());
                         shs::Canvas::draw_line(*this->scene->canvas, vertices_2d[1].x, vertices_2d[1].y, vertices_2d[2].x, vertices_2d[2].y, shs::Pixel::green_pixel());
-                        shs::Canvas::draw_triangle(*this->scene->canvas, vertices_2d, shs::Pixel::blue_pixel());
+                        shs::Canvas::draw_triangle(*this->scene->canvas, vertices_2d, shs::Pixel::random_pixel());
                     }
                 }
             }
@@ -276,7 +275,7 @@ int main()
     SDL_Texture *screen_texture  = SDL_CreateTextureFromSurface(renderer, main_sdlsurface);
 
 
-    Viewer *viewer = new Viewer(glm::vec3(0.0, 0.0, -23.0), 150.0f);
+    Viewer *viewer = new Viewer(glm::vec3(0.0, 0.0, -3.0), 150.0f);
 
     HelloScene      *hello_scene      = new HelloScene(main_canvas, viewer);
     SystemProcessor *system_processor = new SystemProcessor(hello_scene);
