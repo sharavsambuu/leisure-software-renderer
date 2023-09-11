@@ -133,7 +133,7 @@
       
 # Result
 <p><img width="320" height="320" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/hello_wireframe_monkeyobj_canvas.png"></p>
-<p><img width="640" height="520" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/monkey-3d.png"></p>
+<p><img width="640" height="620" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/monkey-3d.png"></p>
 <p><img width="640" height="360" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/mongolian-flag.png"></p>
 <p><img width="320" height="320" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/fbm.png"></p>
 
