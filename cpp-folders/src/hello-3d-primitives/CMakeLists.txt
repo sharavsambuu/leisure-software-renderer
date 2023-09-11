@@ -11,6 +11,9 @@ endif()
 
 include_directories(${SDL2_INCLUDE_DIRS} ${SDL2_IMAGE_INCLUDE_DIR})
 include_directories(${CMAKE_BINARY_DIR})
+include_directories(${stb_SOURCE_DIR}/)
+include_directories(${entt_SOURCE_DIR}/src/)
+
 include_directories(${SHSRenderer_SOURCE_DIR}/)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -36,5 +39,11 @@ add_executable(Hello3DObject hello_3d_object.cpp
   ${SHSRenderer_SOURCE_DIR}/shs_renderer.hpp
   )
 target_link_libraries(Hello3DObject PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)
+
+
+add_executable(HelloEntt hello_entt.cpp 
+  ${SHSRenderer_SOURCE_DIR}/shs_renderer.hpp
+  )
+target_link_libraries(Hello3DObject PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp EnTT::EnTT)
 
 

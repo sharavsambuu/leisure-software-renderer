@@ -468,51 +468,6 @@ namespace shs
 
         void save_png(const std::string &filename)
         {
-            if (SDL_Init(SDL_INIT_VIDEO) < 0)
-            {
-                std::cerr << "SDL_Init Error: " << SDL_GetError() << std::endl;
-                return;
-            }
-            int imgFlags = IMG_INIT_PNG;
-            if ((IMG_Init(imgFlags) & imgFlags) != imgFlags)
-            {
-                std::cerr << "IMG_Init Error: " << IMG_GetError() << std::endl;
-                SDL_Quit();
-                return;
-            }
-
-            SDL_Surface *surface = SDL_CreateRGBSurface(0, this->width, this->height, 32, 0, 0, 0, 0);
-
-            if (!surface)
-            {
-                std::cerr << "SDL_CreateRGBSurface Error: " << SDL_GetError() << std::endl;
-                IMG_Quit();
-                SDL_Quit();
-                return;
-            }
-
-            for (int x = 0; x < this->width; x++)
-            {
-                for (int y = 0; y < this->height; y++)
-                {
-                    shs::Color color = canvas[x][y];
-                    Uint32 raw_color = SDL_MapRGBA(surface->format, color.r, color.g, color.b, color.a);
-                    shs::Canvas::set_rawcolor_at_SDLSurface(surface, x, y, raw_color);
-                }
-            }
-
-            if (IMG_SavePNG(surface, filename.c_str()) < 0)
-            {
-                std::cerr << "IMG_SavePNG Error: " << IMG_GetError() << std::endl;
-            }
-            else
-            {
-                std::cout << "Image saved successfully." << std::endl;
-            }
-
-            SDL_FreeSurface(surface);
-            IMG_Quit();
-            SDL_Quit();
         }
 
     private:

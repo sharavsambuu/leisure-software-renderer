@@ -11,6 +11,8 @@ endif()
 
 include_directories(${SDL2_INCLUDE_DIRS} ${SDL2_IMAGE_INCLUDE_DIR})
 include_directories(${CMAKE_BINARY_DIR})
+
+include_directories(${stb_SOURCE_DIR}/)
 include_directories(${SHSRenderer_SOURCE_DIR}/)
 
 set(CMAKE_CXX_STANDARD 20)
