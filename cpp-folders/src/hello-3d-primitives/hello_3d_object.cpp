@@ -147,6 +147,46 @@ public:
     float             rotation_angle;
 };
 
+class TeapotObject : public shs::AbstractObject3D
+{
+public:
+    TeapotObject(glm::vec3 position, glm::vec3 scale)
+    {
+        this->position        = position;
+        this->scale           = scale;
+        this->geometry        = new ModelTriangles3D("./obj/teapot/stanford-teapot.rawobj");
+        this->rotation_angle  = 180.0;
+    }
+    ~TeapotObject()
+    {
+        delete this->geometry;
+    }
+    glm::mat4 get_world_matrix() override
+    {
+        glm::mat4 translation_matrix = glm::translate(glm::mat4(1.0), this->position);
+        glm::mat4 rotation_matrix    = glm::rotate   (glm::mat4(1.0), glm::radians(this->rotation_angle), glm::vec3(0.0f, 1.0f, 0.0f));
+        glm::mat4 scaling_matrix     = glm::scale    (glm::mat4(1.0), scale);
+        return translation_matrix * rotation_matrix * scaling_matrix;
+    }
+    void update(float delta_time) override
+    {
+        float rotation_speed = 30.0;
+        this->rotation_angle += rotation_speed * delta_time;
+        if (this->rotation_angle > 360.0f)
+        {
+            this->rotation_angle = 0.0f;
+        }
+    }
+    void render() override
+    {
+    }
+
+    ModelTriangles3D *geometry;
+    glm::vec3         scale;
+    glm::vec3         position;
+    float             rotation_angle;
+};
+
 
 class HelloScene : public shs::AbstractSceneState
 {
@@ -156,14 +196,15 @@ public:
         this->canvas = canvas;
         this->viewer = viewer;
 
-        float step = 13.3;
-        for (int i=0; i<3; ++i)
+        float step = 15.0;
+        for (int i=0; i<2; ++i)
         {
-            for (int j=0; j<3; ++j)
+            for (int j=0; j<2; ++j)
             {
-                this->scene_objects.push_back(new MonkeyObject(glm::vec3(i*step, 0.0, j*step+20.0f), glm::vec3(5.0, 5.0, 5.0)));
+                this->scene_objects.push_back(new MonkeyObject(glm::vec3(i*step, 0.0, j*step+30.0f), glm::vec3(5.0, 5.0, 5.0)));
             }
         }
+        this->scene_objects.push_back(new TeapotObject(glm::vec3(-3.0, 0.0, 3.0), glm::vec3(3.0, 3.0, 3.0)));
 
     }
     ~HelloScene()
@@ -226,6 +267,33 @@ public:
                     }
                 }
             }
+            if (typeid(*object) == typeid(TeapotObject))
+            {
+                TeapotObject *teapot = dynamic_cast<TeapotObject *>(object);
+                if (teapot)
+                {
+                    glm::mat4 world_matrix = teapot->get_world_matrix();
+                    glm::mat4 mvp_matrix   = projection_matrix*view_matrix*world_matrix;
+
+                    for (size_t i = 0; i < teapot->geometry->triangles.size(); i += 3)
+                    {
+                        glm::vec4 vertex1_clip_space = mvp_matrix * glm::vec4(teapot->geometry->triangles[i    ], 1.0);
+                        glm::vec4 vertex2_clip_space = mvp_matrix * glm::vec4(teapot->geometry->triangles[i + 1], 1.0);
+                        glm::vec4 vertex3_clip_space = mvp_matrix * glm::vec4(teapot->geometry->triangles[i + 2], 1.0);
+
+                        std::vector<glm::vec2> vertices_2d(3);
+                        vertices_2d[0] = shs::Canvas::clip_to_screen(vertex1_clip_space, CANVAS_WIDTH,  CANVAS_HEIGHT);
+                        vertices_2d[1] = shs::Canvas::clip_to_screen(vertex2_clip_space, CANVAS_WIDTH,  CANVAS_HEIGHT);
+                        vertices_2d[2] = shs::Canvas::clip_to_screen(vertex2_clip_space, CANVAS_WIDTH,  CANVAS_HEIGHT);
+
+                        shs::Canvas::draw_line(*this->scene->canvas, vertices_2d[0].x, vertices_2d[0].y, vertices_2d[1].x, vertices_2d[1].y, shs::Pixel::green_pixel());
+                        shs::Canvas::draw_line(*this->scene->canvas, vertices_2d[0].x, vertices_2d[0].y, vertices_2d[2].x, vertices_2d[2].y, shs::Pixel::green_pixel());
+                        shs::Canvas::draw_line(*this->scene->canvas, vertices_2d[1].x, vertices_2d[1].y, vertices_2d[2].x, vertices_2d[2].y, shs::Pixel::green_pixel());
+                        //shs::Canvas::draw_triangle(*this->scene->canvas, vertices_2d, shs::Pixel::random_pixel());
+                        shs::Canvas::draw_triangle(*this->scene->canvas, vertices_2d, shs::Pixel::blue_pixel());
+                    }
+                }
+            }
         }
     }
 private:
@@ -247,6 +315,14 @@ public:
                 if (monkey)
                 {
                     monkey->update(delta_time);
+                }
+            }
+            if (typeid(*object) == typeid(TeapotObject))
+            {
+                TeapotObject *teapot= dynamic_cast<TeapotObject *>(object);
+                if (teapot)
+                {
+                    teapot->update(delta_time);
                 }
             }
         }

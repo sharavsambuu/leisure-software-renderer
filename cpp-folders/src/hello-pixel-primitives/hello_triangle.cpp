@@ -98,8 +98,8 @@ public:
 
         std::vector<glm::vec3> colors = {
             {1.0f, 0.0f, 0.0f},
-            {0.0f, 0.0f, 1.0f},
-            {0.0f, 1.0f, 0.0f}
+            {0.0f, 1.0f, 0.0f},
+            {0.0f, 0.0f, 1.0f}
         };
         shs::Canvas::draw_triangle_color_approximation(canvas, new_vertices, colors);
 
@@ -121,9 +121,9 @@ public:
     glm::vec2  position       = glm::vec2(0.0f);
     glm::vec2  scale          = glm::vec2(3.0f);
     std::vector<glm::vec2> vertices = {
-        glm::vec2( 0.0f,  12.0f),
-        glm::vec2( 5.4f,  -3.2f),
-        glm::vec2( -4.0f, -4.0f),
+        glm::vec2(-1.0f, -1.0f),
+        glm::vec2( 0.0f,  1.0f),
+        glm::vec2( 1.0f, -1.0f),
     };
 
 };
@@ -143,10 +143,10 @@ int main()
     SDL_Texture *screen_texture  = SDL_CreateTextureFromSurface(renderer, main_sdlsurface);
 
     std::vector<TriangleObject> scene = {
-        TriangleObject(glm::vec2(200.0f, 390.0f),  45.0f, 6.5f, glm::vec2(3.0)),
-        TriangleObject(glm::vec2(150.0f, 200.0f),  45.0f, 6.5f, glm::vec2(5.0)),
-        TriangleObject(glm::vec2(100.0f, 150.0f),  45.0f, 6.5f, glm::vec2(16.0)),
-        TriangleObject(glm::vec2(100.0f, 100.0f),  45.0f, 6.5f, glm::vec2(14.0)),
+        TriangleObject(glm::vec2(200.0f, 390.0f),  45.0f, 6.5f, glm::vec2(32.0)),
+        TriangleObject(glm::vec2(150.0f, 200.0f),  45.0f, 6.5f, glm::vec2(30.0)),
+        TriangleObject(glm::vec2(100.0f, 150.0f),  45.0f, 6.5f, glm::vec2(66.0)),
+        TriangleObject(glm::vec2(100.0f, 100.0f),  45.0f, 6.5f, glm::vec2(54.0)),
         };
 
     bool exit = false;

@@ -461,7 +461,8 @@ namespace shs
             {
                 for (p.y = bboxmin.y; p.y <= bboxmax.y; p.y++)
                 {
-                    glm::vec2 pixel_position(p.x + 0.5f, p.y + 0.5f);
+                    //glm::vec2 pixel_position(p.x + 0.5f, p.y + 0.5f);
+                    glm::vec2 pixel_position(p.x, p.y);
                     glm::vec3 bc_screen = shs::Canvas::barycentric_coordinate(pixel_position, vertices);
 
                     if (bc_screen.x < 0 || bc_screen.y < 0 || bc_screen.z < 0)
@@ -473,7 +474,7 @@ namespace shs
 
                     // draw pixel in my coordinate system
                     glm::vec3 interpolated_color = bc_screen.x * in_colors[0] + bc_screen.y * in_colors[1] + bc_screen.z * in_colors[3];
-                    glm::vec4 rescaled_color = shs::Canvas::rescale_vec4_1_255(glm::vec4(interpolated_color, 1.0));
+                    glm::vec4 rescaled_color     = shs::Canvas::rescale_vec4_1_255(glm::vec4(interpolated_color, 1.0));
 
                     shs::Canvas::draw_pixel(canvas, p_my_coordinate_system.x, p_my_coordinate_system.y, shs::Color{std::uint8_t(rescaled_color.x), std::uint8_t(rescaled_color.y), std::uint8_t(rescaled_color.z), std::uint8_t(rescaled_color.w)});
                 }
