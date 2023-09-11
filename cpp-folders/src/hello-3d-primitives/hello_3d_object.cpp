@@ -156,8 +156,14 @@ public:
         this->canvas = canvas;
         this->viewer = viewer;
 
-        MonkeyObject *monkey_object = new MonkeyObject(glm::vec3(0.0, 0.0, 60.0), glm::vec3(10.0, 10.0, 10.0));
-        this->scene_objects.push_back(monkey_object);
+        float step = 13.3;
+        for (int i=0; i<3; ++i)
+        {
+            for (int j=0; j<3; ++j)
+            {
+                this->scene_objects.push_back(new MonkeyObject(glm::vec3(i*step, 0.0, j*step+20.0f), glm::vec3(5.0, 5.0, 5.0)));
+            }
+        }
 
     }
     ~HelloScene()
@@ -299,7 +305,7 @@ int main()
     SDL_Texture *screen_texture  = SDL_CreateTextureFromSurface(renderer, main_sdlsurface);
 
 
-    Viewer *viewer = new Viewer(glm::vec3(0.0, 0.0, -3.0), 150.0f);
+    Viewer *viewer = new Viewer(glm::vec3(0.0, 0.0, -13.0), 150.0f);
 
     HelloScene      *hello_scene      = new HelloScene(main_canvas, viewer);
     SystemProcessor *system_processor = new SystemProcessor(hello_scene);
