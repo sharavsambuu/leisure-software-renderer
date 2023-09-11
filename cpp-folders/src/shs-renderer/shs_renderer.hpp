@@ -481,6 +481,16 @@ namespace shs
     public:
         Camera3D()
         {
+            // some random default values can be changed them later
+            this->width            = 10.0;
+            this->height           = 10.0;
+            this->z_near           = 0.2;
+            this->z_far            = 1000.0;
+            this->field_of_view    = 45.0;
+            this->horizontal_angle = 0.0;
+            this->vertical_angle   = 10.0;
+            this->position         = glm::vec3(0.0, 0.0, 0.0);
+            this->direction_vector = glm::vec3(0.0, 0.0, 1.0);
         }
         ~Camera3D()
         {
@@ -498,7 +508,7 @@ namespace shs
                 cos(horizontal_angle - glm::pi<float>() / 2.0f));
             this->up_vector = glm::cross(this->right_vector, direction_vector);
 
-            this->projection_matrix = glm::perspective(this->field_of_view, this->width / this->height, this->z_near, z_far);
+            this->projection_matrix = glm::perspective(glm::radians(this->field_of_view), this->width / this->height, this->z_near, z_far);
             this->view_matrix = glm::lookAt(this->position, this->position + this->direction_vector, this->up_vector);
         }
 
@@ -529,7 +539,7 @@ namespace shs
     public:
         virtual void update(float delta_time) = 0;
         virtual void render() = 0;
-        virtual glm::mat4 get_model_matrix() = 0;
+        virtual glm::mat4 get_world_matrix() = 0;
     };
 
     class AbstractSceneState

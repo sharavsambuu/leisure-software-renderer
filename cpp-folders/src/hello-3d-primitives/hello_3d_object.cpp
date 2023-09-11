@@ -24,10 +24,16 @@ class Viewer
 public:
     Viewer(glm::vec3 position, float speed)
     {
-        this->position = position;
-        this->speed    = speed;
-        this->camera   = new shs::Camera3D();
-        this->camera->position = this->position;
+        this->position                 = position;
+        this->speed                    = speed;
+        this->camera                   = new shs::Camera3D();
+        this->camera->position         = this->position;
+        this->camera->width            = float(CANVAS_WIDTH);
+        this->camera->height           = float(CANVAS_HEIGHT);
+        this->camera->horizontal_angle = 0.0;
+        this->camera->vertical_angle   = 0.0;
+        this->camera->z_near           = 1.0;
+        this->camera->z_far            = 1000.0f;
     }
     ~Viewer() {}
 
@@ -99,40 +105,47 @@ private:
 class MonkeyObject : public shs::AbstractObject3D
 {
 public:
-    MonkeyObject()
+    MonkeyObject(glm::vec3 position, glm::vec3 scale)
     {
-        this->geometry = new ModelTriangles3D("./obj/monkey/monkey.rawobj");
+        this->position     = position;
+        this->scale        = scale;
+        this->geometry     = new ModelTriangles3D("./obj/monkey/monkey.rawobj");
+        this->model_matrix = glm::mat4(1.0);
     }
     ~MonkeyObject()
     {
         delete this->geometry;
     }
-    glm::mat4 get_model_matrix() override
+    glm::mat4 get_world_matrix() override
     {
-        return this->model_matrix;
+        glm::mat4 updated_matrix = this->model_matrix;
+        updated_matrix = glm::scale(updated_matrix, this->scale);
+        updated_matrix = glm::translate(updated_matrix, this->position);
+        return updated_matrix;
     }
     void update(float delta_time) override 
     {
-
     }
     void render() override
     {
-
     }
 
     ModelTriangles3D *geometry;
     glm::mat4         model_matrix;
+    glm::vec3         scale;
+    glm::vec3         position;
 };
 
 
 class HelloScene : public shs::AbstractSceneState
 {
 public:
-    HelloScene(shs::Canvas *canvas) 
+    HelloScene(shs::Canvas *canvas, Viewer *viewer) 
     {
         this->canvas = canvas;
+        this->viewer = viewer;
 
-        MonkeyObject *monkey_object = new MonkeyObject();
+        MonkeyObject *monkey_object = new MonkeyObject(glm::vec3(500.2, 20.2, 15.0), glm::vec3(1.0, 1.0, 1.0));
         this->scene_objects.push_back(monkey_object);
 
     }
@@ -142,6 +155,8 @@ public:
         {
             delete obj;
         }
+        delete this->canvas;
+        delete this->viewer;
     }
 
     void process() override
@@ -150,6 +165,7 @@ public:
 
     std::vector<shs::AbstractObject3D *> scene_objects;
     shs::Canvas  *canvas;
+    Viewer       *viewer;
 
 };
 
@@ -160,7 +176,9 @@ public:
     RendererSystem(HelloScene *scene) : scene(scene) {}
     void process(float delta_time) override
     {
-        std::cout << "render systen " << delta_time << std::endl;
+        //std::cout << "render systen " << delta_time << std::endl;
+        glm::mat4 view_matrix       = this->scene->viewer->camera->view_matrix;
+        glm::mat4 projection_matrix = this->scene->viewer->camera->projection_matrix;
 
         for (shs::AbstractObject3D *object : this->scene->scene_objects)
         {
@@ -169,12 +187,23 @@ public:
                 MonkeyObject *monkey = dynamic_cast<MonkeyObject *>(object);
                 if (monkey)
                 {
+                    glm::mat4 world_matrix = monkey->get_world_matrix();
                     for (size_t i = 0; i < monkey->geometry->triangles.size(); i += 3)
                     {
-                        glm::vec3 vertex1 = monkey->geometry->triangles[i    ];
-                        glm::vec3 vertex2 = monkey->geometry->triangles[i + 1];
-                        glm::vec3 vertex3 = monkey->geometry->triangles[i + 2];
-                        
+                        glm::vec4 vertex1 = glm::vec4(monkey->geometry->triangles[i    ], 1.0);
+                        glm::vec4 vertex2 = glm::vec4(monkey->geometry->triangles[i + 1], 1.0);
+                        glm::vec4 vertex3 = glm::vec4(monkey->geometry->triangles[i + 2], 1.0);
+
+                        glm::vec3 transformed_vertex1 = glm::vec3(world_matrix * view_matrix * projection_matrix * vertex1);
+                        glm::vec3 transformed_vertex2 = glm::vec3(world_matrix * view_matrix * projection_matrix * vertex2);
+                        glm::vec3 transformed_vertex3 = glm::vec3(world_matrix * view_matrix * projection_matrix * vertex3);
+
+                        std::vector<glm::vec2> vertices_2d(3);
+                        vertices_2d[0] = glm::vec2(transformed_vertex1.x, transformed_vertex1.y);
+                        vertices_2d[1] = glm::vec2(transformed_vertex2.x, transformed_vertex2.y);
+                        vertices_2d[2] = glm::vec2(transformed_vertex3.x, transformed_vertex3.y);
+
+                        shs::Canvas::draw_triangle(*this->scene->canvas, vertices_2d, shs::Pixel::random_pixel());
                     }
                 }
             }
@@ -190,7 +219,7 @@ public:
     LogicSystem(HelloScene *scene) : scene(scene) {}
     void process(float delta_time) override
     {
-        std::cout << "logic systen " << delta_time << std::endl;
+        this->scene->viewer->update();
     }
 
 private:
@@ -204,20 +233,29 @@ class SystemProcessor
 public:
     SystemProcessor(HelloScene *scene) 
     {
-        this->systems.push_back(new LogicSystem   (scene));
-        this->systems.push_back(new RendererSystem(scene));
+        this->command_processor = new shs::CommandProcessor();
+        this->renderer_system   = new RendererSystem(scene);
+        this->logic_system      = new LogicSystem(scene);
     }
     ~SystemProcessor()
     {
+        delete this->command_processor;
+        delete this->renderer_system;
+        delete this->logic_system;
     }
     void process(float delta_time) 
     {
-        for (auto &system : this->systems)
-        {
-            system->process(delta_time);
-        }
+        this->command_processor->process();
+        this->logic_system->process(delta_time);
     }
-    std::vector<shs::AbstractSystem *> systems;
+    void render(float delta_time)
+    {
+        this->renderer_system->process(delta_time);
+    }
+
+    shs::CommandProcessor *command_processor;
+    LogicSystem           *logic_system;
+    RendererSystem        *renderer_system;  
 };
 
 
@@ -237,10 +275,9 @@ int main()
     SDL_Texture *screen_texture  = SDL_CreateTextureFromSurface(renderer, main_sdlsurface);
 
 
-    Viewer *viewer = new Viewer(glm::vec3(0.0, 0.0, -3.0), 25.0f);
-    shs::CommandProcessor *command_processor = new shs::CommandProcessor();
+    Viewer *viewer = new Viewer(glm::vec3(0.0, 0.0, -23.0), 150.0f);
 
-    HelloScene      *hello_scene      = new HelloScene(main_canvas);
+    HelloScene      *hello_scene      = new HelloScene(main_canvas, viewer);
     SystemProcessor *system_processor = new SystemProcessor(hello_scene);
 
 
@@ -274,34 +311,32 @@ int main()
                         exit = true;
                         break;
                     case SDLK_w:
-                        command_processor->add_command(new shs::MoveForwardCommand(viewer->position, viewer->get_direction_vector(), viewer->speed, delta_time_float));
+                        system_processor->command_processor->add_command(new shs::MoveForwardCommand(viewer->position, viewer->get_direction_vector(), viewer->speed, delta_time_float));
                         break;
                     case SDLK_s:
-                        command_processor->add_command(new shs::MoveBackwardCommand(viewer->position, viewer->get_direction_vector(), viewer->speed, delta_time_float));
+                        system_processor->command_processor->add_command(new shs::MoveBackwardCommand(viewer->position, viewer->get_direction_vector(), viewer->speed, delta_time_float));
                         break;
                     case SDLK_a:
-                        command_processor->add_command(new shs::MoveLeftCommand(viewer->position, viewer->get_right_vector(), viewer->speed, delta_time_float));
+                        system_processor->command_processor->add_command(new shs::MoveLeftCommand(viewer->position, viewer->get_right_vector(), viewer->speed, delta_time_float));
                         break;
                     case SDLK_d:
-                        command_processor->add_command(new shs::MoveRightCommand(viewer->position, viewer->get_right_vector(), viewer->speed, delta_time_float));
+                        system_processor->command_processor->add_command(new shs::MoveRightCommand(viewer->position, viewer->get_right_vector(), viewer->speed, delta_time_float));
                         break;
                 }
                 break;
             }
         }
 
-        viewer->update();
-        command_processor->process();
-
+        system_processor->process(delta_time_float);
 
         // preparing to render on SDL2
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
 
         // software rendering or drawing stuffs goes around here
-        shs::Canvas::fill_pixel(*main_canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT, shs::Pixel::blue_pixel());
+        shs::Canvas::fill_pixel(*main_canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT, shs::Pixel::black_pixel());
 
-        system_processor->process(delta_time_float);
+        system_processor->render(delta_time_float);
 
         shs::Canvas::fill_random_pixel(*main_canvas, 40, 30, 60, 80);
 
@@ -334,9 +369,6 @@ int main()
 
     delete system_processor;
     delete hello_scene;
-    delete main_canvas;
-    delete viewer;
-    delete command_processor;
 
     SDL_DestroyTexture(screen_texture);
     SDL_FreeSurface(main_sdlsurface);
