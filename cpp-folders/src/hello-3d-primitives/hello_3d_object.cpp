@@ -107,10 +107,9 @@ class MonkeyObject : public shs::AbstractObject3D
 public:
     MonkeyObject(glm::vec3 position, glm::vec3 scale)
     {
-        this->position     = position;
-        this->scale        = scale;
-        this->geometry     = new ModelTriangles3D("./obj/monkey/monkey.rawobj");
-        this->model_matrix = glm::mat4(1.0);
+        this->position        = position;
+        this->scale           = scale;
+        this->geometry        = new ModelTriangles3D("./obj/monkey/monkey.rawobj");
     }
     ~MonkeyObject()
     {
@@ -118,10 +117,10 @@ public:
     }
     glm::mat4 get_world_matrix() override
     {
-        glm::mat4 updated_matrix = this->model_matrix;
-        updated_matrix = glm::scale(updated_matrix, this->scale);
-        updated_matrix = glm::translate(updated_matrix, this->position);
-        return updated_matrix;
+        glm::mat4 translation_matrix = glm::translate(glm::mat4(1.0), this->position);
+        glm::mat4 rotation_matrix    = glm::rotate   (glm::mat4(1.0), glm::radians(35.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        glm::mat4 scaling_matrix     = glm::scale    (glm::mat4(1.0), scale);
+        return translation_matrix * rotation_matrix * scaling_matrix;
     }
     void update(float delta_time) override 
     {
@@ -131,7 +130,6 @@ public:
     }
 
     ModelTriangles3D *geometry;
-    glm::mat4         model_matrix;
     glm::vec3         scale;
     glm::vec3         position;
 };
@@ -145,7 +143,7 @@ public:
         this->canvas = canvas;
         this->viewer = viewer;
 
-        MonkeyObject *monkey_object = new MonkeyObject(glm::vec3(500.2, 20.2, 15.0), glm::vec3(1.0, 1.0, 1.0));
+        MonkeyObject *monkey_object = new MonkeyObject(glm::vec3(650.2, 200.2, 150.0), glm::vec3(5.5, 20.0, 1.0));
         this->scene_objects.push_back(monkey_object);
 
     }
@@ -203,7 +201,10 @@ public:
                         vertices_2d[1] = glm::vec2(transformed_vertex2.x, transformed_vertex2.y);
                         vertices_2d[2] = glm::vec2(transformed_vertex3.x, transformed_vertex3.y);
 
-                        shs::Canvas::draw_triangle(*this->scene->canvas, vertices_2d, shs::Pixel::random_pixel());
+                        shs::Canvas::draw_line(*this->scene->canvas, vertices_2d[0].x, vertices_2d[0].y, vertices_2d[1].x, vertices_2d[1].y, shs::Pixel::green_pixel());
+                        shs::Canvas::draw_line(*this->scene->canvas, vertices_2d[0].x, vertices_2d[0].y, vertices_2d[2].x, vertices_2d[2].y, shs::Pixel::green_pixel());
+                        shs::Canvas::draw_line(*this->scene->canvas, vertices_2d[1].x, vertices_2d[1].y, vertices_2d[2].x, vertices_2d[2].y, shs::Pixel::green_pixel());
+                        shs::Canvas::draw_triangle(*this->scene->canvas, vertices_2d, shs::Pixel::blue_pixel());
                     }
                 }
             }
