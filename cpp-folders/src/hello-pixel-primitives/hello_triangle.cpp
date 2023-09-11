@@ -23,12 +23,13 @@ public:
     TriangleObject()
     {
     }
-    TriangleObject(glm::vec2 position, float angle_radian, float speed)
+    TriangleObject(glm::vec2 position, float angle_radian, float speed, glm::vec2 scale)
     {
-        this->position       = position;
-        this->angle_radian   = angle_radian;
-        this->speed          = speed;
-        this->velocity       = this->speed*glm::vec2(glm::cos(this->angle_radian), glm::sin(this->angle_radian));
+        this->position      = position;
+        this->angle_radian  = angle_radian;
+        this->speed         = speed;
+        this->scale         = scale;
+        this->velocity      = this->speed*glm::vec2(glm::cos(this->angle_radian), glm::sin(this->angle_radian));
     }
     ~TriangleObject()
     {
@@ -80,6 +81,30 @@ public:
 
     }
 
+    void render_with_color_approximation(shs::Canvas &canvas)
+    {
+
+        glm::mat4 translation_matrix    = glm::translate(glm::mat4(1.0f), glm::vec3(this->position, 0.0f));
+        glm::mat4 rotation_matrix       = glm::rotate(glm::mat4(1.0f), this->angle_radian, glm::vec3(0.0f, 0.0f, 1.0f));
+        glm::mat4 scaling_matrix        = glm::scale(glm::mat4(1.0f), glm::vec3(scale, 1.0f));
+        glm::mat4 transformation_matrix = translation_matrix * rotation_matrix * scaling_matrix;
+
+        std::vector<glm::vec2> new_vertices(3);
+        for (int i = 0; i < 3; ++i) {
+            glm::vec4 vertex_4d(this->vertices[i].x, this->vertices[i].y, 0.0f, 1.0f);
+            glm::vec4 transformed_vertex = transformation_matrix * vertex_4d;
+            new_vertices[i] = glm::vec2(transformed_vertex.x, transformed_vertex.y);
+        }
+
+        std::vector<glm::vec3> colors = {
+            {1.0f, 0.0f, 0.0f},
+            {0.0f, 0.0f, 1.0f},
+            {0.0f, 1.0f, 0.0f}
+        };
+        shs::Canvas::draw_triangle_color_approximation(canvas, new_vertices, colors);
+
+    }
+
     void set_color(shs::Color new_color)
     {
         this->color = new_color;
@@ -118,10 +143,10 @@ int main()
     SDL_Texture *screen_texture  = SDL_CreateTextureFromSurface(renderer, main_sdlsurface);
 
     std::vector<TriangleObject> scene = {
-        TriangleObject(glm::vec2(200.0f, 390.0f),  45.0f, 6.5f),
-        TriangleObject(glm::vec2(150.0f, 200.0f),  45.0f, 6.5f),
-        TriangleObject(glm::vec2(100.0f, 150.0f),  45.0f, 6.5f),
-        TriangleObject(glm::vec2(100.0f, 100.0f),  45.0f, 6.5f),
+        TriangleObject(glm::vec2(200.0f, 390.0f),  45.0f, 6.5f, glm::vec2(3.0)),
+        TriangleObject(glm::vec2(150.0f, 200.0f),  45.0f, 6.5f, glm::vec2(5.0)),
+        TriangleObject(glm::vec2(100.0f, 150.0f),  45.0f, 6.5f, glm::vec2(16.0)),
+        TriangleObject(glm::vec2(100.0f, 100.0f),  45.0f, 6.5f, glm::vec2(14.0)),
         };
 
     bool exit = false;
@@ -176,12 +201,10 @@ int main()
         second_object.render(*main_canvas);
 
         TriangleObject& third_object = scene[2];
-        third_object.set_color(shs::Pixel::red_pixel());
-        third_object.render(*main_canvas);
+        third_object.render_with_color_approximation(*main_canvas);
 
         TriangleObject& fourth_object = scene[3];
-        fourth_object.set_color(shs::Pixel::blue_pixel());
-        fourth_object.render(*main_canvas);
+        fourth_object.render_with_color_approximation(*main_canvas);
 
 
         shs::Canvas::fill_random_pixel(*main_canvas, 40, 30, 60, 80);

@@ -424,6 +424,63 @@ namespace shs
             }
         }
 
+        inline static glm::vec4 rescale_vec4_1_255(const glm::vec4 &input_vec)
+        {
+            glm::vec4 clamped_value = glm::clamp(input_vec, 0.0f, 1.0f);
+            glm::vec4 scaled_value = clamped_value * 255.0f;
+            return scaled_value;
+        }
+
+        static void draw_triangle_color_approximation(shs::Canvas &canvas, std::vector<glm::vec2> &in_vertices, std::vector<glm::vec3> &in_colors)
+        {
+            int max_x = canvas.get_width();
+            int max_y = canvas.get_height();
+
+            // converting from my coordinate system to popular rasterizer's coordinate system
+            // my coordinate system is origin is bottom left corner, y axis moves to upward and x axis moves to the right
+            // rasterizer's coordinate system is origin is top left corner, y axis moves to downward and x axis move to the right
+            std::vector<glm::vec2> vertices;
+            std::copy(in_vertices.begin(), in_vertices.end(), std::back_inserter(vertices));
+            for (auto &point : vertices)
+            {
+                point.y = max_y - point.y;
+            }
+
+            glm::vec2 bboxmin(canvas.get_width() - 1, canvas.get_height() - 1);
+            glm::vec2 bboxmax(0, 0);
+            glm::vec2 clamp(canvas.get_width() - 1, canvas.get_height() - 1);
+
+            for (int i = 0; i < 3; i++)
+            {
+                bboxmin = glm::max(glm::vec2(0), glm::min(bboxmin, vertices[i]));
+                bboxmax = glm::min(clamp, glm::max(bboxmax, vertices[i]));
+            }
+
+            glm::vec2 p;
+            for (p.x = bboxmin.x; p.x <= bboxmax.x; p.x++)
+            {
+                for (p.y = bboxmin.y; p.y <= bboxmax.y; p.y++)
+                {
+                    glm::vec2 pixel_position(p.x + 0.5f, p.y + 0.5f);
+                    glm::vec3 bc_screen = shs::Canvas::barycentric_coordinate(pixel_position, vertices);
+
+                    if (bc_screen.x < 0 || bc_screen.y < 0 || bc_screen.z < 0)
+                        continue;
+
+                    // draw pixel in my coordinate system
+                    glm::vec3 interpolated_color = bc_screen.x * in_colors[0] + bc_screen.y * in_colors[1] + bc_screen.z * in_colors[3];
+
+                    glm::ivec2 p_my_coordinate_system = p;
+                    p_my_coordinate_system.x = std::clamp<int>(p_my_coordinate_system.x, 0, max_x);
+                    p_my_coordinate_system.y = std::clamp<int>(max_y - p_my_coordinate_system.y, 0, max_y);
+
+                    glm::vec4 rescaled_color = shs::Canvas::rescale_vec4_1_255(glm::vec4(interpolated_color, 1.0));
+
+                    shs::Canvas::draw_pixel(canvas, p_my_coordinate_system.x, p_my_coordinate_system.y, shs::Color{std::uint8_t(rescaled_color.x), std::uint8_t(rescaled_color.y), std::uint8_t(rescaled_color.z), std::uint8_t(rescaled_color.w)});
+                }
+            }
+        }
+
         inline static glm::vec2 clip_to_screen(const glm::vec4 &clip_coord, int screen_width, int screen_height)
         {
             // Normalize the clip space coordinates
