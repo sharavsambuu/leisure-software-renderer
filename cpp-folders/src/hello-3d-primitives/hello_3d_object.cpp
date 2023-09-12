@@ -286,9 +286,9 @@ public:
                         vertices_2d[1] = shs::Canvas::clip_to_screen(vertex2_clip_space, CANVAS_WIDTH,  CANVAS_HEIGHT);
                         vertices_2d[2] = shs::Canvas::clip_to_screen(vertex2_clip_space, CANVAS_WIDTH,  CANVAS_HEIGHT);
 
-                        shs::Canvas::draw_line(*this->scene->canvas, vertices_2d[0].x, vertices_2d[0].y, vertices_2d[1].x, vertices_2d[1].y, shs::Pixel::green_pixel());
-                        shs::Canvas::draw_line(*this->scene->canvas, vertices_2d[0].x, vertices_2d[0].y, vertices_2d[2].x, vertices_2d[2].y, shs::Pixel::green_pixel());
-                        shs::Canvas::draw_line(*this->scene->canvas, vertices_2d[1].x, vertices_2d[1].y, vertices_2d[2].x, vertices_2d[2].y, shs::Pixel::green_pixel());
+                        //shs::Canvas::draw_line(*this->scene->canvas, vertices_2d[0].x, vertices_2d[0].y, vertices_2d[1].x, vertices_2d[1].y, shs::Pixel::green_pixel());
+                        //shs::Canvas::draw_line(*this->scene->canvas, vertices_2d[0].x, vertices_2d[0].y, vertices_2d[2].x, vertices_2d[2].y, shs::Pixel::green_pixel());
+                        //shs::Canvas::draw_line(*this->scene->canvas, vertices_2d[1].x, vertices_2d[1].y, vertices_2d[2].x, vertices_2d[2].y, shs::Pixel::green_pixel());
                         //shs::Canvas::draw_triangle(*this->scene->canvas, vertices_2d, shs::Pixel::random_pixel());
                         shs::Canvas::draw_triangle(*this->scene->canvas, vertices_2d, shs::Pixel::blue_pixel());
                     }
