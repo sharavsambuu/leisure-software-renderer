@@ -79,11 +79,11 @@ private:
 
 void send_batch_jobs(JobSystem &job_system)
 {
-    for (int i = 0; i < 10; ++i)
+    for (int i = 0; i < 2000; ++i)
     {
         job_system.submit([i] {
             std::cout << "Job " << i << " started" << std::endl;
-            for (int j=0; j<5; ++j)
+            for (int j=0; j<200; ++j)
             {
                 std::cout << "Job " << i << " is working..." << std::endl;
                 boost::this_fiber::yield(); // let's be nice with each other
@@ -104,7 +104,7 @@ int main()
 
     auto first_stop_time  = std::chrono::steady_clock::now() + std::chrono::seconds(5);
     bool is_sent_second_batch = false;
-    auto second_stop_time = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+    auto second_stop_time = std::chrono::steady_clock::now() + std::chrono::seconds(30);
 
 
     std::cout << ">>>>> sending first batch jobs" << std::endl;
