@@ -65,3 +65,12 @@ target_link_libraries(PrimitiveNestedFibers Threads::Threads
   -lboost_system 
   -lpthread
   )
+
+add_executable(HelloFiberJobSystem hello_fiber_job_system.cpp)
+target_link_libraries(HelloFiberJobSystem Threads::Threads 
+  -lboost_fiber
+  -lboost_thread
+  -lboost_context 
+  -lboost_system 
+  -lpthread
+  )
