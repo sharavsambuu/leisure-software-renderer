@@ -3,6 +3,7 @@
     Implement Fiber based job system using lockless priority queue
     Try to synchronize several fiber task on some pre placed barrier mechanism, or use atomic counters
     Try to group different tasks with different atomic counters 
+    Try to build concurrent job graph using array of atomic counters
     
     DONE Realtime looper using SDL2
     DONE Realtime canvas renderer on SDL2 window
