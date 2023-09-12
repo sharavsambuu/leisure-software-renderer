@@ -101,6 +101,9 @@
 
 
 # References
+    Parallelizing the Naughty Dog Engine Using Fibers
+      - https://www.youtube.com/watch?v=HIVBhKj7gQU
+      - https://www.createursdemondes.fr/wp-content/uploads/2015/03/parallelizing_the_naughty_dog_engine_using_fibers.pdf
     Tinyrendere project
       - https://github.com/ssloy/tinyrenderer
       - https://github.com/ssloy/tinyrenderer/wiki
