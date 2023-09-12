@@ -72,5 +72,16 @@ target_link_libraries(HelloFiberJobSystem Threads::Threads
   -lboost_thread
   -lboost_context 
   -lboost_system 
+  -lboost_chrono
+  -lpthread
+  )
+
+add_executable(HelloFiberJobSystemLockless hello_fiber_job_system_lockless.cpp)
+target_link_libraries(HelloFiberJobSystemLockless Threads::Threads 
+  -lboost_fiber
+  -lboost_thread
+  -lboost_context 
+  -lboost_system 
+  -lboost_chrono
   -lpthread
   )

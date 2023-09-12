@@ -20,12 +20,68 @@ public:
     bool is_running = true;
 };
 
-class JobSystem : public AbstractJobSystem
+template <typename T>
+class LockFreeQueue
 {
 public:
-    JobSystem(int concurrency_count)
+    LockFreeQueue()
     {
-        std::cout << "Job system is starting..." << std::endl;
+        head_ = new Node;
+        tail_ = head_.load(std::memory_order_relaxed);
+    }
+
+    ~LockFreeQueue()
+    {
+        while (Node *old_head = head_.load())
+        {
+            head_ = old_head->next;
+            delete old_head;
+        }
+    }
+
+    void push(const T &value)
+    {
+        Node *new_node = new Node;
+        new_node->data = value;
+        new_node->next = nullptr;
+
+        Node *prev_tail = tail_.exchange(new_node, std::memory_order_relaxed);
+        prev_tail->next = new_node;
+    }
+
+    std::optional<T> pop()
+    {
+        Node *old_head = head_.load(std::memory_order_relaxed);
+        Node *new_head = old_head->next;
+
+        if (new_head)
+        {
+            T value = new_head->data;
+            head_ = new_head;
+            delete old_head;
+            return value;
+        }
+
+        return std::nullopt; // Queue is empty
+    }
+
+private:
+    struct Node
+    {
+        T data;
+        Node *next;
+    };
+
+    std::atomic<Node *> head_;
+    std::atomic<Node *> tail_;
+};
+
+class LocklessJobSystem : public AbstractJobSystem
+{
+public:
+    LocklessJobSystem(int concurrency_count)
+    {
+        std::cout << "Lockless job system is starting..." << std::endl;
 
         this->concurrency_count = concurrency_count;
         this->workers.reserve(this->concurrency_count);
@@ -36,52 +92,33 @@ public:
                                              {
                 boost::fibers::use_scheduling_algorithm<boost::fibers::algo::work_stealing>(this->concurrency_count);
 
-                boost::this_thread::yield();
-
                 while(this->is_running)
                 {
-                    std::function<void()> job;
-
+                    auto job = this->job_queue.pop();
+                    if (job.has_value())
                     {
-                        std::unique_lock<std::mutex> lock(this->mutex);
-                        if (!this->job_queue.empty())
-                        {
-                            job = std::move(this->job_queue.front());
-                            this->job_queue.pop();
-                        }
+                        boost::fibers::fiber(job.value()).join();
                     }
-
-                    if (job)
-                    {
-                        //boost::fibers::fiber(job).detach();
-                        boost::fibers::fiber(job).join();
-                    }
-
-                    boost::this_thread::yield();
                 } });
         }
     }
-    ~JobSystem()
+    ~LocklessJobSystem()
     {
         for (auto &worker : this->workers)
         {
             worker.join();
         }
-        std::cout << "Job system is shutting down..." << std::endl;
+        std::cout << "Lockless job system is shutting down..." << std::endl;
     }
     void submit(std::function<void()> job) override
     {
-        {
-            std::unique_lock<std::mutex> lock(this->mutex);
-            job_queue.push(std::move(job));
-        }
+        this->job_queue.push(job);
     }
 
 private:
     int concurrency_count;
     std::vector<boost::thread> workers;
-    std::queue<std::function<void()>> job_queue;
-    std::mutex mutex;
+    LockFreeQueue<std::function<void()>> job_queue;
 };
 
 void send_batch_jobs(AbstractJobSystem &job_system)
@@ -104,7 +141,7 @@ void send_batch_jobs(AbstractJobSystem &job_system)
 int main()
 {
 
-    AbstractJobSystem *job_system = new JobSystem(CONCURRENCY_COUNT);
+    AbstractJobSystem *lockless_job_system = new LocklessJobSystem(CONCURRENCY_COUNT);
 
     bool is_engine_running = true;
 
@@ -113,7 +150,7 @@ int main()
     auto second_stop_time = std::chrono::steady_clock::now() + std::chrono::seconds(30);
 
     std::cout << ">>>>> sending first batch jobs" << std::endl;
-    send_batch_jobs(*job_system);
+    send_batch_jobs(*lockless_job_system);
 
     while (is_engine_running)
     {
@@ -122,19 +159,19 @@ int main()
         if (std::chrono::steady_clock::now() > first_stop_time && !is_sent_second_batch)
         {
 
-            std::cout << ">>>>> sending second batch jobs" << std::endl;
-            send_batch_jobs(*job_system);
+            std::cout << ">>>>> sending second batch jobs to the lockless workers" << std::endl;
+            send_batch_jobs(*lockless_job_system);
             is_sent_second_batch = true;
         }
 
         if (std::chrono::steady_clock::now() > second_stop_time)
         {
-            is_engine_running      = false;
-            job_system->is_running = false;
+            is_engine_running = false;
+            lockless_job_system->is_running = false;
         }
     }
 
-    delete job_system;
+    delete lockless_job_system;
 
     std::cout << "system is shutting down... bye!" << std::endl;
 
