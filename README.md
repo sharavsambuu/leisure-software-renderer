@@ -1,5 +1,6 @@
 
 # Tasks to mess around in the near future
+    Implement Fiber based job system using lockless priority queue
     Realtime looper using SDL2
     Realtime canvas renderer on SDL2 window
     Map vertext coordinates
