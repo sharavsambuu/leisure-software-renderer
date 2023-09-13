@@ -1,7 +1,6 @@
 
 # Tasks to mess around in the near future
-    Implement Fiber based job system with Boost convention
-    Try to synchronize several fiber task on some pre placed barrier mechanism, or use atomic counters
+    Try to synchronize several workers on some pre placed barrier mechanism, or use atomic counters
     Try to group different tasks with different atomic counters 
     Try to build concurrent job graph using array of atomic counters
 
