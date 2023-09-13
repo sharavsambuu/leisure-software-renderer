@@ -115,6 +115,8 @@ glm::vec4 fragment_shader(glm::vec2 uniform_uv, float uniform_time)
 int main()
 {
 
+    shs::Job::AbstractJobSystem *job_system = new shs::Job::ThreadedLocklessPriorityJobSystem(CONCURRENCY_COUNT);
+
     SDL_Window   *window   = nullptr;
     SDL_Renderer *renderer = nullptr;
 
@@ -126,9 +128,6 @@ int main()
     SDL_Surface *main_sdlsurface = main_canvas->create_sdl_surface();
     SDL_Texture *screen_texture  = SDL_CreateTextureFromSurface(renderer, main_sdlsurface);
 
-
-
-    shs::Job::AbstractJobSystem *job_system = new shs::Job::ThreadedLocklessPriorityJobSystem(CONCURRENCY_COUNT);
 
 
     bool exit = false;
