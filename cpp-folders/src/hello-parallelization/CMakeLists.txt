@@ -33,11 +33,11 @@ add_executable(HelloNestedLoops hello_nested_loops.cpp
   )
 target_link_libraries(HelloNestedLoops Threads::Threads ${SDL2_LIBRARIES} glm::glm)
 
-add_executable(HelloThreadShaderJobs hello_thread_shader_jobs.cpp)
-target_link_libraries(HelloThreadShaderJobs Threads::Threads ${SDL2_LIBRARIES} glm::glm)
+add_executable(HelloThreadShaderRaw hello_thread_shader_raw.cpp)
+target_link_libraries(HelloThreadShaderRaw Threads::Threads ${SDL2_LIBRARIES} glm::glm)
 
-add_executable(HelloThreadShaderZoned hello_thread_shader_zoned.cpp)
-target_link_libraries(HelloThreadShaderZoned Threads::Threads ${SDL2_LIBRARIES} glm::glm)
+add_executable(HelloThreadShaderRawZoned hello_thread_shader_raw_zoned.cpp)
+target_link_libraries(HelloThreadShaderRawZoned Threads::Threads ${SDL2_LIBRARIES} glm::glm)
 
 add_executable(PrimitiveLoops primitive_loops.cpp)
 target_link_libraries(PrimitiveLoops Threads::Threads)
