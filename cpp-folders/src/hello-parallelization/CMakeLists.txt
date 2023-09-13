@@ -93,18 +93,19 @@ target_link_libraries(HelloThreadJobSystemLocklessPriority
   Threads::Threads 
   )
 
-add_executable(HelloFiberJobSystemGraph hello_fiber_job_system_graph.cpp)
-target_link_libraries(HelloFiberJobSystemGraph Threads::Threads 
+
+add_executable(HelloFiberJobSystemSingleWorker hello_fiber_job_system_single_worker.cpp)
+target_link_libraries(HelloFiberJobSystemSingleWorker
   -lboost_fiber
   -lboost_thread
   -lboost_context 
   -lboost_system 
   -lboost_chrono
-  -lpthread
+  Threads::Threads 
   )
 
-add_executable(HelloFiberJobSystemBoost hello_fiber_job_system_boost.cpp)
-target_link_libraries(HelloFiberJobSystemBoost 
+add_executable(HelloFiberJobSystemGraph hello_fiber_job_system_graph.cpp)
+target_link_libraries(HelloFiberJobSystemGraph 
   -lboost_fiber
   -lboost_thread
   -lboost_context 
