@@ -1,130 +1,13 @@
 #include <iostream>
-#include <vector>
-#include <queue>
-#include <atomic>
-#include <functional>
-#include <optional>
-#include <boost/fiber/all.hpp>
-#include <boost/fiber/fiber.hpp>
-#include <boost/fiber/future.hpp>
-#include <boost/thread/thread.hpp>
-#include <boost/chrono.hpp>
+#include "shs_renderer.hpp"
 
 #define CONCURRENCY_COUNT 4
 
-class AbstractJobSystem
-{
-public:
-    virtual ~AbstractJobSystem(){};
-    virtual void submit(std::function<void()> job) = 0;
-    bool is_running = true;
-};
-
-template <typename T>
-class LocklessQueue
-{
-public:
-    LocklessQueue()
-    {
-        head_ = new Node;
-        tail_ = head_.load(std::memory_order_relaxed);
-    }
-
-    ~LocklessQueue()
-    {
-        while (Node *old_head = head_.load())
-        {
-            head_ = old_head->next;
-            delete old_head;
-        }
-    }
-
-    void push(const T &value)
-    {
-        Node *new_node = new Node;
-        new_node->data = value;
-        new_node->next = nullptr;
-
-        Node *prev_tail = tail_.exchange(new_node, std::memory_order_relaxed);
-        prev_tail->next = new_node;
-    }
-
-    std::optional<T> pop()
-    {
-        Node *old_head = head_.load(std::memory_order_relaxed);
-        Node *new_head = old_head->next;
-
-        if (new_head)
-        {
-            T value = new_head->data;
-            head_ = new_head;
-            delete old_head;
-            return value;
-        }
-
-        return std::nullopt; // Queue is empty
-    }
-
-private:
-    struct Node
-    {
-        T data;
-        Node *next;
-    };
-
-    std::atomic<Node *> head_;
-    std::atomic<Node *> tail_;
-};
-
-class LocklessJobSystem : public AbstractJobSystem
-{
-public:
-    LocklessJobSystem(int concurrency_count)
-    {
-        std::cout << "Lockless job system is starting..." << std::endl;
-
-        this->concurrency_count = concurrency_count;
-        this->workers.reserve(this->concurrency_count);
-
-        for (int i = 0; i < this->concurrency_count; ++i)
-        {
-            this->workers[i] = boost::thread([this, i] {
-                boost::fibers::use_scheduling_algorithm<boost::fibers::algo::work_stealing>(this->concurrency_count);
-                while(this->is_running)
-                {
-                    auto task = this->job_queue.pop();
-                    if (task.has_value())
-                    {
-                        boost::fibers::fiber(task.value()).join();
-                    }
-                } 
-            });
-        }
-    }
-    ~LocklessJobSystem()
-    {
-        for (auto &worker : this->workers)
-        {
-            worker.join();
-        }
-        std::cout << "Lockless job system is shutting down..." << std::endl;
-    }
-    void submit(std::function<void()> task) override
-    {
-        this->job_queue.push(task);
-    }
-
-private:
-    int concurrency_count;
-    std::vector<boost::thread> workers;
-    LocklessQueue<std::function<void()>> job_queue;
-};
-
-void send_batch_jobs(AbstractJobSystem &job_system)
+void send_batch_jobs(shs::AbstractJobSystem &job_system)
 {
     for (int i = 0; i < 2000; ++i)
     {
-        job_system.submit([i] {
+        job_system.submit({[i] {
             std::cout << "Job " << i << " started" << std::endl;
             for (int j=0; j<200; ++j)
             {
@@ -133,14 +16,14 @@ void send_batch_jobs(AbstractJobSystem &job_system)
             }
             boost::this_fiber::yield();
             std::cout << "Job " << i << " finished" << std::endl; 
-        });
+        }, shs::JobPriority::NORMAL});
     }
 }
 
 int main()
 {
 
-    AbstractJobSystem *lockless_job_system = new LocklessJobSystem(CONCURRENCY_COUNT);
+    shs::AbstractJobSystem *lockless_job_system = new shs::LocklessJobSystem(CONCURRENCY_COUNT);
 
     bool is_engine_running = true;
 

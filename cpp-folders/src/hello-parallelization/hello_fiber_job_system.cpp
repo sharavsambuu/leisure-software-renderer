@@ -1,92 +1,13 @@
 #include <iostream>
-#include <vector>
-#include <queue>
-#include <atomic>
-#include <functional>
-#include <optional>
-#include <boost/fiber/all.hpp>
-#include <boost/fiber/fiber.hpp>
-#include <boost/fiber/future.hpp>
-#include <boost/thread/thread.hpp>
-#include <boost/chrono.hpp>
+#include "shs_renderer.hpp"
 
 #define CONCURRENCY_COUNT 4
 
-class AbstractJobSystem
-{
-public:
-    virtual ~AbstractJobSystem(){};
-    virtual void submit(std::function<void()> job) = 0;
-    bool is_running = true;
-};
-
-class JobSystem : public AbstractJobSystem
-{
-public:
-    JobSystem(int concurrency_count)
-    {
-        std::cout << "Job system is starting..." << std::endl;
-
-        this->concurrency_count = concurrency_count;
-        this->workers.reserve(this->concurrency_count);
-
-        for (int i = 0; i < this->concurrency_count; ++i)
-        {
-            this->workers[i] = boost::thread([this, i] {
-                boost::fibers::use_scheduling_algorithm<boost::fibers::algo::work_stealing>(this->concurrency_count);
-
-                while(this->is_running)
-                {
-                    std::function<void()> task;
-
-                    {
-                        std::unique_lock<std::mutex> lock(this->mutex);
-                        if (!this->job_queue.empty())
-                        {
-                            task = std::move(this->job_queue.front());
-                            this->job_queue.pop();
-                        }
-                    }
-
-                    if (task)
-                    {
-                        //boost::fibers::fiber(task).detach();
-                        boost::fibers::fiber(task).join();
-                    }
-
-                    boost::this_thread::yield();
-                } 
-            });
-        }
-    }
-    ~JobSystem()
-    {
-        for (auto &worker : this->workers)
-        {
-            worker.join();
-        }
-        std::cout << "Job system is shutting down..." << std::endl;
-    }
-    void submit(std::function<void()> task) override
-    {
-        {
-            std::unique_lock<std::mutex> lock(this->mutex);
-            job_queue.push(std::move(task));
-        }
-    }
-
-private:
-    int concurrency_count;
-    std::vector<boost::thread> workers;
-    std::queue<std::function<void()>> job_queue;
-    std::mutex mutex;
-};
-
-void send_batch_jobs(AbstractJobSystem &job_system)
+void send_batch_jobs(shs::AbstractJobSystem &job_system)
 {
     for (int i = 0; i < 2000; ++i)
     {
-        job_system.submit([i] {
+        job_system.submit({[i] {
             std::cout << "Job " << i << " started" << std::endl;
             for (int j=0; j<200; ++j)
             {
@@ -95,14 +16,14 @@ void send_batch_jobs(AbstractJobSystem &job_system)
             }
             boost::this_fiber::yield();
             std::cout << "Job " << i << " finished" << std::endl; 
-        });
+        }, shs::JobPriority::NORMAL});
     }
 }
 
 int main()
 {
 
-    AbstractJobSystem *job_system = new JobSystem(CONCURRENCY_COUNT);
+    shs::AbstractJobSystem *job_system = new shs::JobSystem(CONCURRENCY_COUNT);
 
     bool is_engine_running = true;
 
