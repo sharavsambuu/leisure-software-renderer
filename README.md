@@ -1,17 +1,20 @@
 
 # Tasks to mess around in the near future
-    Realtime looper using SDL2
-    Realtime canvas renderer on SDL2 window
-    Map vertext coordinates
+    Implement Fiber based job system using lockless priority queue
+    Try to synchronize several fiber task on some pre placed barrier mechanism, or use atomic counters
+    Try to group different tasks with different atomic counters 
+    Try to build concurrent job graph using array of atomic counters
+    
+    DONE Realtime looper using SDL2
+    DONE Realtime canvas renderer on SDL2 window
+    DONE Map vertext coordinates
       - Map vertices from local obj space coordinates to scene space coordinates
       - Map vertices from scene space coordinates to camera space coordinates
       - Map vertices from camera space coordinates to the homogenous space coordinates
-    Add a few more OBJ in the scene
-    Rotate and Translate 3D model
-    Rotate and Translate camera, drive through scene
-    Control camera zoom in/out 
-    Control camera frustum related params
-    lists go on...
+    DONE Add a few more OBJ in the scene
+    DONE Rotate and Translate 3D model
+    DONE Rotate and Translate camera, drive through scene
+    
 
 
 # About
@@ -98,6 +101,9 @@
 
 
 # References
+    Parallelizing the Naughty Dog Engine Using Fibers
+      - https://www.youtube.com/watch?v=HIVBhKj7gQU
+      - https://www.createursdemondes.fr/wp-content/uploads/2015/03/parallelizing_the_naughty_dog_engine_using_fibers.pdf
     Tinyrendere project
       - https://github.com/ssloy/tinyrenderer
       - https://github.com/ssloy/tinyrenderer/wiki
