@@ -758,11 +758,8 @@ namespace shs
     public:
         JobSystem(int concurrency_count)
         {
-            std::cout << "Job system is starting..." << std::endl;
-
             this->concurrency_count = concurrency_count;
             this->workers.reserve(this->concurrency_count);
-
             for (int i = 0; i < this->concurrency_count; ++i)
             {
                 this->workers[i] = boost::thread([this, i] {
@@ -790,14 +787,15 @@ namespace shs
                     } 
                 });
             }
+            std::cout << "STATUS : Job system is started." << std::endl;
         }
         ~JobSystem()
         {
+            std::cout << "STATUS : Job system is shutting down..." << std::endl;
             for (auto &worker : this->workers)
             {
                 worker.join();
             }
-            std::cout << "Job system is shutting down..." << std::endl;
         }
         void submit(std::pair<std::function<void()>, int> task) override
         {
@@ -872,7 +870,6 @@ namespace shs
     public:
         LocklessJobSystem(int concurrency_count)
         {
-            std::cout << "Lockless job system is starting..." << std::endl;
 
             this->concurrency_count = concurrency_count;
             this->workers.reserve(this->concurrency_count);
@@ -891,14 +888,15 @@ namespace shs
                     } 
                 });
             }
+            std::cout << "STATUS : Lockless job system is started." << std::endl;
         }
         ~LocklessJobSystem()
         {
+            std::cout << " STATUS : Lockless job system is shutting down..." << std::endl;
             for (auto &worker : this->workers)
             {
                 worker.join();
             }
-            std::cout << "Lockless job system is shutting down..." << std::endl;
         }
         void submit(std::pair<std::function<void()>, int> task) override
         {
@@ -972,11 +970,8 @@ namespace shs
     public:
         LocklessPriorityJobSystem(int concurrency_count)
         {
-            std::cout << "Lockless priority job system is starting..." << std::endl;
-
             this->concurrency_count = concurrency_count;
             this->workers.reserve(this->concurrency_count);
-
             for (int i = 0; i < this->concurrency_count; ++i)
             {
                 this->workers[i] = boost::thread([this, i]{
@@ -988,18 +983,26 @@ namespace shs
                         {
                             auto [task, priority] = task_priority.value();
                             boost::fibers::fiber(task).join();
+                            //boost::fibers::fiber(task).detach();
                         }
                     } 
                 });
             }
-        }
-        ~LocklessPriorityJobSystem()
-        {
+
+            std::cout << "STATUS : Lockless priority job system is started." << std::endl;
+
             for (auto &worker : this->workers)
             {
                 worker.join();
             }
-            std::cout << "Lockless priority job system is shutting down..." << std::endl;
+        }
+        ~LocklessPriorityJobSystem()
+        {
+            std::cout << "STATUS : Lockless priority job system is shutting down..." << std::endl;
+            for (auto &worker : this->workers)
+            {
+                worker.join();
+            }
         }
         void submit(std::pair<std::function<void()>, int> task) override
         {

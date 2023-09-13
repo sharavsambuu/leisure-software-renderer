@@ -1,5 +1,6 @@
 #include <iostream>
 #include "shs_renderer.hpp"
+#include <boost/chrono.hpp>
 
 /**
  * 
@@ -20,23 +21,37 @@
 
 #define CONCURRENCY_COUNT 4
 
+// main task coordinator fiber, spawns a single dedicated fiber
 void run_task_manager(shs::AbstractJobSystem &job_system)
 {
-    for (int i = 0; i < 2000; ++i)
-    {
-        job_system.submit({[i] {
-            //std::cout << "Job " << i << " started" << std::endl;
-            for (int j=0; j<200; ++j)
+    auto last_time = boost::chrono::steady_clock::now();
+    int counter    = 0;
+
+    job_system.submit({[&last_time, &counter] {
+
+        std::cout << "STATUS : Task manager is started. " << std::endl;
+
+        bool is_task_manager_running = true;
+        while (is_task_manager_running) 
+        {
+            auto now = boost::chrono::steady_clock::now();
+            auto elapsed = now - last_time;
+            if (elapsed >= boost::chrono::seconds(3))
             {
-                //std::cout << "Job " << i << " is working..." << std::endl;
-                boost::this_fiber::yield(); // let's be nice with each other
+                std::cout << "STATUS : Task manager is alive...";
+                last_time = now;
+                ++counter;
             }
-            boost::this_fiber::yield();
-            //std::cout << "Job " << i << " finished" << std::endl; 
-        },
-        shs::JobPriority::NORMAL
-        });
-    }
+            if (counter>5)
+            {
+                is_task_manager_running = false;
+            }
+            //boost::this_fiber::sleep_for(boost::chrono::milliseconds(100));
+        }
+
+        std::cout << "STATUS : Task manager is finished. Sayunara!" << std::endl;
+
+    }, shs::JobPriority::HIGH});
 }
 
 int main()
@@ -51,12 +66,10 @@ int main()
 
     while (is_engine_running)
     {
-        std::this_thread::sleep_for(std::chrono::milliseconds(3000));
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
         if (std::chrono::steady_clock::now() > first_stop_time && !did_run_task_manager)
         {
-
-            std::cout << "STATUS : Starting a task manager... " << std::endl;
             run_task_manager(*lockless_job_system);
             did_run_task_manager = true;
         }
@@ -67,7 +80,7 @@ int main()
             lockless_job_system->is_running = false;
         }
 
-        std::cout << "STATUS : Main thread is running..." << std::endl;
+        std::cout << "STATUS : Main thread is alive..." << std::endl;
     }
 
     delete lockless_job_system;
