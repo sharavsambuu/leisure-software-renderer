@@ -1,10 +1,9 @@
-
 #include <iostream>
 #include "shs_renderer.hpp"
 
 #define CONCURRENCY_COUNT 4
 
-void send_batch_jobs(shs::Job::AbstractJobSystem &job_system, int priority)
+void send_batch_jobs(shs::Job::AbstractJobSystem &job_system)
 {
     for (int i = 0; i < 2000; ++i)
     {
@@ -13,42 +12,16 @@ void send_batch_jobs(shs::Job::AbstractJobSystem &job_system, int priority)
             for (int j=0; j<200; ++j)
             {
                 std::cout << "Job " << i << " is working..." << std::endl;
-                boost::this_fiber::yield(); // let's be nice with each other
             }
-            boost::this_fiber::yield();
             std::cout << "Job " << i << " finished" << std::endl; 
-        },
-        priority
-        });
+        }, shs::Job::PRIORITY_NORMAL});
     }
 }
 
 int main()
 {
-    /*
-    shs::LocklessPriorityQueue<std::pair<int, int>> test_queue;
-    test_queue.push({ 55,  2});
-    test_queue.push({ 33,  1});
-    test_queue.push({153,  3});
-    test_queue.push({413,  3});
-    test_queue.push({  1, 13});
-    std::cout << "Queue Size: " << test_queue.count() << std::endl;
-    for (int i = 0; i < 10; ++i)
-    {
-        auto element = test_queue.pop();
-        if (element.has_value())
-        {
-            auto [value, priority] = element.value();
-            std::cout << "priority : " << priority << ", value : " << value << std::endl;
-        }
-        else
-        {
-            std::cout << "queue is empty." << std::endl;
-        }
-    }
-    */
 
-    shs::Job::AbstractJobSystem *lockless_job_system = new shs::Job::LocklessPriorityJobSystem(CONCURRENCY_COUNT);
+    shs::Job::AbstractJobSystem *lockless_job_system = new shs::Job::ThreadedLocklessJobSystem(CONCURRENCY_COUNT);
 
     bool is_engine_running = true;
 
@@ -57,7 +30,7 @@ int main()
     auto second_stop_time = std::chrono::steady_clock::now() + std::chrono::seconds(30);
 
     std::cout << ">>>>> sending first batch jobs" << std::endl;
-    send_batch_jobs(*lockless_job_system, shs::Job::PRIORITY_NORMAL);
+    send_batch_jobs(*lockless_job_system);
 
     while (is_engine_running)
     {
@@ -66,8 +39,8 @@ int main()
         if (std::chrono::steady_clock::now() > first_stop_time && !is_sent_second_batch)
         {
 
-            std::cout << ">>>>> sending second batch jobs to the lockless priority workers" << std::endl;
-            send_batch_jobs(*lockless_job_system, shs::Job::PRIORITY_HIGH);
+            std::cout << ">>>>> sending second batch jobs to the lockless workers" << std::endl;
+            send_batch_jobs(*lockless_job_system);
             is_sent_second_batch = true;
         }
 

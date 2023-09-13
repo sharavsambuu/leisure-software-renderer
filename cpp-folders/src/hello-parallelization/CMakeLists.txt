@@ -32,15 +32,11 @@ add_executable(HelloNestedLoops hello_nested_loops.cpp
   )
 target_link_libraries(HelloNestedLoops Threads::Threads ${SDL2_LIBRARIES} glm::glm)
 
-add_executable(HelloThreadJobs hello_thread_jobs.cpp 
-  ${SHSRenderer_SOURCE_DIR}/shs_renderer.hpp
-)
-target_link_libraries(HelloThreadJobs Threads::Threads ${SDL2_LIBRARIES} glm::glm)
+add_executable(HelloThreadShaderJobs hello_thread_shader_jobs.cpp)
+target_link_libraries(HelloThreadShaderJobs Threads::Threads ${SDL2_LIBRARIES} glm::glm)
 
-add_executable(HelloThreadZoned hello_thread_zoned.cpp 
-  ${SHSRenderer_SOURCE_DIR}/shs_renderer.hpp
-)
-target_link_libraries(HelloThreadZoned Threads::Threads ${SDL2_LIBRARIES} glm::glm)
+add_executable(HelloThreadShaderZoned hello_thread_shader_zoned.cpp)
+target_link_libraries(HelloThreadShaderZoned Threads::Threads ${SDL2_LIBRARIES} glm::glm)
 
 add_executable(PrimitiveLoops primitive_loops.cpp)
 target_link_libraries(PrimitiveLoops Threads::Threads)
@@ -49,12 +45,12 @@ add_executable(PrimitiveThreads primitive_threads.cpp)
 target_link_libraries(PrimitiveThreads Threads::Threads)
 
 add_executable(PrimitiveFibers primitive_fibers.cpp)
-target_link_libraries(PrimitiveFibers Threads::Threads 
+target_link_libraries(PrimitiveFibers 
   -lboost_fiber
   -lboost_thread
   -lboost_context 
   -lboost_system 
-  -lpthread
+  Threads::Threads 
   )
 
 add_executable(PrimitiveNestedFibers primitive_nested_fibers.cpp)
@@ -66,34 +62,35 @@ target_link_libraries(PrimitiveNestedFibers Threads::Threads
   -lpthread
   )
 
-add_executable(HelloFiberJobSystem hello_fiber_job_system.cpp)
-target_link_libraries(HelloFiberJobSystem Threads::Threads 
+
+add_executable(HelloThreadJobSystem hello_thread_job_system.cpp)
+target_link_libraries(HelloThreadJobSystem 
   -lboost_fiber
   -lboost_thread
   -lboost_context 
   -lboost_system 
   -lboost_chrono
-  -lpthread
+  Threads::Threads 
   )
 
-add_executable(HelloFiberJobSystemLockless hello_fiber_job_system_lockless.cpp)
-target_link_libraries(HelloFiberJobSystemLockless Threads::Threads 
+add_executable(HelloThreadJobSystemLockless hello_thread_job_system_lockless.cpp)
+target_link_libraries(HelloThreadJobSystemLockless 
   -lboost_fiber
   -lboost_thread
   -lboost_context 
   -lboost_system 
   -lboost_chrono
-  -lpthread
+  Threads::Threads 
   )
 
-add_executable(HelloFiberJobSystemLocklessPriority hello_fiber_job_system_lockless_priority.cpp)
-target_link_libraries(HelloFiberJobSystemLocklessPriority Threads::Threads 
+add_executable(HelloThreadJobSystemLocklessPriority hello_thread_job_system_lockless_priority.cpp)
+target_link_libraries(HelloThreadJobSystemLocklessPriority 
   -lboost_fiber
   -lboost_thread
   -lboost_context 
   -lboost_system 
   -lboost_chrono
-  -lpthread
+  Threads::Threads 
   )
 
 add_executable(HelloFiberJobSystemGraph hello_fiber_job_system_graph.cpp)

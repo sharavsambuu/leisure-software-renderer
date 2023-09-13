@@ -57,7 +57,7 @@ void run_task_manager(shs::Job::AbstractJobSystem &job_system)
 int main()
 {
 
-    shs::Job::AbstractJobSystem *lockless_job_system = new shs::Job::LocklessPriorityJobSystem(CONCURRENCY_COUNT);
+    shs::Job::AbstractJobSystem *lockless_job_system = new shs::Job::ThreadedLocklessPriorityJobSystem(CONCURRENCY_COUNT);
 
     bool is_engine_running    = true;
     auto first_stop_time      = std::chrono::steady_clock::now() + std::chrono::seconds(5);

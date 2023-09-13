@@ -869,17 +869,16 @@ namespace shs
             bool is_running = true;
         };
 
-        class JobSystem : public shs::Job::AbstractJobSystem
+        class ThreadedJobSystem : public shs::Job::AbstractJobSystem
         {
         public:
-            JobSystem(int concurrency_count)
+            ThreadedJobSystem(int concurrency_count)
             {
                 this->concurrency_count = concurrency_count;
                 this->workers.reserve(this->concurrency_count);
                 for (int i = 0; i < this->concurrency_count; ++i)
                 {
                     this->workers[i] = boost::thread([this, i] {
-                        boost::fibers::use_scheduling_algorithm<boost::fibers::algo::work_stealing>(this->concurrency_count);
                         while (this->is_running)
                         {
                             std::function<void()> task;
@@ -895,19 +894,17 @@ namespace shs
 
                             if (task)
                             {
-                                // boost::fibers::fiber(task).detach();
-                                boost::fibers::fiber(task).join();
+                                task();
                             }
 
-                            boost::this_thread::yield();
                         } 
                     });
                 }
-                std::cout << "STATUS : Job system is started." << std::endl;
+                std::cout << "STATUS : Threaded Job system is started." << std::endl;
             }
-            ~JobSystem()
+            ~ThreadedJobSystem()
             {
-                std::cout << "STATUS : Job system is shutting down..." << std::endl;
+                std::cout << "STATUS : Threaded Job system is shutting down..." << std::endl;
                 for (auto &worker : this->workers)
                 {
                     worker.join();
@@ -928,10 +925,10 @@ namespace shs
             std::mutex mutex;
         };
 
-        class LocklessJobSystem : public shs::Job::AbstractJobSystem
+        class ThreadedLocklessJobSystem : public shs::Job::AbstractJobSystem
         {
         public:
-            LocklessJobSystem(int concurrency_count)
+            ThreadedLocklessJobSystem(int concurrency_count)
             {
 
                 this->concurrency_count = concurrency_count;
@@ -940,22 +937,21 @@ namespace shs
                 for (int i = 0; i < this->concurrency_count; ++i)
                 {
                     this->workers[i] = boost::thread([this, i] {
-                        boost::fibers::use_scheduling_algorithm<boost::fibers::algo::work_stealing>(this->concurrency_count);
                         while (this->is_running)
                         {
                             auto task = this->job_queue.pop();
                             if (task.has_value())
                             {
-                                boost::fibers::fiber(task.value()).join();
+                                task.value()();
                             }
                         } 
                     });
                 }
-                std::cout << "STATUS : Lockless job system is started." << std::endl;
+                std::cout << "STATUS : Threaded lockless job system is started." << std::endl;
             }
-            ~LocklessJobSystem()
+            ~ThreadedLocklessJobSystem()
             {
-                std::cout << " STATUS : Lockless job system is shutting down..." << std::endl;
+                std::cout << " STATUS : Threaded lockless job system is shutting down..." << std::endl;
                 for (auto &worker : this->workers)
                 {
                     worker.join();
@@ -972,25 +968,23 @@ namespace shs
             shs::Util::LocklessQueue<std::function<void()>> job_queue;
         };
 
-        class LocklessPriorityJobSystem : public shs::Job::AbstractJobSystem
+        class ThreadedLocklessPriorityJobSystem : public shs::Job::AbstractJobSystem
         {
         public:
-            LocklessPriorityJobSystem(int concurrency_count)
+            ThreadedLocklessPriorityJobSystem(int concurrency_count)
             {
                 this->concurrency_count = concurrency_count;
                 this->workers.reserve(this->concurrency_count);
                 for (int i = 0; i < this->concurrency_count; ++i)
                 {
                     this->workers[i] = boost::thread([this, i] {
-                        boost::fibers::use_scheduling_algorithm<boost::fibers::algo::work_stealing>(this->concurrency_count);
                         while (this->is_running)
                         {
                             auto task_priority = this->job_queue.pop();
                             if (task_priority.has_value())
                             {
                                 auto [task, priority] = task_priority.value();
-                                boost::fibers::fiber(task).join();
-                                // boost::fibers::fiber(task).detach();
+                                task();
                             }
                         } 
                     });
@@ -1003,7 +997,7 @@ namespace shs
                     worker.join();
                 }
             }
-            ~LocklessPriorityJobSystem()
+            ~ThreadedLocklessPriorityJobSystem()
             {
                 std::cout << "STATUS : Lockless priority job system is shutting down..." << std::endl;
                 for (auto &worker : this->workers)

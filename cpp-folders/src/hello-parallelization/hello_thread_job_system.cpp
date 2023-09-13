@@ -12,9 +12,7 @@ void send_batch_jobs(shs::Job::AbstractJobSystem &job_system)
             for (int j=0; j<200; ++j)
             {
                 std::cout << "Job " << i << " is working..." << std::endl;
-                boost::this_fiber::yield(); // let's be nice with each other
             }
-            boost::this_fiber::yield();
             std::cout << "Job " << i << " finished" << std::endl; 
         }, shs::Job::PRIORITY_NORMAL});
     }
@@ -23,7 +21,7 @@ void send_batch_jobs(shs::Job::AbstractJobSystem &job_system)
 int main()
 {
 
-    shs::Job::AbstractJobSystem *lockless_job_system = new shs::Job::LocklessJobSystem(CONCURRENCY_COUNT);
+    shs::Job::AbstractJobSystem *job_system = new shs::Job::ThreadedJobSystem(CONCURRENCY_COUNT);
 
     bool is_engine_running = true;
 
@@ -32,7 +30,7 @@ int main()
     auto second_stop_time = std::chrono::steady_clock::now() + std::chrono::seconds(30);
 
     std::cout << ">>>>> sending first batch jobs" << std::endl;
-    send_batch_jobs(*lockless_job_system);
+    send_batch_jobs(*job_system);
 
     while (is_engine_running)
     {
@@ -41,19 +39,19 @@ int main()
         if (std::chrono::steady_clock::now() > first_stop_time && !is_sent_second_batch)
         {
 
-            std::cout << ">>>>> sending second batch jobs to the lockless workers" << std::endl;
-            send_batch_jobs(*lockless_job_system);
+            std::cout << ">>>>> sending second batch jobs" << std::endl;
+            send_batch_jobs(*job_system);
             is_sent_second_batch = true;
         }
 
         if (std::chrono::steady_clock::now() > second_stop_time)
         {
-            is_engine_running = false;
-            lockless_job_system->is_running = false;
+            is_engine_running      = false;
+            job_system->is_running = false;
         }
     }
 
-    delete lockless_job_system;
+    delete job_system;
 
     std::cout << "system is shutting down... bye!" << std::endl;
 
