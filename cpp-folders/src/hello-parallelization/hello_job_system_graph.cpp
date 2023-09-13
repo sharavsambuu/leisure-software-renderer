@@ -12,8 +12,7 @@
  *       C
  * 
  * Meaning B and C groups should work in concurrent manner and other group
- * should follow this graph, kind of counting on work stealing mode on those
- * group of workers in order to juicing many CPU cores.
+ * should follow the one another in the graph
  * 
  * 
  */
