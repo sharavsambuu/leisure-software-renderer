@@ -3,7 +3,66 @@
 
 #define CONCURRENCY_COUNT 4
 
-void send_batch_jobs(shs::AbstractJobSystem &job_system)
+class JobSystemBoost : public shs::Job::AbstractJobSystem
+{
+public:
+    JobSystemBoost(int concurrency_count)
+    {
+        this->concurrency_count = concurrency_count;
+        this->workers.reserve(this->concurrency_count);
+        for (int i = 0; i < this->concurrency_count; ++i)
+        {
+            this->workers[i] = boost::thread([this, i] {
+                boost::fibers::use_scheduling_algorithm<boost::fibers::algo::work_stealing>(this->concurrency_count);
+                while (this->is_running)
+                {
+                    std::function<void()> task;
+
+                    {
+                        std::unique_lock<std::mutex> lock(this->mutex);
+                        if (!this->job_queue.empty())
+                        {
+                            task = std::move(this->job_queue.front());
+                            this->job_queue.pop();
+                        }
+                    }
+
+                    if (task)
+                    {
+                        // boost::fibers::fiber(task).detach();
+                        boost::fibers::fiber(task).join();
+                    }
+
+                    boost::this_thread::yield();
+                } 
+            });
+        }
+        std::cout << "STATUS : Job system with Boost convention is started." << std::endl;
+    }
+    ~JobSystemBoost()
+    {
+        std::cout << "STATUS : Job system with Boost convention is shutting down..." << std::endl;
+        for (auto &worker : this->workers)
+        {
+            worker.join();
+        }
+    }
+    void submit(std::pair<std::function<void()>, int> task) override
+    {
+        {
+            std::unique_lock<std::mutex> lock(this->mutex);
+            job_queue.push(std::move(task.first));
+        }
+    }
+
+private:
+    int concurrency_count;
+    std::vector<boost::thread> workers;
+    std::queue<std::function<void()>> job_queue;
+    std::mutex mutex;
+};
+
+void send_batch_jobs(shs::Job::AbstractJobSystem &job_system)
 {
     for (int i = 0; i < 2000; ++i)
     {
@@ -16,14 +75,14 @@ void send_batch_jobs(shs::AbstractJobSystem &job_system)
             }
             boost::this_fiber::yield();
             std::cout << "Job " << i << " finished" << std::endl; 
-        }, shs::JobPriority::NORMAL});
+        }, shs::Job::PRIORITY_NORMAL});
     }
 }
 
 int main()
 {
 
-    shs::AbstractJobSystem *job_system = new shs::JobSystem(CONCURRENCY_COUNT);
+    shs::Job::AbstractJobSystem *job_system = new JobSystemBoost(CONCURRENCY_COUNT);
 
     bool is_engine_running = true;
 

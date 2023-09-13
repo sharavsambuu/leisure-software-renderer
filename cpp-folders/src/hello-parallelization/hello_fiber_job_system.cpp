@@ -3,7 +3,7 @@
 
 #define CONCURRENCY_COUNT 4
 
-void send_batch_jobs(shs::AbstractJobSystem &job_system)
+void send_batch_jobs(shs::Job::AbstractJobSystem &job_system)
 {
     for (int i = 0; i < 2000; ++i)
     {
@@ -16,14 +16,14 @@ void send_batch_jobs(shs::AbstractJobSystem &job_system)
             }
             boost::this_fiber::yield();
             std::cout << "Job " << i << " finished" << std::endl; 
-        }, shs::JobPriority::NORMAL});
+        }, shs::Job::PRIORITY_NORMAL});
     }
 }
 
 int main()
 {
 
-    shs::AbstractJobSystem *job_system = new shs::JobSystem(CONCURRENCY_COUNT);
+    shs::Job::AbstractJobSystem *job_system = new shs::Job::JobSystem(CONCURRENCY_COUNT);
 
     bool is_engine_running = true;
 

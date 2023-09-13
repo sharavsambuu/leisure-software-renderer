@@ -25,12 +25,6 @@
 
 namespace shs
 {
-    namespace JobPriority
-    {
-        static int LOW    = 5;
-        static int NORMAL = 15;
-        static int HIGH   = 30;
-    }
 
     struct Color
     {
@@ -745,273 +739,289 @@ namespace shs
     };
 
 
-    class AbstractJobSystem
+    namespace Util
     {
-    public:
-        virtual ~AbstractJobSystem(){};
-        virtual void submit(std::pair<std::function<void()>, int> task) = 0; // second one is priority
-        bool is_running = true;
-    };
 
-    class JobSystem : public shs::AbstractJobSystem
-    {
-    public:
-        JobSystem(int concurrency_count)
+        template <typename T>
+        class LocklessQueue
         {
-            this->concurrency_count = concurrency_count;
-            this->workers.reserve(this->concurrency_count);
-            for (int i = 0; i < this->concurrency_count; ++i)
+        public:
+            LocklessQueue()
             {
-                this->workers[i] = boost::thread([this, i] {
-                    boost::fibers::use_scheduling_algorithm<boost::fibers::algo::work_stealing>(this->concurrency_count);
-                    while (this->is_running)
-                    {
-                        std::function<void()> task;
+                head_ = new Node;
+                tail_ = head_.load(std::memory_order_relaxed);
+            }
 
+            ~LocklessQueue()
+            {
+                while (Node *old_head = head_.load())
+                {
+                    head_ = old_head->next;
+                    delete old_head;
+                }
+            }
+
+            void push(const T &value)
+            {
+                Node *new_node = new Node;
+                new_node->data = value;
+                new_node->next = nullptr;
+                Node *prev_tail = tail_.exchange(new_node, std::memory_order_relaxed);
+                prev_tail->next = new_node;
+            }
+
+            std::optional<T> pop()
+            {
+                Node *old_head = head_.load(std::memory_order_relaxed);
+                Node *new_head = old_head->next;
+                if (new_head)
+                {
+                    T value = new_head->data;
+                    head_ = new_head;
+                    delete old_head;
+                    return value;
+                }
+                return std::nullopt; // Queue is empty
+            }
+
+        private:
+            struct Node
+            {
+                T data;
+                Node *next;
+            };
+
+            std::atomic<Node *> head_;
+            std::atomic<Node *> tail_;
+        };
+
+
+        template <typename T>
+        class LocklessPriorityQueue
+        {
+        public:
+            LocklessPriorityQueue() : head_(nullptr) {}
+            void push(const T &value)
+            {
+                Node *new_node = new Node(value);
+                new_node->next = head_.load(std::memory_order_relaxed);
+                while (!head_.compare_exchange_weak(new_node->next, new_node,
+                                                    std::memory_order_release,
+                                                    std::memory_order_relaxed))
+                {
+                }
+            }
+            std::optional<T> pop()
+            {
+                Node *old_head = head_.load(std::memory_order_acquire);
+                while (old_head && !head_.compare_exchange_weak(old_head, old_head->next,
+                                                                std::memory_order_relaxed,
+                                                                std::memory_order_relaxed))
+                {
+                }
+                if (old_head)
+                {
+                    T value = old_head->data;
+                    delete old_head;
+                    return value;
+                }
+                else
+                {
+                    return std::nullopt;
+                }
+            }
+            long count()
+            {
+                Node *current = head_.load(std::memory_order_relaxed);
+                long count = 0;
+                while (current)
+                {
+                    count++;
+                    current = current->next;
+                }
+                return count;
+            }
+
+        private:
+            struct Node
+            {
+                T data;
+                Node *next;
+
+                Node(const T &val) : data(val), next(nullptr) {}
+            };
+            std::atomic<Node *> head_;
+        };
+    
+    }
+
+    namespace Job
+    {
+        static int PRIORITY_LOW    = 5;
+        static int PRIORITY_NORMAL = 15;
+        static int PRIORITY_HIGH   = 30;
+
+        class AbstractJobSystem
+        {
+        public:
+            virtual ~AbstractJobSystem(){};
+            virtual void submit(std::pair<std::function<void()>, int> task) = 0; // second one is priority
+            bool is_running = true;
+        };
+
+        class JobSystem : public shs::Job::AbstractJobSystem
+        {
+        public:
+            JobSystem(int concurrency_count)
+            {
+                this->concurrency_count = concurrency_count;
+                this->workers.reserve(this->concurrency_count);
+                for (int i = 0; i < this->concurrency_count; ++i)
+                {
+                    this->workers[i] = boost::thread([this, i] {
+                        boost::fibers::use_scheduling_algorithm<boost::fibers::algo::work_stealing>(this->concurrency_count);
+                        while (this->is_running)
                         {
-                            std::unique_lock<std::mutex> lock(this->mutex);
-                            if (!this->job_queue.empty())
+                            std::function<void()> task;
+
                             {
-                                task = std::move(this->job_queue.front());
-                                this->job_queue.pop();
+                                std::unique_lock<std::mutex> lock(this->mutex);
+                                if (!this->job_queue.empty())
+                                {
+                                    task = std::move(this->job_queue.front());
+                                    this->job_queue.pop();
+                                }
                             }
-                        }
 
-                        if (task)
-                        {
-                            // boost::fibers::fiber(task).detach();
-                            boost::fibers::fiber(task).join();
-                        }
+                            if (task)
+                            {
+                                // boost::fibers::fiber(task).detach();
+                                boost::fibers::fiber(task).join();
+                            }
 
-                        boost::this_thread::yield();
-                    } 
-                });
+                            boost::this_thread::yield();
+                        } 
+                    });
+                }
+                std::cout << "STATUS : Job system is started." << std::endl;
             }
-            std::cout << "STATUS : Job system is started." << std::endl;
-        }
-        ~JobSystem()
-        {
-            std::cout << "STATUS : Job system is shutting down..." << std::endl;
-            for (auto &worker : this->workers)
+            ~JobSystem()
             {
-                worker.join();
+                std::cout << "STATUS : Job system is shutting down..." << std::endl;
+                for (auto &worker : this->workers)
+                {
+                    worker.join();
+                }
             }
-        }
-        void submit(std::pair<std::function<void()>, int> task) override
-        {
+            void submit(std::pair<std::function<void()>, int> task) override
             {
-                std::unique_lock<std::mutex> lock(this->mutex);
-                job_queue.push(std::move(task.first));
+                {
+                    std::unique_lock<std::mutex> lock(this->mutex);
+                    job_queue.push(std::move(task.first));
+                }
             }
-        }
 
-    private:
-        int concurrency_count;
-        std::vector<boost::thread> workers;
-        std::queue<std::function<void()>> job_queue;
-        std::mutex mutex;
-    };
-
-    template <typename T>
-    class LocklessQueue
-    {
-    public:
-        LocklessQueue()
-        {
-            head_ = new Node;
-            tail_ = head_.load(std::memory_order_relaxed);
-        }
-
-        ~LocklessQueue()
-        {
-            while (Node *old_head = head_.load())
-            {
-                head_ = old_head->next;
-                delete old_head;
-            }
-        }
-
-        void push(const T &value)
-        {
-            Node *new_node = new Node;
-            new_node->data = value;
-            new_node->next = nullptr;
-            Node *prev_tail = tail_.exchange(new_node, std::memory_order_relaxed);
-            prev_tail->next = new_node;
-        }
-
-        std::optional<T> pop()
-        {
-            Node *old_head = head_.load(std::memory_order_relaxed);
-            Node *new_head = old_head->next;
-            if (new_head)
-            {
-                T value = new_head->data;
-                head_ = new_head;
-                delete old_head;
-                return value;
-            }
-            return std::nullopt; // Queue is empty
-        }
-
-    private:
-        struct Node
-        {
-            T data;
-            Node *next;
+        private:
+            int concurrency_count;
+            std::vector<boost::thread> workers;
+            std::queue<std::function<void()>> job_queue;
+            std::mutex mutex;
         };
 
-        std::atomic<Node *> head_;
-        std::atomic<Node *> tail_;
-    };
-
-    class LocklessJobSystem : public shs::AbstractJobSystem
-    {
-    public:
-        LocklessJobSystem(int concurrency_count)
+        class LocklessJobSystem : public shs::Job::AbstractJobSystem
         {
-
-            this->concurrency_count = concurrency_count;
-            this->workers.reserve(this->concurrency_count);
-
-            for (int i = 0; i < this->concurrency_count; ++i)
+        public:
+            LocklessJobSystem(int concurrency_count)
             {
-                this->workers[i] = boost::thread([this, i] {
-                    boost::fibers::use_scheduling_algorithm<boost::fibers::algo::work_stealing>(this->concurrency_count);
-                    while (this->is_running)
-                    {
-                        auto task = this->job_queue.pop();
-                        if (task.has_value())
+
+                this->concurrency_count = concurrency_count;
+                this->workers.reserve(this->concurrency_count);
+
+                for (int i = 0; i < this->concurrency_count; ++i)
+                {
+                    this->workers[i] = boost::thread([this, i] {
+                        boost::fibers::use_scheduling_algorithm<boost::fibers::algo::work_stealing>(this->concurrency_count);
+                        while (this->is_running)
                         {
-                            boost::fibers::fiber(task.value()).join();
-                        }
-                    } 
-                });
+                            auto task = this->job_queue.pop();
+                            if (task.has_value())
+                            {
+                                boost::fibers::fiber(task.value()).join();
+                            }
+                        } 
+                    });
+                }
+                std::cout << "STATUS : Lockless job system is started." << std::endl;
             }
-            std::cout << "STATUS : Lockless job system is started." << std::endl;
-        }
-        ~LocklessJobSystem()
-        {
-            std::cout << " STATUS : Lockless job system is shutting down..." << std::endl;
-            for (auto &worker : this->workers)
+            ~LocklessJobSystem()
             {
-                worker.join();
+                std::cout << " STATUS : Lockless job system is shutting down..." << std::endl;
+                for (auto &worker : this->workers)
+                {
+                    worker.join();
+                }
             }
-        }
-        void submit(std::pair<std::function<void()>, int> task) override
-        {
-            this->job_queue.push(task.first);
-        }
+            void submit(std::pair<std::function<void()>, int> task) override
+            {
+                this->job_queue.push(task.first);
+            }
 
-    private:
-        int concurrency_count;
-        std::vector<boost::thread> workers;
-        shs::LocklessQueue<std::function<void()>> job_queue;
-    };
-
-    template <typename T>
-    class LocklessPriorityQueue
-    {
-    public:
-        LocklessPriorityQueue() : head_(nullptr) {}
-        void push(const T &value)
-        {
-            Node *new_node = new Node(value);
-            new_node->next = head_.load(std::memory_order_relaxed);
-            while (!head_.compare_exchange_weak(new_node->next, new_node,
-                                                std::memory_order_release,
-                                                std::memory_order_relaxed))
-            {
-            }
-        }
-        std::optional<T> pop()
-        {
-            Node *old_head = head_.load(std::memory_order_acquire);
-            while (old_head && !head_.compare_exchange_weak(old_head, old_head->next,
-                                                            std::memory_order_relaxed,
-                                                            std::memory_order_relaxed))
-            {
-            }
-            if (old_head)
-            {
-                T value = old_head->data;
-                delete old_head;
-                return value;
-            }
-            else
-            {
-                return std::nullopt;
-            }
-        }
-        long count()
-        {
-            Node *current = head_.load(std::memory_order_relaxed);
-            long count = 0;
-            while (current)
-            {
-                count++;
-                current = current->next;
-            }
-            return count;
-        }
-    private:
-        struct Node
-        {
-            T data;
-            Node *next;
-
-            Node(const T &val) : data(val), next(nullptr) {}
+        private:
+            int concurrency_count;
+            std::vector<boost::thread> workers;
+            shs::Util::LocklessQueue<std::function<void()>> job_queue;
         };
-        std::atomic<Node *> head_;
-    };
 
-    class LocklessPriorityJobSystem : public shs::AbstractJobSystem
-    {
-    public:
-        LocklessPriorityJobSystem(int concurrency_count)
+        class LocklessPriorityJobSystem : public shs::Job::AbstractJobSystem
         {
-            this->concurrency_count = concurrency_count;
-            this->workers.reserve(this->concurrency_count);
-            for (int i = 0; i < this->concurrency_count; ++i)
+        public:
+            LocklessPriorityJobSystem(int concurrency_count)
             {
-                this->workers[i] = boost::thread([this, i]{
-                    boost::fibers::use_scheduling_algorithm<boost::fibers::algo::work_stealing>(this->concurrency_count);
-                    while (this->is_running)
-                    {
-                        auto task_priority = this->job_queue.pop();
-                        if (task_priority.has_value())
+                this->concurrency_count = concurrency_count;
+                this->workers.reserve(this->concurrency_count);
+                for (int i = 0; i < this->concurrency_count; ++i)
+                {
+                    this->workers[i] = boost::thread([this, i] {
+                        boost::fibers::use_scheduling_algorithm<boost::fibers::algo::work_stealing>(this->concurrency_count);
+                        while (this->is_running)
                         {
-                            auto [task, priority] = task_priority.value();
-                            boost::fibers::fiber(task).join();
-                            //boost::fibers::fiber(task).detach();
-                        }
-                    } 
-                });
+                            auto task_priority = this->job_queue.pop();
+                            if (task_priority.has_value())
+                            {
+                                auto [task, priority] = task_priority.value();
+                                boost::fibers::fiber(task).join();
+                                // boost::fibers::fiber(task).detach();
+                            }
+                        } 
+                    });
+                }
+
+                std::cout << "STATUS : Lockless priority job system is started." << std::endl;
+
+                for (auto &worker : this->workers)
+                {
+                    worker.join();
+                }
             }
-
-            std::cout << "STATUS : Lockless priority job system is started." << std::endl;
-
-            for (auto &worker : this->workers)
+            ~LocklessPriorityJobSystem()
             {
-                worker.join();
+                std::cout << "STATUS : Lockless priority job system is shutting down..." << std::endl;
+                for (auto &worker : this->workers)
+                {
+                    worker.join();
+                }
             }
-        }
-        ~LocklessPriorityJobSystem()
-        {
-            std::cout << "STATUS : Lockless priority job system is shutting down..." << std::endl;
-            for (auto &worker : this->workers)
+            void submit(std::pair<std::function<void()>, int> task) override
             {
-                worker.join();
+                this->job_queue.push(task);
             }
-        }
-        void submit(std::pair<std::function<void()>, int> task) override
-        {
-            this->job_queue.push(task);
-        }
 
-    private:
-        int concurrency_count;
-        std::vector<boost::thread> workers;
-        shs::LocklessPriorityQueue<std::pair<std::function<void()>, int>> job_queue;
-    };
+        private:
+            int concurrency_count;
+            std::vector<boost::thread> workers;
+            shs::Util::LocklessPriorityQueue<std::pair<std::function<void()>, int>> job_queue;
+        };
+    
+    }
+
 }

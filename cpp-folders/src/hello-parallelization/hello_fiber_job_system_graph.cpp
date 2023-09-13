@@ -22,7 +22,7 @@
 #define CONCURRENCY_COUNT 4
 
 // main task coordinator fiber, spawns a single dedicated fiber
-void run_task_manager(shs::AbstractJobSystem &job_system)
+void run_task_manager(shs::Job::AbstractJobSystem &job_system)
 {
     auto last_time = boost::chrono::steady_clock::now();
     int counter    = 0;
@@ -51,13 +51,13 @@ void run_task_manager(shs::AbstractJobSystem &job_system)
 
         std::cout << "STATUS : Task manager is finished. Sayunara!" << std::endl;
 
-    }, shs::JobPriority::HIGH});
+    }, shs::Job::PRIORITY_HIGH});
 }
 
 int main()
 {
 
-    shs::AbstractJobSystem *lockless_job_system = new shs::LocklessPriorityJobSystem(CONCURRENCY_COUNT);
+    shs::Job::AbstractJobSystem *lockless_job_system = new shs::Job::LocklessPriorityJobSystem(CONCURRENCY_COUNT);
 
     bool is_engine_running    = true;
     auto first_stop_time      = std::chrono::steady_clock::now() + std::chrono::seconds(5);

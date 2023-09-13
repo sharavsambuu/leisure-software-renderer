@@ -4,7 +4,7 @@
 
 #define CONCURRENCY_COUNT 4
 
-void send_batch_jobs(shs::AbstractJobSystem &job_system, int priority)
+void send_batch_jobs(shs::Job::AbstractJobSystem &job_system, int priority)
 {
     for (int i = 0; i < 2000; ++i)
     {
@@ -48,7 +48,7 @@ int main()
     }
     */
 
-    shs::AbstractJobSystem *lockless_job_system = new shs::LocklessPriorityJobSystem(CONCURRENCY_COUNT);
+    shs::Job::AbstractJobSystem *lockless_job_system = new shs::Job::LocklessPriorityJobSystem(CONCURRENCY_COUNT);
 
     bool is_engine_running = true;
 
@@ -57,7 +57,7 @@ int main()
     auto second_stop_time = std::chrono::steady_clock::now() + std::chrono::seconds(30);
 
     std::cout << ">>>>> sending first batch jobs" << std::endl;
-    send_batch_jobs(*lockless_job_system, shs::JobPriority::NORMAL);
+    send_batch_jobs(*lockless_job_system, shs::Job::PRIORITY_NORMAL);
 
     while (is_engine_running)
     {
@@ -67,7 +67,7 @@ int main()
         {
 
             std::cout << ">>>>> sending second batch jobs to the lockless priority workers" << std::endl;
-            send_batch_jobs(*lockless_job_system, shs::JobPriority::HIGH);
+            send_batch_jobs(*lockless_job_system, shs::Job::PRIORITY_HIGH);
             is_sent_second_batch = true;
         }
 
