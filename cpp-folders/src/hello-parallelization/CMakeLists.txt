@@ -39,8 +39,13 @@ target_link_libraries(HelloThreadShaderRaw Threads::Threads ${SDL2_LIBRARIES} gl
 add_executable(HelloThreadShaderJob hello_thread_shader_job.cpp)
 target_link_libraries(HelloThreadShaderJob Threads::Threads ${SDL2_LIBRARIES} glm::glm)
 
+
 add_executable(HelloThreadShaderRawZoned hello_thread_shader_raw_zoned.cpp)
 target_link_libraries(HelloThreadShaderRawZoned Threads::Threads ${SDL2_LIBRARIES} glm::glm)
+
+add_executable(HelloThreadShaderJobZoned hello_thread_shader_job_zoned.cpp)
+target_link_libraries(HelloThreadShaderJobZoned Threads::Threads ${SDL2_LIBRARIES} glm::glm)
+
 
 add_executable(PrimitiveLoops primitive_loops.cpp)
 target_link_libraries(PrimitiveLoops Threads::Threads)

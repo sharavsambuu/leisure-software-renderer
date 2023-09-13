@@ -117,6 +117,7 @@ int main()
 
     shs::Job::AbstractJobSystem *job_system = new shs::Job::ThreadedLocklessPriorityJobSystem(CONCURRENCY_COUNT);
 
+
     SDL_Window   *window   = nullptr;
     SDL_Renderer *renderer = nullptr;
 
@@ -129,7 +130,6 @@ int main()
     SDL_Texture *screen_texture  = SDL_CreateTextureFromSurface(renderer, main_sdlsurface);
 
 
-
     bool exit = false;
     SDL_Event event_data;
 
@@ -138,9 +138,6 @@ int main()
     int    frame_counter          = 0;
     int    fps                    = 0;
     float  time_accumulator       = 0.0;
-
-
-
 
     while (!exit)
     {
@@ -173,21 +170,31 @@ int main()
         SDL_RenderClear(renderer);
 
 
-        // Run fragment shader using job system
-        for (int x=0; x<CANVAS_WIDTH; x++)
-        {
-            for (int y=0; y<CANVAS_HEIGHT; y++)
-            {
-                job_system->submit({[x, y, time_accumulator, &main_canvas, &atomic_counter, &cv]() {
+        int region_width  = CANVAS_WIDTH  / CONCURRENCY_COUNT;
+        int region_height = CANVAS_HEIGHT / CONCURRENCY_COUNT;
+
+        for (int i = 0; i < CONCURRENCY_COUNT; i++) {
+            int start_x = i       * region_width;
+            int end_x   = (i + 1) * region_width;
+
+            for (int j = 0; j < CONCURRENCY_COUNT; j++) {
+                int start_y = j       * region_height;
+                int end_y   = (j + 1) * region_height;
+
+                job_system->submit({[start_x, end_x, start_y, end_y, time_accumulator, &main_canvas, &atomic_counter, &cv]() {
                     atomic_counter.fetch_add(1, std::memory_order_relaxed);
 
-                    glm::vec2 uv = {float(x), float(y)};
-                    glm::vec4 shader_output = fragment_shader(uv, time_accumulator);
-                    shs::Canvas::draw_pixel(*main_canvas, x, y, shs::Color{u_int8_t(shader_output[0]), u_int8_t(shader_output[1]), u_int8_t(shader_output[2]), u_int8_t(shader_output[3])});
+                    for (int x = start_x; x < end_x; x++) {
+                        for (int y = start_y; y < end_y; y++) {
+                            glm::vec2 uv = {float(x), float(y)};
+                            glm::vec4 shader_output = fragment_shader(uv, time_accumulator);
+                            shs::Canvas::draw_pixel(*main_canvas, x, y, shs::Color{u_int8_t(shader_output[0]), u_int8_t(shader_output[1]), u_int8_t(shader_output[2]), u_int8_t(shader_output[3])});
+                        }
+                    }
 
                     atomic_counter.fetch_sub(1, std::memory_order_relaxed);
                     cv.notify_one(); // Notify when the counter reaches zero
-                }, shs::Job::PRIORITY_NORMAL});
+                }, shs::Job::PRIORITY_HIGH});
             }
         }
 
