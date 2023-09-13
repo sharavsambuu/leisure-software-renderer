@@ -1,10 +1,11 @@
 
 # Tasks to mess around in the near future
+    Implement Fiber based job system with Boost convention
     Try to synchronize several fiber task on some pre placed barrier mechanism, or use atomic counters
     Try to group different tasks with different atomic counters 
     Try to build concurrent job graph using array of atomic counters
 
-    DONE Implement Fiber based job system using lockless priority queue
+    DONE Implement Thread based job system using lockless priority queue
     DONE Realtime looper using SDL2
     DONE Realtime canvas renderer on SDL2 window
     DONE Map vertext coordinates
