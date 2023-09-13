@@ -105,3 +105,13 @@ target_link_libraries(HelloFiberJobSystemGraph Threads::Threads
   -lboost_chrono
   -lpthread
   )
+
+add_executable(HelloFiberJobSystemBoost hello_fiber_job_system_boost.cpp)
+target_link_libraries(HelloFiberJobSystemBoost 
+  -lboost_fiber
+  -lboost_thread
+  -lboost_context 
+  -lboost_system 
+  -lboost_chrono
+  Threads::Threads 
+  )
