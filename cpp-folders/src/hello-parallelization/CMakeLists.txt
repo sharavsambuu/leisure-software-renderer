@@ -85,3 +85,13 @@ target_link_libraries(HelloFiberJobSystemLockless Threads::Threads
   -lboost_chrono
   -lpthread
   )
+
+add_executable(HelloFiberJobSystemLocklessPriority hello_fiber_job_system_lockless_priority.cpp)
+target_link_libraries(HelloFiberJobSystemLocklessPriority Threads::Threads 
+  -lboost_fiber
+  -lboost_thread
+  -lboost_context 
+  -lboost_system 
+  -lboost_chrono
+  -lpthread
+  )

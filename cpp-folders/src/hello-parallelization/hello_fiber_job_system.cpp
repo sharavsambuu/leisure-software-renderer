@@ -32,33 +32,31 @@ public:
 
         for (int i = 0; i < this->concurrency_count; ++i)
         {
-            this->workers[i] = boost::thread([this, i]
-                                             {
+            this->workers[i] = boost::thread([this, i] {
                 boost::fibers::use_scheduling_algorithm<boost::fibers::algo::work_stealing>(this->concurrency_count);
-
-                boost::this_thread::yield();
 
                 while(this->is_running)
                 {
-                    std::function<void()> job;
+                    std::function<void()> task;
 
                     {
                         std::unique_lock<std::mutex> lock(this->mutex);
                         if (!this->job_queue.empty())
                         {
-                            job = std::move(this->job_queue.front());
+                            task = std::move(this->job_queue.front());
                             this->job_queue.pop();
                         }
                     }
 
-                    if (job)
+                    if (task)
                     {
-                        //boost::fibers::fiber(job).detach();
-                        boost::fibers::fiber(job).join();
+                        //boost::fibers::fiber(task).detach();
+                        boost::fibers::fiber(task).join();
                     }
 
                     boost::this_thread::yield();
-                } });
+                } 
+            });
         }
     }
     ~JobSystem()
@@ -69,11 +67,11 @@ public:
         }
         std::cout << "Job system is shutting down..." << std::endl;
     }
-    void submit(std::function<void()> job) override
+    void submit(std::function<void()> task) override
     {
         {
             std::unique_lock<std::mutex> lock(this->mutex);
-            job_queue.push(std::move(job));
+            job_queue.push(std::move(task));
         }
     }
 

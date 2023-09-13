@@ -21,16 +21,16 @@ public:
 };
 
 template <typename T>
-class LockFreeQueue
+class LocklessQueue
 {
 public:
-    LockFreeQueue()
+    LocklessQueue()
     {
         head_ = new Node;
         tail_ = head_.load(std::memory_order_relaxed);
     }
 
-    ~LockFreeQueue()
+    ~LocklessQueue()
     {
         while (Node *old_head = head_.load())
         {
@@ -88,18 +88,17 @@ public:
 
         for (int i = 0; i < this->concurrency_count; ++i)
         {
-            this->workers[i] = boost::thread([this, i]
-                                             {
+            this->workers[i] = boost::thread([this, i] {
                 boost::fibers::use_scheduling_algorithm<boost::fibers::algo::work_stealing>(this->concurrency_count);
-
                 while(this->is_running)
                 {
-                    auto job = this->job_queue.pop();
-                    if (job.has_value())
+                    auto task = this->job_queue.pop();
+                    if (task.has_value())
                     {
-                        boost::fibers::fiber(job.value()).join();
+                        boost::fibers::fiber(task.value()).join();
                     }
-                } });
+                } 
+            });
         }
     }
     ~LocklessJobSystem()
@@ -110,15 +109,15 @@ public:
         }
         std::cout << "Lockless job system is shutting down..." << std::endl;
     }
-    void submit(std::function<void()> job) override
+    void submit(std::function<void()> task) override
     {
-        this->job_queue.push(job);
+        this->job_queue.push(task);
     }
 
 private:
     int concurrency_count;
     std::vector<boost::thread> workers;
-    LockFreeQueue<std::function<void()>> job_queue;
+    LocklessQueue<std::function<void()>> job_queue;
 };
 
 void send_batch_jobs(AbstractJobSystem &job_system)
