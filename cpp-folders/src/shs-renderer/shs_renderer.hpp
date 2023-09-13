@@ -9,18 +9,15 @@
 #include <optional>
 #include <atomic>
 #include <utility>
+#include <functional>
+#include <thread>
+#include <mutex>
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/constants.hpp>
-#include <functional>
-#include <boost/fiber/all.hpp>
-#include <boost/fiber/fiber.hpp>
-#include <boost/fiber/future.hpp>
-#include <boost/thread/thread.hpp>
-#include <boost/chrono.hpp>
 
 
 namespace shs
@@ -878,7 +875,7 @@ namespace shs
                 this->workers.reserve(this->concurrency_count);
                 for (int i = 0; i < this->concurrency_count; ++i)
                 {
-                    this->workers[i] = boost::thread([this, i] {
+                    this->workers[i] = std::thread([this, i] {
                         while (this->is_running)
                         {
                             std::function<void()> task;
@@ -920,7 +917,7 @@ namespace shs
 
         private:
             int concurrency_count;
-            std::vector<boost::thread> workers;
+            std::vector<std::thread> workers;
             std::queue<std::function<void()>> job_queue;
             std::mutex mutex;
         };
@@ -936,7 +933,7 @@ namespace shs
 
                 for (int i = 0; i < this->concurrency_count; ++i)
                 {
-                    this->workers[i] = boost::thread([this, i] {
+                    this->workers[i] = std::thread([this, i] {
                         while (this->is_running)
                         {
                             auto task = this->job_queue.pop();
@@ -964,7 +961,7 @@ namespace shs
 
         private:
             int concurrency_count;
-            std::vector<boost::thread> workers;
+            std::vector<std::thread> workers;
             shs::Util::LocklessQueue<std::function<void()>> job_queue;
         };
 
@@ -977,7 +974,7 @@ namespace shs
                 this->workers.reserve(this->concurrency_count);
                 for (int i = 0; i < this->concurrency_count; ++i)
                 {
-                    this->workers[i] = boost::thread([this, i] {
+                    this->workers[i] = std::thread([this, i] {
                         while (this->is_running)
                         {
                             auto task_priority = this->job_queue.pop();
@@ -1012,7 +1009,7 @@ namespace shs
 
         private:
             int concurrency_count;
-            std::vector<boost::thread> workers;
+            std::vector<std::thread> workers;
             shs::Util::LocklessPriorityQueue<std::pair<std::function<void()>, int>> job_queue;
         };
     

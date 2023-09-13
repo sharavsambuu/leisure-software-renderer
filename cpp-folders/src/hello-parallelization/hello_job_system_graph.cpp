@@ -1,6 +1,6 @@
 #include <iostream>
+#include <chrono>
 #include "shs_renderer.hpp"
-#include <boost/chrono.hpp>
 
 /**
  * 
@@ -24,7 +24,7 @@
 // main task coordinator fiber, spawns a single dedicated fiber
 void run_task_manager(shs::Job::AbstractJobSystem &job_system)
 {
-    auto last_time = boost::chrono::steady_clock::now();
+    auto last_time = std::chrono::steady_clock::now();
     int counter    = 0;
 
     job_system.submit({[&last_time, &counter] {
@@ -34,9 +34,9 @@ void run_task_manager(shs::Job::AbstractJobSystem &job_system)
         bool is_task_manager_running = true;
         while (is_task_manager_running) 
         {
-            auto now = boost::chrono::steady_clock::now();
+            auto now = std::chrono::steady_clock::now();
             auto elapsed = now - last_time;
-            if (elapsed >= boost::chrono::seconds(3))
+            if (elapsed >= std::chrono::seconds(3))
             {
                 std::cout << "STATUS : Task manager is alive...";
                 last_time = now;
