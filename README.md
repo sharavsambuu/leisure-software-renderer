@@ -104,6 +104,7 @@
     
     Doom Eternal's multi threaded game engine called Id Tech 7
       - https://www.youtube.com/watch?v=UsmqWSZpgJY
+      - https://advances.realtimerendering.com/s2020/RenderingDoomEternal.pdf
     Explained why industry is moving toward to Forward rendering variants and mentioned draw call becomes so cheap and BUS bandwith becomes bottleneck 
       - https://www.youtube.com/watch?v=n5OiqJP2f7w
     Parallelizing the Naughty Dog Engine Using Fibers
