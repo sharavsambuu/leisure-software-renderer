@@ -1,5 +1,6 @@
 
 # Tasks to mess around in the near future
+    Fix the coordinate system transformation and convention mess, write a note.
     Try to synchronize several workers on some pre placed barrier mechanism, or use atomic counters
     Try to group different tasks with different atomic counters 
     Try to build concurrent job graph using array of atomic counters
