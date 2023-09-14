@@ -262,30 +262,22 @@ namespace shs
             return canvas.get_pixel_at(x, y);
         }
 
+        inline static glm::ivec2 vec2_screen_to_canvas(glm::ivec2 v_in_screen, int screen_height)
+        {
+            glm::ivec2 v_in_canvas = v_in_screen;
+            v_in_canvas.y = screen_height - v_in_screen.y;
+            return v_in_canvas;
+        }
+
         void draw_pixel(int x, int y, shs::Pixel pixel)
         {
-            int location_x = x;
-            int location_y = y;
-            if (x < 0)
-            {
-                location_x = 0;
-            }
-            if (y < 0)
-            {
-                location_y = 0;
-            }
-            if (x > this->width)
-            {
-                location_x = this->width;
-            }
-            if (y > this->height)
-            {
-                location_y = this->height;
-            }
-            this->canvas[location_x][location_y].r = pixel.get_red_channel();
-            this->canvas[location_x][location_y].g = pixel.get_green_channel();
-            this->canvas[location_x][location_y].b = pixel.get_blue_channel();
-            this->canvas[location_x][location_y].a = pixel.get_alpha_channel();
+            glm::ivec2 loc_in_canvas = shs::Canvas::vec2_screen_to_canvas(glm::ivec2(x, y), this->height);
+            loc_in_canvas.x = std::clamp(loc_in_canvas.x, 0, this->width );
+            loc_in_canvas.y = std::clamp(loc_in_canvas.y, 0, this->height);
+            this->canvas[loc_in_canvas.x][loc_in_canvas.y].r = pixel.get_red_channel();
+            this->canvas[loc_in_canvas.x][loc_in_canvas.y].g = pixel.get_green_channel();
+            this->canvas[loc_in_canvas.x][loc_in_canvas.y].b = pixel.get_blue_channel();
+            this->canvas[loc_in_canvas.x][loc_in_canvas.y].a = pixel.get_alpha_channel();
         };
 
         static void draw_pixel(shs::Canvas &canvas, int x, int y, shs::Color color)

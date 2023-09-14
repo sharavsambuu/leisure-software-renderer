@@ -11,21 +11,21 @@ Model space 3D coordinate system:
     z is to the forward
 
 
-World space 3D coordinate
+World space 3D coordinate system
     origin is (0,0,0) and center of all models
     x is to the right
     y is to the up
     z is to the forward
 
 
-View space 3D coordinate
+View space 3D coordinate system
     origin is (0,0,0) and viewer is at origin, all models are on this coordinate system
     x is to the right
     y is to the up
     z is to the forward
 
 
-Projection space 
+Projection space coordinate system
     used for simulating camera perspective
     x is to the right
     y is to the up
@@ -34,21 +34,22 @@ Projection space
 
 
 Clip space aka NDC(Normalized Device Coordinates) space aka homogeneous coordinate space
-    axis are mapped in range of [-1.0, 1.0], scaled by z_near and z_far
+    axis are mapped to range of [-1.0, 1.0], scaled by z_near and z_far
     x is to the right
     y is to the up
     z is to the forward
 
-    glm::vec3 pointInNDC = glm::vec3(point_in_clip_space) / point_in_clip_space.w;
+    glm::vec3 point_in_NDC = glm::vec3(point_in_CLIP_SPACE) / point_in_CLIP_SPACE.w;
 
 
-Screen space 
+Screen space 2D coordinate system
     maps x in NDC[-1, 1] -> [0, SCREEN_WIDTH ]
     maps y in NDC[-1, 1] -> [0, SCREEN_HEIGHT]
     origin (0,0) is at top-left corner
     x is from left to the right
     y is from top to the bottom
-    rasterizatin happen in this space
+
+    Rasterizatin happen in this space
 
 
 shs::Canvas 2D coordinate system:
@@ -58,6 +59,6 @@ shs::Canvas 2D coordinate system:
 
 
 
-Converting from Screen space to shs::Canvas space
+Converting from Screen space to the shs::Canvas space
     x_at_canvas = x_at_screen_space
     y_at_canvas = SCREEN_HEIGHT - y_at_screen
