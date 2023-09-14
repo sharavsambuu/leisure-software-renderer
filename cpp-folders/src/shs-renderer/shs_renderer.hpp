@@ -441,11 +441,7 @@ namespace shs
             // Map the normalized coordinates to screen space
             glm::vec2 screen_coord;
             screen_coord.x = (normalized_coord.x + 1.0f) * 0.5f * screen_width;
-            screen_coord.y = (1.0f - normalized_coord.y) * 0.5f * screen_height;
-            screen_coord.x = std::clamp<int>(screen_coord.x, 0, screen_width );
-
-            // bringing into my coordinate system which is origin at lower left corner
-            screen_coord.y = std::clamp<int>(screen_height - screen_coord.y, 0, screen_height);
+            screen_coord.y = (normalized_coord.y + 1.0f) * 0.5f * screen_height;
 
             return screen_coord;
         }
@@ -517,7 +513,7 @@ namespace shs
             this->height           = 10.0;
             this->z_near           = 0.2;
             this->z_far            = 1000.0;
-            this->field_of_view    = 45.0;
+            this->field_of_view    = 35.0;
             this->horizontal_angle = 0.0;
             this->vertical_angle   = 10.0;
             this->position         = glm::vec3(0.0, 0.0, 0.0);
@@ -530,9 +526,9 @@ namespace shs
         void update()
         {
             this->direction_vector = glm::vec3(
-                cos(this->vertical_angle) * sin(this->horizontal_angle),
-                sin(this->vertical_angle),
-                cos(this->vertical_angle) * cos(this->horizontal_angle));
+                cos(glm::radians(this->vertical_angle)) * sin(glm::radians(this->horizontal_angle)),
+                sin(glm::radians(this->vertical_angle)),
+                cos(glm::radians(this->vertical_angle)) * cos(glm::radians(this->horizontal_angle)));
             this->right_vector = glm::vec3(
                 sin(horizontal_angle - glm::pi<float>() / 2.0f),
                 0.0,
