@@ -57,7 +57,6 @@ int main()
             }
         }
     }
-    shs::Canvas::flip_vertically(canvas); // origin at the left bottom corner of the canvas
     canvas.save_png("hello_wireframe_monkeyobj_canvas.png" );
 
     std::cout << "done." << std::endl;

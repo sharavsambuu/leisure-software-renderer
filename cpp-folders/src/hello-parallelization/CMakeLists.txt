@@ -28,9 +28,7 @@ set(CMAKE_CXX_FLAGS_DEBUG "-g")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
 
-add_executable(HelloNestedLoops hello_nested_loops.cpp
-  ${SHSRenderer_SOURCE_DIR}/shs_renderer.hpp
-  )
+add_executable(HelloNestedLoops hello_nested_loops.cpp)
 target_link_libraries(HelloNestedLoops Threads::Threads ${SDL2_LIBRARIES} glm::glm)
 
 add_executable(HelloThreadShaderRaw hello_thread_shader_raw.cpp)
@@ -55,22 +53,14 @@ target_link_libraries(PrimitiveThreads Threads::Threads)
 
 
 add_executable(HelloThreadJobSystem hello_thread_job_system.cpp)
-target_link_libraries(HelloThreadJobSystem 
-  Threads::Threads 
-  )
+target_link_libraries(HelloThreadJobSystem Threads::Threads)
 
 add_executable(HelloThreadJobSystemLockless hello_thread_job_system_lockless.cpp)
-target_link_libraries(HelloThreadJobSystemLockless 
-  Threads::Threads 
-  )
+target_link_libraries(HelloThreadJobSystemLockless Threads::Threads)
 
 add_executable(HelloThreadJobSystemLocklessPriority hello_thread_job_system_lockless_priority.cpp)
-target_link_libraries(HelloThreadJobSystemLocklessPriority 
-  Threads::Threads 
-  )
+target_link_libraries(HelloThreadJobSystemLocklessPriority Threads::Threads )
 
 
 add_executable(HelloJobSystemGraph hello_job_system_graph.cpp)
-target_link_libraries(HelloJobSystemGraph 
-  Threads::Threads 
-  )
+target_link_libraries(HelloJobSystemGraph Threads::Threads)

@@ -23,37 +23,23 @@ set(CMAKE_CXX_FLAGS_DEBUG "-g")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
 
-add_executable(HelloColorMix hello_color_mix.cpp 
-  ${SHSRenderer_SOURCE_DIR}/shs_renderer.hpp
-  )
+add_executable(HelloColorMix hello_color_mix.cpp)
 target_link_libraries(HelloColorMix Threads::Threads ${SDL2_LIBRARIES})
 
-add_executable(HelloColorGradient hello_color_gradient.cpp 
-  ${SHSRenderer_SOURCE_DIR}/shs_renderer.hpp
-  )
+add_executable(HelloColorGradient hello_color_gradient.cpp)
 target_link_libraries(HelloColorGradient Threads::Threads ${SDL2_LIBRARIES})
 
-add_executable(HelloColorHSB hello_color_hsb.cpp 
-  ${SHSRenderer_SOURCE_DIR}/shs_renderer.hpp
-  )
+add_executable(HelloColorHSB hello_color_hsb.cpp)
 target_link_libraries(HelloColorHSB Threads::Threads ${SDL2_LIBRARIES})
 
-add_executable(HelloColorHSBPolar hello_color_hsb_polar.cpp 
-  ${SHSRenderer_SOURCE_DIR}/shs_renderer.hpp
-  )
+add_executable(HelloColorHSBPolar hello_color_hsb_polar.cpp)
 target_link_libraries(HelloColorHSBPolar Threads::Threads ${SDL2_LIBRARIES})
 
-add_executable(HelloFractalBrownianMotion hello_fbm.cpp 
-  ${SHSRenderer_SOURCE_DIR}/shs_renderer.hpp
-  )
+add_executable(HelloFractalBrownianMotion hello_fbm.cpp)
 target_link_libraries(HelloFractalBrownianMotion Threads::Threads ${SDL2_LIBRARIES} glm::glm)
 
-add_executable(HelloGreenNoise hello_green_noise.cpp 
-  ${SHSRenderer_SOURCE_DIR}/shs_renderer.hpp
-  )
+add_executable(HelloGreenNoise hello_green_noise.cpp)
 target_link_libraries(HelloGreenNoise Threads::Threads ${SDL2_LIBRARIES} glm::glm)
 
-add_executable(HelloMongolianFlag hello_mongolian_flag.cpp 
-  ${SHSRenderer_SOURCE_DIR}/shs_renderer.hpp
-  )
+add_executable(HelloMongolianFlag hello_mongolian_flag.cpp)
 target_link_libraries(HelloMongolianFlag Threads::Threads ${SDL2_LIBRARIES} glm::glm)

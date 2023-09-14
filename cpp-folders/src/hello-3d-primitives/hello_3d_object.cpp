@@ -457,7 +457,6 @@ int main()
 
 
         // actually prensenting canvas data on hardware surface
-        shs::Canvas::flip_vertically(*main_canvas); // origin at the left bottom corner of the canvas
         shs::Canvas::copy_to_SDLSurface(main_sdlsurface, main_canvas);
         SDL_UpdateTexture(screen_texture, NULL, main_sdlsurface->pixels, main_sdlsurface->pitch);
         SDL_Rect destination_rect{0, 0, WINDOW_WIDTH, WINDOW_HEIGHT};

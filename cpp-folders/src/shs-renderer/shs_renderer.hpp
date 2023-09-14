@@ -221,30 +221,6 @@ namespace shs
             return this->height;
         }
 
-        void flip_horizontally()
-        {
-            int half_width = this->width / 2;
-            for (int column = 0; column < half_width; column++)
-            {
-                std::swap(this->canvas[column], this->canvas[width - 1 - column]);
-            }
-        }
-        static void flip_horizontally(shs::Canvas &canvas)
-        {
-            canvas.flip_horizontally();
-        }
-        void flip_vertically()
-        {
-            for (int row = 0; row < this->width; row++)
-            {
-                std::reverse(this->canvas[row].begin(), this->canvas[row].end());
-            }
-        }
-        static void flip_vertically(shs::Canvas &canvas)
-        {
-            canvas.flip_vertically();
-        }
-
         shs::Color get_color_at(int x, int y)
         {
             return this->canvas[x][y];
@@ -379,20 +355,10 @@ namespace shs
             return barycentric;
         }
 
-        static void draw_triangle(shs::Canvas &canvas, std::vector<glm::vec2> &in_vertices, shs::Pixel pixel)
+        static void draw_triangle(shs::Canvas &canvas, std::vector<glm::vec2> &vertices, shs::Pixel pixel)
         {
             int max_x = canvas.get_width();
             int max_y = canvas.get_height();
-
-            // converting from my coordinate system to popular rasterizer's coordinate system
-            // my coordinate system is origin is bottom left corner, y axis moves to upward and x axis moves to the right
-            // rasterizer's coordinate system is origin is top left corner, y axis moves to downward and x axis move to the right
-            std::vector<glm::vec2> vertices;
-            std::copy(in_vertices.begin(), in_vertices.end(), std::back_inserter(vertices));
-            for (auto &point : vertices)
-            {
-                point.y = max_y - point.y;
-            }
 
             glm::vec2 bboxmin(canvas.get_width() - 1, canvas.get_height() - 1);
             glm::vec2 bboxmax(0, 0);
@@ -414,11 +380,10 @@ namespace shs
                     if (bc_screen.x < 0 || bc_screen.y < 0 || bc_screen.z < 0)
                         continue;
 
-                    // draw pixel in my coordinate system
-                    glm::ivec2 p_my_coordinate_system = p;
-                    p_my_coordinate_system.x = std::clamp<int>(p_my_coordinate_system.x, 0, max_x);
-                    p_my_coordinate_system.y = std::clamp<int>(max_y - p_my_coordinate_system.y, 0, max_y);
-                    shs::Canvas::draw_pixel(canvas, p_my_coordinate_system.x, p_my_coordinate_system.y, pixel);
+                    glm::ivec2 p_copy = p;
+                    p_copy.x = std::clamp<int>(p_copy.x, 0, max_x);
+                    p_copy.y = std::clamp<int>(p_copy.y, 0, max_y);
+                    shs::Canvas::draw_pixel(canvas, p_copy.x, p_copy.y, pixel);
                 }
             }
         }
@@ -430,20 +395,10 @@ namespace shs
             return scaled_value;
         }
 
-        static void draw_triangle_color_approximation(shs::Canvas &canvas, std::vector<glm::vec2> &in_vertices, std::vector<glm::vec3> &in_colors)
+        static void draw_triangle_color_approximation(shs::Canvas &canvas, std::vector<glm::vec2> &vertices, std::vector<glm::vec3> &colors)
         {
             int max_x = canvas.get_width();
             int max_y = canvas.get_height();
-
-            // converting from my coordinate system to popular rasterizer's coordinate system
-            // my coordinate system is origin is bottom left corner, y axis moves to upward and x axis moves to the right
-            // rasterizer's coordinate system is origin is top left corner, y axis moves to downward and x axis move to the right
-            std::vector<glm::vec2> vertices;
-            std::copy(in_vertices.begin(), in_vertices.end(), std::back_inserter(vertices));
-            for (auto &point : vertices)
-            {
-                point.y = max_y - point.y;
-            }
 
             glm::vec2 bboxmin(canvas.get_width() - 1, canvas.get_height() - 1);
             glm::vec2 bboxmax(0, 0);
@@ -460,22 +415,20 @@ namespace shs
             {
                 for (p.y = bboxmin.y; p.y <= bboxmax.y; p.y++)
                 {
-                    //glm::vec2 pixel_position(p.x + 0.5f, p.y + 0.5f);
-                    glm::vec2 pixel_position(p.x, p.y);
+                    glm::vec2 pixel_position(p.x + 0.5f, p.y + 0.5f);
                     glm::vec3 bc_screen = shs::Canvas::barycentric_coordinate(pixel_position, vertices);
 
                     if (bc_screen.x < 0 || bc_screen.y < 0 || bc_screen.z < 0)
                         continue;
 
-                    glm::ivec2 p_my_coordinate_system = p;
-                    p_my_coordinate_system.x = std::clamp<int>(p_my_coordinate_system.x, 0, max_x);
-                    p_my_coordinate_system.y = std::clamp<int>(max_y - p_my_coordinate_system.y, 0, max_y);
+                    glm::ivec2 p_copy = p;
+                    p_copy.x = std::clamp<int>(p_copy.x, 0, max_x);
+                    p_copy.y = std::clamp<int>(p_copy.y, 0, max_y);
 
-                    // draw pixel in my coordinate system
-                    glm::vec3 interpolated_color = bc_screen.x * in_colors[0] + bc_screen.y * in_colors[1] + bc_screen.z * in_colors[3];
+                    glm::vec3 interpolated_color = bc_screen.x * colors[0] + bc_screen.y * colors[1] + bc_screen.z * colors[3];
                     glm::vec4 rescaled_color     = shs::Canvas::rescale_vec4_1_255(glm::vec4(interpolated_color, 1.0));
 
-                    shs::Canvas::draw_pixel(canvas, p_my_coordinate_system.x, p_my_coordinate_system.y, shs::Color{std::uint8_t(rescaled_color.x), std::uint8_t(rescaled_color.y), std::uint8_t(rescaled_color.z), std::uint8_t(rescaled_color.w)});
+                    shs::Canvas::draw_pixel(canvas, p_copy.x, p_copy.y, shs::Color{std::uint8_t(rescaled_color.x), std::uint8_t(rescaled_color.y), std::uint8_t(rescaled_color.z), std::uint8_t(rescaled_color.w)});
                 }
             }
         }

@@ -29,21 +29,15 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 file(COPY obj DESTINATION "${CMAKE_CURRENT_BINARY_DIR}")
 
 
-add_executable(HelloWireframe hello_wireframe.cpp 
-  ${SHSRenderer_SOURCE_DIR}/shs_renderer.hpp
-  )
+add_executable(HelloWireframe hello_wireframe.cpp)
 target_link_libraries(HelloWireframe PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)
 
 
-add_executable(Hello3DObject hello_3d_object.cpp 
-  ${SHSRenderer_SOURCE_DIR}/shs_renderer.hpp
-  )
+add_executable(Hello3DObject hello_3d_object.cpp)
 target_link_libraries(Hello3DObject PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)
 
 
-add_executable(HelloEntt hello_entt.cpp 
-  ${SHSRenderer_SOURCE_DIR}/shs_renderer.hpp
-  )
+add_executable(HelloEntt hello_entt.cpp)
 target_link_libraries(Hello3DObject PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp EnTT::EnTT)
 
 

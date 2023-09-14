@@ -96,7 +96,7 @@
 # Compilation steps
     cd cpp-folders && mkdir build && cd build
     cmake ..
-    make
+    make -j8
     cd src/hello-pixel-primitives && ./HelloPixel
 
 
