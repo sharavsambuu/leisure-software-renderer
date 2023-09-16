@@ -1,4 +1,6 @@
 #include <iostream>
+#include <fstream>
+#include <sstream>
 #include <vector>
 #include <cstdio>
 #include <cstdint>
@@ -30,6 +32,14 @@ namespace shs
         std::uint8_t b;
         std::uint8_t a;
     };
+
+    struct RawTriangle
+    {
+        glm::vec3 v1;
+        glm::vec3 v2;
+        glm::vec3 v3;
+    };
+
 
     class Pixel
     {
@@ -679,6 +689,53 @@ namespace shs
 
     namespace Util
     {
+
+        class Obj3DFile
+        {
+        public:
+            Obj3DFile()
+            {
+            }
+            ~Obj3DFile()
+            {
+            }
+            static std::vector<shs::RawTriangle> read_triangles(const std::string& file_path)
+            {
+
+                std::cout << "reading triangle data from 3D wavefront obj file : " << file_path.c_str() << std::endl;
+                std::ifstream objFile(file_path.c_str());
+                if (!objFile.is_open())
+                {
+                    std::cerr << "Failed to open OBJ file." << std::endl;
+                    return {};
+                }
+
+                std::vector<shs::RawTriangle> triangles;
+
+                std::string line;
+                while (std::getline(objFile, line))
+                {
+                    if (line.empty() || line[0] == '#')
+                    {
+                        continue;
+                    }
+                    std::istringstream iss(line);
+                    std::string type;
+                    iss >> type;
+                    if (type == "f")
+                    {
+                        shs::RawTriangle triangle;
+                        iss >> triangle.v1.x >> triangle.v2.x >> triangle.v3.x;
+                        iss >> triangle.v1.y >> triangle.v2.y >> triangle.v3.y;
+                        iss >> triangle.v1.z >> triangle.v2.z >> triangle.v3.z;
+                        triangles.push_back(triangle);
+                    }
+                }
+                objFile.close();
+
+                return triangles;
+            }
+        };
 
         template <typename T>
         class LocklessQueue

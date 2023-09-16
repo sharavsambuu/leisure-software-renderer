@@ -41,3 +41,6 @@ add_executable(HelloEntt hello_entt.cpp)
 target_link_libraries(Hello3DObject PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp EnTT::EnTT)
 
 
+add_executable(HelloObjFormat hello_obj_format.cpp)
+target_link_libraries(HelloObjFormat PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm)
+
