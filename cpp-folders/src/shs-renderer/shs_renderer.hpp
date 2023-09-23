@@ -443,6 +443,58 @@ namespace shs
             }
         }
 
+        static void draw_triangle_flat_shading(shs::Canvas &canvas, std::vector<glm::vec2> &vertices, std::vector<glm::vec3> &view_space_normals, glm::vec3 &light_direction_in_view_space)
+        {
+            int max_x = canvas.get_width();
+            int max_y = canvas.get_height();
+
+            glm::vec2 bboxmin(canvas.get_width() - 1, canvas.get_height() - 1);
+            glm::vec2 bboxmax(0, 0);
+            glm::vec2 clamp(canvas.get_width() - 1, canvas.get_height() - 1);
+
+            for (int i = 0; i < 3; i++)
+            {
+                bboxmin = glm::max(glm::vec2(0), glm::min(bboxmin, vertices[i]));
+                bboxmax = glm::min(clamp, glm::max(bboxmax, vertices[i]));
+            }
+
+            glm::vec2 p;
+            for (p.x = bboxmin.x; p.x <= bboxmax.x; p.x++)
+            {
+                for (p.y = bboxmin.y; p.y <= bboxmax.y; p.y++)
+                {
+                    glm::vec2 pixel_position(p.x + 0.5f, p.y + 0.5f);
+                    glm::vec3 bc_screen = shs::Canvas::barycentric_coordinate(pixel_position, vertices);
+
+                    if (bc_screen.x < 0 || bc_screen.y < 0 || bc_screen.z < 0)
+                        continue;
+
+                    glm::ivec2 p_copy = p;
+                    p_copy.x = std::clamp<int>(p_copy.x, 0, max_x);
+                    p_copy.y = std::clamp<int>(p_copy.y, 0, max_y);
+
+                    //glm::vec3 interpolated_normal        = bc_screen.x * view_space_normals[0] + bc_screen.y * view_space_normals[1] + bc_screen.z * view_space_normals[2];
+                    //std::cout << interpolated_normal.x << " " << interpolated_normal.y << " " << interpolated_normal.z << std::endl;
+                    //std::cout << bc_screen.x << " " << bc_screen.y << " " << bc_screen.z << std::endl;
+
+                    //glm::vec3 normalized_normal          = glm::normalize(interpolated_normal);
+                    glm::vec3 normalized_normal          = glm::normalize(view_space_normals[0]);
+                    glm::vec3 normalized_light_direction = glm::normalize(light_direction_in_view_space);
+                    float light_intensity = glm::dot(normalized_light_direction, normalized_normal);
+                    //light_intensity       = glm::clamp(light_intensity, 0.0f, 1.0f);
+                    if (light_intensity>0)
+                    {
+                        glm::vec3 default_color  = glm::vec3(1.0f, 1.0f, 1.0f);
+                        glm::vec3 shaded_color   = default_color*light_intensity;
+                        glm::vec4 rescaled_color = shs::Canvas::rescale_vec4_1_255(glm::vec4(shaded_color, 1.0));
+                        shs::Canvas::draw_pixel(canvas, p_copy.x, p_copy.y, shs::Color{std::uint8_t(rescaled_color.x), std::uint8_t(rescaled_color.y), std::uint8_t(rescaled_color.z), std::uint8_t(rescaled_color.w)});
+
+                    }
+
+                }
+            }
+        }
+
         inline static glm::vec2 clip_to_screen(const glm::vec4 &clip_coord, int screen_width, int screen_height)
         {
             // Normalize the clip space coordinates

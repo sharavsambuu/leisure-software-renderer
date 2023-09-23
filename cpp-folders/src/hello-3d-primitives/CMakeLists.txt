@@ -28,13 +28,14 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 # 3D model wireframe rendering related commands
 file(COPY obj DESTINATION "${CMAKE_CURRENT_BINARY_DIR}")
 
-
 add_executable(HelloWireframe hello_wireframe.cpp)
 target_link_libraries(HelloWireframe PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)
 
-
 add_executable(Hello3DObject hello_3d_object.cpp)
 target_link_libraries(Hello3DObject PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)
+
+add_executable(HelloFlatShading hello_flat_shading.cpp)
+target_link_libraries(HelloFlatShading PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)
 
 
 
