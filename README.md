@@ -144,7 +144,9 @@
       - https://poniesandlight.co.uk/reflect/coroutines_job_system/
     Nice explanation about Model View Projection spaces
       - https://jsantell.com/model-view-projection/
-
+    Rotation Transformation convention, mentioned positive rotation is counter clock-wise
+      - https://www.youtube.com/watch?v=9egyFOt6PHM
+     
       
       
 # Result
