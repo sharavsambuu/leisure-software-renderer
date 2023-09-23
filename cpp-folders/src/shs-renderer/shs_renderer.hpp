@@ -435,7 +435,7 @@ namespace shs
                     p_copy.x = std::clamp<int>(p_copy.x, 0, max_x);
                     p_copy.y = std::clamp<int>(p_copy.y, 0, max_y);
 
-                    glm::vec3 interpolated_color = bc_screen.x * colors[0] + bc_screen.y * colors[1] + bc_screen.z * colors[3];
+                    glm::vec3 interpolated_color = bc_screen.x * colors[0] + bc_screen.y * colors[1] + bc_screen.z * colors[2];
                     glm::vec4 rescaled_color     = shs::Canvas::rescale_vec4_1_255(glm::vec4(interpolated_color, 1.0));
 
                     shs::Canvas::draw_pixel(canvas, p_copy.x, p_copy.y, shs::Color{std::uint8_t(rescaled_color.x), std::uint8_t(rescaled_color.y), std::uint8_t(rescaled_color.z), std::uint8_t(rescaled_color.w)});

@@ -99,7 +99,7 @@ public:
         std::vector<glm::vec3> colors = {
             {1.0f, 0.0f, 0.0f},
             {0.0f, 1.0f, 0.0f},
-            {0.0f, 0.0f, 1.0f}
+            {0.0f, 0.0f, 1.0f},
         };
         shs::Canvas::draw_triangle_color_approximation(canvas, new_vertices, colors);
 

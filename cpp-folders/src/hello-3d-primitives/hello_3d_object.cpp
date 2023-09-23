@@ -131,7 +131,7 @@ public:
     void update(float delta_time) override
     {
         float rotation_speed = 30.0;
-        this->rotation_angle += rotation_speed * delta_time;
+        this->rotation_angle -= rotation_speed * delta_time; // rotation by clock-wise 
         if (this->rotation_angle > 360.0f)
         {
             this->rotation_angle = 0.0f;

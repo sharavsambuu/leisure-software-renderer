@@ -14,10 +14,10 @@
 #include "shs_renderer.hpp"
 
 #define FRAMES_PER_SECOND  60
-#define WINDOW_WIDTH       720
-#define WINDOW_HEIGHT      640
-#define CANVAS_WIDTH       720
-#define CANVAS_HEIGHT      640
+#define WINDOW_WIDTH       640
+#define WINDOW_HEIGHT      520
+#define CANVAS_WIDTH       640
+#define CANVAS_HEIGHT      520
 #define CONCURRENCY_COUNT  8
 
 /*
