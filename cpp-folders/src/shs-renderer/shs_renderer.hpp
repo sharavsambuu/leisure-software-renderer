@@ -446,12 +446,12 @@ namespace shs
         inline static glm::vec2 clip_to_screen(const glm::vec4 &clip_coord, int screen_width, int screen_height)
         {
             // Normalize the clip space coordinates
-            glm::vec2 normalized_coord = glm::vec2(clip_coord.x, clip_coord.y) / clip_coord.w;
+            glm::vec2 ndc_coord = glm::vec2(clip_coord.x, clip_coord.y) / clip_coord.w;
 
             // Map the normalized coordinates to screen space
             glm::vec2 screen_coord;
-            screen_coord.x = (normalized_coord.x + 1.0f) * 0.5f * screen_width;
-            screen_coord.y = (normalized_coord.y + 1.0f) * 0.5f * screen_height;
+            screen_coord.x = (ndc_coord.x + 1.0f) * 0.5f * screen_width;
+            screen_coord.y = (1.0f + ndc_coord.y) * 0.5f * screen_height;
 
             return screen_coord;
         }
