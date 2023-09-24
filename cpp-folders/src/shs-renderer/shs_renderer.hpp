@@ -160,6 +160,52 @@ namespace shs
         shs::Color color;
     };
 
+
+    class ZBuffer
+    {
+    public:
+        ZBuffer(int width, int height, float z_near, float z_far)
+            : width(width), height(height), z_near(z_near), z_far(z_far)
+        {
+            this->depth_buffer.resize(width, std::vector<float>(height, std::numeric_limits<float>::max()));
+        }
+        ~ZBuffer()
+        {
+        }
+        bool test_and_set_depth(int x, int y, float fragment_depth)
+        {
+            if (x >= 0 && x < this->width && y >= 0 && y < this->height)
+            {
+                float normalized_depth = (fragment_depth - this->z_near) / (this->z_far - z_near);
+                normalized_depth = std::min(std::max(normalized_depth, 0.0f), 1.0f);
+                if (normalized_depth < this->depth_buffer[x][y])
+                {
+                    this->depth_buffer[x][y] = normalized_depth;
+                    return true; // Fragment is visible.
+                }
+            }
+            return false; // Fragment is not visible.
+        }
+        void clear()
+        {
+            for (int x = 0; x < this->width; ++x)
+            {
+                for (int y = 0; y < this->height; ++y)
+                {
+                    this->depth_buffer[x][y] = std::numeric_limits<float>::max();
+                }
+            }
+        }
+
+    private:
+        std::vector<std::vector<float>> depth_buffer;
+        int   width;
+        int   height;
+        float z_near;
+        float z_far;
+    };
+
+
     class Canvas
     {
     public:
@@ -443,7 +489,7 @@ namespace shs
             }
         }
 
-        static void draw_triangle_flat_shading(shs::Canvas &canvas, std::vector<glm::vec2> &vertices, std::vector<glm::vec3> &view_space_normals, glm::vec3 &light_direction_in_view_space)
+        static void draw_triangle_flat_shading(shs::Canvas &canvas, shs::ZBuffer &z_buffer, std::vector<glm::vec3> &vertices_screen, std::vector<glm::vec3> &view_space_normals, glm::vec3 &light_direction_in_view_space)
         {
             int max_x = canvas.get_width();
             int max_y = canvas.get_height();
@@ -452,10 +498,13 @@ namespace shs
             glm::vec2 bboxmax(0, 0);
             glm::vec2 clamp(canvas.get_width() - 1, canvas.get_height() - 1);
 
+            std::vector<glm::vec2> vertices_2d;
+            std::transform(vertices_screen.begin(), vertices_screen.end(), std::back_inserter(vertices_2d), [](const glm::vec3 &v3){ return glm::vec2(v3.x, v3.y); });
+
             for (int i = 0; i < 3; i++)
             {
-                bboxmin = glm::max(glm::vec2(0), glm::min(bboxmin, vertices[i]));
-                bboxmax = glm::min(clamp, glm::max(bboxmax, vertices[i]));
+                bboxmin = glm::max(glm::vec2(0), glm::min(bboxmin, vertices_2d[i]));
+                bboxmax = glm::min(clamp, glm::max(bboxmax, vertices_2d[i]));
             }
 
             glm::vec2 p;
@@ -464,18 +513,20 @@ namespace shs
                 for (p.y = bboxmin.y; p.y <= bboxmax.y; p.y++)
                 {
                     glm::vec2 pixel_position(p.x + 0.5f, p.y + 0.5f);
-                    glm::vec3 bc_screen = shs::Canvas::barycentric_coordinate(pixel_position, vertices);
+                    glm::vec3 bc_screen = shs::Canvas::barycentric_coordinate(pixel_position, vertices_2d);
 
                     if (bc_screen.x < 0 || bc_screen.y < 0 || bc_screen.z < 0)
                         continue;
+
+                    //std::cout << "z value : " << bc_screen.z << std::endl;
 
                     glm::ivec2 p_copy = p;
                     p_copy.x = std::clamp<int>(p_copy.x, 0, max_x);
                     p_copy.y = std::clamp<int>(p_copy.y, 0, max_y);
 
+                    //std::cout << bc_screen.x << " " << bc_screen.y << " " << bc_screen.z << std::endl;
                     //glm::vec3 interpolated_normal        = bc_screen.x * view_space_normals[0] + bc_screen.y * view_space_normals[1] + bc_screen.z * view_space_normals[2];
                     //std::cout << interpolated_normal.x << " " << interpolated_normal.y << " " << interpolated_normal.z << std::endl;
-                    //std::cout << bc_screen.x << " " << bc_screen.y << " " << bc_screen.z << std::endl;
 
                     //glm::vec3 normalized_normal          = glm::normalize(interpolated_normal);
                     glm::vec3 normalized_normal          = glm::normalize(view_space_normals[0]);
@@ -494,15 +545,16 @@ namespace shs
             }
         }
 
-        inline static glm::vec2 clip_to_screen(const glm::vec4 &clip_coord, int screen_width, int screen_height)
+        inline static glm::vec3 clip_to_screen(const glm::vec4 &clip_coord, int screen_width, int screen_height)
         {
             // Normalize the clip space coordinates
-            glm::vec2 ndc_coord = glm::vec2(clip_coord.x, clip_coord.y) / clip_coord.w;
+            glm::vec3 ndc_coord = glm::vec3(clip_coord.x, clip_coord.y, clip_coord.z) / clip_coord.w;
 
             // Map the normalized coordinates to screen space
-            glm::vec2 screen_coord;
+            glm::vec3 screen_coord;
             screen_coord.x = (ndc_coord.x + 1.0f) * 0.5f * screen_width;
             screen_coord.y = (1.0f + ndc_coord.y) * 0.5f * screen_height;
+            screen_coord.z = ndc_coord.z;
 
             return screen_coord;
         }

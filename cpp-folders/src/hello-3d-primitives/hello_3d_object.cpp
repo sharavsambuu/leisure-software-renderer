@@ -71,7 +71,7 @@ public:
     ModelGeometry(std::string model_path)
     {
         Assimp::Importer importer;
-        const aiScene *scene = importer.ReadFile(model_path.c_str(), aiProcess_Triangulate);
+        const aiScene *scene = importer.ReadFile(model_path.c_str(), aiProcessPreset_TargetRealtime_Quality);
         if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
         {
             std::cerr << "Error loading OBJ file: " << importer.GetErrorString() << std::endl;
@@ -217,8 +217,8 @@ public:
                         vertices_2d[2] = shs::Canvas::clip_to_screen(vertex2_clip_space, CANVAS_WIDTH,  CANVAS_HEIGHT);
 
                         shs::Canvas::draw_line(*this->scene->canvas, vertices_2d[0].x, vertices_2d[0].y, vertices_2d[1].x, vertices_2d[1].y, shs::Pixel::green_pixel());
-                        shs::Canvas::draw_line(*this->scene->canvas, vertices_2d[0].x, vertices_2d[0].y, vertices_2d[2].x, vertices_2d[2].y, shs::Pixel::blue_pixel());
-                        shs::Canvas::draw_line(*this->scene->canvas, vertices_2d[1].x, vertices_2d[1].y, vertices_2d[2].x, vertices_2d[2].y, shs::Pixel::red_pixel());
+                        shs::Canvas::draw_line(*this->scene->canvas, vertices_2d[0].x, vertices_2d[0].y, vertices_2d[2].x, vertices_2d[2].y, shs::Pixel::green_pixel());
+                        shs::Canvas::draw_line(*this->scene->canvas, vertices_2d[1].x, vertices_2d[1].y, vertices_2d[2].x, vertices_2d[2].y, shs::Pixel::green_pixel());
 
                         //shs::Canvas::draw_triangle(*this->scene->canvas, vertices_2d, shs::Pixel::random_pixel());
                         //shs::Canvas::draw_triangle(*this->scene->canvas, vertices_2d, shs::Pixel::green_pixel());

@@ -71,7 +71,7 @@ public:
     ModelGeometry(std::string model_path)
     {
         unsigned int flags = aiProcess_Triangulate | aiProcess_GenNormals;
-        const aiScene *scene = this->importer.ReadFile(model_path.c_str(), flags);
+        const aiScene *scene = this->importer.ReadFile(model_path.c_str(), aiProcessPreset_TargetRealtime_Quality);
         if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
         {
             std::cerr << "Error loading OBJ file: " << this->importer.GetErrorString() << std::endl;
@@ -200,7 +200,19 @@ public:
 class RendererSystem : public shs::AbstractSystem
 {
 public:
-    RendererSystem(HelloScene *scene) : scene(scene) {}
+    RendererSystem(HelloScene *scene) : scene(scene) 
+    {
+        this->z_buffer = new shs::ZBuffer(
+            this->scene->canvas->get_width(),
+            this->scene->canvas->get_height(),
+            this->scene->viewer->camera->z_near,
+            this->scene->viewer->camera->z_far
+        );
+    }
+    ~RendererSystem()
+    {
+        delete this->z_buffer;
+    }
     void process(float delta_time) override
     {
 
@@ -241,10 +253,10 @@ public:
                         glm::vec4 vertex2_clip_space = projection_matrix * (view_matrix * (model_matrix * glm::vec4(monkey->geometry->triangles[i + 1], 1.0)));
                         glm::vec4 vertex3_clip_space = projection_matrix * (view_matrix * (model_matrix * glm::vec4(monkey->geometry->triangles[i + 2], 1.0)));
 
-                        std::vector<glm::vec2> vertices_2d(3);
-                        vertices_2d[0] = shs::Canvas::clip_to_screen(vertex1_clip_space, CANVAS_WIDTH,  CANVAS_HEIGHT);
-                        vertices_2d[1] = shs::Canvas::clip_to_screen(vertex2_clip_space, CANVAS_WIDTH,  CANVAS_HEIGHT);
-                        vertices_2d[2] = shs::Canvas::clip_to_screen(vertex2_clip_space, CANVAS_WIDTH,  CANVAS_HEIGHT);
+                        std::vector<glm::vec3> vertices_screen(3);
+                        vertices_screen[0] = shs::Canvas::clip_to_screen(vertex1_clip_space, CANVAS_WIDTH,  CANVAS_HEIGHT);
+                        vertices_screen[1] = shs::Canvas::clip_to_screen(vertex2_clip_space, CANVAS_WIDTH,  CANVAS_HEIGHT);
+                        vertices_screen[2] = shs::Canvas::clip_to_screen(vertex2_clip_space, CANVAS_WIDTH,  CANVAS_HEIGHT);
 
 
                         //shs::Canvas::draw_line(*this->scene->canvas, vertices_2d[0].x, vertices_2d[0].y, vertices_2d[1].x, vertices_2d[1].y, shs::Pixel::green_pixel());
@@ -260,14 +272,15 @@ public:
                         shs::Canvas::draw_triangle_color_approximation(*this->scene->canvas, vertices_2d, colors);
                         */
 
-                        shs::Canvas::draw_triangle_flat_shading(*this->scene->canvas, vertices_2d, view_space_normals, rotated_light_direction);
+                        shs::Canvas::draw_triangle_flat_shading(*this->scene->canvas, *this->z_buffer, vertices_screen, view_space_normals, rotated_light_direction);
                     }
                 }
             }
         }
     }
 private:
-    HelloScene *scene;
+    HelloScene   *scene;
+    shs::ZBuffer *z_buffer;
     float light_angle          = glm::radians(45.0f);
     float light_rotation_speed = 1.5;
 };
