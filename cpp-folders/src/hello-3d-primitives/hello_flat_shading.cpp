@@ -192,7 +192,7 @@ public:
     shs::Canvas  *canvas;
     Viewer       *viewer;
 
-    glm::vec3    light_direction = glm::vec3(0.1, -0.1, 0.3);
+    glm::vec3    light_direction = glm::vec3(1.0, -0.3, 0.0);
 
 };
 
@@ -207,9 +207,15 @@ public:
         glm::mat4 view_matrix       = this->scene->viewer->camera->view_matrix;
         glm::mat4 projection_matrix = this->scene->viewer->camera->projection_matrix;
 
-        glm::vec4 light_direction_in_world_space = glm::vec4(this->scene->light_direction, 1.0);
-        glm::vec4 light_direction_in_view_space_ = view_matrix * light_direction_in_world_space;
-        glm::vec3 light_direction_in_view_space  = glm::vec3(light_direction_in_view_space_.x, light_direction_in_view_space_.y, light_direction_in_view_space_.z);
+        this->light_angle -=  this->light_rotation_speed * delta_time;
+        if (this->light_angle > 360.0f)
+        {
+            this->light_angle = 0.0f;
+        }
+        glm::vec3 light_rotation_axis     = glm::vec3(0.0f, 1.0f, 0.0f);
+        glm::mat4 light_rotation_matrix   = glm::rotate(glm::mat4(1.0f), this->light_angle, light_rotation_axis);
+        glm::vec3 rotated_light_direction = glm::vec3(light_rotation_matrix * glm::vec4(this->scene->light_direction, 1.0f));
+
 
         for (shs::AbstractObject3D *object : this->scene->scene_objects)
         {
@@ -254,7 +260,7 @@ public:
                         shs::Canvas::draw_triangle_color_approximation(*this->scene->canvas, vertices_2d, colors);
                         */
 
-                        shs::Canvas::draw_triangle_flat_shading(*this->scene->canvas, vertices_2d, view_space_normals, light_direction_in_view_space);
+                        shs::Canvas::draw_triangle_flat_shading(*this->scene->canvas, vertices_2d, view_space_normals, rotated_light_direction);
                     }
                 }
             }
@@ -262,6 +268,8 @@ public:
     }
 private:
     HelloScene *scene;
+    float light_angle          = glm::radians(45.0f);
+    float light_rotation_speed = 1.5;
 };
 
 class LogicSystem : public shs::AbstractSystem
@@ -278,7 +286,7 @@ public:
                 MonkeyObject *monkey = dynamic_cast<MonkeyObject *>(object);
                 if (monkey)
                 {
-                    monkey->update(delta_time);
+                    //monkey->update(delta_time);
                 }
             }
         }
