@@ -385,6 +385,7 @@ namespace shs
             }
         }
 
+/*
         inline static glm::vec3 barycentric_coordinate(const glm::vec2 &P, const std::vector<glm::vec2> &triangle_vertices)
         {
             if (triangle_vertices.size() != 3)
@@ -400,6 +401,39 @@ namespace shs
 
             // Calculate the area of the full triangle
             float areaABC = glm::cross(glm::vec3(B - A, 0), glm::vec3(C - A, 0)).z;
+
+            // Calculate the barycentric coordinates
+            glm::vec3 barycentric;
+
+            barycentric.x = glm::cross(glm::vec3(B - P, 0), glm::vec3(C - P, 0)).z / areaABC;
+            barycentric.y = glm::cross(glm::vec3(C - P, 0), glm::vec3(A - P, 0)).z / areaABC;
+            barycentric.z = 1.0f - barycentric.x - barycentric.y;
+
+            return barycentric;
+        }
+*/
+
+        inline static glm::vec3 barycentric_coordinate(const glm::vec2 &P, const std::vector<glm::vec2> &triangle_vertices)
+        {
+            if (triangle_vertices.size() != 3)
+            {
+                // Ensure there are exactly three vertices in the triangle
+                throw std::invalid_argument("The triangle must have exactly three vertices.");
+            }
+
+            // Extract the vertices A, B, and C
+            const glm::vec2 &A = triangle_vertices[0];
+            const glm::vec2 &B = triangle_vertices[1];
+            const glm::vec2 &C = triangle_vertices[2];
+
+            // Calculate the area of the full triangle
+            float areaABC = glm::cross(glm::vec3(B - A, 0), glm::vec3(C - A, 0)).z;
+
+            // Check for degenerate triangles (zero area)
+            if (areaABC == 0.0f)
+            {
+                throw std::invalid_argument("The triangle is degenerate (zero area).");
+            }
 
             // Calculate the barycentric coordinates
             glm::vec3 barycentric;
@@ -498,6 +532,7 @@ namespace shs
             glm::vec2 bboxmax(0, 0);
             glm::vec2 clamp(canvas.get_width() - 1, canvas.get_height() - 1);
 
+
             std::vector<glm::vec2> vertices_2d;
             std::transform(vertices_screen.begin(), vertices_screen.end(), std::back_inserter(vertices_2d), [](const glm::vec3 &v3){ return glm::vec2(v3.x, v3.y); });
 
@@ -512,35 +547,43 @@ namespace shs
             {
                 for (p.y = bboxmin.y; p.y <= bboxmax.y; p.y++)
                 {
-                    glm::vec2 pixel_position(p.x + 0.5f, p.y + 0.5f);
-                    glm::vec3 bc_screen = shs::Canvas::barycentric_coordinate(pixel_position, vertices_2d);
-
-                    if (bc_screen.x < 0 || bc_screen.y < 0 || bc_screen.z < 0)
-                        continue;
-
-                    //std::cout << "z value : " << bc_screen.z << std::endl;
-
-                    glm::ivec2 p_copy = p;
-                    p_copy.x = std::clamp<int>(p_copy.x, 0, max_x);
-                    p_copy.y = std::clamp<int>(p_copy.y, 0, max_y);
-
-                    //std::cout << bc_screen.x << " " << bc_screen.y << " " << bc_screen.z << std::endl;
-                    //glm::vec3 interpolated_normal        = bc_screen.x * view_space_normals[0] + bc_screen.y * view_space_normals[1] + bc_screen.z * view_space_normals[2];
-                    //std::cout << interpolated_normal.x << " " << interpolated_normal.y << " " << interpolated_normal.z << std::endl;
-
-                    //glm::vec3 normalized_normal          = glm::normalize(interpolated_normal);
-                    glm::vec3 normalized_normal          = glm::normalize(view_space_normals[0]);
-                    glm::vec3 normalized_light_direction = glm::normalize(light_direction_in_view_space);
-                    float light_intensity = glm::dot(normalized_light_direction, normalized_normal);
-                    //light_intensity       = glm::clamp(light_intensity, 0.0f, 1.0f);
-                    if (light_intensity>0)
+                    try
                     {
-                        glm::vec3 default_color  = glm::vec3(1.0f, 1.0f, 1.0f);
-                        glm::vec3 shaded_color   = default_color*light_intensity;
-                        glm::vec4 rescaled_color = shs::Canvas::rescale_vec4_1_255(glm::vec4(shaded_color, 1.0));
-                        shs::Canvas::draw_pixel(canvas, p_copy.x, p_copy.y, shs::Color{std::uint8_t(rescaled_color.x), std::uint8_t(rescaled_color.y), std::uint8_t(rescaled_color.z), std::uint8_t(rescaled_color.w)});
-                    }
+                        glm::vec2 pixel_position(p.x + 0.5f, p.y + 0.5f);
+                        glm::vec3 bc_screen = shs::Canvas::barycentric_coordinate(pixel_position, vertices_2d);
+                        std::cout << bc_screen.x << " " << bc_screen.y << " " << bc_screen.z << std::endl;
 
+                        if (bc_screen.x < 0 || bc_screen.y < 0 || bc_screen.z < 0)
+                            continue;
+
+                        // std::cout << "z value : " << bc_screen.z << std::endl;
+
+                        glm::ivec2 p_copy = p;
+                        p_copy.x = std::clamp<int>(p_copy.x, 0, max_x);
+                        p_copy.y = std::clamp<int>(p_copy.y, 0, max_y);
+
+                        glm::vec3 interpolated_fragment = bc_screen.x * vertices_screen[0] + bc_screen.y * vertices_screen[1] + bc_screen.z * vertices_screen[2];
+                        // std::cout << bc_screen.x << " " << bc_screen.y << " " << bc_screen.z << std::endl;
+                        // glm::vec3 interpolated_normal        = bc_screen.x * view_space_normals[0] + bc_screen.y * view_space_normals[1] + bc_screen.z * view_space_normals[2];
+                        // std::cout << interpolated_fragment.x << " " << interpolated_fragment.y << " " << interpolated_fragment.z << std::endl;
+
+                        // glm::vec3 normalized_normal          = glm::normalize(interpolated_normal);
+                        glm::vec3 normalized_normal = glm::normalize(view_space_normals[0]);
+                        glm::vec3 normalized_light_direction = glm::normalize(light_direction_in_view_space);
+                        float light_intensity = glm::dot(normalized_light_direction, normalized_normal);
+                        // light_intensity       = glm::clamp(light_intensity, 0.0f, 1.0f);
+                        if (light_intensity > 0)
+                        {
+                            glm::vec3 default_color = glm::vec3(1.0f, 1.0f, 1.0f);
+                            glm::vec3 shaded_color = default_color * light_intensity;
+                            glm::vec4 rescaled_color = shs::Canvas::rescale_vec4_1_255(glm::vec4(shaded_color, 1.0));
+                            shs::Canvas::draw_pixel(canvas, p_copy.x, p_copy.y, shs::Color{std::uint8_t(rescaled_color.x), std::uint8_t(rescaled_color.y), std::uint8_t(rescaled_color.z), std::uint8_t(rescaled_color.w)});
+                        }
+                    }
+                    catch (const std::invalid_argument &e)
+                    {
+                        continue;
+                    }
                 }
             }
         }
