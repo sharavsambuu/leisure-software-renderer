@@ -488,7 +488,6 @@ namespace shs
                         glm::vec3 shaded_color   = default_color*light_intensity;
                         glm::vec4 rescaled_color = shs::Canvas::rescale_vec4_1_255(glm::vec4(shaded_color, 1.0));
                         shs::Canvas::draw_pixel(canvas, p_copy.x, p_copy.y, shs::Color{std::uint8_t(rescaled_color.x), std::uint8_t(rescaled_color.y), std::uint8_t(rescaled_color.z), std::uint8_t(rescaled_color.w)});
-
                     }
 
                 }

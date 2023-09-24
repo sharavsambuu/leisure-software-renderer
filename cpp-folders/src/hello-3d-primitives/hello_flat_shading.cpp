@@ -33,7 +33,7 @@ public:
         this->camera->field_of_view    = 45.0;
         this->camera->horizontal_angle = 0.0;
         this->camera->vertical_angle   = 0.0;
-        this->camera->z_near           = 0.01;
+        this->camera->z_near           = 0.01f;
         this->camera->z_far            = 1000.0f;
     }
     ~Viewer() {}
@@ -192,7 +192,7 @@ public:
     shs::Canvas  *canvas;
     Viewer       *viewer;
 
-    glm::vec3    light_direction = glm::vec3(0.0, -0.5, 0.3);
+    glm::vec3    light_direction = glm::vec3(0.1, -0.1, 0.3);
 
 };
 
@@ -223,9 +223,9 @@ public:
                     for (size_t i = 0; i < monkey->geometry->triangles.size(); i += 3)
                     {
 
-                        glm::vec4 normal1 = view_matrix * (model_matrix * glm::vec4(monkey->geometry->normals[i    ], 1.0));
-                        glm::vec4 normal2 = view_matrix * (model_matrix * glm::vec4(monkey->geometry->normals[i + 1], 1.0));
-                        glm::vec4 normal3 = view_matrix * (model_matrix * glm::vec4(monkey->geometry->normals[i + 2], 1.0));
+                        glm::vec4 normal1 = view_matrix * (model_matrix * glm::vec4(monkey->geometry->normals[i    ], 0.0));
+                        glm::vec4 normal2 = view_matrix * (model_matrix * glm::vec4(monkey->geometry->normals[i + 1], 0.0));
+                        glm::vec4 normal3 = view_matrix * (model_matrix * glm::vec4(monkey->geometry->normals[i + 2], 0.0));
                         std::vector<glm::vec3> view_space_normals(3);
                         view_space_normals[0] = glm::vec3(normal1.x, normal1.y, normal1.z);
                         view_space_normals[1] = glm::vec3(normal2.x, normal2.y, normal2.z);
