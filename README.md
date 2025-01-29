@@ -1,5 +1,14 @@
 
 # Tasks to mess around in the near future
+
+    Switch to SDL3
+    Update libraries
+    Fix cmake stuffs on Windows 10
+    Add notes on how configure dependencies on Windows 10
+    Fix Race Conditions on the job classes
+    Make Job System example doesn't crash
+    Move on to the next original goals like 3D shading and stuffs
+
     Try to parallelize rasterization by subdividing large triangles based on certain threshold
         - recursively assemble rasterizable small triangle chunks into the list
         - submit them parallel rasterizer job system
@@ -22,6 +31,7 @@
 
 
 # About
+
     I'm just exercizing about software renderer and shaders in my freetime.
     I think using graphics api is too overrated and writing own software renderer is cool.
     For simplicity I'm gonna use SDL2, and all the rendering computation should happend 
