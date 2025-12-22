@@ -1,3 +1,7 @@
+/*
+    THREADING EXAMPLE (No external JobSystem)
+*/
+
 #include <SDL2/SDL.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/noise.hpp> 
@@ -11,6 +15,7 @@
 #include <tuple>
 #include <thread>
 #include <mutex>
+
 #include "shs_renderer.hpp"
 
 #define FRAMES_PER_SECOND  60
@@ -18,15 +23,8 @@
 #define WINDOW_HEIGHT      520
 #define CANVAS_WIDTH       360
 #define CANVAS_HEIGHT      240
-#define EXECUTOR_POOL_SIZE 8
+#define EXECUTOR_POOL_SIZE 8    // Thread-ийн тоо
 #define NUM_OCTAVES        5
-
-
-/*
- * First things comes to my mind is like oh yes I have to use many thread as much as possible since
- * I have old i7 CPU with 8 cores. But in reality context switching on between threads is expensive thing
- * so that explains why this program so slow compared to dummy nested loop based one.
- */
 
 glm::vec4 rescale_vec4_1_255(const glm::vec4 &input_vec) {
     glm::vec4 clamped_value = glm::clamp(input_vec, 0.0f, 1.0f);
@@ -44,7 +42,6 @@ float noise(const glm::vec2& _st) {
     glm::vec2 i = glm::floor(_st);
     glm::vec2 f = glm::fract(_st);
 
-    // Four corners in 2D of a tile
     float a = random(i);
     float b = random(i + glm::vec2(1.0f, 0.0f));
     float c = random(i + glm::vec2(0.0f, 1.0f));
@@ -63,7 +60,6 @@ float fbm(const glm::vec2& st) {
     float a = 0.5f;
     glm::vec2 shift(100.0f);
     
-    // Rotate to reduce axial bias
     glm::mat2 rot(cos(0.5f), sin(0.5f),
                   -sin(0.5f), cos(0.5f));
 
@@ -111,13 +107,12 @@ glm::vec4 fragment_shader(glm::vec2 uniform_uv, float uniform_time)
 };
 
 
-int main()
+int main(int argc, char* argv[])
 {
-
     SDL_Window   *window   = nullptr;
     SDL_Renderer *renderer = nullptr;
 
-    SDL_Init(SDL_INIT_VIDEO);
+    if (SDL_Init(SDL_INIT_VIDEO) < 0) return -1;
     SDL_CreateWindowAndRenderer(WINDOW_WIDTH, WINDOW_HEIGHT, 0, &window, &renderer);
     SDL_RenderSetScale(renderer, 1, 1);
 
@@ -126,95 +121,102 @@ int main()
     SDL_Texture *screen_texture  = SDL_CreateTextureFromSurface(renderer, main_sdlsurface);
 
 
-    bool exit = false;
+    bool exit_loop = false;
     SDL_Event event_data;
 
-    int    frame_delay            = 1000 / FRAMES_PER_SECOND; // Delay for 60 FPS
+    int    frame_delay            = 1000 / FRAMES_PER_SECOND;
     float  frame_time_accumulator = 0;
     int    frame_counter          = 0;
-    int    fps                    = 0;
     float  time_accumulator       = 0.0;
 
-    while (!exit)
+    while (!exit_loop)
     {
-
         Uint32 frame_start_ticks = SDL_GetTicks();
 
-        // catching up input events happened on hardware
+        // Input handling
         while (SDL_PollEvent(&event_data))
         {
             switch (event_data.type)
             {
             case SDL_QUIT:
-                exit = true;
+                exit_loop = true;
                 break;
             case SDL_KEYDOWN:
-                switch(event_data.key.keysym.sym) {
-                    case SDLK_ESCAPE: 
-                        exit = true;
-                        break;
+                if (event_data.key.keysym.sym == SDLK_ESCAPE) {
+                    exit_loop = true;
                 }
                 break;
             }
         }
 
-
-        // preparing to render on SDL2
+        // Preparing to render
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
 
 
-        // Run fragment shader with parallel threaded fashion
-        std::mutex canvas_mutex;
+        // ==========================================
+        // THREADING LOGIC (SLICING)
+        // ==========================================
+        
         std::vector<std::thread> thread_pool;
-        for (int x=0; x<CANVAS_WIDTH; x++)
+        int height_per_thread = CANVAS_HEIGHT / EXECUTOR_POOL_SIZE;
+
+        for (int i = 0; i < EXECUTOR_POOL_SIZE; i++)
         {
-            for (int y=0; y<CANVAS_HEIGHT; y++)
-            {
-                while (thread_pool.size()>=EXECUTOR_POOL_SIZE)
-                {
-                    for (auto& thread : thread_pool)
-                    {
-                        thread.join();
-                    }
-                    thread_pool.clear();
-                }
-                std::thread task([x, y, time_accumulator, &main_canvas, &canvas_mutex]() {
-                    glm::vec2 uv = {float(x), float(y)};
-                    glm::vec4 shader_output = fragment_shader(uv, time_accumulator);
-                    // mutating shared resource from threads, that why I'm using mutex in here
-                    // if the control go outside of this scope lock will automatically released.
-                    {
-                        std::lock_guard<std::mutex> lock(canvas_mutex);
-                        shs::Canvas::draw_pixel(*main_canvas, x, y, shs::Color{u_int8_t(shader_output[0]), u_int8_t(shader_output[1]), u_int8_t(shader_output[2]), u_int8_t(shader_output[3])});
-                    }
-                });
-                thread_pool.emplace_back(std::move(task));
+            // Thread бүр аль мөрнөөс аль мөр хүртэл зурахыг тооцоолно
+            int start_y = i * height_per_thread;
+            int end_y   = (i + 1) * height_per_thread;
+            
+            // Сүүлийн thread үлдэгдэл мөрүүдийг гүйцээж авах ёстой (division remainder)
+            if (i == EXECUTOR_POOL_SIZE - 1) {
+                end_y = CANVAS_HEIGHT;
             }
+
+            // Thread үүсгэх
+            thread_pool.emplace_back([start_y, end_y, time_accumulator, main_canvas]() {
+                for (int y = start_y; y < end_y; y++) {
+                    for (int x = 0; x < CANVAS_WIDTH; x++) {
+                        glm::vec2 uv = {float(x), float(y)};
+                        glm::vec4 shader_output = fragment_shader(uv, time_accumulator);
+                        
+                        // Thread бүр өөр Y координат дээр ажиллаж байгаа тул 
+                        // санах ойн давхцал (Race Condition) үүсэхгүй.
+                        main_canvas->draw_pixel(x, y, shs::Color{
+                            (uint8_t)shader_output[0], 
+                            (uint8_t)shader_output[1], 
+                            (uint8_t)shader_output[2], 
+                            (uint8_t)shader_output[3]
+                        });
+                    }
+                }
+            });
         }
-        // waiting for other threads left in the pool finish its jobs
+
+        // Бүх thread ажлаа дуусахыг хүлээнэ (Join)
         for (auto &thread : thread_pool)
         {
-            thread.join();
+            if (thread.joinable()) thread.join();
         }
 
-        // debug draw for if it is rendering something
+        // ==========================================
+
+        // Debug draw
         shs::Canvas::fill_random_pixel(*main_canvas, 40, 30, 60, 80);
 
-
-        // actually presenting canvas data on the hardware surface
+        // Presenting canvas data
         shs::Canvas::copy_to_SDLSurface(main_sdlsurface, main_canvas);
         SDL_UpdateTexture(screen_texture, NULL, main_sdlsurface->pixels, main_sdlsurface->pitch);
         SDL_Rect destination_rect{0, 0, WINDOW_WIDTH, WINDOW_HEIGHT};
         SDL_RenderCopy(renderer, screen_texture, NULL, &destination_rect);
         SDL_RenderPresent(renderer);
-
     
+        // FPS calculation
         frame_counter++;
         Uint32 delta_frame_time  = SDL_GetTicks() - frame_start_ticks;
         frame_time_accumulator  += delta_frame_time/1000.0;
         time_accumulator        += delta_frame_time/1000.0;
-        if (delta_frame_time < frame_delay) {
+
+        if (delta_frame_time < (Uint32)frame_delay) {
             SDL_Delay(frame_delay - delta_frame_time);
         }
         if (frame_time_accumulator >= 1.0) {
@@ -225,10 +227,12 @@ int main()
         }
     }
 
-
-    // free the memory
-    main_canvas  = nullptr; 
+    // Free the memory
+    // Эхлээд pointer-оо устгаад, дараа нь nullptr болгох ёстой.
+    // Таны код дээр эхлээд nullptr болгоод дараа нь delete хийж байсан нь Memory Leak үүсгэнэ.
     delete main_canvas;
+    main_canvas = nullptr; 
+
     SDL_DestroyTexture(screen_texture);
     SDL_FreeSurface(main_sdlsurface);
 

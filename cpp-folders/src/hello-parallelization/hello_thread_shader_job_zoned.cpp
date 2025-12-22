@@ -1,3 +1,10 @@
+/*
+    THREADED SHADER RENDERER EXAMPLE
+    
+    Дэлгэцийг хэд хэдэн бүсэд (Region) хувааж, бүс тус бүрийг
+    тусдаа Thread-ээр зэрэгцүүлэн тооцоолох.
+*/
+
 #include <SDL2/SDL.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/noise.hpp> 
@@ -5,86 +12,59 @@
 #include <string>
 #include <vector>
 #include <iostream>
-#include <array>
-#include <cstdlib>
-#include <cmath>
-#include <tuple>
+#include <atomic>
 #include <thread>
 #include <mutex>
 #include <condition_variable>
-#include "shs_renderer.hpp"
+
+#include "shs_renderer.hpp" 
 
 #define FRAMES_PER_SECOND  60
 #define WINDOW_WIDTH       640
 #define WINDOW_HEIGHT      520
 #define CANVAS_WIDTH       360
 #define CANVAS_HEIGHT      240
-#define CONCURRENCY_COUNT  8
+#define CONCURRENCY_COUNT  16   // Хэдэн хэсэгт хувааж зэрэг тооцоолох вэ
 #define NUM_OCTAVES        5
 
-
-// job system synchronization primitives
+// Job system-ийн синхрончлолд ашиглах хувьсагчид
 std::atomic<int> atomic_counter(0);
 std::mutex mtx;
 std::condition_variable cv;
 
-
+// Туслах функц: Vec4 (0.0-1.0) утгыг өнгөний хязгаар (0-255) руу хөрвүүлэх
 glm::vec4 rescale_vec4_1_255(const glm::vec4 &input_vec) {
-    glm::vec4 clamped_value = glm::clamp(input_vec, 0.0f, 1.0f);
-    glm::vec4 scaled_value  = clamped_value * 255.0f;
-    return scaled_value;
+    return glm::clamp(input_vec, 0.0f, 1.0f) * 255.0f;
 }
 
-// Function to generate a random value based on input vector using GLM
+// GLM Noise функцүүд
 float random(const glm::vec2& _st) {
     return glm::fract(glm::sin(glm::dot(_st, glm::vec2(12.9898f, 78.233f))) * 43758.5453123f);
 }
 
-// Function to calculate noise using GLM
-float noise(const glm::vec2& _st) {
-    glm::vec2 i = glm::floor(_st);
-    glm::vec2 f = glm::fract(_st);
-
-    // Four corners in 2D of a tile
-    float a = random(i);
-    float b = random(i + glm::vec2(1.0f, 0.0f));
-    float c = random(i + glm::vec2(0.0f, 1.0f));
-    float d = random(i + glm::vec2(1.0f, 1.0f));
-
-    glm::vec2 u = f * f * (3.0f - 2.0f * f);
-
-    return glm::mix(a, b, u.x) +
-           (c - a) * u.y * (1.0f - u.x) +
-           (d - b) * u.x * u.y;
-}
-
+// Fractal Brownian Motion (Үүл мэт эффект гаргах)
 float fbm(const glm::vec2& st) {
     glm::vec2 _st = st;
     float v = 0.0f;
     float a = 0.5f;
     glm::vec2 shift(100.0f);
-    
-    // Rotate to reduce axial bias
-    glm::mat2 rot(cos(0.5f), sin(0.5f),
-                  -sin(0.5f), cos(0.5f));
+    glm::mat2 rot(cos(0.5f), sin(0.5f), -sin(0.5f), cos(0.5f));
 
     for (int i = 0; i < NUM_OCTAVES; ++i) {
         v += a * glm::simplex(_st); 
         _st = rot * _st * 2.0f + shift;
         a *= 0.5f;
     }
-
     return v;
 }
 
+// Хүнд тооцоололтой Fragment Shader-ийн симуляци
 glm::vec4 fragment_shader(glm::vec2 uniform_uv, float uniform_time)
 {
     glm::vec2 st = (uniform_uv/glm::vec2(CANVAS_WIDTH, CANVAS_HEIGHT))*3.0f;
     st += float(glm::abs(glm::sin(uniform_time*0.1f)*3.0f))*st;
-    glm::vec3 color(0.0);
-
+    
     glm::vec2 q(0.0);
-
     q.x = fbm(st + 0.00f * uniform_time);
     q.y = fbm(st + glm::vec2(1.0f));
 
@@ -94,151 +74,152 @@ glm::vec4 fragment_shader(glm::vec2 uniform_uv, float uniform_time)
 
     float f = fbm(st + r);
 
-    color = glm::mix(glm::vec3(0.101961f, 0.619608f, 0.666667f),
+    glm::vec3 color = glm::mix(glm::vec3(0.101961f, 0.619608f, 0.666667f),
                      glm::vec3(0.666667f, 0.666667f, 0.498039f),
                      glm::clamp((f * f) * 4.0f, 0.0f, 1.0f));
 
-    color = glm::mix(color,
-                     glm::vec3(0.0f, 0.0f, 0.164706f),
-                     glm::clamp(glm::length(q), 0.0f, 1.0f));
-
-    color = glm::mix(color,
-                     glm::vec3(0.666667f, 1.0f, 1.0f),
-                     glm::clamp(glm::length(r.x), 0.0f, 1.0f));
+    color = glm::mix(color, glm::vec3(0.0f, 0.0f, 0.164706f), glm::clamp(glm::length(q), 0.0f, 1.0f));
+    color = glm::mix(color, glm::vec3(0.666667f, 1.0f, 1.0f), glm::clamp(glm::length(r.x), 0.0f, 1.0f));
     
-
-    glm::vec4 output_arr = glm::vec4(color*float(f*f*f+0.6f*f*f+0.5*f),1.0f);
-    return rescale_vec4_1_255(output_arr);
+    return rescale_vec4_1_255(glm::vec4(color*float(f*f*f+0.6f*f*f+0.5*f),1.0f));
 };
 
-
-int main()
+int main(int argc, char* argv[])
 {
-
-    shs::Job::AbstractJobSystem *job_system = new shs::Job::ThreadedLocklessPriorityJobSystem(CONCURRENCY_COUNT);
-
-
-    SDL_Window   *window   = nullptr;
-    SDL_Renderer *renderer = nullptr;
+    // Job System-ийг эхлүүлэх
+    auto *job_system = new shs::Job::ThreadedPriorityJobSystem(CONCURRENCY_COUNT);
 
     SDL_Init(SDL_INIT_VIDEO);
+    SDL_Window *window;
+    SDL_Renderer *renderer;
     SDL_CreateWindowAndRenderer(WINDOW_WIDTH, WINDOW_HEIGHT, 0, &window, &renderer);
     SDL_RenderSetScale(renderer, 1, 1);
 
-    shs::Canvas *main_canvas     = new shs::Canvas(CANVAS_WIDTH, CANVAS_HEIGHT);
+    shs::Canvas *main_canvas = new shs::Canvas(CANVAS_WIDTH, CANVAS_HEIGHT);
     SDL_Surface *main_sdlsurface = main_canvas->create_sdl_surface();
     SDL_Texture *screen_texture  = SDL_CreateTextureFromSurface(renderer, main_sdlsurface);
 
-
-    bool exit = false;
+    bool exit_loop = false;
     SDL_Event event_data;
 
-    int    frame_delay            = 1000 / FRAMES_PER_SECOND; // Delay for 60 FPS
-    float  frame_time_accumulator = 0;
-    int    frame_counter          = 0;
-    int    fps                    = 0;
-    float  time_accumulator       = 0.0;
+    int frame_delay = 1000 / FRAMES_PER_SECOND;
+    float time_accumulator = 0.0;
+    int frame_counter = 0;
+    float fps_timer = 0.0;
 
-    while (!exit)
+    while (!exit_loop)
     {
-
         Uint32 frame_start_ticks = SDL_GetTicks();
 
-        // catching up input events happened on hardware
+        // ОРОЛТЫГ ШАЛГАХ (INPUT HANDLING)
         while (SDL_PollEvent(&event_data))
         {
-            switch (event_data.type)
-            {
-            case SDL_QUIT:
-                exit = true;
-                job_system->is_running = false;
-                break;
-            case SDL_KEYDOWN:
-                switch(event_data.key.keysym.sym) {
-                    case SDLK_ESCAPE: 
-                        exit = true;
-                        job_system->is_running = false;
-                        break;
+            if (event_data.type == SDL_QUIT) {
+                exit_loop = true;
+            }
+            else if (event_data.type == SDL_KEYDOWN) {
+                if (event_data.key.keysym.sym == SDLK_ESCAPE) {
+                    exit_loop = true;
                 }
-                break;
             }
         }
 
+        // Хэрэв гарах команд ирсэн бол rendering хийхгүйгээр шууд loop-ээс гарна
+        if (exit_loop) break;
 
-        // preparing to render on SDL2
+        // ЗУРАХ БЭЛТГЭЛ (RENDERING PREP)
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
 
-
+        // JOB ИЛГЭЭХ (SUBMIT JOBS)
         int region_width  = CANVAS_WIDTH  / CONCURRENCY_COUNT;
         int region_height = CANVAS_HEIGHT / CONCURRENCY_COUNT;
 
+        // Тоолуурыг тэглэх (Өмнөх хүлээлтээс 0 болсон байх ёстой ч, найдвартай байдлын үүднээс)
+        atomic_counter.store(0);
+
         for (int i = 0; i < CONCURRENCY_COUNT; i++) {
-            int start_x = i       * region_width;
-            int end_x   = (i + 1) * region_width;
+            int start_x = i * region_width;
+            int end_x   = (i + 1) * region_width; 
 
             for (int j = 0; j < CONCURRENCY_COUNT; j++) {
-                int start_y = j       * region_height;
+                int start_y = j * region_height;
                 int end_y   = (j + 1) * region_height;
 
-                job_system->submit({[start_x, end_x, start_y, end_y, time_accumulator, &main_canvas, &atomic_counter, &cv]() {
-                    atomic_counter.fetch_add(1, std::memory_order_relaxed);
+                // Submit хийхээс өмнө тоолуурыг нэмэх (Race condition-оос сэргийлэх)
+                atomic_counter.fetch_add(1, std::memory_order_relaxed);
 
+                job_system->submit({[start_x, end_x, start_y, end_y, time_accumulator, main_canvas]() {
+                    
+                    // Worker thread дотор ажиллах логик
                     for (int x = start_x; x < end_x; x++) {
                         for (int y = start_y; y < end_y; y++) {
+                            // Хязгаарыг шалгах (Boundary check)
+                            if(x >= CANVAS_WIDTH || y >= CANVAS_HEIGHT) continue;
+
                             glm::vec2 uv = {float(x), float(y)};
-                            glm::vec4 shader_output = fragment_shader(uv, time_accumulator);
-                            shs::Canvas::draw_pixel(*main_canvas, x, y, shs::Color{u_int8_t(shader_output[0]), u_int8_t(shader_output[1]), u_int8_t(shader_output[2]), u_int8_t(shader_output[3])});
+                            glm::vec4 res = fragment_shader(uv, time_accumulator);
+                            
+                            main_canvas->draw_pixel(x, y, shs::Color{
+                                (uint8_t)res[0], (uint8_t)res[1], (uint8_t)res[2], 255
+                            });
                         }
                     }
 
-                    atomic_counter.fetch_sub(1, std::memory_order_relaxed);
-                    cv.notify_one(); // Notify when the counter reaches zero
+                    // Тоолуурыг бууруулж, шаардлагатай бол Main thread-д мэдэгдэх
+                    if (atomic_counter.fetch_sub(1, std::memory_order_release) == 1) {
+                        std::lock_guard<std::mutex> lock(mtx);
+                        cv.notify_one();
+                    }
+                    
                 }, shs::Job::PRIORITY_HIGH});
             }
         }
 
+        // GPU (CPU THREAD)-ҮҮДИЙГ ХҮЛЭЭХ
         {
             std::unique_lock<std::mutex> lock(mtx);
-            cv.wait(lock, []{ return atomic_counter.load() == 0; });
+            // Тоолуур 0 болтол хүлээнэ
+            cv.wait(lock, []{ return atomic_counter.load(std::memory_order_acquire) == 0; });
         }
 
-        // debug draw for if it is rendering something
-        shs::Canvas::fill_random_pixel(*main_canvas, 40, 30, 60, 80);
+        // ДЭЛГЭЦЭНД ХАРУУЛАХ
+        // Ажиллаж байгааг харуулахын тулд санамсаргүй цэг зурах
+        shs::Canvas::fill_random_pixel(*main_canvas, 10, 10, 20, 20);
 
-
-        // actually presenting canvas data on the hardware surface
         shs::Canvas::copy_to_SDLSurface(main_sdlsurface, main_canvas);
         SDL_UpdateTexture(screen_texture, NULL, main_sdlsurface->pixels, main_sdlsurface->pitch);
-        SDL_Rect destination_rect{0, 0, WINDOW_WIDTH, WINDOW_HEIGHT};
-        SDL_RenderCopy(renderer, screen_texture, NULL, &destination_rect);
+        SDL_RenderCopy(renderer, screen_texture, NULL, NULL);
         SDL_RenderPresent(renderer);
 
-    
+        // ХУГАЦААНЫ ТООЦООЛОЛ (FPS)
         frame_counter++;
-        Uint32 delta_frame_time  = SDL_GetTicks() - frame_start_ticks;
-        frame_time_accumulator  += delta_frame_time/1000.0;
-        time_accumulator        += delta_frame_time/1000.0;
-        if (delta_frame_time < frame_delay) {
-            SDL_Delay(frame_delay - delta_frame_time);
+        Uint32 delta = SDL_GetTicks() - frame_start_ticks;
+        float delta_s = delta / 1000.0f;
+        time_accumulator += delta_s;
+        fps_timer += delta_s;
+
+        if (delta < frame_delay) {
+            SDL_Delay(frame_delay - delta);
         }
-        if (frame_time_accumulator >= 1.0) {
-            std::string window_title = "FPS : "+std::to_string(frame_counter);
-            frame_time_accumulator   = 0.0;
-            frame_counter            = 0;
-            SDL_SetWindowTitle(window, window_title.c_str());
+
+        if (fps_timer >= 1.0f) {
+            SDL_SetWindowTitle(window, ("FPS: " + std::to_string(frame_counter)).c_str());
+            frame_counter = 0;
+            fps_timer = 0.0f;
         }
     }
 
-
+    // ЦЭВЭРЛЭГЭЭ (CLEANUP)
+    // Job system-ийн destructor нь thread-үүдийг зөв хааж цэвэрлэнэ
     delete job_system;
     delete main_canvas;
     SDL_DestroyTexture(screen_texture);
     SDL_FreeSurface(main_sdlsurface);
-
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();
 
+    std::cout << "Clean exit." << std::endl;
     return 0;
 }

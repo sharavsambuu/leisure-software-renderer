@@ -1,24 +1,36 @@
+/*
+    3D Software Renderer - Flat Shading 
+*/
+
 #include <string>
 #include <cstdlib>
 #include <ctime>
 #include <cmath>
 #include <random>
 #include <queue>
+#include <iostream>
+#include <vector>
+
+// Гадаад сангууд (External Libraries)
 #include <SDL2/SDL.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
+
 #include "shs_renderer.hpp"
 
+// Тохиргооны тогтмолууд
 #define FRAMES_PER_SECOND 60
 #define WINDOW_WIDTH      640
 #define WINDOW_HEIGHT     480
 #define CANVAS_WIDTH      640
 #define CANVAS_HEIGHT     480
 
-
+/**
+ * Камерын байршил, чиглэл, харах өнцөг зэргийг удирдана.
+ */
 class Viewer
 {
 public:
@@ -28,22 +40,25 @@ public:
         this->speed                    = speed;
         this->camera                   = new shs::Camera3D();
         this->camera->position         = this->position;
-        this->camera->width            = float(CANVAS_WIDTH );
+        this->camera->width            = float(CANVAS_WIDTH);
         this->camera->height           = float(CANVAS_HEIGHT);
-        this->camera->field_of_view    = 45.0;
-        this->camera->horizontal_angle = 0.0;
-        this->camera->vertical_angle   = 0.0;
-        this->camera->z_near           = 0.01f;
-        this->camera->z_far            = 1000.0f;
+        this->camera->field_of_view    = 45.0f;
+        this->camera->horizontal_angle = 0.0f;
+        this->camera->vertical_angle   = 0.0f;
+        this->camera->z_near           = 0.1f;    // Clipping plane: Ойрын хязгаар
+        this->camera->z_far            = 1000.0f; // Clipping plane: Холын хязгаар
     }
-    ~Viewer() {}
+    ~Viewer() { delete camera; }
 
+    // Камерын мэдээллийг шинэчлэх
     void update()
     {
         this->camera->position         = this->position;
         this->camera->horizontal_angle = this->horizontal_angle;
         this->camera->vertical_angle   = this->vertical_angle;
-        this->camera->update();
+        
+        // Матрицуудыг (View & Projection) шинэчлэн бодно
+        this->camera->update(); 
     }
 
     glm::vec3 get_direction_vector()
@@ -57,25 +72,33 @@ public:
 
     shs::Camera3D *camera;
     glm::vec3 position;
-    glm::vec3 direction;
     float horizontal_angle;
     float vertical_angle;
     float speed;
-
-private:
 };
 
+/**
+ * 3D моделийн файлыг (.obj) уншиж, оройн цэг (vertex) болон нормалиудыг (normal) хадгална.
+ */
 class ModelGeometry
 {
 public:
     ModelGeometry(std::string model_path)
     {
-        unsigned int flags = aiProcess_Triangulate | aiProcess_GenNormals;
-        const aiScene *scene = this->importer.ReadFile(model_path.c_str(), aiProcessPreset_TargetRealtime_Quality);
+        // Assimp тохиргоо: 
+        // - Triangulate: Бүх дүрсийг гурвалжин болгоно
+        // - GenNormals: Нормаль вектор байхгүй бол тооцож гаргана
+        // - FlipUVs: Текстурын координатыг Y тэнхлэгээр эргүүлнэ (OpenGL style)
+        unsigned int flags = aiProcess_Triangulate | aiProcess_GenNormals | aiProcess_FlipUVs;
+        
+        const aiScene *scene = this->importer.ReadFile(model_path.c_str(), flags);
         if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
         {
-            std::cerr << "Error loading OBJ file: " << this->importer.GetErrorString() << std::endl;
+            std::cerr << "Алдаа: Модель уншиж чадсангүй: " << this->importer.GetErrorString() << std::endl;
+            return;
         }
+
+        // Бүх mesh-үүдээр давтаж өгөгдлийг авна
         for (unsigned int i = 0; i < scene->mNumMeshes; ++i)
         {
             aiMesh *mesh = scene->mMeshes[i];
@@ -84,38 +107,49 @@ public:
             {
                 aiFace face = mesh->mFaces[j];
 
-                // Check if the face is a triangle
                 if (face.mNumIndices == 3)
                 {
-                    aiVector3D vertex1 = mesh->mVertices[face.mIndices[0]];
-                    aiVector3D vertex2 = mesh->mVertices[face.mIndices[1]];
-                    aiVector3D vertex3 = mesh->mVertices[face.mIndices[2]];
-                    this->triangles.push_back(glm::vec3(vertex1.x, vertex1.y, vertex1.z));
-                    this->triangles.push_back(glm::vec3(vertex2.x, vertex2.y, vertex2.z));
-                    this->triangles.push_back(glm::vec3(vertex3.x, vertex3.y, vertex3.z));
+                    // Оройн цэгүүд (Vertices)
+                    aiVector3D v1 = mesh->mVertices[face.mIndices[0]];
+                    aiVector3D v2 = mesh->mVertices[face.mIndices[1]];
+                    aiVector3D v3 = mesh->mVertices[face.mIndices[2]];
+                    
+                    this->triangles.push_back(glm::vec3(v1.x, v1.y, v1.z));
+                    this->triangles.push_back(glm::vec3(v2.x, v2.y, v2.z));
+                    this->triangles.push_back(glm::vec3(v3.x, v3.y, v3.z));
 
-                    aiVector3D normal1 = mesh->mNormals[face.mIndices[0]];
-                    aiVector3D normal2 = mesh->mNormals[face.mIndices[1]];
-                    aiVector3D normal3 = mesh->mNormals[face.mIndices[2]];
-                    this->normals.push_back(glm::vec3(normal1.x, normal1.y, normal1.z));
-                    this->normals.push_back(glm::vec3(normal2.x, normal2.y, normal2.z));
-                    this->normals.push_back(glm::vec3(normal3.x, normal3.y, normal3.z));
+                    // Нормаль векторууд (Normals)
+                    if (mesh->HasNormals()) {
+                        aiVector3D n1 = mesh->mNormals[face.mIndices[0]];
+                        aiVector3D n2 = mesh->mNormals[face.mIndices[1]];
+                        aiVector3D n3 = mesh->mNormals[face.mIndices[2]];
+                        this->normals.push_back(glm::vec3(n1.x, n1.y, n1.z));
+                        this->normals.push_back(glm::vec3(n2.x, n2.y, n2.z));
+                        this->normals.push_back(glm::vec3(n3.x, n3.y, n3.z));
+                    } else {
+                        // Хэрэв нормаль байхгүй бол default утга өгнө
+                        this->normals.push_back(glm::vec3(0, 0, 1));
+                        this->normals.push_back(glm::vec3(0, 0, 1));
+                        this->normals.push_back(glm::vec3(0, 0, 1));
+                    }
                 }
             }
         }
-        std::cout << model_path.c_str() << " is loaded." << std::endl;
+        std::cout << model_path << " амжилттай уншигдлаа." << std::endl;
     }
     ~ModelGeometry()
     {
         this->importer.FreeScene();
     }
+
     std::vector<glm::vec3> triangles;
     std::vector<glm::vec3> normals;
     Assimp::Importer       importer;
-
-private:
 };
 
+/**
+ * Тухайн 3D объектын байршил, эргэлт, хэмжээг удирдана.
+ */
 class MonkeyObject : public shs::AbstractObject3D
 {
 public:
@@ -124,31 +158,34 @@ public:
         this->position        = position;
         this->scale           = scale;
         this->geometry        = new ModelGeometry("./obj/monkey/monkey.rawobj");
-        this->rotation_angle  = 0.0;
+        this->rotation_angle  = 0.0f;
     }
     ~MonkeyObject()
     {
         delete this->geometry;
     }
+
+    // Объектын World Matrix (Model Matrix) үүсгэх
     glm::mat4 get_world_matrix() override
     {
-        glm::mat4 translation_matrix = glm::translate(glm::mat4(1.0), this->position);
-        glm::mat4 rotation_matrix    = glm::rotate   (glm::mat4(1.0), glm::radians(this->rotation_angle), glm::vec3(0.0f, 1.0f, 0.0f));
-        glm::mat4 scaling_matrix     = glm::scale    (glm::mat4(1.0), scale);
+        glm::mat4 translation_matrix = glm::translate(glm::mat4(1.0f), this->position);
+        glm::mat4 rotation_matrix    = glm::rotate   (glm::mat4(1.0f), glm::radians(this->rotation_angle), glm::vec3(0.0f, 1.0f, 0.0f));
+        glm::mat4 scaling_matrix     = glm::scale    (glm::mat4(1.0f), scale);
+        
         return translation_matrix * rotation_matrix * scaling_matrix;
     }
+
+    // Хүрээ болгонд эргүүлэх логик
     void update(float delta_time) override
     {
-        float rotation_speed = 30.0;
-        this->rotation_angle -= rotation_speed * delta_time; // rotation by clock-wise 
-        if (this->rotation_angle > 360.0f)
+        float rotation_speed = 30.0f;
+        this->rotation_angle -= rotation_speed * delta_time; 
+        if (this->rotation_angle <= -360.0f)
         {
             this->rotation_angle = 0.0f;
         }
     }
-    void render() override
-    {
-    }
+    void render() override {}
 
     ModelGeometry *geometry;
     glm::vec3      scale;
@@ -156,7 +193,9 @@ public:
     float          rotation_angle;
 };
 
-
+/**
+ * Сцен доторх объектууд, гэрэл болон viewer-ийг агуулна.
+ */
 class HelloScene : public shs::AbstractSceneState
 {
 public:
@@ -165,12 +204,13 @@ public:
         this->canvas = canvas;
         this->viewer = viewer;
 
-        float step = 15.0;
+        float step = 15.0f;
+        // 4 ширхэг сармагчин үүсгэх (2x2 матриц)
         for (int i=0; i<2; ++i)
         {
             for (int j=0; j<2; ++j)
             {
-                this->scene_objects.push_back(new MonkeyObject(glm::vec3(i*step, 0.0, j*step+30.0f), glm::vec3(5.0, 5.0, 5.0)));
+                this->scene_objects.push_back(new MonkeyObject(glm::vec3(i*step - 7.5f, 0.0f, j*step + 20.0f), glm::vec3(5.0f, 5.0f, 5.0f)));
             }
         }
     }
@@ -180,28 +220,29 @@ public:
         {
             delete obj;
         }
-        delete this->canvas;
-        delete this->viewer;
     }
 
-    void process() override
-    {
-    }
+    void process() override {}
 
     std::vector<shs::AbstractObject3D *> scene_objects;
     shs::Canvas  *canvas;
     Viewer       *viewer;
 
-    glm::vec3    light_direction = glm::vec3(1.0, -0.3, 0.0);
-
+    // Гэрлийн чиглэл (World Space)
+    // Энэ вектор нь гэрлийн эх үүсвэр хаанаас тусаж байгааг заана.
+    // (1.0, -0.3, 1.0) гэдэг нь баруун, дээр, наанаас тусаж байна гэсэн үг.
+    glm::vec3 light_direction = glm::vec3(1.0f, -0.3f, 1.0f);
 };
 
-
+/**
+ * 3D геометрийг боловсруулж, Z-Buffer ашиглан Flat Shading хийнэ.
+ */
 class RendererSystem : public shs::AbstractSystem
 {
 public:
     RendererSystem(HelloScene *scene) : scene(scene) 
     {
+        // Z-Buffer үүсгэх
         this->z_buffer = new shs::ZBuffer(
             this->scene->canvas->get_width(),
             this->scene->canvas->get_height(),
@@ -213,21 +254,22 @@ public:
     {
         delete this->z_buffer;
     }
+
     void process(float delta_time) override
     {
+        // Z-Buffer цэвэрлэх (Frame бүрт)
+        this->z_buffer->clear();
 
         glm::mat4 view_matrix       = this->scene->viewer->camera->view_matrix;
         glm::mat4 projection_matrix = this->scene->viewer->camera->projection_matrix;
 
-        this->light_angle -=  this->light_rotation_speed * delta_time;
-        if (this->light_angle > 360.0f)
-        {
-            this->light_angle = 0.0f;
-        }
-        glm::vec3 light_rotation_axis     = glm::vec3(0.0f, 1.0f, 0.0f);
-        glm::mat4 light_rotation_matrix   = glm::rotate(glm::mat4(1.0f), this->light_angle, light_rotation_axis);
-        glm::vec3 rotated_light_direction = glm::vec3(light_rotation_matrix * glm::vec4(this->scene->light_direction, 1.0f));
-
+        // --- ГЭРЛИЙН ТООЦООЛОЛ (World -> View Space) ---
+        // Scene доторх гэрлийн чиглэлийг авч, View Matrix-аар үржүүлнэ.
+        // Ингэснээр гэрэл камертай харьцуулахад зөв байршилд очно.
+        // w=0.0 байна учир нь энэ бол чиглэл (vector), байршил биш (point).
+        glm::vec3 light_dir_world = glm::normalize(this->scene->light_direction);
+        glm::vec3 light_dir_view  = glm::vec3(view_matrix * glm::vec4(light_dir_world, 0.0f));
+        light_dir_view = glm::normalize(light_dir_view);
 
         for (shs::AbstractObject3D *object : this->scene->scene_objects)
         {
@@ -237,42 +279,46 @@ public:
                 if (monkey)
                 {
                     glm::mat4 model_matrix = monkey->get_world_matrix();
+                    
+                    // Model-View Matrix (World -> View Space шилжүүлэг)
+                    glm::mat4 model_view = view_matrix * model_matrix;
 
                     for (size_t i = 0; i < monkey->geometry->triangles.size(); i += 3)
                     {
+                        // 2. Vertex Transformation (Clip Space руу)
+                        glm::vec4 vertex1_clip_space = projection_matrix * (model_view * glm::vec4(monkey->geometry->triangles[i    ], 1.0f));
+                        glm::vec4 vertex2_clip_space = projection_matrix * (model_view * glm::vec4(monkey->geometry->triangles[i + 1], 1.0f));
+                        glm::vec4 vertex3_clip_space = projection_matrix * (model_view * glm::vec4(monkey->geometry->triangles[i + 2], 1.0f));
 
-                        glm::vec4 normal1 = view_matrix * (model_matrix * glm::vec4(monkey->geometry->normals[i    ], 0.0));
-                        glm::vec4 normal2 = view_matrix * (model_matrix * glm::vec4(monkey->geometry->normals[i + 1], 0.0));
-                        glm::vec4 normal3 = view_matrix * (model_matrix * glm::vec4(monkey->geometry->normals[i + 2], 0.0));
-                        std::vector<glm::vec3> view_space_normals(3);
-                        view_space_normals[0] = glm::vec3(normal1.x, normal1.y, normal1.z);
-                        view_space_normals[1] = glm::vec3(normal2.x, normal2.y, normal2.z);
-                        view_space_normals[2] = glm::vec3(normal3.x, normal3.y, normal3.z);
+                        // 3. CLIPPING (Таслах)
+                        // Камерын ард (W <= 0.1) байгаа зүйлсийг зурахгүй
+                        if (vertex1_clip_space.w <= 0.1f || vertex2_clip_space.w <= 0.1f || vertex3_clip_space.w <= 0.1f) 
+                            continue;
 
-                        glm::vec4 vertex1_clip_space = projection_matrix * (view_matrix * (model_matrix * glm::vec4(monkey->geometry->triangles[i    ], 1.0)));
-                        glm::vec4 vertex2_clip_space = projection_matrix * (view_matrix * (model_matrix * glm::vec4(monkey->geometry->triangles[i + 1], 1.0)));
-                        glm::vec4 vertex3_clip_space = projection_matrix * (view_matrix * (model_matrix * glm::vec4(monkey->geometry->triangles[i + 2], 1.0)));
+                        // 4. Normal Transformation (View Space руу)
+                        // Нормаль векторуудыг зөвхөн ModelView матрицаар хувиргана.
+                        // Projection хийх шаардлагагүй. w=0.0 байна.
+                        glm::vec3 n1 = glm::vec3(model_view * glm::vec4(monkey->geometry->normals[i    ], 0.0f));
+                        glm::vec3 n2 = glm::vec3(model_view * glm::vec4(monkey->geometry->normals[i + 1], 0.0f));
+                        glm::vec3 n3 = glm::vec3(model_view * glm::vec4(monkey->geometry->normals[i + 2], 0.0f));
+                        
+                        std::vector<glm::vec3> view_space_normals = {n1, n2, n3};
 
+                        // 5. Screen Space Conversion (Дэлгэцийн координат руу)
                         std::vector<glm::vec3> vertices_screen(3);
                         vertices_screen[0] = shs::Canvas::clip_to_screen(vertex1_clip_space, CANVAS_WIDTH,  CANVAS_HEIGHT);
                         vertices_screen[1] = shs::Canvas::clip_to_screen(vertex2_clip_space, CANVAS_WIDTH,  CANVAS_HEIGHT);
-                        vertices_screen[2] = shs::Canvas::clip_to_screen(vertex2_clip_space, CANVAS_WIDTH,  CANVAS_HEIGHT);
+                        vertices_screen[2] = shs::Canvas::clip_to_screen(vertex3_clip_space, CANVAS_WIDTH,  CANVAS_HEIGHT);
 
-
-                        //shs::Canvas::draw_line(*this->scene->canvas, vertices_2d[0].x, vertices_2d[0].y, vertices_2d[1].x, vertices_2d[1].y, shs::Pixel::green_pixel());
-                        //shs::Canvas::draw_line(*this->scene->canvas, vertices_2d[0].x, vertices_2d[0].y, vertices_2d[2].x, vertices_2d[2].y, shs::Pixel::blue_pixel());
-                        //shs::Canvas::draw_line(*this->scene->canvas, vertices_2d[1].x, vertices_2d[1].y, vertices_2d[2].x, vertices_2d[2].y, shs::Pixel::red_pixel());
-
-                        /*
-                        std::vector<glm::vec3> colors = {
-                            {1.0f, 0.0f, 0.0f},
-                            {0.0f, 1.0f, 0.0f},
-                            {0.0f, 0.0f, 1.0f},
-                        };
-                        shs::Canvas::draw_triangle_color_approximation(*this->scene->canvas, vertices_2d, colors);
-                        */
-
-                        shs::Canvas::draw_triangle_flat_shading(*this->scene->canvas, *this->z_buffer, vertices_screen, view_space_normals, rotated_light_direction);
+                        // 6. Draw Call (Flat Shading)
+                        // Тооцоолсон 'light_dir_view' гэрлийн чиглэлийг дамжуулна
+                        shs::Canvas::draw_triangle_flat_shading(
+                            *this->scene->canvas, 
+                            *this->z_buffer, 
+                            vertices_screen, 
+                            view_space_normals, 
+                            light_dir_view 
+                        );
                     }
                 }
             }
@@ -281,8 +327,6 @@ public:
 private:
     HelloScene   *scene;
     shs::ZBuffer *z_buffer;
-    float light_angle          = glm::radians(45.0f);
-    float light_rotation_speed = 1.5;
 };
 
 class LogicSystem : public shs::AbstractSystem
@@ -299,17 +343,14 @@ public:
                 MonkeyObject *monkey = dynamic_cast<MonkeyObject *>(object);
                 if (monkey)
                 {
-                    //monkey->update(delta_time);
+                    monkey->update(delta_time);
                 }
             }
         }
     }
-
 private:
     HelloScene *scene;
 };
-
-
 
 class SystemProcessor
 {
@@ -341,46 +382,47 @@ public:
     RendererSystem        *renderer_system;  
 };
 
-
-
-int main()
+// ==========================================
+// MAIN FUNCTION
+// ==========================================
+int main(int argc, char* argv[])
 {
+    // SDL эхлүүлэх
+    if (SDL_Init(SDL_INIT_VIDEO) < 0) return 1;
 
     SDL_Window   *window   = nullptr;
     SDL_Renderer *renderer = nullptr;
 
-    SDL_Init(SDL_INIT_VIDEO);
     SDL_CreateWindowAndRenderer(WINDOW_WIDTH, WINDOW_HEIGHT, 0, &window, &renderer);
     SDL_RenderSetScale(renderer, 1, 1);
 
+    // Canvas болон Texture үүсгэх
     shs::Canvas *main_canvas     = new shs::Canvas(CANVAS_WIDTH, CANVAS_HEIGHT);
     SDL_Surface *main_sdlsurface = main_canvas->create_sdl_surface();
     SDL_Texture *screen_texture  = SDL_CreateTextureFromSurface(renderer, main_sdlsurface);
 
-
-    Viewer *viewer = new Viewer(glm::vec3(0.0, 10.0, -50.0), 150.0f);
+    // Viewer үүсгэх (Байршил: Z=-50, Хурд: 150)
+    // Left-Handed системд +Z нь урагшаа. Камер 0 руу харахын тулд -Z дээр байна.
+    Viewer *viewer = new Viewer(glm::vec3(0.0f, 10.0f, -50.0f), 150.0f);
 
     HelloScene      *hello_scene      = new HelloScene(main_canvas, viewer);
     SystemProcessor *system_processor = new SystemProcessor(hello_scene);
 
-
     bool exit = false;
     SDL_Event event_data;
 
-    int   frame_delay            = 1000 / FRAMES_PER_SECOND; // Delay for 60 FPS
-    float frame_time_accumulator = 0;
+    int   frame_delay            = 1000 / FRAMES_PER_SECOND; 
+    float frame_time_accumulator = 0.0f;
     int   frame_counter          = 0;
-    int   fps                    = 0;
     Uint32 delta_frame_time      = 0;
 
+    // Үндсэн давталт (Game Loop)
     while (!exit)
     {
-
         Uint32 frame_start_ticks = SDL_GetTicks();
+        float delta_time_float = delta_frame_time / 1000.0f;
 
-        float delta_time_float = delta_frame_time/1000.0f;
-
-        // catching up input events happened on hardware and feeding commands 
+        // Input Handling
         while (SDL_PollEvent(&event_data))
         {
             switch (event_data.type)
@@ -405,65 +447,56 @@ int main()
                     case SDLK_d:
                         system_processor->command_processor->add_command(new shs::MoveRightCommand(viewer->position, viewer->get_right_vector(), viewer->speed, delta_time_float));
                         break;
-                    case SDLK_UP:
-                        break;
-                    case SDLK_DOWN:
-                        break;
-                    case SDLK_LEFT:
-                        break;
-                    case SDLK_RIGHT:
-                        break;
-                    
                 }
                 break;
             }
         }
 
+        // Logic Process
         system_processor->process(delta_time_float);
 
-        // preparing to render on SDL2
+        // Render Preparation (Clear Screen)
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
 
-        // software rendering or drawing stuffs goes around here
+        // Canvas-ийг хараар будах
         shs::Canvas::fill_pixel(*main_canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT, shs::Pixel::black_pixel());
 
+        // 3D Rendering хийх
         system_processor->render(delta_time_float);
 
-        shs::Canvas::fill_random_pixel(*main_canvas, 40, 30, 60, 80);
-
-
-        // actually prensenting canvas data on hardware surface
+        // Дэлгэц рүү хуулах
         shs::Canvas::copy_to_SDLSurface(main_sdlsurface, main_canvas);
         SDL_UpdateTexture(screen_texture, NULL, main_sdlsurface->pixels, main_sdlsurface->pitch);
-        SDL_Rect destination_rect{0, 0, WINDOW_WIDTH, WINDOW_HEIGHT};
-        SDL_RenderCopy(renderer, screen_texture, NULL, &destination_rect);
+        SDL_RenderCopy(renderer, screen_texture, NULL, NULL);
         SDL_RenderPresent(renderer);
 
-
-    
+        // FPS Control
         frame_counter++;
         delta_frame_time  = SDL_GetTicks() - frame_start_ticks;
+        frame_time_accumulator += delta_frame_time / 1000.0f;
 
-        frame_time_accumulator  += delta_frame_time/1000.0;
-        if (delta_frame_time < frame_delay) {
+        if (delta_frame_time < (Uint32)frame_delay) {
             SDL_Delay(frame_delay - delta_frame_time);
+            delta_frame_time = frame_delay;
         }
-        if (frame_time_accumulator >= 1.0) {
-            std::string window_title = "FPS : "+std::to_string(frame_counter);
-            frame_time_accumulator   = 0.0;
-            frame_counter            = 0;
+
+        if (frame_time_accumulator >= 1.0f) {
+            std::string window_title = "Flat Shading Demo - FPS: " + std::to_string(frame_counter);
             SDL_SetWindowTitle(window, window_title.c_str());
+            frame_time_accumulator   = 0.0f;
+            frame_counter            = 0;
         }
     }
 
-
+    // Cleanup
     delete system_processor;
     delete hello_scene;
+    delete viewer;
+    delete main_canvas;
 
     SDL_DestroyTexture(screen_texture);
     SDL_FreeSurface(main_sdlsurface);
-
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();

@@ -20,12 +20,9 @@
 #define CANVAS_HEIGHT      520
 #define CONCURRENCY_COUNT  8
 
-/*
-*
-* Modified from :
-*   Matrix by patriciogv - https://www.shadertoy.com/view/MlfXzN
-*
-*/
+// Matrix эффектийн нэг үсэгний хэмжээ (пикселээр)
+// Энэ тоог багасгавал үсэг жижиг, ихэсгэвэл том болно.
+#define FONT_SCALE         16.0f 
 
 glm::vec4 rescale_vec4_1_255(const glm::vec4 &input_vec) {
     glm::vec4 clamped_value = glm::clamp(input_vec, 0.0f, 1.0f);
@@ -36,16 +33,35 @@ glm::vec4 rescale_vec4_1_255(const glm::vec4 &input_vec) {
 glm::vec4 fragment_shader(glm::vec2 u_uv, float u_time)
 {
     glm::vec2 i = u_uv;
-    i *= 1.1f;
+    
+    // Grid тооцоолол
     glm::vec2 j = glm::fract(i);
-    glm::vec2 p = glm::vec2(140.0f, static_cast<int>(u_time* (10.0f + 18.0f * glm::sin(i.x - j.x)))) + i;
+    glm::vec2 floor_i = glm::floor(i); // Бүхэл хэсэг нь баганын индекс болно
+
+    // Унах хурд болон баганын random шилжилт
+    float speed = 10.0f; 
+    float offset = 18.0f * glm::sin(floor_i.x); 
+    
+    // Борооны унах координатын тооцоолол
+    glm::vec2 p = glm::vec2(0.0f, floor_i.y + static_cast<int>(u_time * (speed + offset)));
 
     glm::vec4 o(0.0f); 
 
-    o.g = glm::fract(40.0f * glm::sin(glm::dot(p, p)));
+    // Random brightness (үсэг болгоны тод бүдэг байдал)
+    // p векторыг hash хийж random тоо гаргаж байна
+    float noise = glm::fract(435.34f * glm::sin(glm::dot(p, glm::vec2(12.9898f, 78.233f))));
+    
+    o.g = noise; // Ногоон сувагт онооно
 
-    p *= j;
-    o *= (glm::fract(40.0f * glm::sin(glm::dot(p, p))) > 0.25f && j.x < 0.75f && j.y < 0.75f) ? 1.0f : 0.0f;
+    // Grid line (үсэг хоорондын зайг гаргах)
+    // j.x болон j.y нь 0-1 хооронд байгаа. 0.75-аас их бол харлуулна (border)
+    // Мөн noise нь 0.25-аас бага бол хэт бүдэг тул зурахгүй (matrix trail effect)
+    float mask = (noise > 0.1f && j.x < 0.75f && j.y < 0.85f) ? 1.0f : 0.0f;
+    
+    o *= mask;
+
+    // Өнгийг бага зэрэг цайвар ногоон болгох (Matrix look)
+    // o.r = o.g * 0.2f; // Optional: бага зэрэг цайвар болгох
 
     return rescale_vec4_1_255(o);
 };
@@ -53,11 +69,11 @@ glm::vec4 fragment_shader(glm::vec2 u_uv, float u_time)
 
 int main()
 {
-
     SDL_Window   *window   = nullptr;
     SDL_Renderer *renderer = nullptr;
 
-    SDL_Init(SDL_INIT_VIDEO);
+    if (SDL_Init(SDL_INIT_VIDEO) < 0) return 1;
+
     SDL_CreateWindowAndRenderer(WINDOW_WIDTH, WINDOW_HEIGHT, 0, &window, &renderer);
     SDL_RenderSetScale(renderer, 1, 1);
 
@@ -69,43 +85,24 @@ int main()
     bool exit = false;
     SDL_Event event_data;
 
-    int    frame_delay            = 1000 / FRAMES_PER_SECOND; // Delay for 60 FPS
+    int    frame_delay            = 1000 / FRAMES_PER_SECOND; 
     float  frame_time_accumulator = 0;
     int    frame_counter          = 0;
-    int    fps                    = 0;
     float  time_accumulator       = 0.0;
 
     while (!exit)
     {
-
         Uint32 frame_start_ticks = SDL_GetTicks();
 
-        // catching up input events happened on hardware
         while (SDL_PollEvent(&event_data))
         {
-            switch (event_data.type)
-            {
-            case SDL_QUIT:
-                exit = true;
-                break;
-            case SDL_KEYDOWN:
-                switch(event_data.key.keysym.sym) {
-                    case SDLK_ESCAPE: 
-                        exit = true;
-                        break;
-                }
-                break;
-            }
+            if (event_data.type == SDL_QUIT) exit = true;
+            if (event_data.type == SDL_KEYDOWN && event_data.key.keysym.sym == SDLK_ESCAPE) exit = true;
         }
 
-
-        // preparing to render on SDL2
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
 
-
-        // Run fragment shader with parallel threaded fashion
-        std::mutex canvas_mutex;
         std::vector<std::thread> thread_pool;
 
         int region_width  = CANVAS_WIDTH  / CONCURRENCY_COUNT;
@@ -119,15 +116,26 @@ int main()
                 int start_y = j       * region_height;
                 int end_y   = (j + 1) * region_height;
 
-                std::thread task([start_x, end_x, start_y, end_y, time_accumulator, &main_canvas, &canvas_mutex]() {
+                // Lambda дотор variable capture хийхдээ анхаарах
+                std::thread task([start_x, end_x, start_y, end_y, time_accumulator, &main_canvas]() {
                     for (int x = start_x; x < end_x; x++) {
                         for (int y = start_y; y < end_y; y++) {
-                            glm::vec2 uv = {float(x), float(y)};
+                            
+                            // Coordinate Scaling
+                            // Пикселийн координатыг тодорхой тоонд хувааж (FONT_SCALE) 
+                            // shader-луу илгээнэ. Ингэснээр Matrix-ийн "нүднүүд" томорно.
+                            glm::vec2 uv = { float(x) / FONT_SCALE, float(y) / FONT_SCALE };
+                            
                             glm::vec4 shader_output = fragment_shader(uv, time_accumulator);
-                            {
-                                //std::lock_guard<std::mutex> lock(canvas_mutex);
-                                shs::Canvas::draw_pixel(*main_canvas, x, y, shs::Color{u_int8_t(shader_output[0]), u_int8_t(shader_output[1]), u_int8_t(shader_output[2]), u_int8_t(shader_output[3])});
-                            }
+                            
+                            // Multithreading ашиглаж байгаа ч pixel coordinate бүр давхцахгүй тул
+                            // lock хийх шаардлагагүй, шууд бичих нь хурдан.
+                            shs::Canvas::draw_pixel(*main_canvas, x, y, shs::Color{
+                                (uint8_t)shader_output[0], 
+                                (uint8_t)shader_output[1], 
+                                (uint8_t)shader_output[2], 
+                                (uint8_t)shader_output[3]
+                            });
                         }
                     }
                 });
@@ -135,30 +143,25 @@ int main()
             }
         }
 
-        // waiting for other threads left in the pool finish its jobs
         for (auto &thread : thread_pool)
         {
             thread.join();
         }
 
+        // debug draw - одоо харагдах ёстой тул үүнийг авч хаяж болно
+        // shs::Canvas::fill_random_pixel(*main_canvas, 40, 30, 60, 80);
 
-        // debug draw for if it rendering something
-        shs::Canvas::fill_random_pixel(*main_canvas, 40, 30, 60, 80);
-
-
-        // actually prensenting canvas data on hardware surface
         shs::Canvas::copy_to_SDLSurface(main_sdlsurface, main_canvas);
         SDL_UpdateTexture(screen_texture, NULL, main_sdlsurface->pixels, main_sdlsurface->pitch);
-        SDL_Rect destination_rect{0, 0, WINDOW_WIDTH, WINDOW_HEIGHT};
-        SDL_RenderCopy(renderer, screen_texture, NULL, &destination_rect);
+        SDL_RenderCopy(renderer, screen_texture, NULL, NULL);
         SDL_RenderPresent(renderer);
 
-    
         frame_counter++;
         Uint32 delta_frame_time  = SDL_GetTicks() - frame_start_ticks;
         frame_time_accumulator  += delta_frame_time/1000.0;
         time_accumulator        += delta_frame_time/1000.0;
-        if (delta_frame_time < frame_delay) {
+
+        if (delta_frame_time < (Uint32)frame_delay) {
             SDL_Delay(frame_delay - delta_frame_time);
         }
         if (frame_time_accumulator >= 1.0) {
@@ -169,10 +172,10 @@ int main()
         }
     }
 
+    // ЗАСВАР: Санах ой чөлөөлөх дарааллыг засав
+    delete main_canvas;      // Эхлээд устгана
+    main_canvas = nullptr;   // Дараа нь null болгоно
 
-    // free the memory
-    main_canvas  = nullptr; 
-    delete main_canvas;
     SDL_DestroyTexture(screen_texture);
     SDL_FreeSurface(main_sdlsurface);
 
