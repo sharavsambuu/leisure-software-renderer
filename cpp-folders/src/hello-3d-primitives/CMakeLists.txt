@@ -46,3 +46,14 @@ target_link_libraries(HelloPipelinePhongShading PRIVATE ${SDL2_IMAGE_LIBRARIES} 
 add_executable(HelloPipelineBlinnPhongShading hello_pipeline_blinn_phong_shading.cpp)
 target_link_libraries(HelloPipelineBlinnPhongShading PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)
 
+add_executable(HelloPipelineGouraudShading hello_pipeline_gouraud_shading.cpp)
+target_link_libraries(HelloPipelineGouraudShading PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)
+
+add_executable(HelloPipelineToonShading hello_pipeline_toon_shading.cpp)
+target_link_libraries(HelloPipelineToonShading PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)
+
+add_executable(HelloPipelineGoochShading hello_pipeline_gooch_shading.cpp)
+target_link_libraries(HelloPipelineGoochShading PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)
+
+add_executable(HelloPipelineOrenNayarShading hello_pipeline_oren_nayar_shading.cpp)
+target_link_libraries(HelloPipelineOrenNayarShading PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)
