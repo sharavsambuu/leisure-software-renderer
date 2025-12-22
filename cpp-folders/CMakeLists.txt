@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.31)
+cmake_minimum_required(VERSION 3.28)
 
 project("leisure-software-renderer")
 
@@ -24,6 +24,7 @@ message(STATUS "Fetching Entt")
 FetchContent_Declare(
     entt
     GIT_REPOSITORY https://github.com/skypjack/entt.git
+    GIT_TAG        main
 )
 FetchContent_MakeAvailable(entt)
 

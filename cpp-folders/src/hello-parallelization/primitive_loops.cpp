@@ -1,6 +1,7 @@
 #include <iostream>
 #include <vector>
 #include <cstdlib>
+#include <algorithm>
 
 using namespace std;
 
@@ -25,7 +26,7 @@ int main()
         element *= 2;
     };
 
-    for_each(array.begin(), array.end(), task);
+    std::for_each(array.begin(), array.end(), task);
 
 
     for (int i = 0; i < array.size(); i++)
