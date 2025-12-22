@@ -37,5 +37,12 @@ target_link_libraries(Hello3DObject PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRA
 add_executable(HelloFlatShading hello_flat_shading.cpp)
 target_link_libraries(HelloFlatShading PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)
 
+add_executable(HelloPipelineFlatShading hello_pipeline_flat_shading.cpp)
+target_link_libraries(HelloPipelineFlatShading PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)
 
+add_executable(HelloPipelinePhongShading hello_pipeline_phong_shading.cpp)
+target_link_libraries(HelloPipelinePhongShading PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)
+
+add_executable(HelloPipelineBlinnPhongShading hello_pipeline_blinn_phong_shading.cpp)
+target_link_libraries(HelloPipelineBlinnPhongShading PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)
 

@@ -40,7 +40,7 @@
   
     Might implement followings exercises
       - Simple rendering for primitives like pixels, lines
-        - Triangle, quadrat, start etc
+        - Triangle, quadrat, star etc
       - Some rasterizer for primitives like triangles, culling... currently no idea on how to implement
       - ZBuffer implementation
       - Render wireframes from obj file
@@ -161,7 +161,7 @@
       
 # Result
 <p><img width="320" height="320" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/hello_wireframe_monkeyobj_canvas.png"></p>
-<p><img width="640" height="620" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/flat-shading-demo.png"></p>
+<p><img width="650" height="510" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/monkey-blinn-phong.png"></p>
 <p><img width="640" height="360" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/mongolian-flag.png"></p>
 <p><img width="320" height="320" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/fbm.png"></p>
 

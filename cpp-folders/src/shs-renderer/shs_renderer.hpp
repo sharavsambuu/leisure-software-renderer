@@ -54,6 +54,14 @@ namespace shs
         glm::vec3 v3;
     };
 
+    // Shader-үүд хооронд дамжих өгөгдлийн бүтэц (Interpolated values)
+    struct Varyings {
+        glm::vec4 position;
+        glm::vec3 normal;
+        glm::vec3 world_pos;
+        glm::vec2 uv;
+    };
+
     class Pixel
     {
     public:
@@ -91,7 +99,6 @@ namespace shs
         ZBuffer(int width, int height, float z_near, float z_far) 
             : width(width), height(height), z_near(z_near), z_far(z_far)
         {
-            // Initializing with max depth.
             this->depth_buffer.resize(width * height, std::numeric_limits<float>::max());
         }
 
@@ -123,7 +130,6 @@ namespace shs
     class Canvas
     {
     public:
-        // Canvas Coordinate System: Origin (0,0) is Bottom-Left.
         Canvas(int width, int height) : width(width), height(height)
         {
             this->canvas.resize(width * height, shs::Color{0, 0, 0, 255});
@@ -142,13 +148,11 @@ namespace shs
         int get_width() const { return this->width; }
         int get_height() const { return this->height; }
 
-        // Raw access in Canvas Coordinates (Bottom-Left Origin)
         shs::Color get_color_at(int x, int y) {
             if (x < 0 || x >= width || y < 0 || y >= height) return {0,0,0,0};
             return this->canvas[y * width + x];
         }
 
-        // Draw pixel in Canvas Coordinates (Bottom-Left Origin)
         inline void draw_pixel(int x, int y, shs::Color color)
         {
             if (x >= 0 && x < width && y >= 0 && y < height)
@@ -157,13 +161,10 @@ namespace shs
             }
         }
         
-        // Instance overload for Pixel object
         void draw_pixel(int x, int y, shs::Pixel pixel) {
             draw_pixel(x, y, pixel.get_color());
         }
 
-        // Helper: Draw pixel using Screen Coordinates (Top-Left Origin)
-        // Converts Screen Space -> Canvas Space: y_canvas = H - 1 - y_screen
         inline void draw_pixel_screen_space(int x_screen, int y_screen, shs::Color color)
         {
             int y_canvas = (height - 1) - y_screen;
@@ -173,9 +174,6 @@ namespace shs
         // --- STATIC HELPER METHODS ---
         
         static void draw_pixel(shs::Canvas &canvas, int x, int y, shs::Color color) {
-            // If they expect Top-Left (Screen Space), use draw_pixel_screen_space.
-            // If they expect raw Canvas Space (Bottom-Left), use draw_pixel.
-            // Canvas is Bottom-Left.
             canvas.draw_pixel(x, y, color);
         }
 
@@ -254,7 +252,6 @@ namespace shs
             return glm::vec3(v, w, u); 
         }
 
-        // RASTERIZATION: Happens in Screen Space (Top-Left Origin)
         static void draw_triangle(shs::Canvas &canvas, std::vector<glm::vec2> &vertices_screen, shs::Pixel pixel)
         {
             int max_x = canvas.get_width() - 1;
@@ -272,8 +269,6 @@ namespace shs
                 for (p.y = bboxmin.y; p.y <= bboxmax.y; p.y++) {
                     glm::vec3 bc_screen = barycentric_coordinate(glm::vec2(p.x, p.y), vertices_screen);
                     if (bc_screen.x < 0 || bc_screen.y < 0 || bc_screen.z < 0) continue;
-                    
-                    // Convert Screen -> Canvas and Draw
                     canvas.draw_pixel_screen_space(p.x, p.y, pixel.get_color());
                 }
             }
@@ -306,13 +301,11 @@ namespace shs
             }
         }
 
-        // Main Rasterization Function
         static void draw_triangle_flat_shading(shs::Canvas &canvas, shs::ZBuffer &z_buffer, std::vector<glm::vec3> &vertices_screen, std::vector<glm::vec3> &view_space_normals, glm::vec3 &light_direction_in_view_space)
         {
             int max_x = canvas.get_width() - 1;
             int max_y = canvas.get_height() - 1;
 
-            // Bounding Box тооцоолол
             std::vector<glm::vec2> v2d;
             v2d.reserve(3);
             glm::vec2 bboxmin(max_x, max_y);
@@ -326,32 +319,18 @@ namespace shs
                 bboxmax = glm::min(glm::vec2(max_x, max_y), glm::max(bboxmax, v2d[i]));
             }
 
-            // Back-face Culling (Ар талыг ялгах)
-            // Screen space дээр Y тэнхлэг доошоо харсан тул CW (Clockwise) дараалалтай болно.
-            // Иймд талбай нь СӨРӨГ гарвал бидний өөдөөс харсан гэсэн үг.
             float area = (v2d[1].x - v2d[0].x) * (v2d[2].y - v2d[0].y) - 
                          (v2d[1].y - v2d[0].y) * (v2d[2].x - v2d[0].x);
             
-            // Хэрэв талбай эерэг (>=0) байвал цаашаа харсан тул зурахгүй.
             if (area <= 0) return; 
 
-            // Lighting Calculation (Гэрэлтүүлэг)
             glm::vec3 normal    = glm::normalize(view_space_normals[0]);
             glm::vec3 light_dir = glm::normalize(light_direction_in_view_space);
-            
-            // [AMBIENT] Орчны гэрэл: Гэрэл тусаагүй газар тас хар биш, бага зэрэг гэрэлтэй байна (30%)
             float ambient_strength = 0.15f;
-
-            // [DIFFUSE] Тархмал гэрэл: Гэрлийн өнцгөөс хамаарч тодрох (dot product)
             float diffuse_strength = glm::max(0.0f, glm::dot(normal, light_dir));
-            
-            // Нийлбэр гэрэл (Ambient + Diffuse)
             float total_intensity = ambient_strength + diffuse_strength;
-            
-            // Гэрэл 1.0 (100%)-иас хэтрэхгүй байх ёстой
             if (total_intensity > 1.0f) total_intensity = 1.0f;
 
-            // Эцсийн өнгө (Цагаан өнгийг гэрлээр үржүүлж байна)
             shs::Color color_to_draw = {
                 (uint8_t)(255 * total_intensity), 
                 (uint8_t)(255 * total_intensity), 
@@ -359,26 +338,75 @@ namespace shs
                 255
             };
 
-            // Rasterization Loop (Пиксел зурах)
             glm::ivec2 p;
             for (p.x = bboxmin.x; p.x <= bboxmax.x; p.x++)
             {
                 for (p.y = bboxmin.y; p.y <= bboxmax.y; p.y++)
                 {
-                    // Барицентрик координат тооцоолох
                     glm::vec3 bc = barycentric_coordinate(glm::vec2(p.x + 0.5f, p.y + 0.5f), v2d);
-                    
-                    // Гурвалжны гадна байвал алгасна
                     if (bc.x < 0 || bc.y < 0 || bc.z < 0) continue;
-
-                    // Z-Depth интерполяци (Interpolation)
                     float z = bc.x * vertices_screen[0].z + bc.y * vertices_screen[1].z + bc.z * vertices_screen[2].z;
-                    
-                    // Z-Buffer шалгах ба бичих
                     if (z_buffer.test_and_set_depth(p.x, p.y, z))
                     {
-                        // Дэлгэц дээр зурах (Canvas координат руу хөрвүүлнэ)
                         canvas.draw_pixel_screen_space(p.x, p.y, color_to_draw);
+                    }
+                }
+            }
+        }
+
+        // PROGRAMMABLE PIPELINE: Vertex болон Fragment Shader ашиглан зурах функц
+        static void draw_triangle_pipeline(
+            shs::Canvas &canvas, 
+            shs::ZBuffer &z_buffer,
+            const std::vector<glm::vec3> &vertices,    
+            const std::vector<glm::vec3> &normals,     
+            std::function<shs::Varyings(const glm::vec3& pos, const glm::vec3& norm)> vertex_shader,
+            std::function<shs::Color(const shs::Varyings& varying)> fragment_shader)
+        {
+            int max_x = canvas.get_width() - 1;
+            int max_y = canvas.get_height() - 1;
+
+            // [VERTEX STAGE]
+            shs::Varyings vout[3];
+            glm::vec3     screen_coords[3];
+
+            for (int i = 0; i < 3; i++) {
+                vout[i]          = vertex_shader(vertices[i], normals[i]);
+                screen_coords[i] = clip_to_screen(vout[i].position, canvas.get_width(), canvas.get_height());
+            }
+
+            // [RASTER PREP] Bounding box болон Back-face culling
+            glm::vec2 bboxmin(max_x, max_y);
+            glm::vec2 bboxmax(0, 0);
+            std::vector<glm::vec2> v2d = { glm::vec2(screen_coords[0]), glm::vec2(screen_coords[1]), glm::vec2(screen_coords[2]) };
+
+            for (int i = 0; i < 3; i++) {
+                bboxmin = glm::max(glm::vec2(0), glm::min(bboxmin, v2d[i]));
+                bboxmax = glm::min(glm::vec2(max_x, max_y), glm::max(bboxmax, v2d[i]));
+            }
+
+            float area = (v2d[1].x - v2d[0].x) * (v2d[2].y - v2d[0].y) - (v2d[1].y - v2d[0].y) * (v2d[2].x - v2d[0].x);
+            if (area <= 0) return;
+
+            // [FRAGMENT STAGE]
+            for (int px = (int)bboxmin.x; px <= (int)bboxmax.x; px++) {
+                for (int py = (int)bboxmin.y; py <= (int)bboxmax.y; py++) {
+                    
+                    glm::vec3 bc = barycentric_coordinate(glm::vec2(px + 0.5f, py + 0.5f), v2d);
+                    if (bc.x < 0 || bc.y < 0 || bc.z < 0) continue;
+
+                    // Z-Buffer test
+                    float z = bc.x * screen_coords[0].z + bc.y * screen_coords[1].z + bc.z * screen_coords[2].z;
+                    if (z_buffer.test_and_set_depth(px, py, z)) {
+                        
+                        // Varyings интерполяци хийх
+                        shs::Varyings interpolated;
+                        interpolated.normal    = glm::normalize(bc.x * vout[0].normal    + bc.y * vout[1].normal    + bc.z * vout[2].normal);
+                        interpolated.world_pos = bc.x * vout[0].world_pos + bc.y * vout[1].world_pos + bc.z * vout[2].world_pos;
+                        
+                        // Fragment shader-ийн эцсийн өнгө
+                        shs::Color pixel_color = fragment_shader(interpolated);
+                        canvas.draw_pixel_screen_space(px, py, pixel_color);
                     }
                 }
             }
@@ -387,14 +415,9 @@ namespace shs
         inline static glm::vec3 clip_to_screen(const glm::vec4 &clip_coord, int screen_width, int screen_height)
         {
             glm::vec3 ndc_coord = glm::vec3(clip_coord) / clip_coord.w;
-            
             glm::vec3 screen_coord;
-            // X: [-1, 1] -> [0, Width]
             screen_coord.x = (ndc_coord.x + 1.0f) * 0.5f * screen_width;
-            
-            // Y: [-1, 1] -> [0, Height] (Y-Flip for Screen Space Top-Left)
             screen_coord.y = (1.0f - ndc_coord.y) * 0.5f * screen_height;
-            
             screen_coord.z = clip_coord.w; 
             return screen_coord;
         }
@@ -403,21 +426,14 @@ namespace shs
         {
             if (!surface || !canvas) return;
             uint32_t* pixels = (uint32_t*)surface->pixels;
-            
-            // Canvas (Bottom-Left) to SDL (Top-Left)
-            // We read Canvas rows from bottom to top to make it look upright in SDL.
             int w = canvas->get_width();
             int h = canvas->get_height();
 
             for (int y = 0; y < h; ++y) {
                 for (int x = 0; x < w; ++x) {
                     shs::Color c = canvas->get_color_at(x, y);
-                    
-                    // SDL Y: 0 is top. Canvas Y: 0 is bottom.
-                    // To display correctly: SDL_Y = H - 1 - Y
                     int sdl_y = (h - 1 - y);
                     int sdl_index = sdl_y * w + x;
-                    
                     pixels[sdl_index] = SDL_MapRGBA(surface->format, c.r, c.g, c.b, c.a);
                 }
             }
@@ -461,27 +477,15 @@ namespace shs
         }
 
         void update() {
-            // Forward (Direction) Vector тооцоолол
-            // Градусыг радиан руу хөрвүүлж байна.
             this->direction_vector = glm::vec3(
                 cos(glm::radians(this->vertical_angle)) * sin(glm::radians(this->horizontal_angle)),
                 sin(glm::radians(this->vertical_angle)),
                 cos(glm::radians(this->vertical_angle)) * cos(glm::radians(this->horizontal_angle)));
             
-            // Normalize хийж нэгж вектор болгоно (урт нь 1 болно)
             this->direction_vector = glm::normalize(this->direction_vector);
-
-            // Right Vector тооцоолол 
-            // Дэлхийн дээшээ чиглэл (World Up) болон Урагшаа (Forward) хоёрын вектор үржвэр нь 
-            // үргэлж "Баруун" чиглэлийг өгнө (Left-Handed системд: Up x Forward = Right).
             glm::vec3 world_up = glm::vec3(0.0f, 1.0f, 0.0f);
             this->right_vector = glm::normalize(glm::cross(world_up, this->direction_vector));
-            
-            // Up Vector тооцоолол
-            // Forward болон Right хоёрын үржвэр нь камерын өөрийнх нь Up чиглэлийг өгнө.
             this->up_vector = glm::normalize(glm::cross(this->direction_vector, this->right_vector));
-
-            // Матрицууд шинэчлэх (Left-Handed)
             this->projection_matrix = glm::perspectiveLH(glm::radians(this->field_of_view), 4.0f/3.0f, this->z_near, this->z_far);
             this->view_matrix = glm::lookAtLH(this->position, this->position + this->direction_vector, this->up_vector);
         }
@@ -697,7 +701,6 @@ namespace shs
             shs::Util::ThreadSafePriorityQueue<std::pair<std::function<void()>, int>> job_queue;
         };
 
-        // Aliases for compatibility
         using ThreadedLocklessPriorityJobSystem = ThreadedPriorityJobSystem;
         using ThreadedLocklessJobSystem         = ThreadedPriorityJobSystem;
         using ThreadedJobSystem                 = ThreadedPriorityJobSystem;
