@@ -1,11 +1,12 @@
 /*
-    3D Software Renderer - Pipeline Basic Implementation, Flat Shading
+    3D Software Renderer - Threaded Pipeline Implementation, Flat Shading
 */
 
 #include <string>
 #include <iostream>
 #include <vector>
 #include <functional>
+#include <algorithm>
 
 // External Libraries
 #include <SDL2/SDL.h>
@@ -17,29 +18,31 @@
 
 #include "shs_renderer.hpp"
 
-// Тохиргооны тогтмолууд
 #define WINDOW_WIDTH      640
 #define WINDOW_HEIGHT     480
 #define CANVAS_WIDTH      640
 #define CANVAS_HEIGHT     480
+#define THREAD_COUNT      16
+#define TILE_SIZE_X       80
+#define TILE_SIZE_Y       80
 
 // ==========================================
 // UNIFORMS & SHADERS
 // ==========================================
 
-// Shader-үүд рүү дамжих өгөгдөл
+// Shader-лүү дамжих өгөгдөл
 struct Uniforms {
-    glm::mat4 mvp;             // Model-View-Projection Matrix (Clip space руу хувиргана)
-    glm::mat4 mv;              // Model-View Matrix (View space руу хувиргана - Нормальд хэрэгтэй)
-    glm::vec3 light_dir_view;  // View space дээрх гэрлийн чиглэл
-    shs::Color color;          // Объектын үндсэн өнгө
+    glm::mat4  mvp;             // Model-View-Projection Matrix (Clip space руу хувиргана)
+    glm::mat4  mv;              // Model-View Matrix (View space руу хувиргана - Нормальд хэрэгтэй)
+    glm::vec3  light_dir_view;  // View space дээрх гэрлийн чиглэл
+    shs::Color color;           // Объектын үндсэн өнгө
 };
 
-/**
- * VERTEX SHADER
- * Оройн цэгүүдийг дэлгэцийн координат руу (Clip Space) хувиргах.
- * Мөн Нормаль векторыг View Space руу хувиргаж Fragment shader рүү дамжуулна.
- */
+/*
+    VERTEX SHADER
+    Оройн цэгүүдийг дэлгэцийн координат руу (Clip Space) хувиргах.
+    Мөн Нормаль векторыг View Space руу хувиргаж Fragment shader рүү дамжуулна.
+*/
 shs::Varyings flat_vertex_shader(const glm::vec3& aPos, const glm::vec3& aNormal, const Uniforms& u)
 {
     shs::Varyings out;
@@ -51,18 +54,18 @@ shs::Varyings flat_vertex_shader(const glm::vec3& aPos, const glm::vec3& aNormal
     // Нормалийг зөв хувиргахын тулд (mv) матрицын зөвхөн эргэлтийг авч байна.
     out.normal = glm::mat3(u.mv) * aNormal; 
 
-    // Одоогоор бидэнд World Pos болон UV хэрэггүй, гэхдээ pipeline шаарддаг тул хоосон орхиж болно
+    // Одоогоор World Pos болон UV хэрэггүй, гэхдээ pipeline шаарддаг тул хоосон орхиж болно
     out.world_pos = glm::vec3(0.0f); 
-    out.uv = glm::vec2(0.0f);
+    out.uv        = glm::vec2(0.0f);
 
     return out;
 }
 
-/**
- * FRAGMENT SHADER
- * Пиксел бүрийн өнгийг тооцоолох.
- * Энд зөвхөн Ambient болон Diffuse гэрлийг тооцно (Specular байхгүй).
- */
+/*
+    FRAGMENT SHADER
+    Пиксел бүрийн өнгийг тооцоолох.
+    Энд зөвхөн Ambient болон Diffuse гэрлийг тооцно (Specular байхгүй).
+*/
 shs::Color flat_fragment_shader(const shs::Varyings& in, const Uniforms& u)
 {
     // Дөхөлт хийгдсэн нормаль векторыг дахин normalize хийх шаардлагатай
@@ -71,12 +74,12 @@ shs::Color flat_fragment_shader(const shs::Varyings& in, const Uniforms& u)
     // Гэрлийн чиглэл (View Space дээр ирсэн бэлэн вектор)
     glm::vec3 l = glm::normalize(u.light_dir_view);
 
-    // 1. Diffuse (Сарнисан гэрэл): Гэрэл болон гадаргуугийн өнцгөөс хамаарна
+    // Diffuse (Сарнисан гэрэл), Гэрэл болон гадаргуугийн өнцгөөс хамаарна
     // dot(n, l) нь хоёр векторын хоорондох өнцгийн косинус. 
     // Хэрэв утга нь хасах байвал гэрэл ард байна гэсэн үг тул 0-ээр хязгаарлана.
     float diffuse = glm::max(glm::dot(n, l), 0.0f);
 
-    // 2. Ambient (Орчны гэрэл): Сүүдэр хэт харанхуй байхаас сэргийлнэ
+    // Ambient (Орчны гэрэл), Сүүдэр хэт харанхуй байхаас сэргийлнэ
     float ambient = 0.2f;
 
     // Нийт гэрлийн хүч
@@ -103,15 +106,15 @@ class Viewer
 public:
     Viewer(glm::vec3 position, float speed)
     {
-        this->position = position;
-        this->speed = speed;
-        this->camera = new shs::Camera3D();
-        this->camera->position = this->position;
-        this->camera->width = float(CANVAS_WIDTH);
-        this->camera->height = float(CANVAS_HEIGHT);
+        this->position              = position;
+        this->speed                 = speed;
+        this->camera                = new shs::Camera3D();
+        this->camera->position      = this->position;
+        this->camera->width         = float(CANVAS_WIDTH);
+        this->camera->height        = float(CANVAS_HEIGHT);
         this->camera->field_of_view = 60.0f;
-        this->camera->z_near = 0.1f;
-        this->camera->z_far = 1000.0f;
+        this->camera->z_near        = 0.1f;
+        this->camera->z_far         = 1000.0f;
     }
     ~Viewer() { delete camera; }
 
@@ -134,10 +137,8 @@ class ModelGeometry
 public:
     ModelGeometry(std::string model_path)
     {
-        // aiProcess_Triangulate: Бүх дүрсийг гурвалжин болгоно
-        // aiProcess_GenNormals: Нормаль байхгүй бол үүсгэнэ
-        // Анхаар: aiProcess_JoinIdenticalVertices ашиглаагүй тул оройнууд давхардсан хэвээр үлдэнэ. 
-        // Энэ нь Flat shading харагдуулахад тус болдог.
+        // aiProcess_Triangulate, Бүх дүрсийг гурвалжин болгоно
+        // aiProcess_GenNormals, Нормаль байхгүй бол үүсгэнэ
         unsigned int flags = aiProcess_Triangulate | aiProcess_GenNormals | aiProcess_FlipUVs;
         
         const aiScene *scene = this->importer.ReadFile(model_path.c_str(), flags);
@@ -168,7 +169,7 @@ public:
     
     std::vector<glm::vec3> triangles;
     std::vector<glm::vec3> normals;
-    Assimp::Importer importer;
+    Assimp::Importer       importer;
 };
 
 class MonkeyObject : public shs::AbstractObject3D
@@ -176,10 +177,10 @@ class MonkeyObject : public shs::AbstractObject3D
 public:
     MonkeyObject(glm::vec3 position, glm::vec3 scale, shs::Color color)
     {
-        this->position = position;
-        this->scale = scale;
-        this->color = color;
-        this->geometry = new ModelGeometry("./obj/monkey/monkey.rawobj");
+        this->position       = position;
+        this->scale          = scale;
+        this->color          = color;
+        this->geometry       = new ModelGeometry("./obj/monkey/monkey.rawobj");
         this->rotation_angle = 0.0f;
     }
     ~MonkeyObject() { delete this->geometry; }
@@ -199,10 +200,10 @@ public:
     void render() override {}
 
     ModelGeometry *geometry;
-    glm::vec3 scale;
-    glm::vec3 position;
-    shs::Color color;
-    float rotation_angle;
+    glm::vec3      scale;
+    glm::vec3      position;
+    shs::Color     color;
+    float          rotation_angle;
 };
 
 class HelloScene : public shs::AbstractSceneState
@@ -227,18 +228,19 @@ public:
 
     std::vector<shs::AbstractObject3D *> scene_objects;
     shs::Canvas *canvas;
-    Viewer *viewer;
-    glm::vec3 light_direction;
+    Viewer      *viewer;
+    glm::vec3    light_direction;
 };
 
 // ==========================================
-// 3. RENDERER SYSTEM (PIPELINE VERSION)
+// RENDERER SYSTEM (THREADED PIPELINE)
 // ==========================================
 
 class RendererSystem : public shs::AbstractSystem
 {
 public:
-    RendererSystem(HelloScene *scene) : scene(scene) 
+    RendererSystem(HelloScene *scene, shs::Job::ThreadedPriorityJobSystem *job_sys) 
+        : scene(scene), job_system(job_sys)
     {
         this->z_buffer = new shs::ZBuffer(
             this->scene->canvas->get_width(),
@@ -249,68 +251,142 @@ public:
     }
     ~RendererSystem() { delete this->z_buffer; }
 
-    void process(float delta_time) override
+    /*
+        Thread-safe Pipeline Helper
+        Дэлгэцийн зөвхөн (min_x, min_y) -> (max_x, max_y) хэсэг буюу Tile дотор зурна.
+        Энэ нь өөр өөр thread-үүд санах ойн нэг байршил руу зэрэг хандахаас сэргийлнэ.
+    */
+    static void draw_triangle_tile(
+        shs::Canvas &canvas, 
+        shs::ZBuffer &z_buffer,
+        const std::vector<glm::vec3> &vertices,    
+        const std::vector<glm::vec3> &normals,     
+        std::function<shs::Varyings(const glm::vec3&, const glm::vec3&)> vertex_shader,
+        std::function<shs::Color(const shs::Varyings&)> fragment_shader,
+        glm::ivec2 tile_min, glm::ivec2 tile_max)
     {
-        // Z-Buffer цэвэрлэх
-        this->z_buffer->clear();
+        // [VERTEX STAGE]
+        shs::Varyings vout[3];
+        glm::vec3 screen_coords[3];
 
-        // View болон Projection матрицуудыг авах
-        glm::mat4 view = this->scene->viewer->camera->view_matrix;
-        glm::mat4 proj = this->scene->viewer->camera->projection_matrix;
+        for (int i = 0; i < 3; i++) {
+            vout[i] = vertex_shader(vertices[i], normals[i]);
+            screen_coords[i] = shs::Canvas::clip_to_screen(vout[i].position, canvas.get_width(), canvas.get_height());
+        }
 
-        // Гэрлийн чиглэлийг View Space руу хөрвүүлэх
-        // Pipeline дээр бид бүх тооцооллыг аль болох камерын систем (View Space) дээр хийвэл хялбар байдаг.
-        glm::vec3 light_dir_view = glm::vec3(view * glm::vec4(this->scene->light_direction, 0.0f));
-        light_dir_view = glm::normalize(light_dir_view);
+        // [RASTER PREP] 
+        // Bounding box-ийг TILE-ийн хэмжээгээр хязгаарлана (clamp)
+        glm::vec2 bboxmin(tile_max.x, tile_max.y);
+        glm::vec2 bboxmax(tile_min.x, tile_min.y);
+        std::vector<glm::vec2> v2d = { glm::vec2(screen_coords[0]), glm::vec2(screen_coords[1]), glm::vec2(screen_coords[2]) };
 
-        for (shs::AbstractObject3D *object : this->scene->scene_objects)
-        {
-            MonkeyObject *monkey = dynamic_cast<MonkeyObject *>(object);
-            if (monkey)
-            {
-                // Uniforms бэлтгэх (Shader-лүү илгээх өгөгдөл)
-                Uniforms uniforms;
-                glm::mat4 model = monkey->get_world_matrix();
+        for (int i = 0; i < 3; i++) {
+            bboxmin = glm::max(glm::vec2(tile_min), glm::min(bboxmin, v2d[i]));
+            bboxmax = glm::min(glm::vec2(tile_max), glm::max(bboxmax, v2d[i]));
+        }
+
+        // Хэрэв гурвалжин тухайн Tile-аас гадна байвал зурахгүй
+        if (bboxmin.x > bboxmax.x || bboxmin.y > bboxmax.y) return;
+
+        float area = (v2d[1].x - v2d[0].x) * (v2d[2].y - v2d[0].y) - (v2d[1].y - v2d[0].y) * (v2d[2].x - v2d[0].x);
+        if (area <= 0) return;
+
+        // [FRAGMENT STAGE]
+        for (int px = (int)bboxmin.x; px <= (int)bboxmax.x; px++) {
+            for (int py = (int)bboxmin.y; py <= (int)bboxmax.y; py++) {
                 
-                uniforms.mv  = view * model;            // Model-View Matrix
-                uniforms.mvp = proj * uniforms.mv;      // Model-View-Projection Matrix
-                uniforms.light_dir_view = light_dir_view;
-                uniforms.color = monkey->color;
+                glm::vec3 bc = shs::Canvas::barycentric_coordinate(glm::vec2(px + 0.5f, py + 0.5f), v2d);
+                if (bc.x < 0 || bc.y < 0 || bc.z < 0) continue;
 
-                // Vertex болон Normal-уудын reference-ийг авна
-                const auto& verts = monkey->geometry->triangles;
-                const auto& norms = monkey->geometry->normals;
-
-                // Гурвалжин бүрээр давтаж Pipeline руу илгээнэ
-                for (size_t i = 0; i < verts.size(); i += 3)
-                {
-                    // Гурвалжны 3 орой, 3 нормаль
-                    std::vector<glm::vec3> tri_verts = { verts[i], verts[i+1], verts[i+2] };
-                    std::vector<glm::vec3> tri_norms = { norms[i], norms[i+1], norms[i+2] };
-
-                    // PIPELINE ДУУДАХ
-                    // Lambda function ашиглан гаднаас бичсэн shader-лүүгээ холбож өгнө.
-                    shs::Canvas::draw_triangle_pipeline(
-                        *this->scene->canvas,
-                        *this->z_buffer,
-                        tri_verts,
-                        tri_norms,
-                        // Vertex Shader Wrapper
-                        [&uniforms](const glm::vec3& p, const glm::vec3& n) {
-                            return flat_vertex_shader(p, n, uniforms);
-                        },
-                        // Fragment Shader Wrapper
-                        [&uniforms](const shs::Varyings& v) {
-                            return flat_fragment_shader(v, uniforms);
-                        }
-                    );
+                // Z-Buffer test (Race condition үүсэхгүй, учир нь Thread бүр өөрийн бүсэд ажиллана)
+                float z = bc.x * screen_coords[0].z + bc.y * screen_coords[1].z + bc.z * screen_coords[2].z;
+                if (z_buffer.test_and_set_depth(px, py, z)) {
+                    
+                    shs::Varyings interpolated;
+                    interpolated.normal = glm::normalize(bc.x * vout[0].normal + bc.y * vout[1].normal + bc.z * vout[2].normal);
+                    
+                    canvas.draw_pixel_screen_space(px, py, fragment_shader(interpolated));
                 }
             }
         }
     }
+
+    void process(float delta_time) override
+    {
+        this->z_buffer->clear();
+
+        // Матриц болон гэрлийн тооцооллыг үндсэн thread дээр нэг удаа хийнэ
+        glm::mat4 view = this->scene->viewer->camera->view_matrix;
+        glm::mat4 proj = this->scene->viewer->camera->projection_matrix;
+        glm::vec3 light_dir_view = glm::normalize(glm::vec3(view * glm::vec4(this->scene->light_direction, 0.0f)));
+
+        int w = this->scene->canvas->get_width();
+        int h = this->scene->canvas->get_height();
+        
+        // Дэлгэцийг Tile-уудад хуваах
+        int cols = (w + TILE_SIZE_X - 1) / TILE_SIZE_X;
+        int rows = (h + TILE_SIZE_Y - 1) / TILE_SIZE_Y;
+
+        wait_group.reset();
+
+        for(int ty = 0; ty < rows; ty++) {
+            for(int tx = 0; tx < cols; tx++) {
+                
+                wait_group.add(1);
+
+                // Job submit хийх
+                job_system->submit({[this, tx, ty, w, h, view, proj, light_dir_view]() {
+                    
+                    // Tile-ийн хязгааруудыг тооцох
+                    glm::ivec2 t_min(tx * TILE_SIZE_X, ty * TILE_SIZE_Y);
+                    glm::ivec2 t_max(std::min((tx + 1) * TILE_SIZE_X, w) - 1, std::min((ty + 1) * TILE_SIZE_Y, h) - 1);
+
+                    // Объектуудыг давтах
+                    for (shs::AbstractObject3D *object : this->scene->scene_objects)
+                    {
+                        MonkeyObject *monkey = dynamic_cast<MonkeyObject *>(object);
+                        if (!monkey) continue;
+
+                        Uniforms uniforms;
+                        uniforms.mv  = view * monkey->get_world_matrix();
+                        uniforms.mvp = proj * uniforms.mv;
+                        uniforms.light_dir_view = light_dir_view;
+                        uniforms.color = monkey->color;
+
+                        const auto& verts = monkey->geometry->triangles;
+                        const auto& norms = monkey->geometry->normals;
+
+                        for (size_t i = 0; i < verts.size(); i += 3)
+                        {
+                            std::vector<glm::vec3> tri_verts = { verts[i], verts[i+1], verts[i+2] };
+                            std::vector<glm::vec3> tri_norms = { norms[i], norms[i+1], norms[i+2] };
+
+                            // Tile дээр зурах функц дуудах
+                            draw_triangle_tile(
+                                *this->scene->canvas,
+                                *this->z_buffer,
+                                tri_verts,
+                                tri_norms,
+                                [&uniforms](const glm::vec3& p, const glm::vec3& n) { return flat_vertex_shader(p, n, uniforms); },
+                                [&uniforms](const shs::Varyings& v) { return flat_fragment_shader(v, uniforms); },
+                                t_min, t_max
+                            );
+                        }
+                    }
+                    wait_group.done();
+                }, shs::Job::PRIORITY_HIGH});
+            }
+        }
+        
+        // Бүх Tile зурагдаж дуустал хүлээнэ
+        wait_group.wait();
+    }
+
 private:
-    HelloScene   *scene;
-    shs::ZBuffer *z_buffer;
+    HelloScene                          *scene;
+    shs::ZBuffer                        *z_buffer;
+    shs::Job::ThreadedPriorityJobSystem *job_system;
+    shs::Job::WaitGroup                  wait_group;
 };
 
 // ==========================================
@@ -334,10 +410,10 @@ private:
 class SystemProcessor
 {
 public:
-    SystemProcessor(HelloScene *scene) 
+    SystemProcessor(HelloScene *scene, shs::Job::ThreadedPriorityJobSystem *job_sys) 
     {
         this->command_processor = new shs::CommandProcessor();
-        this->renderer_system   = new RendererSystem(scene);
+        this->renderer_system   = new RendererSystem(scene, job_sys);
         this->logic_system      = new LogicSystem(scene);
     }
     ~SystemProcessor()
@@ -365,6 +441,9 @@ int main(int argc, char* argv[])
 {
     if (SDL_Init(SDL_INIT_VIDEO) < 0) return 1;
 
+    // Job System үүсгэх
+    auto *job_system = new shs::Job::ThreadedPriorityJobSystem(THREAD_COUNT);
+
     SDL_Window   *window   = nullptr;
     SDL_Renderer *renderer = nullptr;
     SDL_CreateWindowAndRenderer(WINDOW_WIDTH, WINDOW_HEIGHT, 0, &window, &renderer);
@@ -376,7 +455,7 @@ int main(int argc, char* argv[])
     // Камерын байршлыг бага зэрэг хойшлуулж тохируулав
     Viewer *viewer = new Viewer(glm::vec3(0.0f, 5.0f, -20.0f), 100.0f);
     HelloScene *hello_scene = new HelloScene(main_canvas, viewer);
-    SystemProcessor *sys = new SystemProcessor(hello_scene);
+    SystemProcessor *sys = new SystemProcessor(hello_scene, job_system);
 
     bool exit = false;
     SDL_Event event_data;
@@ -412,7 +491,7 @@ int main(int argc, char* argv[])
         // Clear Screen (Хар саарал дэвсгэр)
         shs::Canvas::fill_pixel(*main_canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{30, 30, 30, 255});
         
-        // Render Scene using Pipeline
+        // Render Scene using Job System (Threaded)
         sys->render(delta_time);
 
         // Update SDL
@@ -426,6 +505,8 @@ int main(int argc, char* argv[])
     delete hello_scene;
     delete viewer;
     delete main_canvas;
+    delete job_system;
+    
     SDL_DestroyTexture(screen_texture);
     SDL_FreeSurface(main_sdlsurface);
     SDL_DestroyRenderer(renderer);

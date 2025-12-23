@@ -425,16 +425,21 @@ namespace shs
         static void copy_to_SDLSurface(SDL_Surface *surface, shs::Canvas *canvas)
         {
             if (!surface || !canvas) return;
-            uint32_t* pixels = (uint32_t*)surface->pixels;
+            
+            // raw pixel access using pitch for safety
+            uint8_t* target_pixels = (uint8_t*)surface->pixels;
+            int pitch = surface->pitch;
             int w = canvas->get_width();
             int h = canvas->get_height();
 
             for (int y = 0; y < h; ++y) {
+                // SDL y is top-down, Canvas is bottom-up
+                int sdl_y = (h - 1 - y);
+                uint32_t* row = (uint32_t*)(target_pixels + sdl_y * pitch);
+                
                 for (int x = 0; x < w; ++x) {
                     shs::Color c = canvas->get_color_at(x, y);
-                    int sdl_y = (h - 1 - y);
-                    int sdl_index = sdl_y * w + x;
-                    pixels[sdl_index] = SDL_MapRGBA(surface->format, c.r, c.g, c.b, c.a);
+                    row[x] = SDL_MapRGBA(surface->format, c.r, c.g, c.b, c.a);
                 }
             }
         }
@@ -649,9 +654,20 @@ namespace shs
 
     namespace Job
     {
+        
         static const int PRIORITY_LOW    = 5;
         static const int PRIORITY_NORMAL = 15;
         static const int PRIORITY_HIGH   = 30;
+
+        struct JobEntry {
+            std::function<void()> task;
+            int priority;
+
+            // max-heap comparator
+            bool operator<(const JobEntry& other) const {
+                return priority < other.priority;
+            }
+        };
 
         class AbstractJobSystem {
         public:
@@ -666,11 +682,13 @@ namespace shs
             ThreadedPriorityJobSystem(int concurrency_count)
             {
                 thread_count = (concurrency_count <= 0) ? 1 : concurrency_count;
+                // reserve memory to prevent early reallocations
+                q.reserve(4096); 
 
                 for (int i = 0; i < thread_count; ++i) {
                     workers.emplace_back([this] {
                         for (;;) {
-                            std::pair<std::function<void()>, int> task;
+                            JobEntry job;
 
                             {
                                 std::unique_lock<std::mutex> lock(q_mtx);
@@ -681,15 +699,17 @@ namespace shs
                                 if (!is_running.load(std::memory_order_relaxed) && q.empty())
                                     return;
 
-                                task = std::move(q.front());
-                                q.pop_front();
+                                // pop from heap (O(log n))
+                                std::pop_heap(q.begin(), q.end());
+                                job = std::move(q.back());
+                                q.pop_back();
                             }
 
-                            task.first();
+                            job.task();
                         }
                     });
                 }
-
+                
                 std::cout << "STATUS : Job System started with " << thread_count << " threads." << std::endl;
             }
 
@@ -704,14 +724,8 @@ namespace shs
             {
                 {
                     std::lock_guard<std::mutex> lock(q_mtx);
-
-                    // Higher priority first
-                    auto it = q.begin();
-                    while (it != q.end()) {
-                        if (it->second < task.second) break;
-                        ++it;
-                    }
-                    q.insert(it, std::move(task));
+                    q.push_back({std::move(task.first), task.second});
+                    std::push_heap(q.begin(), q.end());
                 }
                 q_cv.notify_one();
             }
@@ -727,10 +741,10 @@ namespace shs
 
             std::mutex q_mtx;
             std::condition_variable q_cv;
-            std::list<std::pair<std::function<void()>, int>> q;
+            // vector is cache-friendly compared to std::list
+            std::vector<JobEntry> q;
         };
 
-        // WaitGroup: header-only barrier for "submit jobs then wait"
         class WaitGroup
         {
         public:
@@ -749,7 +763,9 @@ namespace shs
             inline void done()
             {
                 if (counter.fetch_sub(1, std::memory_order_release) == 1) {
-                    cv.notify_one();
+                    // broadcast to all waiters, safer than notify_one
+                    std::lock_guard<std::mutex> lock(mtx);
+                    cv.notify_all();
                 }
             }
 

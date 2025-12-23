@@ -1,8 +1,6 @@
 /*
-    3D Software Renderer - Gooch Shading Pipeline
-    Non-Photorealistic Rendering (NPR) for Technical Illustration
-    + FPS Camera Controls (Drag to Look)
-    + Static Monkey
+    3D Software Renderer - Threaded Gooch Shading Pipeline
+    Non-Photorealistic Rendering for Technical Illustration
 */
 
 #include <string>
@@ -22,22 +20,24 @@
 
 #include "shs_renderer.hpp"
 
-// Тохиргооны тогтмолууд
 #define WINDOW_WIDTH      640
 #define WINDOW_HEIGHT     480
 #define CANVAS_WIDTH      640
 #define CANVAS_HEIGHT     480
 #define MOUSE_SENSITIVITY 0.2f
+#define THREAD_COUNT      12
+#define TILE_SIZE_X       80
+#define TILE_SIZE_Y       80
 
 // ==========================================
 // UNIFORMS & SHADERS
 // ==========================================
 
 struct Uniforms {
-    glm::mat4 mvp;          
-    glm::mat4 model;        
-    glm::vec3 light_dir;    
-    glm::vec3 camera_pos;   
+    glm::mat4  mvp;          
+    glm::mat4  model;        
+    glm::vec3  light_dir;    
+    glm::vec3  camera_pos;   
     shs::Color color;       
 };
 
@@ -45,10 +45,10 @@ struct Uniforms {
 shs::Varyings gooch_vertex_shader(const glm::vec3& aPos, const glm::vec3& aNormal, const Uniforms& u)
 {
     shs::Varyings out;
-    out.position = u.mvp * glm::vec4(aPos, 1.0f);
+    out.position  = u.mvp * glm::vec4(aPos, 1.0f);
     out.world_pos = glm::vec3(u.model * glm::vec4(aPos, 1.0f));
-    out.normal = glm::normalize(glm::mat3(glm::transpose(glm::inverse(u.model))) * aNormal);
-    out.uv = glm::vec2(0.0f); 
+    out.normal    = glm::normalize(glm::mat3(glm::transpose(glm::inverse(u.model))) * aNormal);
+    out.uv        = glm::vec2(0.0f); 
     return out;
 }
 
@@ -62,37 +62,28 @@ shs::Color gooch_fragment_shader(const shs::Varyings& in, const Uniforms& u)
     // GOOCH INTERPOLATION FACTOR
     // Стандарт shading дээр бид dot(N, L)-ийг 0-ээр хязгаарладаг (clamp).
     // Gooch дээр бид сүүдэрт байгаа хэсгийг бас будах хэрэгтэй тул хязгаарлахгүй.
-    // NdotL нь [-1, 1] хооронд байна.
     float NdotL = glm::dot(norm, lightDir);
     
     // [-1, 1] range-ийг [0, 1] range руу хөрвүүлнэ.
-    // 0 = Full Shadow (Эсрэг тал), 1 = Full Light (Гэрэл рүү харсан тал)
     float t = (NdotL + 1.0f) / 2.0f;
 
     // DEFINE COLORS
-    // Объектын үндсэн өнгө
     glm::vec3 objectColor = glm::vec3(u.color.r, u.color.g, u.color.b) / 255.0f;
 
     // "Cool" color (Сүүдэрт харагдах өнгө) - Ихэвчлэн хөх/цэнхэр
-    // (0, 0, 0.55) + 0.25 * ObjectColor
     glm::vec3 k_cool = glm::vec3(0.0f, 0.0f, 0.55f) + 0.25f * objectColor;
 
     // "Warm" color (Гэрэлд харагдах өнгө) - Ихэвчлэн шар/улбар шар
-    // (0.3, 0.3, 0) + 0.25 * ObjectColor
     glm::vec3 k_warm = glm::vec3(0.6f, 0.6f, 0.1f) + 0.25f * objectColor;
 
     // MIXING
-    // t параметрээр Cool болон Warm өнгөний хооронд уусгана
     glm::vec3 result = t * k_warm + (1.0f - t) * k_cool;
 
-    // SPECULAR HIGHLIGHT (Optional but recommended for Gooch)
-    // Гадаргуугийн хэлбэрийг тодотгохын тулд хурц гялбаа нэмнэ.
+    // SPECULAR HIGHLIGHT
     glm::vec3 halfwayDir = glm::normalize(lightDir + viewDir);
     float spec = glm::pow(glm::max(glm::dot(norm, halfwayDir), 0.0f), 32.0f);
     
-    // Гялбааг цагаанаар нэмнэ
     result += glm::vec3(1.0f) * spec * 0.7f;
-
     result = glm::clamp(result, 0.0f, 1.0f);
 
     return shs::Color{
@@ -112,18 +103,17 @@ class Viewer
 public:
     Viewer(glm::vec3 position, float speed)
     {
-        this->position         = position;
-        this->speed            = speed;
-        this->camera           = new shs::Camera3D();
-        this->camera->position = this->position;
-        this->camera->width    = float(CANVAS_WIDTH);
-        this->camera->height   = float(CANVAS_HEIGHT);
+        this->position              = position;
+        this->speed                 = speed;
+        this->camera                = new shs::Camera3D();
+        this->camera->position      = this->position;
+        this->camera->width         = float(CANVAS_WIDTH);
+        this->camera->height        = float(CANVAS_HEIGHT);
         this->camera->field_of_view = 60.0f;
-        this->camera->z_near   = 0.1f;
-        this->camera->z_far    = 1000.0f;
-        
-        this->horizontal_angle = 0.0f;
-        this->vertical_angle   = 0.0f;
+        this->camera->z_near        = 0.1f;
+        this->camera->z_far         = 1000.0f;
+        this->horizontal_angle      = 0.0f;
+        this->vertical_angle        = 0.0f;
     }
     ~Viewer() { delete camera; }
 
@@ -139,10 +129,10 @@ public:
     glm::vec3 get_right_vector() { return this->camera->right_vector; }
 
     shs::Camera3D *camera;
-    glm::vec3 position;
-    float horizontal_angle;
-    float vertical_angle;
-    float speed;
+    glm::vec3      position;
+    float          horizontal_angle;
+    float          vertical_angle;
+    float          speed;
 };
 
 class ModelGeometry
@@ -177,7 +167,7 @@ public:
     }
     std::vector<glm::vec3> triangles;
     std::vector<glm::vec3> normals;
-    Assimp::Importer importer;
+    Assimp::Importer       importer;
 };
 
 class MonkeyObject : public shs::AbstractObject3D
@@ -189,7 +179,7 @@ public:
         this->scale          = scale;
         this->color          = color;
         this->geometry       = new ModelGeometry("./obj/monkey/monkey.rawobj");
-        this->rotation_angle = -30.0f; // Эхлэлийн байрлал
+        this->rotation_angle = -30.0f;
     }
     ~MonkeyObject() { delete this->geometry; }
 
@@ -203,7 +193,7 @@ public:
 
     void update(float delta_time) override
     {
-        (void)delta_time; // Сармагчин хөдлөхгүй
+        (void)delta_time; 
     }
     void render() override {}
 
@@ -223,12 +213,10 @@ public:
         this->viewer = viewer;
         // Гэрэл баруун дээд урдаас
         this->light_direction = glm::normalize(glm::vec3(-1.0f, -0.4f, 1.0f));
-        
-        // Gooch Shading дээр цэнхэр өнгө их гоё харагддаг
         this->scene_objects.push_back(new MonkeyObject(
             glm::vec3(0.0f, 0.0f, 10.0f), 
             glm::vec3(4.0f), 
-            shs::Color{60, 100, 200, 255} // Blue
+            shs::Color{60, 100, 200, 255} 
         ));
     }
     ~HelloScene() {
@@ -243,13 +231,14 @@ public:
 };
 
 // ==========================================
-// RENDERER SYSTEM
+// RENDERER SYSTEM (THREADED)
 // ==========================================
 
 class RendererSystem : public shs::AbstractSystem
 {
 public:
-    RendererSystem(HelloScene *scene) : scene(scene) 
+    RendererSystem(HelloScene *scene, shs::Job::ThreadedPriorityJobSystem *job_sys) 
+        : scene(scene), job_system(job_sys)
     {
         this->z_buffer = new shs::ZBuffer(
             this->scene->canvas->get_width(),
@@ -260,6 +249,63 @@ public:
     }
     ~RendererSystem() { delete this->z_buffer; }
 
+    /*
+        Thread-safe Pipeline Helper (Tile-based)
+        Tile тус бүр дээр ажиллах тул өгөгдлийн мөргөлдөөн үүсэхгүй
+    */
+    static void draw_triangle_tile(
+        shs::Canvas &canvas, 
+        shs::ZBuffer &z_buffer,
+        const std::vector<glm::vec3> &vertices,    
+        const std::vector<glm::vec3> &normals,     
+        std::function<shs::Varyings(const glm::vec3&, const glm::vec3&)> vertex_shader,
+        std::function<shs::Color(const shs::Varyings&)> fragment_shader,
+        glm::ivec2 tile_min, glm::ivec2 tile_max)
+    {
+        // [VERTEX STAGE]
+        shs::Varyings vout[3];
+        glm::vec3 screen_coords[3];
+
+        for (int i = 0; i < 3; i++) {
+            vout[i] = vertex_shader(vertices[i], normals[i]);
+            screen_coords[i] = shs::Canvas::clip_to_screen(vout[i].position, canvas.get_width(), canvas.get_height());
+        }
+
+        // [RASTER PREP] - Bounding Box-ийг Tile-ийн хэмжээгээр хязгаарлана
+        glm::vec2 bboxmin(tile_max.x, tile_max.y);
+        glm::vec2 bboxmax(tile_min.x, tile_min.y);
+        std::vector<glm::vec2> v2d = { glm::vec2(screen_coords[0]), glm::vec2(screen_coords[1]), glm::vec2(screen_coords[2]) };
+
+        for (int i = 0; i < 3; i++) {
+            bboxmin = glm::max(glm::vec2(tile_min), glm::min(bboxmin, v2d[i]));
+            bboxmax = glm::min(glm::vec2(tile_max), glm::max(bboxmax, v2d[i]));
+        }
+
+        if (bboxmin.x > bboxmax.x || bboxmin.y > bboxmax.y) return;
+
+        float area = (v2d[1].x - v2d[0].x) * (v2d[2].y - v2d[0].y) - (v2d[1].y - v2d[0].y) * (v2d[2].x - v2d[0].x);
+        if (area <= 0) return;
+
+        // [FRAGMENT STAGE]
+        for (int px = (int)bboxmin.x; px <= (int)bboxmax.x; px++) {
+            for (int py = (int)bboxmin.y; py <= (int)bboxmax.y; py++) {
+                
+                glm::vec3 bc = shs::Canvas::barycentric_coordinate(glm::vec2(px + 0.5f, py + 0.5f), v2d);
+                if (bc.x < 0 || bc.y < 0 || bc.z < 0) continue;
+
+                float z = bc.x * screen_coords[0].z + bc.y * screen_coords[1].z + bc.z * screen_coords[2].z;
+                if (z_buffer.test_and_set_depth(px, py, z)) {
+                    
+                    shs::Varyings interpolated;
+                    interpolated.normal    = glm::normalize(bc.x * vout[0].normal    + bc.y * vout[1].normal    + bc.z * vout[2].normal);
+                    interpolated.world_pos = bc.x * vout[0].world_pos + bc.y * vout[1].world_pos + bc.z * vout[2].world_pos;
+                    
+                    canvas.draw_pixel_screen_space(px, py, fragment_shader(interpolated));
+                }
+            }
+        }
+    }
+
     void process(float delta_time) override
     {
         this->z_buffer->clear();
@@ -267,47 +313,71 @@ public:
         glm::mat4 view = this->scene->viewer->camera->view_matrix;
         glm::mat4 proj = this->scene->viewer->camera->projection_matrix;
 
-        for (shs::AbstractObject3D *object : this->scene->scene_objects)
-        {
-            MonkeyObject *monkey = dynamic_cast<MonkeyObject *>(object);
-            if (monkey)
-            {
-                Uniforms uniforms;
-                uniforms.model      = monkey->get_world_matrix();
-                uniforms.mvp        = proj * view * uniforms.model;
-                uniforms.light_dir  = this->scene->light_direction; 
-                uniforms.camera_pos = this->scene->viewer->position; 
-                uniforms.color      = monkey->color;
+        int w = this->scene->canvas->get_width();
+        int h = this->scene->canvas->get_height();
+        
+        int cols = (w + TILE_SIZE_X - 1) / TILE_SIZE_X;
+        int rows = (h + TILE_SIZE_Y - 1) / TILE_SIZE_Y;
 
-                const auto& verts = monkey->geometry->triangles;
-                const auto& norms = monkey->geometry->normals;
+        wait_group.reset();
 
-                for (size_t i = 0; i < verts.size(); i += 3)
-                {
-                    std::vector<glm::vec3> tri_verts = { verts[i], verts[i+1], verts[i+2] };
-                    std::vector<glm::vec3> tri_norms = { norms[i], norms[i+1], norms[i+2] };
+        for(int ty = 0; ty < rows; ty++) {
+            for(int tx = 0; tx < cols; tx++) {
+                
+                wait_group.add(1);
 
-                    shs::Canvas::draw_triangle_pipeline(
-                        *this->scene->canvas,
-                        *this->z_buffer,
-                        tri_verts,
-                        tri_norms,
-                        // Vertex Shader
-                        [&uniforms](const glm::vec3& p, const glm::vec3& n) {
-                            return gooch_vertex_shader(p, n, uniforms);
-                        },
-                        // Fragment Shader: Gooch Shading
-                        [&uniforms](const shs::Varyings& v) {
-                            return gooch_fragment_shader(v, uniforms);
+                job_system->submit({[this, tx, ty, w, h, view, proj]() {
+                    
+                    glm::ivec2 t_min(tx * TILE_SIZE_X, ty * TILE_SIZE_Y);
+                    glm::ivec2 t_max(std::min((tx + 1) * TILE_SIZE_X, w) - 1, std::min((ty + 1) * TILE_SIZE_Y, h) - 1);
+
+                    for (shs::AbstractObject3D *object : this->scene->scene_objects)
+                    {
+                        MonkeyObject *monkey = dynamic_cast<MonkeyObject *>(object);
+                        if (!monkey) continue;
+
+                        Uniforms uniforms;
+                        uniforms.model      = monkey->get_world_matrix();
+                        uniforms.mvp        = proj * view * uniforms.model;
+                        uniforms.light_dir  = this->scene->light_direction; 
+                        uniforms.camera_pos = this->scene->viewer->position; 
+                        uniforms.color      = monkey->color;
+
+                        const auto& verts = monkey->geometry->triangles;
+                        const auto& norms = monkey->geometry->normals;
+
+                        for (size_t i = 0; i < verts.size(); i += 3)
+                        {
+                            std::vector<glm::vec3> tri_verts = { verts[i], verts[i+1], verts[i+2] };
+                            std::vector<glm::vec3> tri_norms = { norms[i], norms[i+1], norms[i+2] };
+
+                            draw_triangle_tile(
+                                *this->scene->canvas,
+                                *this->z_buffer,
+                                tri_verts,
+                                tri_norms,
+                                [&uniforms](const glm::vec3& p, const glm::vec3& n) {
+                                    return gooch_vertex_shader(p, n, uniforms);
+                                },
+                                [&uniforms](const shs::Varyings& v) {
+                                    return gooch_fragment_shader(v, uniforms);
+                                },
+                                t_min, t_max
+                            );
                         }
-                    );
-                }
+                    }
+                    wait_group.done();
+                }, shs::Job::PRIORITY_HIGH});
             }
         }
+        
+        wait_group.wait();
     }
 private:
     HelloScene   *scene;
     shs::ZBuffer *z_buffer;
+    shs::Job::ThreadedPriorityJobSystem *job_system;
+    shs::Job::WaitGroup wait_group;
 };
 
 // ==========================================
@@ -331,10 +401,10 @@ private:
 class SystemProcessor
 {
 public:
-    SystemProcessor(HelloScene *scene) 
+    SystemProcessor(HelloScene *scene, shs::Job::ThreadedPriorityJobSystem *job_sys) 
     {
         this->command_processor = new shs::CommandProcessor();
-        this->renderer_system   = new RendererSystem(scene);
+        this->renderer_system   = new RendererSystem(scene, job_sys);
         this->logic_system      = new LogicSystem(scene);
     }
     ~SystemProcessor()
@@ -362,6 +432,8 @@ int main(int argc, char* argv[])
 {
     if (SDL_Init(SDL_INIT_VIDEO) < 0) return 1;
 
+    auto *job_system = new shs::Job::ThreadedPriorityJobSystem(THREAD_COUNT);
+
     SDL_Window   *window   = nullptr;
     SDL_Renderer *renderer = nullptr;
     SDL_CreateWindowAndRenderer(WINDOW_WIDTH, WINDOW_HEIGHT, 0, &window, &renderer);
@@ -370,9 +442,9 @@ int main(int argc, char* argv[])
     SDL_Surface *main_sdlsurface = main_canvas->create_sdl_surface();
     SDL_Texture *screen_texture = SDL_CreateTextureFromSurface(renderer, main_sdlsurface);
 
-    Viewer *viewer = new Viewer(glm::vec3(0.0f, 5.0f, -20.0f), 50.0f);
-    HelloScene *hello_scene = new HelloScene(main_canvas, viewer);
-    SystemProcessor *sys = new SystemProcessor(hello_scene);
+    Viewer          *viewer      = new Viewer(glm::vec3(0.0f, 5.0f, -20.0f), 50.0f);
+    HelloScene      *hello_scene = new HelloScene(main_canvas, viewer);
+    SystemProcessor *sys         = new SystemProcessor(hello_scene, job_system);
 
     bool exit = false;
     SDL_Event event_data;
@@ -405,7 +477,7 @@ int main(int argc, char* argv[])
                 if (is_dragging) {
                     viewer->horizontal_angle += event_data.motion.xrel * MOUSE_SENSITIVITY;
                     viewer->vertical_angle   -= event_data.motion.yrel * MOUSE_SENSITIVITY;
-                    if (viewer->vertical_angle > 89.0f) viewer->vertical_angle = 89.0f;
+                    if (viewer->vertical_angle >  89.0f) viewer->vertical_angle = 89.0f;
                     if (viewer->vertical_angle < -89.0f) viewer->vertical_angle = -89.0f;
                 }
             }
@@ -433,6 +505,8 @@ int main(int argc, char* argv[])
     delete hello_scene;
     delete viewer;
     delete main_canvas;
+    delete job_system;
+    
     SDL_DestroyTexture(screen_texture);
     SDL_FreeSurface(main_sdlsurface);
     SDL_DestroyRenderer(renderer);
