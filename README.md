@@ -161,9 +161,9 @@
       
 # Result
 <p><img width="320" height="320" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/hello_wireframe_monkeyobj_canvas.png"></p>
-<p><img width="650" height="510" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/monkey-blinn-phong.png"></p>
-<p><img width="630" height="470" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/monkey-toon-shading.png"></p>
-<p><img width="950" height="310" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/normal_zbuffer_debug.png"></p>
+<p><img width="655" height="534" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/monkey-blinn-phong.png"></p>
+<p><img width="688" height="511" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/monkey-toon-shading.png"></p>
+<p><img width="1677" height="477" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/normal_zbuffer_debug.png"></p>
 <p><img width="640" height="360" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/mongolian-flag.png"></p>
 <p><img width="320" height="320" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/fbm.png"></p>
 

@@ -18,11 +18,11 @@
 
 #include "shs_renderer.hpp"
 
-#define WINDOW_WIDTH      640
-#define WINDOW_HEIGHT     480
-#define CANVAS_WIDTH      640
-#define CANVAS_HEIGHT     480
-#define THREAD_COUNT      16
+#define WINDOW_WIDTH      1240
+#define WINDOW_HEIGHT     980
+#define CANVAS_WIDTH      1240
+#define CANVAS_HEIGHT     980
+#define THREAD_COUNT      20
 #define TILE_SIZE_X       80
 #define TILE_SIZE_Y       80
 
