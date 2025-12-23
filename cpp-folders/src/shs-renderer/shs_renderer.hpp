@@ -655,54 +655,121 @@ namespace shs
 
         class AbstractJobSystem {
         public:
-            virtual ~AbstractJobSystem(){};
+            virtual ~AbstractJobSystem() {}
             virtual void submit(std::pair<std::function<void()>, int> task) = 0;
             std::atomic<bool> is_running{true};
         };
 
-        class ThreadedPriorityJobSystem : public shs::Job::AbstractJobSystem
+        class ThreadedPriorityJobSystem : public AbstractJobSystem
         {
         public:
-            ThreadedPriorityJobSystem(int concurrency_count) {
-                this->concurrency_count = concurrency_count;
-                for (int i = 0; i < this->concurrency_count; ++i) {
-                    this->workers.emplace_back([this] {
-                        while (this->is_running) {
-                            auto task_pair = this->job_queue.pop();
-                            if (task_pair.has_value()) {
-                                task_pair.value().first();
-                            } else {
-                                std::this_thread::sleep_for(std::chrono::microseconds(100));
+            ThreadedPriorityJobSystem(int concurrency_count)
+            {
+                thread_count = (concurrency_count <= 0) ? 1 : concurrency_count;
+
+                for (int i = 0; i < thread_count; ++i) {
+                    workers.emplace_back([this] {
+                        for (;;) {
+                            std::pair<std::function<void()>, int> task;
+
+                            {
+                                std::unique_lock<std::mutex> lock(q_mtx);
+                                q_cv.wait(lock, [this] {
+                                    return !is_running.load(std::memory_order_relaxed) || !q.empty();
+                                });
+
+                                if (!is_running.load(std::memory_order_relaxed) && q.empty())
+                                    return;
+
+                                task = std::move(q.front());
+                                q.pop_front();
                             }
-                        } 
+
+                            task.first();
+                        }
                     });
                 }
-                std::cout << "STATUS : Job System started with " << concurrency_count << " threads." << std::endl;
+
+                std::cout << "STATUS : Job System started with " << thread_count << " threads." << std::endl;
             }
-            
-            ~ThreadedPriorityJobSystem() {
-                this->is_running = false;
-                for (auto &worker : this->workers) {
-                    if (worker.joinable()) worker.join();
+
+            ~ThreadedPriorityJobSystem()
+            {
+                is_running.store(false, std::memory_order_relaxed);
+                q_cv.notify_all();
+                for (auto &t : workers) if (t.joinable()) t.join();
+            }
+
+            void submit(std::pair<std::function<void()>, int> task) override
+            {
+                {
+                    std::lock_guard<std::mutex> lock(q_mtx);
+
+                    // Higher priority first
+                    auto it = q.begin();
+                    while (it != q.end()) {
+                        if (it->second < task.second) break;
+                        ++it;
+                    }
+                    q.insert(it, std::move(task));
                 }
+                q_cv.notify_one();
             }
-            
-            void submit(std::pair<std::function<void()>, int> task) override {
-                this->job_queue.push(task);
-            }
-            
-            void submit(std::function<void()> task) {
-                 this->job_queue.push({task, PRIORITY_NORMAL});
+
+            void submit(std::function<void()> task)
+            {
+                submit({std::move(task), PRIORITY_NORMAL});
             }
 
         private:
-            int concurrency_count;
+            int thread_count = 1;
             std::vector<std::thread> workers;
-            shs::Util::ThreadSafePriorityQueue<std::pair<std::function<void()>, int>> job_queue;
+
+            std::mutex q_mtx;
+            std::condition_variable q_cv;
+            std::list<std::pair<std::function<void()>, int>> q;
+        };
+
+        // WaitGroup: header-only barrier for "submit jobs then wait"
+        class WaitGroup
+        {
+        public:
+            WaitGroup() : counter(0) {}
+
+            inline void reset()
+            {
+                counter.store(0, std::memory_order_relaxed);
+            }
+
+            inline void add(int n = 1)
+            {
+                counter.fetch_add(n, std::memory_order_relaxed);
+            }
+
+            inline void done()
+            {
+                if (counter.fetch_sub(1, std::memory_order_release) == 1) {
+                    cv.notify_one();
+                }
+            }
+
+            inline void wait()
+            {
+                std::unique_lock<std::mutex> lock(mtx);
+                cv.wait(lock, [this] {
+                    return counter.load(std::memory_order_acquire) == 0;
+                });
+            }
+
+        private:
+            std::atomic<int> counter;
+            std::mutex mtx;
+            std::condition_variable cv;
         };
 
         using ThreadedLocklessPriorityJobSystem = ThreadedPriorityJobSystem;
         using ThreadedLocklessJobSystem         = ThreadedPriorityJobSystem;
         using ThreadedJobSystem                 = ThreadedPriorityJobSystem;
     }
+
 }
