@@ -1,22 +1,28 @@
 
 # Tasks to mess around in the near future
 
-    Switch to SDL3
-    Update libraries
-    Fix cmake stuffs on Windows 10
-    Add notes on how configure dependencies on Windows 10
+    Revive Lockless job system experiments
+    Revive priority based job system experiments
+    Implement multiple parallel and sequencial job groups and graphs demo
+        Try to synchronize several workers on some pre placed barrier mechanism, or use atomic counters
+        Try to group different tasks with different atomic counters 
+        Try to build concurrent job graph using array of atomic counters
     Fix Race Conditions on the job classes
     Make Job System example doesn't crash
-    Move on to the next original goals like 3D shading and stuffs
-
+    
     Try to parallelize rasterization by subdividing large triangles based on certain threshold
         - recursively assemble rasterizable small triangle chunks into the list
         - submit them parallel rasterizer job system
-    Fix the coordinate system transformation and convention mess, write a note.
-    Try to synchronize several workers on some pre placed barrier mechanism, or use atomic counters
-    Try to group different tasks with different atomic counters 
-    Try to build concurrent job graph using array of atomic counters
+    
+    
+    Some mental exercises around potential demos I can produce
+    What's up with OpenCL?
+    Can I use OpenCL where it makes sense?
+    Can I use OpenCL for global illumination demo in the future?
+    Can I use OpenCL for Path Tracing or Ray Tracing demo also in the future?
+    
 
+    DONE Fix the coordinate system transformation and convention mess, write a note.
     DONE Implement Thread based job system using lockless priority queue
     DONE Realtime looper using SDL2
     DONE Realtime canvas renderer on SDL2 window
@@ -32,15 +38,15 @@
 
 # About
 
-    I'm just exercizing about software renderer and shaders in my freetime.
-    I think using graphics api is too overrated and writing own software renderer is cool.
+    I'm just learning about software renderer and shaders in my freetime.
+    I think using graphics API is overrated and writing own software renderer is cool.
     For simplicity I'm gonna use SDL2, and all the rendering computation should happend 
-    solely on the CPU, no accelerators, otherwise there is no point to start this repo.
+    solely on the CPU, maybe I can use OpenCL where it makes sense
     The goal is to learn something.
   
     Might implement followings exercises
       - Simple rendering for primitives like pixels, lines
-        - Triangle, quadrat, star etc
+        - Triangle, quadrat, stars etc
       - Some rasterizer for primitives like triangles, culling... currently no idea on how to implement
       - ZBuffer implementation
       - Render wireframes from obj file
