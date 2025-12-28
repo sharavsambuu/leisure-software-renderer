@@ -70,7 +70,8 @@ namespace shs
 
     // Shader-үүд хооронд дамжих өгөгдлийн бүтэц (Interpolated values)
     struct Varyings {
-        glm::vec4 position;
+        glm::vec4 position;        // current clip-space position
+        glm::vec4 prev_position;   // previous clip-space position (for velocity)
         glm::vec3 normal;
         glm::vec3 world_pos;
         glm::vec2 uv;
@@ -558,36 +559,53 @@ namespace shs
     };
 
     // ==========================================
-    // RENDER TARGET (Color + Depth багцалсан)
+    // RENDER TARGET VARIANTS (NO OOP)
     // ==========================================
+    struct RT_Color {
+        shs::Canvas color;
 
-    struct RenderTarget
-    {
+        RT_Color(int w, int h, shs::Color clear = {0,0,0,255})
+            : color(w, h, clear) {}
+
+        inline void clear(shs::Color c) {
+            color.buffer().clear(c);
+        }
+    };
+
+    struct RT_ColorDepth {
         shs::Canvas  color;
         shs::ZBuffer depth;
 
-        RenderTarget(int width, int height, float z_near, float z_far)
-            : color(width, height),
-              depth(width, height, z_near, z_far)
-        {}
+        RT_ColorDepth(int w, int h, float zn, float zf, shs::Color clear = {0,0,0,255})
+            : color(w, h, clear),
+            depth(w, h, zn, zf) {}
 
-        RenderTarget(int width, int height, float z_near, float z_far, shs::Color clear_color)
-            : color(width, height, clear_color),
-              depth(width, height, z_near, z_far)
-        {}
-
-        inline int width()  const { return color.get_width(); }
-        inline int height() const { return color.get_height(); }
-
-        inline void clear_color(shs::Color c) { color.buffer().clear(c); }
-        inline void clear_depth() { depth.clear(); }
-
-        inline void clear(shs::Color c)
-        {
-            clear_color(c);
-            clear_depth();
+        inline void clear(shs::Color c) {
+            color.buffer().clear(c);
+            depth.clear();
         }
     };
+
+    struct RT_ColorDepthVelocity {
+        shs::Canvas            color;
+        shs::ZBuffer           depth;
+        shs::Buffer<glm::vec2> velocity; // Canvas-space velocity (pixels, +Y up)
+
+        RT_ColorDepthVelocity(int w, int h, float zn, float zf, shs::Color clear = {0,0,0,255})
+            : color(w, h, clear),
+            depth(w, h, zn, zf),
+            velocity(w, h, glm::vec2(0.0f)) {}
+
+        inline void clear(shs::Color c) {
+            color.buffer().clear(c);
+            depth.clear();
+            velocity.clear(glm::vec2(0.0f));
+        }
+    };
+
+    // RENDER TARGET (Color + Depth багцалсан)
+    using RenderTarget = shs::RT_ColorDepth; 
+
 
     // ==========================================
     // 3D SCENE CLASSES

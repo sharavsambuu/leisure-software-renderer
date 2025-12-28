@@ -517,7 +517,7 @@ public:
 class RendererSystem : public shs::AbstractSystem
 {
 public:
-    RendererSystem(HelloScene *scene, shs::Job::ThreadedPriorityJobSystem *job_sys, shs::RenderTarget *target)
+    RendererSystem(HelloScene *scene, shs::Job::ThreadedPriorityJobSystem *job_sys, shs::RT_ColorDepth *target)
         : scene(scene), job_system(job_sys), target(target)
     {}
 
@@ -648,7 +648,7 @@ public:
 private:
     HelloScene                          *scene;
     shs::Job::ThreadedPriorityJobSystem *job_system;
-    shs::RenderTarget                   *target;
+    shs::RT_ColorDepth                  *target;
     shs::Job::WaitGroup                  wait_group;
 };
 
@@ -673,7 +673,7 @@ private:
 class SystemProcessor
 {
 public:
-    SystemProcessor(HelloScene *scene, shs::Job::ThreadedPriorityJobSystem *job_sys, shs::RenderTarget *target)
+    SystemProcessor(HelloScene *scene, shs::Job::ThreadedPriorityJobSystem *job_sys, shs::RT_ColorDepth *target)
     {
         this->command_processor = new shs::CommandProcessor();
         this->renderer_system   = new RendererSystem(scene, job_sys, target);
@@ -719,8 +719,8 @@ int main(int argc, char* argv[])
     Viewer     *viewer      = new Viewer(glm::vec3(0.0f, 5.0f, -20.0f), 50.0f);
     HelloScene *hello_scene = new HelloScene(viewer);
 
-    shs::RenderTarget ping(CANVAS_WIDTH, CANVAS_HEIGHT, viewer->camera->z_near, viewer->camera->z_far, shs::Color{20,20,25,255});
-    shs::RenderTarget pong(CANVAS_WIDTH, CANVAS_HEIGHT, viewer->camera->z_near, viewer->camera->z_far, shs::Color{20,20,25,255});
+    shs::RT_ColorDepth ping(CANVAS_WIDTH, CANVAS_HEIGHT, viewer->camera->z_near, viewer->camera->z_far, shs::Color{20,20,25,255});
+    shs::RT_ColorDepth pong(CANVAS_WIDTH, CANVAS_HEIGHT, viewer->camera->z_near, viewer->camera->z_far, shs::Color{20,20,25,255});
 
     shs::Canvas sharp_copy(CANVAS_WIDTH, CANVAS_HEIGHT);
 

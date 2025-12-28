@@ -171,6 +171,7 @@
 <p><img width="688" height="511" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/monkey-toon-shading.png"></p>
 <p><img width="1677" height="477" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/normal_zbuffer_debug.png"></p>
 <p><img width="657" height="540" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/depth-of-field-monkeys.png"></p>
+<p><img width="511" height="345" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/per-object-motion-blur-monkeys.png"></p>
 <p><img width="640" height="360" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/mongolian-flag.png"></p>
 <p><img width="320" height="320" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/fbm.png"></p>
 

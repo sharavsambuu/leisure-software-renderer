@@ -34,5 +34,8 @@ target_link_libraries(HelloPingPong PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRA
 add_executable(HelloDepthOfField hello_depth_of_field.cpp)
 target_link_libraries(HelloDepthOfField PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)
 
+add_executable(HelloPerObjectMotionBlur hello_per_object_motion_blur.cpp)
+target_link_libraries(HelloPerObjectMotionBlur PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)
+
 # add_executable(HelloMultiPass hello_multi_pass.cpp)
 # target_link_libraries(HelloMultiPass PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)
