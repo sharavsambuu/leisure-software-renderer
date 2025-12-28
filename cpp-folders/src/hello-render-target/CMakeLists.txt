@@ -30,3 +30,9 @@ file(COPY obj DESTINATION "${CMAKE_CURRENT_BINARY_DIR}")
 
 add_executable(HelloPingPong hello_ping_pong.cpp)
 target_link_libraries(HelloPingPong PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)
+
+add_executable(HelloDepthOfField hello_depth_of_field.cpp)
+target_link_libraries(HelloDepthOfField PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)
+
+# add_executable(HelloMultiPass hello_multi_pass.cpp)
+# target_link_libraries(HelloMultiPass PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)

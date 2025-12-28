@@ -74,6 +74,7 @@ namespace shs
         glm::vec3 normal;
         glm::vec3 world_pos;
         glm::vec2 uv;
+        float view_z;
     };
 
     class Pixel
