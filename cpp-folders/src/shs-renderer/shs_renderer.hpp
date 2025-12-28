@@ -6,13 +6,14 @@
     - Canvas and ZBuffer now use Buffer<T> internally
     - Public APIs preserved to avoid breaking existing demos
     - New aliases: ColorBuffer, DepthBuffer (and optional future buffers)
+    - Added RenderTarget abstraction (Canvas + ZBuffer bundled)
 
-    Abstractable or replaceable by commong abstractions in the future:
+    Abstractable or replaceable by common abstractions in the future:
     - shs::Canvas → Buffer<shs::Color> (aka ColorBuffer)
     - shs::ZBuffer → Buffer<float> (aka DepthBuffer)
-    - Canvas::canvas + ZBuffer::depth_buffer → Buffer<T>::data (unified storage)
+    - Canvas::color_ + ZBuffer::depth_ → Buffer<T>::data (unified storage)
     - any extra per-pixel buffers (normals, IDs, masks) → Buffer<T>
-
+    - shs::RenderTarget → future generalized multi-attachment target (optional)
 */
 
 #pragma once
@@ -104,7 +105,7 @@ namespace shs
 
     // ==========================================
     // GENERIC BUFFER<T> ABSTRACTION
-    // - Can represent 2D images (w,h) or 1D tables by setting h=1.
+    // - 2D өгөгдөл хадгалах боломжтой (w,h) эсвэл h=1 гэж өгөөд 1D өгөгдөл хадгалахаар ашиглаж болно.
     // ==========================================
 
     template<typename T>
@@ -141,7 +142,7 @@ namespace shs
         inline const T* raw() const { return data.data(); }
     };
 
-    // Semantic aliases 
+    // Semantic aliases
     using ColorBuffer = Buffer<shs::Color>;
     using DepthBuffer = Buffer<float>;
 
@@ -219,6 +220,11 @@ namespace shs
         int get_height() const { return height_; }
 
         shs::Color get_color_at(int x, int y) {
+            if (!color_.in_bounds(x,y)) return {0,0,0,0};
+            return color_.at(x,y);
+        }
+
+        shs::Color get_color_at(int x, int y) const {
             if (!color_.in_bounds(x,y)) return {0,0,0,0};
             return color_.at(x,y);
         }
@@ -319,7 +325,14 @@ namespace shs
             return glm::vec3(v, w, u);
         }
 
-        static void draw_triangle(shs::Canvas &canvas, std::vector<glm::vec2> &vertices_screen, shs::Pixel pixel)
+        // ======================================================
+        // LEGACY COMPATIBILITY HELPERS 
+        // ======================================================
+
+        static void draw_triangle(
+            shs::Canvas &canvas,
+            std::vector<glm::vec2> &vertices_screen,
+            shs::Pixel pixel)
         {
             int max_x = canvas.get_width() - 1;
             int max_y = canvas.get_height() - 1;
@@ -341,7 +354,10 @@ namespace shs
             }
         }
 
-        static void draw_triangle_color_approximation(shs::Canvas &canvas, std::vector<glm::vec2> &vertices_screen, std::vector<glm::vec3> &colors)
+        static void draw_triangle_color_approximation(
+            shs::Canvas &canvas,
+            std::vector<glm::vec2> &vertices_screen,
+            std::vector<glm::vec3> &colors)
         {
             int max_x = canvas.get_width() - 1;
             int max_y = canvas.get_height() - 1;
@@ -489,8 +505,8 @@ namespace shs
             glm::vec3 screen_coord;
             screen_coord.x = (ndc_coord.x + 1.0f) * 0.5f * screen_width;
             screen_coord.y = (1.0f - ndc_coord.y) * 0.5f * screen_height;
-            // Keeping original behavior to avoid breaking existing depth expectations in demos.
-            // later can switch to ndc_coord.z when it's needed fully standardize depth.
+            // Хуучин демог эвдэхгүй тулд хадгалсан код.
+            // Дараагаар нь depth хийсвэрлэлт дээрээ бүрэн тохирсон үедээ ndc_coord.z рүү шилжих боломжтой 
             screen_coord.z = clip_coord.w;
             return screen_coord;
         }
@@ -499,7 +515,6 @@ namespace shs
         {
             if (!surface || !canvas) return;
 
-            // raw pixel access using pitch for safety
             uint8_t* target_pixels = (uint8_t*)surface->pixels;
             int pitch = surface->pitch;
             int w = canvas->get_width();
@@ -531,7 +546,7 @@ namespace shs
             std::cout << "Warning: PNG save not implemented in header-only version." << std::endl;
         }
 
-        // New compatibility helpers for gradual migration
+        // Аажмаар шилжихэд хэрэгтэй 
         inline ColorBuffer& buffer() { return color_; }
         inline const ColorBuffer& buffer() const { return color_; }
 
@@ -539,6 +554,38 @@ namespace shs
         int width_;
         int height_;
         ColorBuffer color_;
+    };
+
+    // ==========================================
+    // RENDER TARGET (Color + Depth багцалсан)
+    // ==========================================
+
+    struct RenderTarget
+    {
+        shs::Canvas  color;
+        shs::ZBuffer depth;
+
+        RenderTarget(int width, int height, float z_near, float z_far)
+            : color(width, height),
+              depth(width, height, z_near, z_far)
+        {}
+
+        RenderTarget(int width, int height, float z_near, float z_far, shs::Color clear_color)
+            : color(width, height, clear_color),
+              depth(width, height, z_near, z_far)
+        {}
+
+        inline int width()  const { return color.get_width(); }
+        inline int height() const { return color.get_height(); }
+
+        inline void clear_color(shs::Color c) { color.buffer().clear(c); }
+        inline void clear_depth() { depth.clear(); }
+
+        inline void clear(shs::Color c)
+        {
+            clear_color(c);
+            clear_depth();
+        }
     };
 
     // ==========================================

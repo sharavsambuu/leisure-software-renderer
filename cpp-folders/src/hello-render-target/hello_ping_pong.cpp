@@ -1,6 +1,8 @@
 /*
-    3D Software Renderer - Threaded Blinn-Phong Shading Pipeline
-    + FPS Camera Controls (Drag to Look) - WSL2 Friendly
+    3D Software Renderer - Blinn-Phong + Ping-Pong Gaussian Blur (CPU Post Process)
+    - Render scene into RenderTarget (offscreen)
+    - Apply separable Gaussian blur using ping-pong RenderTargets (threaded via Job system)
+    - Present final color buffer to SDL screen
 */
 
 #include <string>
@@ -20,25 +22,25 @@
 
 #include "shs_renderer.hpp"
 
-#define WINDOW_WIDTH      1240
-#define WINDOW_HEIGHT     980
-#define CANVAS_WIDTH      1240
-#define CANVAS_HEIGHT     980
+#define WINDOW_WIDTH      640
+#define WINDOW_HEIGHT     520
+#define CANVAS_WIDTH      640
+#define CANVAS_HEIGHT     520
 #define MOUSE_SENSITIVITY 0.2f
 #define THREAD_COUNT      20
-#define TILE_SIZE_X       80
-#define TILE_SIZE_Y       80
+#define TILE_SIZE_X       40
+#define TILE_SIZE_Y       40
 
 // ==========================================
 // UNIFORMS & SHADERS
 // ==========================================
 
 struct Uniforms {
-    glm::mat4  mvp;          
-    glm::mat4  model;        
-    glm::vec3  light_dir;    
-    glm::vec3  camera_pos;   
-    shs::Color color;       
+    glm::mat4  mvp;
+    glm::mat4  model;
+    glm::vec3  light_dir;
+    glm::vec3  camera_pos;
+    shs::Color color;
 };
 
 /*
@@ -52,7 +54,7 @@ shs::Varyings blinn_phong_vertex_shader(const glm::vec3& aPos, const glm::vec3& 
     out.world_pos = glm::vec3(u.model * glm::vec4(aPos, 1.0f));
     // Normal векторыг зөв хувиргах (Non-uniform scale үед inverse transpose ашиглана)
     out.normal    = glm::normalize(glm::mat3(glm::transpose(glm::inverse(u.model))) * aNormal);
-    out.uv        = glm::vec2(0.0f); 
+    out.uv        = glm::vec2(0.0f);
     return out;
 }
 
@@ -63,8 +65,8 @@ shs::Varyings blinn_phong_vertex_shader(const glm::vec3& aPos, const glm::vec3& 
 shs::Color blinn_phong_fragment_shader(const shs::Varyings& in, const Uniforms& u)
 {
     glm::vec3 norm     = glm::normalize(in.normal);
-    glm::vec3 lightDir = glm::normalize(-u.light_dir); 
-    glm::vec3 viewDir  = glm::normalize(u.camera_pos - in.world_pos); 
+    glm::vec3 lightDir = glm::normalize(-u.light_dir);
+    glm::vec3 viewDir  = glm::normalize(u.camera_pos - in.world_pos);
 
     // AMBIENT (Орчны гэрэл)
     float ambientStrength = 0.15f;
@@ -75,10 +77,9 @@ shs::Color blinn_phong_fragment_shader(const shs::Varyings& in, const Uniforms& 
     glm::vec3 diffuse = diff * glm::vec3(1.0f, 1.0f, 1.0f);
 
     // SPECULAR (Blinn-Phong: Halfway Vector)
-    // Гэрлийн чиглэл болон Камерын чиглэлийн дундах вектор
     glm::vec3 halfwayDir   = glm::normalize(lightDir + viewDir);
     float specularStrength = 0.5f;
-    float shininess        = 64.0f; // Phong-оос илүү өндөр утга хэрэгтэй байдаг
+    float shininess        = 64.0f;
 
     float spec         = glm::pow(glm::max(glm::dot(norm, halfwayDir), 0.0f), shininess);
     glm::vec3 specular = specularStrength * spec * glm::vec3(1.0f, 1.0f, 1.0f);
@@ -94,6 +95,113 @@ shs::Color blinn_phong_fragment_shader(const shs::Varyings& in, const Uniforms& 
         (uint8_t)(result.b * 255),
         255
     };
+}
+
+// ==========================================
+// GAUSSIAN BLUR (PING-PONG, THREADED VIA JOB LIB)
+// ==========================================
+
+static inline int clampi(int v, int lo, int hi)
+{
+    if (v < lo) return lo;
+    if (v > hi) return hi;
+    return v;
+}
+
+static inline shs::Color color_from_rgbaf(float r, float g, float b, float a)
+{
+    r = std::min(255.0f, std::max(0.0f, r));
+    g = std::min(255.0f, std::max(0.0f, g));
+    b = std::min(255.0f, std::max(0.0f, b));
+    a = std::min(255.0f, std::max(0.0f, a));
+    return shs::Color{ (uint8_t)r, (uint8_t)g, (uint8_t)b, (uint8_t)a };
+}
+
+/*
+    Separable 5-tap Gaussian blur pass (threaded)
+    - src: read-only
+    - dst: write-only per pixel
+    - horizontal: true = X pass, false = Y pass
+*/
+static void gaussian_blur_pass(
+    const shs::Canvas& src,
+    shs::Canvas& dst,
+    bool horizontal,
+    shs::Job::ThreadedPriorityJobSystem* job_system,
+    shs::Job::WaitGroup& wait_group)
+{
+    const float w0 = 0.06136f;
+    const float w1 = 0.24477f;
+    const float w2 = 0.38774f;
+
+    int W = src.get_width();
+    int H = src.get_height();
+
+    int cols = (W + TILE_SIZE_X - 1) / TILE_SIZE_X;
+    int rows = (H + TILE_SIZE_Y - 1) / TILE_SIZE_Y;
+
+    wait_group.reset();
+
+    for (int ty = 0; ty < rows; ty++) {
+        for (int tx = 0; tx < cols; tx++) {
+
+            wait_group.add(1);
+
+            job_system->submit({[&, tx, ty]() {
+
+                int x0 = tx * TILE_SIZE_X;
+                int y0 = ty * TILE_SIZE_Y;
+                int x1 = std::min(x0 + TILE_SIZE_X, W);
+                int y1 = std::min(y0 + TILE_SIZE_Y, H);
+
+                auto sample = [&](int sx, int sy) -> shs::Color {
+                    sx = clampi(sx, 0, W - 1);
+                    sy = clampi(sy, 0, H - 1);
+                    return src.get_color_at(sx, sy);
+                };
+
+                for (int y = y0; y < y1; y++) {
+                    for (int x = x0; x < x1; x++) {
+
+                        float r = 0, g = 0, b = 0, a = 0;
+
+                        if (horizontal)
+                        {
+                            shs::Color c0 = sample(x - 2, y);
+                            shs::Color c1 = sample(x - 1, y);
+                            shs::Color c2 = sample(x,     y);
+                            shs::Color c3 = sample(x + 1, y);
+                            shs::Color c4 = sample(x + 2, y);
+
+                            r = w0*c0.r + w1*c1.r + w2*c2.r + w1*c3.r + w0*c4.r;
+                            g = w0*c0.g + w1*c1.g + w2*c2.g + w1*c3.g + w0*c4.g;
+                            b = w0*c0.b + w1*c1.b + w2*c2.b + w1*c3.b + w0*c4.b;
+                            a = w0*c0.a + w1*c1.a + w2*c2.a + w1*c3.a + w0*c4.a;
+                        }
+                        else
+                        {
+                            shs::Color c0 = sample(x, y - 2);
+                            shs::Color c1 = sample(x, y - 1);
+                            shs::Color c2 = sample(x, y);
+                            shs::Color c3 = sample(x, y + 1);
+                            shs::Color c4 = sample(x, y + 2);
+
+                            r = w0*c0.r + w1*c1.r + w2*c2.r + w1*c3.r + w0*c4.r;
+                            g = w0*c0.g + w1*c1.g + w2*c2.g + w1*c3.g + w0*c4.g;
+                            b = w0*c0.b + w1*c1.b + w2*c2.b + w1*c3.b + w0*c4.b;
+                            a = w0*c0.a + w1*c1.a + w2*c2.a + w1*c3.a + w0*c4.a;
+                        }
+
+                        dst.draw_pixel(x, y, color_from_rgbaf(r, g, b, a));
+                    }
+                }
+
+                wait_group.done();
+            }, shs::Job::PRIORITY_HIGH});
+        }
+    }
+
+    wait_group.wait();
 }
 
 // ==========================================
@@ -124,7 +232,7 @@ public:
         this->camera->position         = this->position;
         this->camera->horizontal_angle = this->horizontal_angle;
         this->camera->vertical_angle   = this->vertical_angle;
-        this->camera->update(); 
+        this->camera->update();
     }
 
     glm::vec3 get_direction_vector() { return this->camera->direction_vector; }
@@ -195,8 +303,8 @@ public:
 
     void update(float delta_time) override
     {
-        // Specular шалгахын тулд эргэлтийг зогсоов
-        // this->rotation_angle += 30.0f * delta_time; 
+        (void)delta_time;
+        // this->rotation_angle += 30.0f * delta_time;
     }
     void render() override {}
 
@@ -210,11 +318,9 @@ public:
 class HelloScene : public shs::AbstractSceneState
 {
 public:
-    HelloScene(shs::Canvas *canvas, Viewer *viewer) 
+    HelloScene(Viewer *viewer)
     {
-        this->canvas = canvas;
         this->viewer = viewer;
-        // Гэрлийн чиглэл: Зүүн-Доод-Урдаас
         this->light_direction = glm::normalize(glm::vec3(-1.0f, -0.4f, 1.0f));
         this->scene_objects.push_back(new MonkeyObject(glm::vec3(0.0f, 0.0f, 10.0f), glm::vec3(4.0f), shs::Color{60, 100, 200, 255}));
     }
@@ -223,45 +329,35 @@ public:
     }
     void process() override {}
 
-    std::vector<shs::AbstractObject3D *>  scene_objects;
-    shs::Canvas                          *canvas;
-    Viewer                               *viewer;
-    glm::vec3                             light_direction;
+    std::vector<shs::AbstractObject3D *> scene_objects;
+    Viewer                              *viewer;
+    glm::vec3                            light_direction;
 };
 
 // ==========================================
-// RENDERER SYSTEM (THREADED RENDERING)
+// RENDERER SYSTEM (THREADED RENDERING -> RenderTarget)
 // ==========================================
 
 class RendererSystem : public shs::AbstractSystem
 {
 public:
-    RendererSystem(HelloScene *scene, shs::Job::ThreadedPriorityJobSystem *job_sys) 
-        : scene(scene), job_system(job_sys)
-    {
-        this->z_buffer = new shs::ZBuffer(
-            this->scene->canvas->get_width(),
-            this->scene->canvas->get_height(),
-            this->scene->viewer->camera->z_near,
-            this->scene->viewer->camera->z_far
-        );
-    }
-    ~RendererSystem() { delete this->z_buffer; }
+    RendererSystem(HelloScene *scene, shs::Job::ThreadedPriorityJobSystem *job_sys, shs::RenderTarget *target)
+        : scene(scene), job_system(job_sys), target(target)
+    {}
 
     /*
-        Thread-safe Pipeline Helper 
+        Thread-safe Pipeline Helper
         Tile тус бүр дээр ажиллах тул Race condition үүсэхгүй
     */
     static void draw_triangle_tile(
-        shs::Canvas &canvas, 
+        shs::Canvas &canvas,
         shs::ZBuffer &z_buffer,
-        const std::vector<glm::vec3> &vertices,    
-        const std::vector<glm::vec3> &normals,     
+        const std::vector<glm::vec3> &vertices,
+        const std::vector<glm::vec3> &normals,
         std::function<shs::Varyings(const glm::vec3&, const glm::vec3&)> vertex_shader,
         std::function<shs::Color(const shs::Varyings&)> fragment_shader,
         glm::ivec2 tile_min, glm::ivec2 tile_max)
     {
-        // [VERTEX STAGE]
         shs::Varyings vout[3];
         glm::vec3 screen_coords[3];
 
@@ -270,7 +366,6 @@ public:
             screen_coords[i] = shs::Canvas::clip_to_screen(vout[i].position, canvas.get_width(), canvas.get_height());
         }
 
-        // [RASTER PREP] - Bounding Box Clamped to Tile
         glm::vec2 bboxmin(tile_max.x, tile_max.y);
         glm::vec2 bboxmax(tile_min.x, tile_min.y);
         std::vector<glm::vec2> v2d = { glm::vec2(screen_coords[0]), glm::vec2(screen_coords[1]), glm::vec2(screen_coords[2]) };
@@ -285,22 +380,19 @@ public:
         float area = (v2d[1].x - v2d[0].x) * (v2d[2].y - v2d[0].y) - (v2d[1].y - v2d[0].y) * (v2d[2].x - v2d[0].x);
         if (area <= 0) return;
 
-        // [FRAGMENT STAGE]
         for (int px = (int)bboxmin.x; px <= (int)bboxmax.x; px++) {
             for (int py = (int)bboxmin.y; py <= (int)bboxmax.y; py++) {
-                
+
                 glm::vec3 bc = shs::Canvas::barycentric_coordinate(glm::vec2(px + 0.5f, py + 0.5f), v2d);
                 if (bc.x < 0 || bc.y < 0 || bc.z < 0) continue;
 
-                // Z-Buffer test (Tile бүр тусдаа Thread дээр ажиллах тул түгжээ хэрэггүй)
                 float z = bc.x * screen_coords[0].z + bc.y * screen_coords[1].z + bc.z * screen_coords[2].z;
                 if (z_buffer.test_and_set_depth(px, py, z)) {
-                    
-                    // Varying Interpolation
+
                     shs::Varyings interpolated;
                     interpolated.normal    = glm::normalize(bc.x * vout[0].normal    + bc.y * vout[1].normal    + bc.z * vout[2].normal);
                     interpolated.world_pos = bc.x * vout[0].world_pos + bc.y * vout[1].world_pos + bc.z * vout[2].world_pos;
-                    
+
                     canvas.draw_pixel_screen_space(px, py, fragment_shader(interpolated));
                 }
             }
@@ -309,15 +401,16 @@ public:
 
     void process(float delta_time) override
     {
-        this->z_buffer->clear();
+        (void)delta_time;
+
+        this->target->clear(shs::Color{20, 20, 25, 255});
 
         glm::mat4 view = this->scene->viewer->camera->view_matrix;
         glm::mat4 proj = this->scene->viewer->camera->projection_matrix;
 
-        int w = this->scene->canvas->get_width();
-        int h = this->scene->canvas->get_height();
-        
-        // Дэлгэцийг Tile-уудад хуваана
+        int w = this->target->color.get_width();
+        int h = this->target->color.get_height();
+
         int cols = (w + TILE_SIZE_X - 1) / TILE_SIZE_X;
         int rows = (h + TILE_SIZE_Y - 1) / TILE_SIZE_Y;
 
@@ -325,13 +418,11 @@ public:
 
         for(int ty = 0; ty < rows; ty++) {
             for(int tx = 0; tx < cols; tx++) {
-                
+
                 wait_group.add(1);
 
-                // Job System рүү ажлаа илгээнэ
                 job_system->submit({[this, tx, ty, w, h, view, proj]() {
-                    
-                    // Tile Bounds
+
                     glm::ivec2 t_min(tx * TILE_SIZE_X, ty * TILE_SIZE_Y);
                     glm::ivec2 t_max(std::min((tx + 1) * TILE_SIZE_X, w) - 1, std::min((ty + 1) * TILE_SIZE_Y, h) - 1);
 
@@ -343,8 +434,8 @@ public:
                         Uniforms uniforms;
                         uniforms.model      = monkey->get_world_matrix();
                         uniforms.mvp        = proj * view * uniforms.model;
-                        uniforms.light_dir  = this->scene->light_direction; 
-                        uniforms.camera_pos = this->scene->viewer->position; 
+                        uniforms.light_dir  = this->scene->light_direction;
+                        uniforms.camera_pos = this->scene->viewer->position;
                         uniforms.color      = monkey->color;
 
                         const auto& verts = monkey->geometry->triangles;
@@ -356,8 +447,8 @@ public:
                             std::vector<glm::vec3> tri_norms = { norms[i], norms[i+1], norms[i+2] };
 
                             draw_triangle_tile(
-                                *this->scene->canvas,
-                                *this->z_buffer,
+                                this->target->color,
+                                this->target->depth,
                                 tri_verts,
                                 tri_norms,
                                 [&uniforms](const glm::vec3& p, const glm::vec3& n) {
@@ -370,17 +461,19 @@ public:
                             );
                         }
                     }
+
                     wait_group.done();
                 }, shs::Job::PRIORITY_HIGH});
             }
         }
-        
+
         wait_group.wait();
     }
+
 private:
     HelloScene                          *scene;
-    shs::ZBuffer                        *z_buffer;
     shs::Job::ThreadedPriorityJobSystem *job_system;
+    shs::RenderTarget                   *target;
     shs::Job::WaitGroup                  wait_group;
 };
 
@@ -394,6 +487,7 @@ public:
     LogicSystem(HelloScene *scene) : scene(scene) {}
     void process(float delta_time) override
     {
+        (void)delta_time;
         this->scene->viewer->update();
         for (auto *obj : this->scene->scene_objects)
             obj->update(delta_time);
@@ -405,10 +499,10 @@ private:
 class SystemProcessor
 {
 public:
-    SystemProcessor(HelloScene *scene, shs::Job::ThreadedPriorityJobSystem *job_sys) 
+    SystemProcessor(HelloScene *scene, shs::Job::ThreadedPriorityJobSystem *job_sys, shs::RenderTarget *target)
     {
         this->command_processor = new shs::CommandProcessor();
-        this->renderer_system   = new RendererSystem(scene, job_sys);
+        this->renderer_system   = new RendererSystem(scene, job_sys, target);
         this->logic_system      = new LogicSystem(scene);
     }
     ~SystemProcessor()
@@ -417,7 +511,7 @@ public:
         delete this->renderer_system;
         delete this->logic_system;
     }
-    void process(float delta_time) 
+    void process(float delta_time)
     {
         this->command_processor->process();
         this->logic_system->process(delta_time);
@@ -429,34 +523,45 @@ public:
 
     shs::CommandProcessor *command_processor;
     LogicSystem           *logic_system;
-    RendererSystem        *renderer_system;  
+    RendererSystem        *renderer_system;
 };
 
 int main(int argc, char* argv[])
 {
+    (void)argc; (void)argv;
+
     if (SDL_Init(SDL_INIT_VIDEO) < 0) return 1;
 
-    // Job System эхлүүлэх
     auto *job_system = new shs::Job::ThreadedPriorityJobSystem(THREAD_COUNT);
 
     SDL_Window   *window   = nullptr;
     SDL_Renderer *renderer = nullptr;
     SDL_CreateWindowAndRenderer(WINDOW_WIDTH, WINDOW_HEIGHT, 0, &window, &renderer);
-    
-    shs::Canvas *main_canvas     = new shs::Canvas(CANVAS_WIDTH, CANVAS_HEIGHT);
-    SDL_Surface *main_sdlsurface = main_canvas->create_sdl_surface();
-    SDL_Texture *screen_texture  = SDL_CreateTextureFromSurface(renderer, main_sdlsurface);
 
-    Viewer          *viewer      = new Viewer(glm::vec3(0.0f, 5.0f, -20.0f), 50.0f);
-    HelloScene      *hello_scene = new HelloScene(main_canvas, viewer);
-    SystemProcessor *sys         = new SystemProcessor(hello_scene, job_system);
+    shs::Canvas *screen_canvas    = new shs::Canvas(CANVAS_WIDTH, CANVAS_HEIGHT);
+    SDL_Surface *screen_surface   = screen_canvas->create_sdl_surface();
+    SDL_Texture *screen_texture   = SDL_CreateTextureFromSurface(renderer, screen_surface);
+
+    // Offscreen ping-pong render targets
+    Viewer     *viewer      = new Viewer(glm::vec3(0.0f, 5.0f, -20.0f), 50.0f);
+    HelloScene *hello_scene = new HelloScene(viewer);
+
+    shs::RenderTarget ping(CANVAS_WIDTH, CANVAS_HEIGHT, viewer->camera->z_near, viewer->camera->z_far, shs::Color{20,20,25,255});
+    shs::RenderTarget pong(CANVAS_WIDTH, CANVAS_HEIGHT, viewer->camera->z_near, viewer->camera->z_far, shs::Color{20,20,25,255});
+
+    SystemProcessor *sys = new SystemProcessor(hello_scene, job_system, &ping);
 
     bool exit = false;
     SDL_Event event_data;
     Uint32 last_tick = SDL_GetTicks();
 
-    // Чирж байгаа эсэхийг шалгах төлөв
     bool is_dragging = false;
+
+    // Blur params
+    const int  BLUR_ITERATIONS = 3;
+    const bool ENABLE_BLUR     = true;
+
+    shs::Job::WaitGroup blur_wait_group;
 
     while (!exit)
     {
@@ -467,20 +572,14 @@ int main(int argc, char* argv[])
         while (SDL_PollEvent(&event_data))
         {
             if (event_data.type == SDL_QUIT) exit = true;
-            
-            // Mouse Button Handling
+
             if (event_data.type == SDL_MOUSEBUTTONDOWN) {
-                if (event_data.button.button == SDL_BUTTON_LEFT) {
-                    is_dragging = true;
-                }
+                if (event_data.button.button == SDL_BUTTON_LEFT) is_dragging = true;
             }
             if (event_data.type == SDL_MOUSEBUTTONUP) {
-                if (event_data.button.button == SDL_BUTTON_LEFT) {
-                    is_dragging = false;
-                }
+                if (event_data.button.button == SDL_BUTTON_LEFT) is_dragging = false;
             }
 
-            // Mouse Motion - Чирэхээр эргүүлнэ 
             if (event_data.type == SDL_MOUSEMOTION)
             {
                 if (is_dragging) {
@@ -494,8 +593,7 @@ int main(int argc, char* argv[])
 
             if (event_data.type == SDL_KEYDOWN) {
                 if(event_data.key.keysym.sym == SDLK_ESCAPE) exit = true;
-                
-                // WASD-аар камер хөдөлгөх
+
                 if(event_data.key.keysym.sym == SDLK_w) sys->command_processor->add_command(new shs::MoveForwardCommand (viewer->position, viewer->get_direction_vector(), viewer->speed, delta_time));
                 if(event_data.key.keysym.sym == SDLK_s) sys->command_processor->add_command(new shs::MoveBackwardCommand(viewer->position, viewer->get_direction_vector(), viewer->speed, delta_time));
                 if(event_data.key.keysym.sym == SDLK_a) sys->command_processor->add_command(new shs::MoveLeftCommand    (viewer->position, viewer->get_right_vector()    , viewer->speed, delta_time));
@@ -503,12 +601,27 @@ int main(int argc, char* argv[])
             }
         }
 
+        // Update camera + logic
         sys->process(delta_time);
-        shs::Canvas::fill_pixel(*main_canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{20, 20, 25, 255}); 
+
+        // Render into ping
         sys->render(delta_time);
 
-        shs::Canvas::copy_to_SDLSurface(main_sdlsurface, main_canvas);
-        SDL_UpdateTexture(screen_texture, NULL, main_sdlsurface->pixels, main_sdlsurface->pitch);
+        // Post-process: ping-pong Gaussian blur (color only) using job lib
+        if (ENABLE_BLUR)
+        {
+            for (int i = 0; i < BLUR_ITERATIONS; i++)
+            {
+                gaussian_blur_pass(ping.color, pong.color, true,  job_system, blur_wait_group);  // horizontal
+                gaussian_blur_pass(pong.color, ping.color, false, job_system, blur_wait_group);  // vertical
+            }
+        }
+
+        // Present final (ping.color) to screen canvas (copy buffer)
+        screen_canvas->buffer() = ping.color.buffer();
+
+        shs::Canvas::copy_to_SDLSurface(screen_surface, screen_canvas);
+        SDL_UpdateTexture(screen_texture, NULL, screen_surface->pixels, screen_surface->pitch);
         SDL_RenderCopy(renderer, screen_texture, NULL, NULL);
         SDL_RenderPresent(renderer);
     }
@@ -516,11 +629,11 @@ int main(int argc, char* argv[])
     delete sys;
     delete hello_scene;
     delete viewer;
-    delete main_canvas;
+    delete screen_canvas;
     delete job_system;
-    
+
     SDL_DestroyTexture(screen_texture);
-    SDL_FreeSurface(main_sdlsurface);
+    SDL_FreeSurface(screen_surface);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();
