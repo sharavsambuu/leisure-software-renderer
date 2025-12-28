@@ -1,5 +1,18 @@
 /*
-    CUSTOM SOFTWARE RENDERER (SHS) 
+    CUSTOM SOFTWARE RENDERER (shs_renderer.hpp)
+
+    2025-12-28 UPDATE:
+    - Added unified Buffer<T> abstraction (general container)
+    - Canvas and ZBuffer now use Buffer<T> internally
+    - Public APIs preserved to avoid breaking existing demos
+    - New aliases: ColorBuffer, DepthBuffer (and optional future buffers)
+
+    Abstractable or replaceable by commong abstractions in the future:
+    - shs::Canvas → Buffer<shs::Color> (aka ColorBuffer)
+    - shs::ZBuffer → Buffer<float> (aka DepthBuffer)
+    - Canvas::canvas + ZBuffer::depth_buffer → Buffer<T>::data (unified storage)
+    - any extra per-pixel buffers (normals, IDs, masks) → Buffer<T>
+
 */
 
 #pragma once
@@ -90,89 +103,144 @@ namespace shs
     };
 
     // ==========================================
+    // GENERIC BUFFER<T> ABSTRACTION
+    // - Can represent 2D images (w,h) or 1D tables by setting h=1.
+    // ==========================================
+
+    template<typename T>
+    struct Buffer
+    {
+        int w, h;
+        std::vector<T> data;
+
+        Buffer() : w(0), h(0) {}
+
+        Buffer(int width, int height, const T& clear_value)
+            : w(width), h(height), data((size_t)width * (size_t)height, clear_value) {}
+
+        inline int width()  const { return w; }
+        inline int height() const { return h; }
+
+        inline bool in_bounds(int x, int y) const {
+            return (x >= 0 && x < w && y >= 0 && y < h);
+        }
+
+        inline int idx(int x, int y) const { return y * w + x; }
+
+        inline T& at(int x, int y) { return data[(size_t)idx(x,y)]; }
+        inline const T& at(int x, int y) const { return data[(size_t)idx(x,y)]; }
+
+        // Optional 1D access (for tables / lists). Safe if you treat it as 1D.
+        inline T& at(int i) { return data[(size_t)i]; }
+        inline const T& at(int i) const { return data[(size_t)i]; }
+
+        inline void clear(const T& v) { std::fill(data.begin(), data.end(), v); }
+        inline size_t size() const { return data.size(); }
+
+        inline T* raw() { return data.data(); }
+        inline const T* raw() const { return data.data(); }
+    };
+
+    // Semantic aliases 
+    using ColorBuffer = Buffer<shs::Color>;
+    using DepthBuffer = Buffer<float>;
+
+    // ==========================================
     // CORE CLASSES
     // ==========================================
 
     class ZBuffer
     {
     public:
-        ZBuffer(int width, int height, float z_near, float z_far) 
-            : width(width), height(height), z_near(z_near), z_far(z_far)
-        {
-            this->depth_buffer.resize(width * height, std::numeric_limits<float>::max());
-        }
+        ZBuffer(int width, int height, float z_near, float z_far)
+            : width_(width), height_(height), z_near(z_near), z_far(z_far),
+              depth_(width, height, std::numeric_limits<float>::max())
+        {}
 
         bool test_and_set_depth(int x, int y, float depth)
         {
-            if (x < 0 || x >= width || y < 0 || y >= height) return false;
-            int index = y * width + x;
-            if (depth < this->depth_buffer[index])
+            if (x < 0 || x >= width_ || y < 0 || y >= height_) return false;
+            float &d = depth_.at(x, y);
+            if (depth < d)
             {
-                this->depth_buffer[index] = depth;
+                d = depth;
                 return true;
             }
             return false;
         }
-        
+
         void clear()
         {
-            std::fill(this->depth_buffer.begin(), this->depth_buffer.end(), std::numeric_limits<float>::max());
+            depth_.clear(std::numeric_limits<float>::max());
+        }
+
+        // Compatibility + future migration helpers
+        inline int get_width()  const { return width_; }
+        inline int get_height() const { return height_; }
+
+        inline DepthBuffer& buffer() { return depth_; }
+        inline const DepthBuffer& buffer() const { return depth_; }
+
+        inline float get_depth_at(int x, int y) const {
+            if (!depth_.in_bounds(x,y)) return std::numeric_limits<float>::max();
+            return depth_.at(x,y);
         }
 
     private:
-        std::vector<float> depth_buffer;
-        int width;
-        int height;
+        int   width_;
+        int   height_;
         float z_near;
         float z_far;
+
+        DepthBuffer depth_;
     };
 
     class Canvas
     {
     public:
-        Canvas(int width, int height) : width(width), height(height)
-        {
-            this->canvas.resize(width * height, shs::Color{0, 0, 0, 255});
-        }
-        Canvas(int width, int height, shs::Pixel bg_pixel) : width(width), height(height)
-        {
-             this->canvas.resize(width * height, bg_pixel.get_color());
-        }
-        Canvas(int width, int height, shs::Color bg_color) : width(width), height(height)
-        {
-             this->canvas.resize(width * height, bg_color);
-        }
+        Canvas(int width, int height)
+            : width_(width), height_(height),
+              color_(width, height, shs::Color{0, 0, 0, 255})
+        {}
+
+        Canvas(int width, int height, shs::Pixel bg_pixel)
+            : width_(width), height_(height),
+              color_(width, height, bg_pixel.get_color())
+        {}
+
+        Canvas(int width, int height, shs::Color bg_color)
+            : width_(width), height_(height),
+              color_(width, height, bg_color)
+        {}
 
         ~Canvas() {}
 
-        int get_width() const { return this->width; }
-        int get_height() const { return this->height; }
+        int get_width() const { return width_; }
+        int get_height() const { return height_; }
 
         shs::Color get_color_at(int x, int y) {
-            if (x < 0 || x >= width || y < 0 || y >= height) return {0,0,0,0};
-            return this->canvas[y * width + x];
+            if (!color_.in_bounds(x,y)) return {0,0,0,0};
+            return color_.at(x,y);
         }
 
         inline void draw_pixel(int x, int y, shs::Color color)
         {
-            if (x >= 0 && x < width && y >= 0 && y < height)
-            {
-                this->canvas[y * width + x] = color;
-            }
+            if (color_.in_bounds(x,y))
+                color_.at(x,y) = color;
         }
-        
+
         void draw_pixel(int x, int y, shs::Pixel pixel) {
             draw_pixel(x, y, pixel.get_color());
         }
 
         inline void draw_pixel_screen_space(int x_screen, int y_screen, shs::Color color)
         {
-            int y_canvas = (height - 1) - y_screen;
+            int y_canvas = (height_ - 1) - y_screen;
             draw_pixel(x_screen, y_canvas, color);
         }
 
         // --- STATIC HELPER METHODS ---
-        
+
         static void draw_pixel(shs::Canvas &canvas, int x, int y, shs::Color color) {
             canvas.draw_pixel(x, y, color);
         }
@@ -215,7 +283,7 @@ namespace shs
             int error2 = 0;
             int y = y0;
             for (int x = x0; x <= x1; x++) {
-                if (steep) canvas.draw_pixel(y, x, color); 
+                if (steep) canvas.draw_pixel(y, x, color);
                 else       canvas.draw_pixel(x, y, color);
                 error2 += derror2;
                 if (error2 > dx) {
@@ -242,14 +310,13 @@ namespace shs
             float d21 = glm::dot(v2, v1);
 
             float denom = d00 * d11 - d01 * d01;
-
             if (std::abs(denom) < 1e-5) return glm::vec3(-1, 1, 1);
 
             float v = (d11 * d20 - d01 * d21) / denom;
             float w = (d00 * d21 - d01 * d20) / denom;
             float u = 1.0f - v - w;
 
-            return glm::vec3(v, w, u); 
+            return glm::vec3(v, w, u);
         }
 
         static void draw_triangle(shs::Canvas &canvas, std::vector<glm::vec2> &vertices_screen, shs::Pixel pixel)
@@ -265,8 +332,8 @@ namespace shs
             }
 
             glm::ivec2 p;
-            for (p.x = bboxmin.x; p.x <= bboxmax.x; p.x++) {
-                for (p.y = bboxmin.y; p.y <= bboxmax.y; p.y++) {
+            for (p.x = (int)bboxmin.x; p.x <= (int)bboxmax.x; p.x++) {
+                for (p.y = (int)bboxmin.y; p.y <= (int)bboxmax.y; p.y++) {
                     glm::vec3 bc_screen = barycentric_coordinate(glm::vec2(p.x, p.y), vertices_screen);
                     if (bc_screen.x < 0 || bc_screen.y < 0 || bc_screen.z < 0) continue;
                     canvas.draw_pixel_screen_space(p.x, p.y, pixel.get_color());
@@ -287,8 +354,8 @@ namespace shs
             }
 
             glm::ivec2 p;
-            for (p.x = bboxmin.x; p.x <= bboxmax.x; p.x++) {
-                for (p.y = bboxmin.y; p.y <= bboxmax.y; p.y++) {
+            for (p.x = (int)bboxmin.x; p.x <= (int)bboxmax.x; p.x++) {
+                for (p.y = (int)bboxmin.y; p.y <= (int)bboxmax.y; p.y++) {
                     glm::vec3 bc = barycentric_coordinate(glm::vec2(p.x, p.y), vertices_screen);
                     if (bc.x < 0 || bc.y < 0 || bc.z < 0) continue;
 
@@ -301,7 +368,12 @@ namespace shs
             }
         }
 
-        static void draw_triangle_flat_shading(shs::Canvas &canvas, shs::ZBuffer &z_buffer, std::vector<glm::vec3> &vertices_screen, std::vector<glm::vec3> &view_space_normals, glm::vec3 &light_direction_in_view_space)
+        static void draw_triangle_flat_shading(
+            shs::Canvas &canvas,
+            shs::ZBuffer &z_buffer,
+            std::vector<glm::vec3> &vertices_screen,
+            std::vector<glm::vec3> &view_space_normals,
+            glm::vec3 &light_direction_in_view_space)
         {
             int max_x = canvas.get_width() - 1;
             int max_y = canvas.get_height() - 1;
@@ -311,18 +383,16 @@ namespace shs
             glm::vec2 bboxmin(max_x, max_y);
             glm::vec2 bboxmax(0, 0);
 
-            for(const auto& v : vertices_screen) {
-                v2d.push_back(glm::vec2(v.x, v.y));
-            }
+            for(const auto& v : vertices_screen) v2d.push_back(glm::vec2(v.x, v.y));
+
             for (int i = 0; i < 3; i++) {
                 bboxmin = glm::max(glm::vec2(0), glm::min(bboxmin, v2d[i]));
                 bboxmax = glm::min(glm::vec2(max_x, max_y), glm::max(bboxmax, v2d[i]));
             }
 
-            float area = (v2d[1].x - v2d[0].x) * (v2d[2].y - v2d[0].y) - 
+            float area = (v2d[1].x - v2d[0].x) * (v2d[2].y - v2d[0].y) -
                          (v2d[1].y - v2d[0].y) * (v2d[2].x - v2d[0].x);
-            
-            if (area <= 0) return; 
+            if (area <= 0) return;
 
             glm::vec3 normal    = glm::normalize(view_space_normals[0]);
             glm::vec3 light_dir = glm::normalize(light_direction_in_view_space);
@@ -332,19 +402,20 @@ namespace shs
             if (total_intensity > 1.0f) total_intensity = 1.0f;
 
             shs::Color color_to_draw = {
-                (uint8_t)(255 * total_intensity), 
-                (uint8_t)(255 * total_intensity), 
-                (uint8_t)(255 * total_intensity), 
+                (uint8_t)(255 * total_intensity),
+                (uint8_t)(255 * total_intensity),
+                (uint8_t)(255 * total_intensity),
                 255
             };
 
             glm::ivec2 p;
-            for (p.x = bboxmin.x; p.x <= bboxmax.x; p.x++)
+            for (p.x = (int)bboxmin.x; p.x <= (int)bboxmax.x; p.x++)
             {
-                for (p.y = bboxmin.y; p.y <= bboxmax.y; p.y++)
+                for (p.y = (int)bboxmin.y; p.y <= (int)bboxmax.y; p.y++)
                 {
                     glm::vec3 bc = barycentric_coordinate(glm::vec2(p.x + 0.5f, p.y + 0.5f), v2d);
                     if (bc.x < 0 || bc.y < 0 || bc.z < 0) continue;
+
                     float z = bc.x * vertices_screen[0].z + bc.y * vertices_screen[1].z + bc.z * vertices_screen[2].z;
                     if (z_buffer.test_and_set_depth(p.x, p.y, z))
                     {
@@ -356,10 +427,10 @@ namespace shs
 
         // PROGRAMMABLE PIPELINE: Vertex болон Fragment Shader ашиглан зурах функц
         static void draw_triangle_pipeline(
-            shs::Canvas &canvas, 
+            shs::Canvas  &canvas,
             shs::ZBuffer &z_buffer,
-            const std::vector<glm::vec3> &vertices,    
-            const std::vector<glm::vec3> &normals,     
+            const std::vector<glm::vec3> &vertices,
+            const std::vector<glm::vec3> &normals,
             std::function<shs::Varyings(const glm::vec3& pos, const glm::vec3& norm)> vertex_shader,
             std::function<shs::Color(const shs::Varyings& varying)> fragment_shader)
         {
@@ -391,19 +462,19 @@ namespace shs
             // [FRAGMENT STAGE]
             for (int px = (int)bboxmin.x; px <= (int)bboxmax.x; px++) {
                 for (int py = (int)bboxmin.y; py <= (int)bboxmax.y; py++) {
-                    
+
                     glm::vec3 bc = barycentric_coordinate(glm::vec2(px + 0.5f, py + 0.5f), v2d);
                     if (bc.x < 0 || bc.y < 0 || bc.z < 0) continue;
 
                     // Z-Buffer test
                     float z = bc.x * screen_coords[0].z + bc.y * screen_coords[1].z + bc.z * screen_coords[2].z;
                     if (z_buffer.test_and_set_depth(px, py, z)) {
-                        
+
                         // Varyings интерполяци хийх
                         shs::Varyings interpolated;
                         interpolated.normal    = glm::normalize(bc.x * vout[0].normal    + bc.y * vout[1].normal    + bc.z * vout[2].normal);
                         interpolated.world_pos = bc.x * vout[0].world_pos + bc.y * vout[1].world_pos + bc.z * vout[2].world_pos;
-                        
+
                         // Fragment shader-ийн эцсийн өнгө
                         shs::Color pixel_color = fragment_shader(interpolated);
                         canvas.draw_pixel_screen_space(px, py, pixel_color);
@@ -411,21 +482,23 @@ namespace shs
                 }
             }
         }
-        
+
         inline static glm::vec3 clip_to_screen(const glm::vec4 &clip_coord, int screen_width, int screen_height)
         {
             glm::vec3 ndc_coord = glm::vec3(clip_coord) / clip_coord.w;
             glm::vec3 screen_coord;
             screen_coord.x = (ndc_coord.x + 1.0f) * 0.5f * screen_width;
             screen_coord.y = (1.0f - ndc_coord.y) * 0.5f * screen_height;
-            screen_coord.z = clip_coord.w; 
+            // Keeping original behavior to avoid breaking existing depth expectations in demos.
+            // later can switch to ndc_coord.z when it's needed fully standardize depth.
+            screen_coord.z = clip_coord.w;
             return screen_coord;
         }
 
         static void copy_to_SDLSurface(SDL_Surface *surface, shs::Canvas *canvas)
         {
             if (!surface || !canvas) return;
-            
+
             // raw pixel access using pitch for safety
             uint8_t* target_pixels = (uint8_t*)surface->pixels;
             int pitch = surface->pitch;
@@ -436,7 +509,7 @@ namespace shs
                 // SDL y is top-down, Canvas is bottom-up
                 int sdl_y = (h - 1 - y);
                 uint32_t* row = (uint32_t*)(target_pixels + sdl_y * pitch);
-                
+
                 for (int x = 0; x < w; ++x) {
                     shs::Color c = canvas->get_color_at(x, y);
                     row[x] = SDL_MapRGBA(surface->format, c.r, c.g, c.b, c.a);
@@ -447,21 +520,25 @@ namespace shs
         SDL_Surface *create_sdl_surface()
         {
             #if SDL_BYTEORDER == SDL_BIG_ENDIAN
-                return SDL_CreateRGBSurface(0, width, height, 32, 0xff000000, 0x00ff0000, 0x0000ff00, 0x000000ff);
+                return SDL_CreateRGBSurface(0, width_, height_, 32, 0xff000000, 0x00ff0000, 0x0000ff00, 0x000000ff);
             #else
-                return SDL_CreateRGBSurface(0, width, height, 32, 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000);
+                return SDL_CreateRGBSurface(0, width_, height_, 32, 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000);
             #endif
         }
-        
+
         void save_png(const std::string &filename) {
-             (void)filename; 
-             std::cout << "Warning: PNG save not implemented in header-only version." << std::endl;
+            (void)filename;
+            std::cout << "Warning: PNG save not implemented in header-only version." << std::endl;
         }
 
+        // New compatibility helpers for gradual migration
+        inline ColorBuffer& buffer() { return color_; }
+        inline const ColorBuffer& buffer() const { return color_; }
+
     private:
-        std::vector<shs::Color> canvas;
-        int width;
-        int height;
+        int width_;
+        int height_;
+        ColorBuffer color_;
     };
 
     // ==========================================
@@ -476,8 +553,8 @@ namespace shs
             this->z_near = 0.1f; this->z_far = 1000.0f;
             this->field_of_view = 45.0f;
             this->horizontal_angle = 0.0f; this->vertical_angle = 0.0f;
-            this->position = glm::vec3(0.0, 0.0, -5.0); 
-            this->direction_vector = glm::vec3(0.0, 0.0, 1.0); 
+            this->position = glm::vec3(0.0, 0.0, -5.0);
+            this->direction_vector = glm::vec3(0.0, 0.0, 1.0);
             update();
         }
 
@@ -486,7 +563,7 @@ namespace shs
                 cos(glm::radians(this->vertical_angle)) * sin(glm::radians(this->horizontal_angle)),
                 sin(glm::radians(this->vertical_angle)),
                 cos(glm::radians(this->vertical_angle)) * cos(glm::radians(this->horizontal_angle)));
-            
+
             this->direction_vector = glm::normalize(this->direction_vector);
             glm::vec3 world_up = glm::vec3(0.0f, 1.0f, 0.0f);
             this->right_vector = glm::normalize(glm::cross(world_up, this->direction_vector));
@@ -534,7 +611,7 @@ namespace shs
 
     class MoveForwardCommand : public shs::Command {
     public:
-        MoveForwardCommand(glm::vec3 &pos, glm::vec3 dir, float spd, float dt) 
+        MoveForwardCommand(glm::vec3 &pos, glm::vec3 dir, float spd, float dt)
             : position(pos), direction(dir), speed(spd), delta_time(dt) {}
         void execute() override { this->position += this->direction * this->speed * delta_time; }
     private:
@@ -543,7 +620,7 @@ namespace shs
 
     class MoveBackwardCommand : public shs::Command {
     public:
-        MoveBackwardCommand(glm::vec3 &pos, glm::vec3 dir, float spd, float dt) 
+        MoveBackwardCommand(glm::vec3 &pos, glm::vec3 dir, float spd, float dt)
             : position(pos), direction(dir), speed(spd), delta_time(dt) {}
         void execute() override { this->position -= this->direction * this->speed * delta_time; }
     private:
@@ -552,7 +629,7 @@ namespace shs
 
     class MoveRightCommand : public shs::Command {
     public:
-        MoveRightCommand(glm::vec3 &pos, glm::vec3 right, float spd, float dt) 
+        MoveRightCommand(glm::vec3 &pos, glm::vec3 right, float spd, float dt)
             : position(pos), right_vector(right), speed(spd), delta_time(dt) {}
         void execute() override { this->position += this->right_vector * this->speed * this->delta_time; }
     private:
@@ -561,7 +638,7 @@ namespace shs
 
     class MoveLeftCommand : public shs::Command {
     public:
-        MoveLeftCommand(glm::vec3 &pos, glm::vec3 right, float spd, float dt) 
+        MoveLeftCommand(glm::vec3 &pos, glm::vec3 right, float spd, float dt)
             : position(pos), right_vector(right), speed(spd), delta_time(dt) {}
         void execute() override { this->position -= this->right_vector * this->speed * this->delta_time; }
     private:
@@ -654,7 +731,6 @@ namespace shs
 
     namespace Job
     {
-        
         static const int PRIORITY_LOW    = 5;
         static const int PRIORITY_NORMAL = 15;
         static const int PRIORITY_HIGH   = 30;
@@ -682,8 +758,7 @@ namespace shs
             ThreadedPriorityJobSystem(int concurrency_count)
             {
                 thread_count = (concurrency_count <= 0) ? 1 : concurrency_count;
-                // reserve memory to prevent early reallocations
-                q.reserve(4096); 
+                q.reserve(4096);
 
                 for (int i = 0; i < thread_count; ++i) {
                     workers.emplace_back([this] {
@@ -699,7 +774,6 @@ namespace shs
                                 if (!is_running.load(std::memory_order_relaxed) && q.empty())
                                     return;
 
-                                // pop from heap (O(log n))
                                 std::pop_heap(q.begin(), q.end());
                                 job = std::move(q.back());
                                 q.pop_back();
@@ -709,7 +783,7 @@ namespace shs
                         }
                     });
                 }
-                
+
                 std::cout << "STATUS : Job System started with " << thread_count << " threads." << std::endl;
             }
 
@@ -741,7 +815,6 @@ namespace shs
 
             std::mutex q_mtx;
             std::condition_variable q_cv;
-            // vector is cache-friendly compared to std::list
             std::vector<JobEntry> q;
         };
 
@@ -763,7 +836,6 @@ namespace shs
             inline void done()
             {
                 if (counter.fetch_sub(1, std::memory_order_release) == 1) {
-                    // broadcast to all waiters, safer than notify_one
                     std::lock_guard<std::mutex> lock(mtx);
                     cv.notify_all();
                 }
@@ -788,4 +860,4 @@ namespace shs
         using ThreadedJobSystem                 = ThreadedPriorityJobSystem;
     }
 
-}
+} // namespace shs
