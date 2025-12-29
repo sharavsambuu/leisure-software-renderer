@@ -35,10 +35,10 @@
 
 #include "shs_renderer.hpp"
 
-#define WINDOW_WIDTH      640
-#define WINDOW_HEIGHT     420
-#define CANVAS_WIDTH      640
-#define CANVAS_HEIGHT     420
+#define WINDOW_WIDTH      440
+#define WINDOW_HEIGHT     320
+#define CANVAS_WIDTH      440
+#define CANVAS_HEIGHT     320
 #define MOUSE_SENSITIVITY 0.2f
 #define THREAD_COUNT      20
 #define TILE_SIZE_X       40
@@ -76,8 +76,8 @@ static float      DOF_MAXBLUR      = 0.80f;
 // BLOOM / GLOW CONFIG (SPEC-DRIVEN)
 // ===============================
 static const bool  ENABLE_BLOOM         = true;
-static const float SPEC_GLOW_THRESHOLD  = 0.009f;  // 0..1, lower = more glow
-static const float SPEC_GLOW_INTENSITY  = 7.25f;   // multiplier
+static const float SPEC_GLOW_THRESHOLD  = 0.079f;  // 0..1, lower = more glow
+static const float SPEC_GLOW_INTENSITY  = 3.25f;   // multiplier
 static const int   BLOOM_BLUR_ITERS     = 3;       // keep small for CPU
 
 // ===============================
@@ -85,9 +85,9 @@ static const int   BLOOM_BLUR_ITERS     = 3;       // keep small for CPU
 // ===============================
 static const bool  ENABLE_FLARE       = true;
 static const int   FLARE_GHOSTS       = 3;
-static const float FLARE_INTENSITY    = 0.85f;
-static const float FLARE_HALO_INTENS  = 0.55f;
-static const float FLARE_CHROMA_SHIFT = 1.5f;
+static const float FLARE_INTENSITY    = 0.55f;
+static const float FLARE_HALO_INTENS  = 0.35f;
+static const float FLARE_CHROMA_SHIFT = 0.8f;
 
 // ==========================================
 // SMALL HELPERS
@@ -826,7 +826,7 @@ static void pseudo_lens_flare_pass(
     const float cy = 0.5f * float(H);
 
     // Ghost scales (tuned for a single bright star)
-    float ghost_scales[FLARE_GHOSTS] = { 0.55f, 0.85f, 1.25f, 1.75f };
+    float ghost_scales[FLARE_GHOSTS] = { 0.55f, 0.85f, 1.25f};
 
     for (int ty = 0; ty < rows; ty++) {
         for (int tx = 0; tx < cols; tx++) {

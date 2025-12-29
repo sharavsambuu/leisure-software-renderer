@@ -36,10 +36,10 @@
 
 #include "shs_renderer.hpp"
 
-#define WINDOW_WIDTH      840
-#define WINDOW_HEIGHT     720
-#define CANVAS_WIDTH      840
-#define CANVAS_HEIGHT     720
+#define WINDOW_WIDTH      540
+#define WINDOW_HEIGHT     420
+#define CANVAS_WIDTH      540
+#define CANVAS_HEIGHT     420
 #define MOUSE_SENSITIVITY 0.2f
 #define THREAD_COUNT      20
 #define TILE_SIZE_X       40
@@ -58,7 +58,7 @@
 
 // Faster motion
 #define WOBBLE_SPEED_MULT 0.65f
-#define ROTATE_SPEED_MULT 0.4f
+#define ROTATE_SPEED_MULT 1.4f
 
 // ===============================
 // JOHN CHAPMAN STYLE MOTION BLUR CONFIG
