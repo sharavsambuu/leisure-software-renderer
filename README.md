@@ -175,7 +175,7 @@
 <p><img width="657" height="540" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/depth-of-field-monkeys.png"></p>
 <p><img width="511" height="345" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/per-object-motion-blur-monkeys.png"></p>
 <p><img width="711" height="574" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/multi-pass-per-object-motion-blur.png"></p>
-<p><img width="829" height="700" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/multi-pass-motion-blur-dof.png"></p>
+<p><img width="836" height="719" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/multi-pass-motion-blur-dof-fxaa.png"></p>
 <p><img width="640" height="360" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/mongolian-flag.png"></p>
 <p><img width="320" height="320" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/fbm.png"></p>
 

@@ -1,5 +1,5 @@
 /*
-    3D Software Renderer - MULTI-PASS + Per-Object Motion Blur (John Chapman style) + Auto-Focus DOF
+    3D Software Renderer - MULTI-PASS + Per-Object Motion Blur (John Chapman style) + Auto-Focus DOF + FXAA
     - Pass 0: Render scene into RT_ColorDepthMotion (Color + Depth + MotionVec)
     - Pass 1: Per-Object Motion Blur: rt_scene.color + rt_scene.motion -> mb_out
     - Pass 2: DOF:
@@ -8,8 +8,9 @@
         - Auto-focus from rt_scene.depth (median center)
         - Composite sharp vs blur using CoC -> dof_out
     - Pass 3: Fog (depth-based): dof_out + rt_scene.depth -> fog_out
-    - Pass 4: Outline (depth-based): fog_out + rt_scene.depth -> final_out
-    - Present: final_out -> SDL
+    - Pass 4: Outline (depth-based): fog_out + rt_scene.depth -> outline_out
+    - Pass 5: FXAA (post): outline_out -> fxaa_out
+    - Present: fxaa_out -> SDL
 
     NOTE : (My coordinate system convention):
     - Screen space origin: top-left (SDL)
@@ -56,15 +57,15 @@
 #define BASE_Y            0.0f
 
 // Faster motion
-#define WOBBLE_SPEED_MULT 0.5f
-#define ROTATE_SPEED_MULT 1.5f
+#define WOBBLE_SPEED_MULT 2.0f
+#define ROTATE_SPEED_MULT 2.0f
 
 // ===============================
 // JOHN CHAPMAN STYLE MOTION BLUR CONFIG
 // ===============================
-static const int   MB_SAMPLES   = 12;     // 8..16
-static const float MB_STRENGTH  = 1.0f;   // 0.5..2.0
-static const float MB_MAX_PIXELS = 40.0f; // clamp in pixels (canvas coords)
+static const int   MB_SAMPLES    = 12;     // 8..16
+static const float MB_STRENGTH   = 1.0f;   // 0.5..2.0
+static const float MB_MAX_PIXELS = 40.0f;  // clamp in pixels (canvas coords)
 
 // ===============================
 // OUTLINE PASS CONFIG
@@ -89,6 +90,14 @@ static const int  BLUR_ITERATIONS  = 4;
 static const int  AUTOFOCUS_RADIUS = 6;
 static float      DOF_RANGE        = 34.0f;
 static float      DOF_MAXBLUR      = 0.75f;
+
+// ===============================
+// FXAA CONFIG (post-process)
+// ===============================
+static const bool  ENABLE_FXAA     = true;
+static const float FXAA_REDUCE_MIN = 1.0f / 128.0f;
+static const float FXAA_REDUCE_MUL = 1.0f / 8.0f;
+static const float FXAA_SPAN_MAX   = 8.0f;
 
 // ==========================================
 // SMALL HELPERS
@@ -145,6 +154,14 @@ static inline shs::Color monkey_color_from_i(int i)
     if (m == 3) return shs::Color{ 210, 180,  80, 255 };
     if (m == 4) return shs::Color{ 180,  90, 210, 255 };
     return             shs::Color{  80, 180, 200, 255 };
+}
+
+static inline float luma_from_color(const shs::Color& c)
+{
+    float r = float(c.r) / 255.0f;
+    float g = float(c.g) / 255.0f;
+    float b = float(c.b) / 255.0f;
+    return 0.299f * r + 0.587f * g + 0.114f * b;
 }
 
 // ==========================================
@@ -560,17 +577,14 @@ static void draw_triangle_tile_color_depth_motion(
                 interpolated.world_pos  = bc.x * vout[0].world_pos + bc.y * vout[1].world_pos + bc.z * vout[2].world_pos;
                 interpolated.view_z     = z;
 
-                // interpolate clip positions (John Chapman style: prev vs curr)
                 interpolated.position      = bc.x * vout[0].position      + bc.y * vout[1].position      + bc.z * vout[2].position;
                 interpolated.prev_position = bc.x * vout[0].prev_position + bc.y * vout[1].prev_position + bc.z * vout[2].prev_position;
 
-                // velocity computed in screen coords then converted to canvas coords
-                glm::vec2 curr_s = clip_to_screen_xy(interpolated.position, w, h);
-                glm::vec2 prev_s = clip_to_screen_xy(interpolated.prev_position, w, h);
-                glm::vec2 v_screen = curr_s - prev_s;      // y down
+                glm::vec2 curr_s   = clip_to_screen_xy(interpolated.position, w, h);
+                glm::vec2 prev_s   = clip_to_screen_xy(interpolated.prev_position, w, h);
+                glm::vec2 v_screen = curr_s - prev_s;               // y down
                 glm::vec2 v_canvas = glm::vec2(v_screen.x, -v_screen.y); // y up
 
-                // clamp to avoid extreme streaks
                 float len = glm::length(v_canvas);
                 if (len > MB_MAX_PIXELS && len > 0.0001f) {
                     v_canvas = v_canvas * (MB_MAX_PIXELS / len);
@@ -633,8 +647,6 @@ static void motion_blur_pass(
                         float r = 0, g = 0, b = 0;
                         float wsum = 0.0f;
 
-                        // sample along -v..+v (center weighted)
-                        // (simple linear weights; keeps it stable on CPU)
                         for (int i = 0; i < samples; i++) {
                             float t = (samples == 1) ? 0.0f : (float(i) / float(samples - 1));
                             float a = (t - 0.5f) * 2.0f; // -1..+1
@@ -981,6 +993,127 @@ static void dof_composite_pass(
 }
 
 // ==========================================
+// PASS: FXAA (post-process, CPU)
+// - runs in CANVAS coordinates (x right, y up)
+// ==========================================
+
+static void fxaa_pass(
+    const shs::Canvas& src,
+    shs::Canvas& dst,
+    shs::Job::ThreadedPriorityJobSystem* job_system,
+    shs::Job::WaitGroup& wg)
+{
+    int W = src.get_width();
+    int H = src.get_height();
+
+    int cols = (W + TILE_SIZE_X - 1) / TILE_SIZE_X;
+    int rows = (H + TILE_SIZE_Y - 1) / TILE_SIZE_Y;
+
+    wg.reset();
+
+    for (int ty = 0; ty < rows; ty++) {
+        for (int tx = 0; tx < cols; tx++) {
+
+            wg.add(1);
+            job_system->submit({[&, tx, ty]() {
+
+                int x0 = tx * TILE_SIZE_X;
+                int y0 = ty * TILE_SIZE_Y;
+                int x1 = std::min(x0 + TILE_SIZE_X, W);
+                int y1 = std::min(y0 + TILE_SIZE_Y, H);
+
+                auto sample = [&](int sx, int sy) -> shs::Color {
+                    sx = clampi(sx, 0, W - 1);
+                    sy = clampi(sy, 0, H - 1);
+                    return src.get_color_at(sx, sy);
+                };
+
+                auto sample_f = [&](float fx, float fy) -> shs::Color {
+                    int sx = clampi((int)std::round(fx), 0, W - 1);
+                    int sy = clampi((int)std::round(fy), 0, H - 1);
+                    return src.get_color_at(sx, sy);
+                };
+
+                for (int y = y0; y < y1; y++) {
+                    for (int x = x0; x < x1; x++) {
+
+                        shs::Color rgbM  = sample(x, y);
+                        shs::Color rgbNW = sample(x - 1, y + 1);
+                        shs::Color rgbNE = sample(x + 1, y + 1);
+                        shs::Color rgbSW = sample(x - 1, y - 1);
+                        shs::Color rgbSE = sample(x + 1, y - 1);
+
+                        float lumaM  = luma_from_color(rgbM);
+                        float lumaNW = luma_from_color(rgbNW);
+                        float lumaNE = luma_from_color(rgbNE);
+                        float lumaSW = luma_from_color(rgbSW);
+                        float lumaSE = luma_from_color(rgbSE);
+
+                        float lumaMin = std::min(lumaM, std::min(std::min(lumaNW, lumaNE), std::min(lumaSW, lumaSE)));
+                        float lumaMax = std::max(lumaM, std::max(std::max(lumaNW, lumaNE), std::max(lumaSW, lumaSE)));
+
+                        float contrast = lumaMax - lumaMin;
+                        if (contrast < 0.02f) {
+                            dst.draw_pixel(x, y, rgbM);
+                            continue;
+                        }
+
+                        float dirx = -((lumaNW + lumaNE) - (lumaSW + lumaSE));
+                        float diry =  ((lumaNW + lumaSW) - (lumaNE + lumaSE));
+
+                        float dirReduce = std::max(
+                            (lumaNW + lumaNE + lumaSW + lumaSE) * (0.25f * FXAA_REDUCE_MUL),
+                            FXAA_REDUCE_MIN
+                        );
+
+                        float rcpDirMin = 1.0f / (std::min(std::abs(dirx), std::abs(diry)) + dirReduce);
+
+                        dirx = clampf(dirx * rcpDirMin, -FXAA_SPAN_MAX, FXAA_SPAN_MAX);
+                        diry = clampf(diry * rcpDirMin, -FXAA_SPAN_MAX, FXAA_SPAN_MAX);
+
+                        // sample along edge direction (in pixel units)
+                        float fx = float(x);
+                        float fy = float(y);
+
+                        shs::Color rgbA1 = sample_f(fx + dirx * (1.0f / 3.0f - 0.5f), fy + diry * (1.0f / 3.0f - 0.5f));
+                        shs::Color rgbA2 = sample_f(fx + dirx * (2.0f / 3.0f - 0.5f), fy + diry * (2.0f / 3.0f - 0.5f));
+
+                        shs::Color rgbB1 = sample_f(fx + dirx * (0.0f / 3.0f - 0.5f), fy + diry * (0.0f / 3.0f - 0.5f));
+                        shs::Color rgbB2 = sample_f(fx + dirx * (3.0f / 3.0f - 0.5f), fy + diry * (3.0f / 3.0f - 0.5f));
+
+                        // rgbA = 0.5*(A1+A2), rgbB = 0.5*rgbA + 0.25*(B1+B2)
+                        shs::Color rgbA = color_from_rgbaf(
+                            0.5f * (float(rgbA1.r) + float(rgbA2.r)),
+                            0.5f * (float(rgbA1.g) + float(rgbA2.g)),
+                            0.5f * (float(rgbA1.b) + float(rgbA2.b)),
+                            255.0f
+                        );
+
+                        shs::Color rgbB = color_from_rgbaf(
+                            0.5f * float(rgbA.r) + 0.25f * (float(rgbB1.r) + float(rgbB2.r)),
+                            0.5f * float(rgbA.g) + 0.25f * (float(rgbB1.g) + float(rgbB2.g)),
+                            0.5f * float(rgbA.b) + 0.25f * (float(rgbB1.b) + float(rgbB2.b)),
+                            255.0f
+                        );
+
+                        float lumaB = luma_from_color(rgbB);
+                        if (lumaB < lumaMin || lumaB > lumaMax) {
+                            dst.draw_pixel(x, y, rgbA);
+                        } else {
+                            dst.draw_pixel(x, y, rgbB);
+                        }
+                    }
+                }
+
+                wg.done();
+            }, shs::Job::PRIORITY_HIGH});
+        }
+    }
+
+    wg.wait();
+}
+
+// ==========================================
 // RENDERER SYSTEM (Threaded) -> RT_ColorDepthMotion
 // ==========================================
 
@@ -1182,6 +1315,9 @@ int main(int argc, char* argv[])
     shs::Canvas ping(CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{20,20,25,255});
     shs::Canvas pong(CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{20,20,25,255});
 
+    // FXAA output
+    shs::Canvas fxaa_out(CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{20,20,25,255});
+
     SystemProcessor *sys = new SystemProcessor(scene, job_system, &rt_scene);
 
     bool exit = false;
@@ -1195,6 +1331,7 @@ int main(int argc, char* argv[])
     shs::Job::WaitGroup wg_dof;
     shs::Job::WaitGroup wg_fog;
     shs::Job::WaitGroup wg_outline;
+    shs::Job::WaitGroup wg_fxaa;
 
     while (!exit)
     {
@@ -1280,8 +1417,15 @@ int main(int argc, char* argv[])
         // Pass 4: Outline (pong -> ping)
         outline_pass(pong, rt_scene.depth, ping, job_system, wg_outline);
 
-        // Present ping
-        screen_canvas->buffer() = ping.buffer();
+        // Pass 5: FXAA (ping -> fxaa_out)
+        if (ENABLE_FXAA) {
+            fxaa_pass(ping, fxaa_out, job_system, wg_fxaa);
+        } else {
+            fxaa_out.buffer() = ping.buffer();
+        }
+
+        // Present fxaa_out
+        screen_canvas->buffer() = fxaa_out.buffer();
         shs::Canvas::copy_to_SDLSurface(screen_surface, screen_canvas);
         SDL_UpdateTexture(screen_texture, NULL, screen_surface->pixels, screen_surface->pitch);
         SDL_RenderCopy(renderer, screen_texture, NULL, NULL);
