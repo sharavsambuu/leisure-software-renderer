@@ -36,14 +36,14 @@
 
 #include "shs_renderer.hpp"
 
-#define WINDOW_WIDTH      540
-#define WINDOW_HEIGHT     420
-#define CANVAS_WIDTH      540
-#define CANVAS_HEIGHT     420
+#define WINDOW_WIDTH      800
+#define WINDOW_HEIGHT     600
+#define CANVAS_WIDTH      380
+#define CANVAS_HEIGHT     280
 #define MOUSE_SENSITIVITY 0.2f
 #define THREAD_COUNT      20
-#define TILE_SIZE_X       40
-#define TILE_SIZE_Y       40
+#define TILE_SIZE_X       80
+#define TILE_SIZE_Y       80
 
 // ===============================
 // 9 MONKEYS (3x3) CONFIG
@@ -57,8 +57,8 @@
 #define BASE_Y            0.0f
 
 // Faster motion
-#define WOBBLE_SPEED_MULT 0.65f
-#define ROTATE_SPEED_MULT 1.4f
+#define WOBBLE_SPEED_MULT 2.65f
+#define ROTATE_SPEED_MULT 5.4f
 
 // ===============================
 // JOHN CHAPMAN STYLE MOTION BLUR CONFIG

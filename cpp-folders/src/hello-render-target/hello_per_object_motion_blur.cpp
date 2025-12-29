@@ -29,14 +29,14 @@
 
 #include "shs_renderer.hpp"
 
-#define WINDOW_WIDTH      740
-#define WINDOW_HEIGHT     520
-#define CANVAS_WIDTH      740
-#define CANVAS_HEIGHT     520
+#define WINDOW_WIDTH      800
+#define WINDOW_HEIGHT     600
+#define CANVAS_WIDTH      380
+#define CANVAS_HEIGHT     280
 #define MOUSE_SENSITIVITY 0.2f
 #define THREAD_COUNT      20
-#define TILE_SIZE_X       40
-#define TILE_SIZE_Y       40
+#define TILE_SIZE_X       80
+#define TILE_SIZE_Y       80
 
 // ===============================
 // MONKEY CONFIG (3x3 = 9)
@@ -59,7 +59,7 @@
 
 // Depth rejection
 // z-buffer stores view_z (LH), so near values are smaller magnitude.
-#define DEPTH_REJECT_EPS     0.25f
+#define DEPTH_REJECT_EPS     0.15f
 
 // ==========================================
 // UNIFORMS & SHADERS
@@ -273,8 +273,8 @@ public:
         this->prev_rotation     = 0.0f;
 
         this->time_accum        = 0.0f + (float)idx * 0.77f;
-        this->bob_speed         = 3.5f + 0.6f * (float)(idx % 5);
-        this->bob_amp           = 2.0f + 0.8f * (float)(idx % 3);
+        this->bob_speed         = 1.5f + 1.3f * (float)(idx % 5);
+        this->bob_amp           = 3.0f + 0.8f * (float)(idx % 3);
     }
 
     ~MonkeyObject() {}

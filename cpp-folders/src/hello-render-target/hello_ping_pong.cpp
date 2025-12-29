@@ -22,14 +22,14 @@
 
 #include "shs_renderer.hpp"
 
-#define WINDOW_WIDTH      640
-#define WINDOW_HEIGHT     520
-#define CANVAS_WIDTH      640
-#define CANVAS_HEIGHT     520
+#define WINDOW_WIDTH      800
+#define WINDOW_HEIGHT     600
+#define CANVAS_WIDTH      380
+#define CANVAS_HEIGHT     280
 #define MOUSE_SENSITIVITY 0.2f
 #define THREAD_COUNT      20
-#define TILE_SIZE_X       40
-#define TILE_SIZE_Y       40
+#define TILE_SIZE_X       80
+#define TILE_SIZE_Y       80
 
 // ==========================================
 // UNIFORMS & SHADERS

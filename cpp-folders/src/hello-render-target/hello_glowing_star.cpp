@@ -35,23 +35,23 @@
 
 #include "shs_renderer.hpp"
 
-#define WINDOW_WIDTH      440
-#define WINDOW_HEIGHT     320
-#define CANVAS_WIDTH      440
-#define CANVAS_HEIGHT     320
+#define WINDOW_WIDTH      800
+#define WINDOW_HEIGHT     600
+#define CANVAS_WIDTH      380
+#define CANVAS_HEIGHT     280
 #define MOUSE_SENSITIVITY 0.2f
 #define THREAD_COUNT      20
-#define TILE_SIZE_X       40
-#define TILE_SIZE_Y       40
+#define TILE_SIZE_X       80
+#define TILE_SIZE_Y       80
 
 // ===============================
 // STAR CONFIG
 // ===============================
 static const glm::vec3 STAR_BASE_POS    = glm::vec3(0.0f, 4.0f, 18.0f);
 static const float     STAR_SCALE       = 6.8f;
-static const float     STAR_WOBBLE_AMP  = 3.2f;
-static const float     STAR_WOBBLE_SPD  = 3.2f;
-static const float     STAR_ROT_DEG_SPD = 15.0f;
+static const float     STAR_WOBBLE_AMP  = 7.2f;
+static const float     STAR_WOBBLE_SPD  = 0.2f;
+static const float     STAR_ROT_DEG_SPD = 25.0f;
 
 // Golden base color
 static const shs::Color STAR_COLOR = shs::Color{ 255, 215, 100, 255 };
@@ -60,7 +60,7 @@ static const shs::Color STAR_COLOR = shs::Color{ 255, 215, 100, 255 };
 // MOTION BLUR CONFIG
 // ===============================
 static const int   MB_SAMPLES    = 8;      // 6..12
-static const float MB_STRENGTH   = 1.0f;   // 0.5..2.0
+static const float MB_STRENGTH   = 1.5f;   // 0.5..2.0
 static const float MB_MAX_PIXELS = 30.0f;  // clamp in pixels (canvas coords)
 
 // ===============================
@@ -76,9 +76,9 @@ static float      DOF_MAXBLUR      = 0.80f;
 // BLOOM / GLOW CONFIG (SPEC-DRIVEN)
 // ===============================
 static const bool  ENABLE_BLOOM         = true;
-static const float SPEC_GLOW_THRESHOLD  = 0.079f;  // 0..1, lower = more glow
-static const float SPEC_GLOW_INTENSITY  = 3.25f;   // multiplier
-static const int   BLOOM_BLUR_ITERS     = 3;       // keep small for CPU
+static const float SPEC_GLOW_THRESHOLD  = 0.139f;  // 0..1, lower = more glow
+static const float SPEC_GLOW_INTENSITY  = 13.25f;  // multiplier
+static const int   BLOOM_BLUR_ITERS     = 10;      // keep small for CPU
 
 // ===============================
 // PSEUDO LENS FLARE CONFIG
