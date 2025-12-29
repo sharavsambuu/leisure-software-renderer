@@ -1,13 +1,15 @@
 /*
-    3D Software Renderer - MULTI-PASS PING-PONG (Outline + Fog) + PER-OBJECT MOTION BLUR (John Chapman style)
-
-    Pass 0: Render scene into RT_ColorDepthVelocity (Color + Depth + Velocity)
-            - Depth stored in CANVAS coords (bottom-left)
-            - Velocity stored in CANVAS coords (pixels, +Y up)
-    Pass 1: Outline (depth-based)  : rt_scene.color + rt_scene.depth -> ping
-    Pass 2: Fog (depth-based)      : ping + rt_scene.depth -> pong
-    Pass 3: Motion Blur (velocity) : pong + rt_scene.velocity + rt_scene.depth -> final
-    Present: final -> SDL
+    3D Software Renderer - MULTI-PASS + Per-Object Motion Blur (John Chapman style) + Auto-Focus DOF
+    - Pass 0: Render scene into RT_ColorDepthMotion (Color + Depth + MotionVec)
+    - Pass 1: Per-Object Motion Blur: rt_scene.color + rt_scene.motion -> mb_out
+    - Pass 2: DOF:
+        - Copy mb_out -> sharp_copy
+        - Gaussian blur mb_out -> blur_img (ping/pong)
+        - Auto-focus from rt_scene.depth (median center)
+        - Composite sharp vs blur using CoC -> dof_out
+    - Pass 3: Fog (depth-based): dof_out + rt_scene.depth -> fog_out
+    - Pass 4: Outline (depth-based): fog_out + rt_scene.depth -> final_out
+    - Present: final_out -> SDL
 
     NOTE : (My coordinate system convention):
     - Screen space origin: top-left (SDL)
@@ -48,10 +50,21 @@
 #define GRID_X            3
 #define GRID_Z            3
 #define MONKEY_SCALE      3.2f
-#define SPACING_X         7.5f
-#define SPACING_Z         9.0f
-#define START_Z           10.0f
+#define SPACING_X         10.5f
+#define SPACING_Z         12.5f
+#define START_Z           14.0f
 #define BASE_Y            0.0f
+
+// Faster motion
+#define WOBBLE_SPEED_MULT 0.5f
+#define ROTATE_SPEED_MULT 1.5f
+
+// ===============================
+// JOHN CHAPMAN STYLE MOTION BLUR CONFIG
+// ===============================
+static const int   MB_SAMPLES   = 12;     // 8..16
+static const float MB_STRENGTH  = 1.0f;   // 0.5..2.0
+static const float MB_MAX_PIXELS = 40.0f; // clamp in pixels (canvas coords)
 
 // ===============================
 // OUTLINE PASS CONFIG
@@ -64,18 +77,18 @@ static const float EDGE_STRENGTH  = 0.55f;   // 0..1 (higher = darker lines)
 // FOG PASS CONFIG
 // ===============================
 static const shs::Color FOG_COLOR = shs::Color{ 28, 30, 38, 255 };
-static const float FOG_START_Z    = 14.0f;
-static const float FOG_END_Z      = 55.0f;
-static const float FOG_POWER      = 1.25f;   // 1..2 (higher = stronger near end)
+static const float FOG_START_Z    = 20.0f;
+static const float FOG_END_Z      = 80.0f;
+static const float FOG_POWER      = 1.25f;
 
 // ===============================
-// MOTION BLUR CONFIG (John Chapman-ish)
+// DOF CONFIG
 // ===============================
-static const float MB_BLUR_MULTIPLIER     = 0.90f;
-static const int   MB_MAX_SAMPLES         = 16;
-static const float MB_MIN_VEL2_THRESHOLD  = 0.25f;
-static const float MB_REF_FPS             = 60.0f;
-static const float MB_DEPTH_REJECT_THRESH = 0.65f; // tune; larger = blur across more depth changes
+static const bool ENABLE_DOF       = true;
+static const int  BLUR_ITERATIONS  = 4;
+static const int  AUTOFOCUS_RADIUS = 6;
+static float      DOF_RANGE        = 34.0f;
+static float      DOF_MAXBLUR      = 0.75f;
 
 // ==========================================
 // SMALL HELPERS
@@ -135,7 +148,7 @@ static inline shs::Color monkey_color_from_i(int i)
 }
 
 // ==========================================
-// UNIFORMS & SHADERS (Blinn-Phong + Velocity)
+// UNIFORMS & SHADERS (Blinn-Phong)
 // ==========================================
 
 struct Uniforms {
@@ -146,14 +159,21 @@ struct Uniforms {
     glm::vec3  light_dir;
     glm::vec3  camera_pos;
     shs::Color color;
-    glm::vec2  viewport_size;
 };
 
-using FragOutput = std::pair<shs::Color, glm::vec2>;
-
-shs::Varyings velocity_vertex_shader(const glm::vec3& aPos, const glm::vec3& aNormal, const Uniforms& u)
+struct VaryingsMB
 {
-    shs::Varyings out;
+    glm::vec4 position;      // current clip
+    glm::vec4 prev_position; // previous clip
+    glm::vec3 world_pos;
+    glm::vec3 normal;
+    glm::vec2 uv;
+    float     view_z;
+};
+
+static VaryingsMB blinn_phong_vertex_shader_mb(const glm::vec3& aPos, const glm::vec3& aNormal, const Uniforms& u)
+{
+    VaryingsMB out;
     out.position       = u.mvp * glm::vec4(aPos, 1.0f);
     out.prev_position  = u.prev_mvp * glm::vec4(aPos, 1.0f);
 
@@ -162,18 +182,18 @@ shs::Varyings velocity_vertex_shader(const glm::vec3& aPos, const glm::vec3& aNo
     out.uv             = glm::vec2(0.0f);
 
     glm::vec4 view_pos = u.view * u.model * glm::vec4(aPos, 1.0f);
-    out.view_z = view_pos.z; // my convention: forward is +z
+    out.view_z         = view_pos.z; // my convention: forward is +z
 
     return out;
 }
 
-FragOutput velocity_fragment_shader(const shs::Varyings& in, const Uniforms& u)
+static shs::Color blinn_phong_fragment_shader(const VaryingsMB& in, const Uniforms& u)
 {
     glm::vec3 norm     = glm::normalize(in.normal);
     glm::vec3 lightDir = glm::normalize(-u.light_dir);
     glm::vec3 viewDir  = glm::normalize(u.camera_pos - in.world_pos);
 
-    float ambientStrength = 0.15f;
+    float ambientStrength = 0.35f;
     glm::vec3 ambient     = ambientStrength * glm::vec3(1.0f);
 
     float diff        = glm::max(glm::dot(norm, lightDir), 0.0f);
@@ -191,20 +211,12 @@ FragOutput velocity_fragment_shader(const shs::Varyings& in, const Uniforms& u)
 
     result = glm::clamp(result, 0.0f, 1.0f);
 
-    shs::Color final_color = shs::Color{
+    return shs::Color{
         (uint8_t)(result.r * 255),
         (uint8_t)(result.g * 255),
         (uint8_t)(result.b * 255),
         255
     };
-
-    glm::vec2 current_ndc = glm::vec2(in.position)      / in.position.w;
-    glm::vec2 prev_ndc    = glm::vec2(in.prev_position) / in.prev_position.w;
-
-    glm::vec2 velocity_ndc    = current_ndc - prev_ndc;
-    glm::vec2 velocity_pixels = velocity_ndc * 0.5f * u.viewport_size; // +Y up (Canvas)
-
-    return { final_color, velocity_pixels };
 }
 
 // ==========================================
@@ -232,7 +244,7 @@ public:
             aiMesh *mesh = scene->mMeshes[i];
             for (unsigned int j = 0; j < mesh->mNumFaces; ++j) {
                 if (mesh->mFaces[j].mNumIndices == 3) {
-                    for(int k=0; k<3; k++) {
+                    for (int k = 0; k < 3; k++) {
                         aiVector3D v = mesh->mVertices[mesh->mFaces[j].mIndices[k]];
                         triangles.push_back(glm::vec3(v.x, v.y, v.z));
 
@@ -298,7 +310,8 @@ public:
 };
 
 // ==========================================
-// 9 MONKEY OBJECTS (prev state for per-object velocity)
+// 9 MONKEY OBJECTS (independent tween/bob + some rotate)
+// + per-object motion blur state (prev_mvp updated after render)
 // ==========================================
 
 class MonkeyObject : public shs::AbstractObject3D
@@ -306,24 +319,24 @@ class MonkeyObject : public shs::AbstractObject3D
 public:
     MonkeyObject(ModelGeometry* geom, glm::vec3 base_pos, shs::Color color, int idx)
     {
-        this->geometry      = geom;
-        this->base_position = base_pos;
-        this->position      = base_pos;
-        this->prev_position = base_pos;
-
-        this->scale         = glm::vec3(MONKEY_SCALE);
-        this->color         = color;
+        this->geometry       = geom;
+        this->base_position  = base_pos;
+        this->position       = base_pos;
+        this->scale          = glm::vec3(MONKEY_SCALE);
+        this->color          = color;
 
         this->rotate_enabled   = (idx % 2 == 0);
-        this->rotate_speed_deg = 20.0f + 12.0f * float(idx % 4)*3;
+        this->rotate_speed_deg = (20.0f + 12.0f * float(idx % 4)) * ROTATE_SPEED_MULT;
 
-        this->bob_speed = 2.6f + 1.25f * float(idx);
-        this->bob_amp   = 1.8f + 0.15f * float(idx % 3);
-        this->phase     = 2.37f * float(idx);
+        this->bob_speed = (0.6f + 0.25f * float(idx)) * WOBBLE_SPEED_MULT;
+        this->bob_amp   = 0.8f + 0.15f * float(idx % 3);
+        this->phase     = 1.37f * float(idx);
 
         this->time_accum      = 0.0f;
         this->rotation_angle  = 0.0f;
-        this->prev_rotation   = 0.0f;
+
+        this->has_prev_mvp = false;
+        this->prev_mvp     = glm::mat4(1.0f);
     }
 
     glm::mat4 get_world_matrix() override
@@ -334,20 +347,8 @@ public:
         return t * r * s;
     }
 
-    glm::mat4 get_prev_world_matrix()
-    {
-        glm::mat4 t = glm::translate(glm::mat4(1.0f), this->prev_position);
-        glm::mat4 r = glm::rotate(glm::mat4(1.0f), glm::radians(this->prev_rotation), glm::vec3(0.0f, 1.0f, 0.0f));
-        glm::mat4 s = glm::scale(glm::mat4(1.0f), scale);
-        return t * r * s;
-    }
-
     void update(float delta_time) override
     {
-        // Save previous state
-        prev_position = position;
-        prev_rotation = rotation_angle;
-
         time_accum += delta_time;
 
         float y = std::sin(time_accum * bob_speed + phase) * bob_amp;
@@ -363,11 +364,8 @@ public:
 
     ModelGeometry *geometry;
     glm::vec3      scale;
-
     glm::vec3      base_position;
     glm::vec3      position;
-    glm::vec3      prev_position;
-
     shs::Color     color;
 
     bool  rotate_enabled;
@@ -379,7 +377,9 @@ public:
     float phase;
 
     float rotation_angle;
-    float prev_rotation;
+
+    bool      has_prev_mvp;
+    glm::mat4 prev_mvp;
 };
 
 // ==========================================
@@ -429,23 +429,94 @@ public:
 };
 
 // ==========================================
-// TILED RASTERIZER (Color + Depth(CANVAS) + Velocity(CANVAS))
-// Requires header RT_ColorDepthVelocity:
-//   struct RT_ColorDepthVelocity { shs::Canvas color; shs::ZBuffer depth; shs::Buffer<glm::vec2> velocity; ... }
+// MOTION BUFFER + RT (Color+Depth+Motion)
+// motion stored in CANVAS coords (x right, y up) in pixels
 // ==========================================
 
-static void draw_triangle_tile_color_depth_velocity(
-    shs::RT_ColorDepthVelocity &rt,
+struct MotionBuffer
+{
+    MotionBuffer() : w(0), h(0) {}
+
+    MotionBuffer(int W, int H)
+    {
+        init(W, H);
+    }
+
+    void init(int W, int H)
+    {
+        w = W;
+        h = H;
+        vel.assign((size_t)w * (size_t)h, glm::vec2(0.0f));
+    }
+
+    inline void clear()
+    {
+        std::fill(vel.begin(), vel.end(), glm::vec2(0.0f));
+    }
+
+    inline glm::vec2 get(int x, int y) const
+    {
+        x = clampi(x, 0, w - 1);
+        y = clampi(y, 0, h - 1);
+        return vel[(size_t)y * (size_t)w + (size_t)x];
+    }
+
+    inline void set(int x, int y, const glm::vec2& v)
+    {
+        if (x < 0 || x >= w || y < 0 || y >= h) return;
+        vel[(size_t)y * (size_t)w + (size_t)x] = v;
+    }
+
+    int w, h;
+    std::vector<glm::vec2> vel;
+};
+
+struct RT_ColorDepthMotion
+{
+    RT_ColorDepthMotion(int W, int H, float zn, float zf, shs::Color clear_col)
+        : color(W, H, clear_col), depth(W, H, zn, zf), motion(W, H)
+    {
+        (void)zn; (void)zf;
+        clear(clear_col);
+    }
+
+    inline void clear(shs::Color c)
+    {
+        color.buffer().clear(c);
+        depth.clear();
+        motion.clear();
+    }
+
+    inline int width() const  { return color.get_width(); }
+    inline int height() const { return color.get_height(); }
+
+    shs::Canvas   color;
+    shs::ZBuffer  depth;
+    MotionBuffer  motion;
+};
+
+// ==========================================
+// TILED RASTERIZER (writes depth in CANVAS coords + writes motion vec per pixel)
+// ==========================================
+
+static inline glm::vec2 clip_to_screen_xy(const glm::vec4& clip, int w, int h)
+{
+    glm::vec3 s = shs::Canvas::clip_to_screen(clip, w, h); // screen coords (x right, y down)
+    return glm::vec2(s.x, s.y);
+}
+
+static void draw_triangle_tile_color_depth_motion(
+    RT_ColorDepthMotion &rt,
     const std::vector<glm::vec3> &vertices,
     const std::vector<glm::vec3> &normals,
-    std::function<shs::Varyings(const glm::vec3&, const glm::vec3&)> vertex_shader,
-    std::function<FragOutput(const shs::Varyings&)> fragment_shader,
+    std::function<VaryingsMB(const glm::vec3&, const glm::vec3&)> vertex_shader,
+    std::function<shs::Color(const VaryingsMB&)> fragment_shader,
     glm::ivec2 tile_min, glm::ivec2 tile_max)
 {
     int w = rt.color.get_width();
     int h = rt.color.get_height();
 
-    shs::Varyings vout[3];
+    VaryingsMB vout[3];
     glm::vec3 screen_coords[3];
 
     for (int i = 0; i < 3; i++) {
@@ -484,29 +555,123 @@ static void draw_triangle_tile_color_depth_velocity(
 
             if (rt.depth.test_and_set_depth(px, cy, z)) {
 
-                shs::Varyings interpolated;
+                VaryingsMB interpolated;
+                interpolated.normal     = glm::normalize(bc.x * vout[0].normal     + bc.y * vout[1].normal     + bc.z * vout[2].normal);
+                interpolated.world_pos  = bc.x * vout[0].world_pos + bc.y * vout[1].world_pos + bc.z * vout[2].world_pos;
+                interpolated.view_z     = z;
 
+                // interpolate clip positions (John Chapman style: prev vs curr)
                 interpolated.position      = bc.x * vout[0].position      + bc.y * vout[1].position      + bc.z * vout[2].position;
                 interpolated.prev_position = bc.x * vout[0].prev_position + bc.y * vout[1].prev_position + bc.z * vout[2].prev_position;
 
-                interpolated.normal         = glm::normalize(bc.x * vout[0].normal    + bc.y * vout[1].normal    + bc.z * vout[2].normal);
-                interpolated.world_pos      = bc.x * vout[0].world_pos + bc.y * vout[1].world_pos + bc.z * vout[2].world_pos;
-                interpolated.view_z         = z;
+                // velocity computed in screen coords then converted to canvas coords
+                glm::vec2 curr_s = clip_to_screen_xy(interpolated.position, w, h);
+                glm::vec2 prev_s = clip_to_screen_xy(interpolated.prev_position, w, h);
+                glm::vec2 v_screen = curr_s - prev_s;      // y down
+                glm::vec2 v_canvas = glm::vec2(v_screen.x, -v_screen.y); // y up
 
-                FragOutput out = fragment_shader(interpolated);
-
-                rt.color.draw_pixel_screen_space(px, py, out.first);
-
-                if (rt.velocity.in_bounds(px, cy)) {
-                    rt.velocity.at(px, cy) = out.second; // canvas coords
+                // clamp to avoid extreme streaks
+                float len = glm::length(v_canvas);
+                if (len > MB_MAX_PIXELS && len > 0.0001f) {
+                    v_canvas = v_canvas * (MB_MAX_PIXELS / len);
                 }
+
+                rt.motion.set(px, cy, v_canvas);
+
+                rt.color.draw_pixel_screen_space(px, py, fragment_shader(interpolated));
             }
         }
     }
 }
 
 // ==========================================
-// PASS 1: OUTLINE (depth-based)  rt_scene -> ping
+// PASS 1: PER-OBJECT MOTION BLUR (post)
+// ==========================================
+
+static void motion_blur_pass(
+    const shs::Canvas& src,
+    const MotionBuffer& motion,
+    shs::Canvas& dst,
+    int samples,
+    float strength,
+    shs::Job::ThreadedPriorityJobSystem* job_system,
+    shs::Job::WaitGroup& wg)
+{
+    int W = src.get_width();
+    int H = src.get_height();
+
+    int cols = (W + TILE_SIZE_X - 1) / TILE_SIZE_X;
+    int rows = (H + TILE_SIZE_Y - 1) / TILE_SIZE_Y;
+
+    wg.reset();
+
+    for (int ty = 0; ty < rows; ty++) {
+        for (int tx = 0; tx < cols; tx++) {
+
+            wg.add(1);
+
+            job_system->submit({[&, tx, ty]() {
+
+                int x0 = tx * TILE_SIZE_X;
+                int y0 = ty * TILE_SIZE_Y;
+                int x1 = std::min(x0 + TILE_SIZE_X, W);
+                int y1 = std::min(y0 + TILE_SIZE_Y, H);
+
+                for (int y = y0; y < y1; y++) {
+                    for (int x = x0; x < x1; x++) {
+
+                        glm::vec2 v = motion.get(x, y) * strength;
+                        float vlen = glm::length(v);
+
+                        if (vlen < 0.001f || samples <= 1) {
+                            dst.draw_pixel(x, y, src.get_color_at(x, y));
+                            continue;
+                        }
+
+                        glm::vec2 dir = v / vlen;
+
+                        float r = 0, g = 0, b = 0;
+                        float wsum = 0.0f;
+
+                        // sample along -v..+v (center weighted)
+                        // (simple linear weights; keeps it stable on CPU)
+                        for (int i = 0; i < samples; i++) {
+                            float t = (samples == 1) ? 0.0f : (float(i) / float(samples - 1));
+                            float a = (t - 0.5f) * 2.0f; // -1..+1
+                            glm::vec2 p = glm::vec2(float(x), float(y)) + dir * (a * vlen);
+
+                            int sx = clampi((int)std::round(p.x), 0, W - 1);
+                            int sy = clampi((int)std::round(p.y), 0, H - 1);
+
+                            float wgt = 1.0f - std::abs(a); // center heavier
+                            shs::Color c = src.get_color_at(sx, sy);
+
+                            r += wgt * float(c.r);
+                            g += wgt * float(c.g);
+                            b += wgt * float(c.b);
+                            wsum += wgt;
+                        }
+
+                        if (wsum < 0.0001f) wsum = 1.0f;
+                        dst.draw_pixel(x, y, shs::Color{
+                            (uint8_t)clampi((int)(r / wsum), 0, 255),
+                            (uint8_t)clampi((int)(g / wsum), 0, 255),
+                            (uint8_t)clampi((int)(b / wsum), 0, 255),
+                            255
+                        });
+                    }
+                }
+
+                wg.done();
+            }, shs::Job::PRIORITY_HIGH});
+        }
+    }
+
+    wg.wait();
+}
+
+// ==========================================
+// PASS: OUTLINE (depth-based)
 // ==========================================
 
 static void outline_pass(
@@ -581,7 +746,7 @@ static void outline_pass(
 }
 
 // ==========================================
-// PASS 2: FOG (depth-based)  ping + depth -> pong
+// PASS: FOG (depth-based)
 // ==========================================
 
 static void fog_pass(
@@ -591,6 +756,7 @@ static void fog_pass(
     shs::Color fog_color,
     float fog_start,
     float fog_end,
+    float fog_power,
     shs::Job::ThreadedPriorityJobSystem* job_system,
     shs::Job::WaitGroup& wg)
 {
@@ -626,9 +792,7 @@ static void fog_pass(
 
                         float t = (d - fog_start) / (fog_end - fog_start);
                         t = smoothstep01(t);
-
-                        // optional fog power curve
-                        t = std::pow(clampf(t, 0.0f, 1.0f), FOG_POWER);
+                        t = std::pow(t, fog_power);
 
                         dst.draw_pixel(x, y, lerp_color(c, fog_color, t));
                     }
@@ -643,38 +807,146 @@ static void fog_pass(
 }
 
 // ==========================================
-// PASS 3: MOTION BLUR (velocity + depth reject)  pong + velocity -> final
+// GAUSSIAN BLUR (JOB SYSTEM) for DOF
 // ==========================================
 
-static void motion_blur_pass(
+static void gaussian_blur_pass(
     const shs::Canvas& src,
-    const shs::Buffer<glm::vec2>& vel,
-    const shs::ZBuffer& depth,
     shs::Canvas& dst,
-    float delta_time,
+    bool horizontal,
     shs::Job::ThreadedPriorityJobSystem* job_system,
-    shs::Job::WaitGroup& wg)
+    shs::Job::WaitGroup& wait_group)
 {
+    const float w0 = 0.06136f;
+    const float w1 = 0.24477f;
+    const float w2 = 0.38774f;
+
     int W = src.get_width();
     int H = src.get_height();
-
-    const auto& col = src.buffer();
-    auto& out = dst.buffer();
-
-    float dt = std::max(0.00001f, delta_time);
-    float fps_scale = (1.0f / (dt * MB_REF_FPS)); // blur less when dt is larger
-    fps_scale = clampf(fps_scale, 0.25f, 4.0f);
 
     int cols = (W + TILE_SIZE_X - 1) / TILE_SIZE_X;
     int rows = (H + TILE_SIZE_Y - 1) / TILE_SIZE_Y;
 
-    wg.reset();
+    wait_group.reset();
 
     for (int ty = 0; ty < rows; ty++) {
         for (int tx = 0; tx < cols; tx++) {
 
-            wg.add(1);
-            job_system->submit({[&, tx, ty, fps_scale]() {
+            wait_group.add(1);
+
+            job_system->submit({[&, tx, ty]() {
+
+                int x0 = tx * TILE_SIZE_X;
+                int y0 = ty * TILE_SIZE_Y;
+                int x1 = std::min(x0 + TILE_SIZE_X, W);
+                int y1 = std::min(y0 + TILE_SIZE_Y, H);
+
+                auto sample = [&](int sx, int sy) -> shs::Color {
+                    sx = clampi(sx, 0, W - 1);
+                    sy = clampi(sy, 0, H - 1);
+                    return src.get_color_at(sx, sy);
+                };
+
+                for (int y = y0; y < y1; y++) {
+                    for (int x = x0; x < x1; x++) {
+
+                        float r = 0, g = 0, b = 0, a = 0;
+
+                        if (horizontal) {
+                            shs::Color c0 = sample(x - 2, y);
+                            shs::Color c1 = sample(x - 1, y);
+                            shs::Color c2 = sample(x,     y);
+                            shs::Color c3 = sample(x + 1, y);
+                            shs::Color c4 = sample(x + 2, y);
+
+                            r = w0*c0.r + w1*c1.r + w2*c2.r + w1*c3.r + w0*c4.r;
+                            g = w0*c0.g + w1*c1.g + w2*c2.g + w1*c3.g + w0*c4.g;
+                            b = w0*c0.b + w1*c1.b + w2*c2.b + w1*c3.b + w0*c4.b;
+                            a = w0*c0.a + w1*c1.a + w2*c2.a + w1*c3.a + w0*c4.a;
+                        } else {
+                            shs::Color c0 = sample(x, y - 2);
+                            shs::Color c1 = sample(x, y - 1);
+                            shs::Color c2 = sample(x, y);
+                            shs::Color c3 = sample(x, y + 1);
+                            shs::Color c4 = sample(x, y + 2);
+
+                            r = w0*c0.r + w1*c1.r + w2*c2.r + w1*c3.r + w0*c4.r;
+                            g = w0*c0.g + w1*c1.g + w2*c2.g + w1*c3.g + w0*c4.g;
+                            b = w0*c0.b + w1*c1.b + w2*c2.b + w1*c3.b + w0*c4.b;
+                            a = w0*c0.a + w1*c1.a + w2*c2.a + w1*c3.a + w0*c4.a;
+                        }
+
+                        dst.draw_pixel(x, y, color_from_rgbaf(r, g, b, a));
+                    }
+                }
+
+                wait_group.done();
+            }, shs::Job::PRIORITY_HIGH});
+        }
+    }
+
+    wait_group.wait();
+}
+
+// ==========================================
+// AUTOFOCUS + DOF COMPOSITE (JOB SYSTEM)
+// ==========================================
+
+static float autofocus_depth_median_center(
+    const shs::ZBuffer& zbuf,
+    int cx, int cy,
+    int radius_px)
+{
+    std::vector<float> samples;
+    samples.reserve((size_t)(2 * radius_px + 1) * (size_t)(2 * radius_px + 1));
+
+    for (int dy = -radius_px; dy <= radius_px; ++dy) {
+        for (int dx = -radius_px; dx <= radius_px; ++dx) {
+            int x = cx + dx;
+            int y = cy + dy;
+
+            float d = zbuf.get_depth_at(x, y);
+            if (d == std::numeric_limits<float>::max()) continue;
+            samples.push_back(d);
+        }
+    }
+
+    if (samples.empty()) {
+        float d = zbuf.get_depth_at(cx, cy);
+        if (d == std::numeric_limits<float>::max()) return 15.0f;
+        return d;
+    }
+
+    size_t mid = samples.size() / 2;
+    std::nth_element(samples.begin(), samples.begin() + mid, samples.end());
+    return samples[mid];
+}
+
+static void dof_composite_pass(
+    const shs::Canvas& sharp,
+    const shs::Canvas& blur,
+    const shs::ZBuffer& zbuf,
+    shs::Canvas& out,
+    float focus_depth,
+    float range,
+    float max_blur,
+    shs::Job::ThreadedPriorityJobSystem* job_system,
+    shs::Job::WaitGroup& wait_group)
+{
+    int W = sharp.get_width();
+    int H = sharp.get_height();
+
+    int cols = (W + TILE_SIZE_X - 1) / TILE_SIZE_X;
+    int rows = (H + TILE_SIZE_Y - 1) / TILE_SIZE_Y;
+
+    wait_group.reset();
+
+    for (int ty = 0; ty < rows; ty++) {
+        for (int tx = 0; tx < cols; tx++) {
+
+            wait_group.add(1);
+
+            job_system->submit({[&, tx, ty]() {
 
                 int x0 = tx * TILE_SIZE_X;
                 int y0 = ty * TILE_SIZE_Y;
@@ -684,72 +956,38 @@ static void motion_blur_pass(
                 for (int y = y0; y < y1; y++) {
                     for (int x = x0; x < x1; x++) {
 
-                        glm::vec2 v = vel.at(x, y) * (MB_BLUR_MULTIPLIER * fps_scale);
-
-                        if (glm::dot(v, v) < MB_MIN_VEL2_THRESHOLD) {
-                            out.at(x, y) = col.at(x, y);
-                            continue;
+                        float d = zbuf.get_depth_at(x, y);
+                        if (d == std::numeric_limits<float>::max()) {
+                            d = focus_depth + range;
                         }
 
-                        float d0 = depth.get_depth_at(x, y);
+                        float coc = std::abs(d - focus_depth) / range;
+                        float t   = smoothstep01(coc);
+                        t = clampf(t * max_blur, 0.0f, 1.0f);
 
-                        float speed = glm::length(v);
-                        int samples = (int)(speed);
-                        if (samples < 2) samples = 2;
-                        if (samples > MB_MAX_SAMPLES) samples = MB_MAX_SAMPLES;
+                        shs::Color c_sharp = sharp.get_color_at(x, y);
+                        shs::Color c_blur  = blur.get_color_at(x, y);
 
-                        float r = 0.0f, g = 0.0f, b = 0.0f;
-                        float wsum = 0.0f;
-
-                        // centered kernel: t in [-0.5, +0.5]
-                        for (int i = 0; i < samples; i++) {
-                            float u = (samples == 1) ? 0.0f : ((float)i / (float)(samples - 1));
-                            float t = (u - 0.5f);
-
-                            int sx = (int)std::round((float)x + v.x * t);
-                            int sy = (int)std::round((float)y + v.y * t);
-
-                            if (!col.in_bounds(sx, sy)) continue;
-
-                            // depth reject (reduces background bleeding / ghosting at edges)
-                            float d1 = depth.get_depth_at(sx, sy);
-                            if (d0 != std::numeric_limits<float>::max() && d1 != std::numeric_limits<float>::max()) {
-                                if (std::abs(d1 - d0) > MB_DEPTH_REJECT_THRESH) continue;
-                            }
-
-                            shs::Color c = col.at(sx, sy);
-                            r += (float)c.r;
-                            g += (float)c.g;
-                            b += (float)c.b;
-                            wsum += 1.0f;
-                        }
-
-                        if (wsum <= 0.0f) {
-                            out.at(x, y) = col.at(x, y);
-                            continue;
-                        }
-
-                        r /= wsum; g /= wsum; b /= wsum;
-                        out.at(x, y) = color_from_rgbaf(r, g, b, 255.0f);
+                        out.draw_pixel(x, y, lerp_color(c_sharp, c_blur, t));
                     }
                 }
 
-                wg.done();
+                wait_group.done();
             }, shs::Job::PRIORITY_HIGH});
         }
     }
 
-    wg.wait();
+    wait_group.wait();
 }
 
 // ==========================================
-// RENDERER SYSTEM (Threaded) -> RT_ColorDepthVelocity
+// RENDERER SYSTEM (Threaded) -> RT_ColorDepthMotion
 // ==========================================
 
 class RendererSystem : public shs::AbstractSystem
 {
 public:
-    RendererSystem(HelloScene *scene, shs::Job::ThreadedPriorityJobSystem *job_sys, shs::RT_ColorDepthVelocity *rt)
+    RendererSystem(HelloScene *scene, shs::Job::ThreadedPriorityJobSystem *job_sys, RT_ColorDepthMotion *rt)
         : scene(scene), job_system(job_sys), rt(rt)
     {}
 
@@ -786,17 +1024,20 @@ public:
                         MonkeyObject *monkey = dynamic_cast<MonkeyObject *>(object);
                         if (!monkey) continue;
 
+                        glm::mat4 model = monkey->get_world_matrix();
+                        glm::mat4 mvp   = proj * view * model;
+
+                        glm::mat4 prev_mvp = mvp;
+                        if (monkey->has_prev_mvp) prev_mvp = monkey->prev_mvp;
+
                         Uniforms uniforms;
-                        uniforms.model         = monkey->get_world_matrix();
-                        uniforms.view          = view;
-                        uniforms.mvp           = proj * view * uniforms.model;
-
-                        uniforms.prev_mvp       = proj * prev_view_matrix * monkey->get_prev_world_matrix();
-
-                        uniforms.light_dir     = scene->light_direction;
-                        uniforms.camera_pos    = scene->viewer->position;
-                        uniforms.color         = monkey->color;
-                        uniforms.viewport_size = glm::vec2((float)w, (float)h);
+                        uniforms.model      = model;
+                        uniforms.view       = view;
+                        uniforms.mvp        = mvp;
+                        uniforms.prev_mvp   = prev_mvp;
+                        uniforms.light_dir  = scene->light_direction;
+                        uniforms.camera_pos = scene->viewer->position;
+                        uniforms.color      = monkey->color;
 
                         const auto& verts = monkey->geometry->triangles;
                         const auto& norms = monkey->geometry->normals;
@@ -806,15 +1047,15 @@ public:
                             std::vector<glm::vec3> tri_verts = { verts[i], verts[i+1], verts[i+2] };
                             std::vector<glm::vec3> tri_norms = { norms[i], norms[i+1], norms[i+2] };
 
-                            draw_triangle_tile_color_depth_velocity(
+                            draw_triangle_tile_color_depth_motion(
                                 *rt,
                                 tri_verts,
                                 tri_norms,
                                 [&uniforms](const glm::vec3& p, const glm::vec3& n) {
-                                    return velocity_vertex_shader(p, n, uniforms);
+                                    return blinn_phong_vertex_shader_mb(p, n, uniforms);
                                 },
-                                [&uniforms](const shs::Varyings& v) {
-                                    return velocity_fragment_shader(v, uniforms);
+                                [&uniforms](const VaryingsMB& v) {
+                                    return blinn_phong_fragment_shader(v, uniforms);
                                 },
                                 t_min, t_max
                             );
@@ -827,17 +1068,27 @@ public:
         }
 
         wait_group.wait();
-    }
 
-    inline void set_prev_view(glm::mat4 m) { prev_view_matrix = m; }
+        // after render: commit prev_mvp for next frame (John Chapman per-object history)
+        glm::mat4 view2 = scene->viewer->camera->view_matrix;
+        glm::mat4 proj2 = scene->viewer->camera->projection_matrix;
+
+        for (shs::AbstractObject3D *object : scene->scene_objects)
+        {
+            MonkeyObject *monkey = dynamic_cast<MonkeyObject *>(object);
+            if (!monkey) continue;
+
+            glm::mat4 model = monkey->get_world_matrix();
+            monkey->prev_mvp = proj2 * view2 * model;
+            monkey->has_prev_mvp = true;
+        }
+    }
 
 private:
     HelloScene                          *scene;
     shs::Job::ThreadedPriorityJobSystem *job_system;
-    shs::RT_ColorDepthVelocity          *rt;
+    RT_ColorDepthMotion                 *rt;
     shs::Job::WaitGroup                  wait_group;
-
-    glm::mat4 prev_view_matrix = glm::mat4(1.0f);
 };
 
 // ==========================================
@@ -865,7 +1116,7 @@ private:
 class SystemProcessor
 {
 public:
-    SystemProcessor(HelloScene *scene, shs::Job::ThreadedPriorityJobSystem *job_sys, shs::RT_ColorDepthVelocity *rt)
+    SystemProcessor(HelloScene *scene, shs::Job::ThreadedPriorityJobSystem *job_sys, RT_ColorDepthMotion *rt)
     {
         command_processor = new shs::CommandProcessor();
         renderer_system   = new RendererSystem(scene, job_sys, rt);
@@ -886,8 +1137,6 @@ public:
     {
         renderer_system->process(delta_time);
     }
-
-    inline void set_prev_view(glm::mat4 m) { renderer_system->set_prev_view(m); }
 
     shs::CommandProcessor *command_processor;
     LogicSystem           *logic_system;
@@ -917,13 +1166,21 @@ int main(int argc, char* argv[])
     Viewer     *viewer = new Viewer(glm::vec3(0.0f, 6.0f, -28.0f), 50.0f);
     HelloScene *scene  = new HelloScene(viewer);
 
-    // Scene render target (Color+Depth+Velocity)
-    shs::RT_ColorDepthVelocity rt_scene(CANVAS_WIDTH, CANVAS_HEIGHT, viewer->camera->z_near, viewer->camera->z_far, shs::Color{20,20,25,255});
+    // Pass 0 RT: Color + Depth + Motion
+    RT_ColorDepthMotion rt_scene(CANVAS_WIDTH, CANVAS_HEIGHT, viewer->camera->z_near, viewer->camera->z_far, shs::Color{20,20,25,255});
 
-    // Ping-pong canvases (only color)
+    // Pass 1 output (motion blur)
+    shs::Canvas mb_out(CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{20,20,25,255});
+
+    // DOF buffers
+    shs::Canvas sharp_copy(CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{20,20,25,255});
+    shs::Canvas blur_ping (CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{20,20,25,255});
+    shs::Canvas blur_pong (CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{20,20,25,255});
+    shs::Canvas dof_out   (CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{20,20,25,255});
+
+    // Fog/Outline ping-pong
     shs::Canvas ping(CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{20,20,25,255});
     shs::Canvas pong(CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{20,20,25,255});
-    shs::Canvas final_canvas(CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{20,20,25,255});
 
     SystemProcessor *sys = new SystemProcessor(scene, job_system, &rt_scene);
 
@@ -933,11 +1190,11 @@ int main(int argc, char* argv[])
 
     bool is_dragging = false;
 
-    glm::mat4 prev_view_matrix = viewer->camera->view_matrix;
-
-    shs::Job::WaitGroup wg_outline;
-    shs::Job::WaitGroup wg_fog;
     shs::Job::WaitGroup wg_mb;
+    shs::Job::WaitGroup wg_blur;
+    shs::Job::WaitGroup wg_dof;
+    shs::Job::WaitGroup wg_fog;
+    shs::Job::WaitGroup wg_outline;
 
     while (!exit)
     {
@@ -977,25 +1234,54 @@ int main(int argc, char* argv[])
             }
         }
 
-        // Save previous view BEFORE updating camera
-        prev_view_matrix = viewer->camera->view_matrix;
-        sys->set_prev_view(prev_view_matrix);
-
-        // Logic + Render scene into rt_scene (color+depth+velocity)
+        // Pass 0: logic + render to rt_scene
         sys->process(delta_time);
         sys->render(delta_time);
 
-        // PASS 1: Outline (rt_scene -> ping)
-        outline_pass(rt_scene.color, rt_scene.depth, ping, job_system, wg_outline);
+        // Pass 1: John Chapman per-object motion blur
+        motion_blur_pass(rt_scene.color, rt_scene.motion, mb_out, MB_SAMPLES, MB_STRENGTH, job_system, wg_mb);
 
-        // PASS 2: Fog (ping -> pong) using rt_scene.depth
-        fog_pass(ping, rt_scene.depth, pong, FOG_COLOR, FOG_START_Z, FOG_END_Z, job_system, wg_fog);
+        // Pass 2: DOF (on motion blurred image, depth from rt_scene)
+        if (ENABLE_DOF)
+        {
+            sharp_copy.buffer() = mb_out.buffer();
+            blur_pong.buffer()  = sharp_copy.buffer();
 
-        // PASS 3: Motion Blur (pong + rt_scene.velocity -> final)
-        motion_blur_pass(pong, rt_scene.velocity, rt_scene.depth, final_canvas, delta_time, job_system, wg_mb);
+            for (int i = 0; i < BLUR_ITERATIONS; i++)
+            {
+                gaussian_blur_pass(blur_pong, blur_ping, true,  job_system, wg_blur);
+                gaussian_blur_pass(blur_ping, blur_pong, false, job_system, wg_blur);
+            }
 
-        // Present final
-        screen_canvas->buffer() = final_canvas.buffer();
+            int cx = CANVAS_WIDTH  / 2;
+            int cy = CANVAS_HEIGHT / 2;
+            float focus_depth = autofocus_depth_median_center(rt_scene.depth, cx, cy, AUTOFOCUS_RADIUS);
+
+            dof_composite_pass(
+                sharp_copy,
+                blur_pong,
+                rt_scene.depth,
+                dof_out,
+                focus_depth,
+                DOF_RANGE,
+                DOF_MAXBLUR,
+                job_system,
+                wg_dof
+            );
+        }
+        else
+        {
+            dof_out.buffer() = mb_out.buffer();
+        }
+
+        // Pass 3: Fog (dof_out -> pong)
+        fog_pass(dof_out, rt_scene.depth, pong, FOG_COLOR, FOG_START_Z, FOG_END_Z, FOG_POWER, job_system, wg_fog);
+
+        // Pass 4: Outline (pong -> ping)
+        outline_pass(pong, rt_scene.depth, ping, job_system, wg_outline);
+
+        // Present ping
+        screen_canvas->buffer() = ping.buffer();
         shs::Canvas::copy_to_SDLSurface(screen_surface, screen_canvas);
         SDL_UpdateTexture(screen_texture, NULL, screen_surface->pixels, screen_surface->pitch);
         SDL_RenderCopy(renderer, screen_texture, NULL, NULL);

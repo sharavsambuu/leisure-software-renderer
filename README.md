@@ -162,6 +162,8 @@
       - https://jsantell.com/model-view-projection/
     Rotation Transformation convention, mentioned positive rotation is counter clock-wise
       - https://www.youtube.com/watch?v=9egyFOt6PHM
+    John Chapman blog
+      - https://john-chapman-graphics.blogspot.com
      
       
       
@@ -173,6 +175,7 @@
 <p><img width="657" height="540" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/depth-of-field-monkeys.png"></p>
 <p><img width="511" height="345" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/per-object-motion-blur-monkeys.png"></p>
 <p><img width="711" height="574" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/multi-pass-per-object-motion-blur.png"></p>
+<p><img width="820" height="710" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/multi-pass-motion-blur-dof.png"></p>
 <p><img width="640" height="360" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/mongolian-flag.png"></p>
 <p><img width="320" height="320" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/fbm.png"></p>
 
