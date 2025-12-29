@@ -70,8 +70,8 @@ static const float MB_MAX_PIXELS = 40.0f; // clamp in pixels (canvas coords)
 // OUTLINE PASS CONFIG
 // ===============================
 static const int   EDGE_RADIUS    = 1;       // 1 or 2
-static const float EDGE_THRESHOLD = 0.35f;   // smaller = more edges
-static const float EDGE_STRENGTH  = 0.55f;   // 0..1 (higher = darker lines)
+static const float EDGE_THRESHOLD = 0.75f;   // smaller = more edges
+static const float EDGE_STRENGTH  = 0.15f;   // 0..1 (higher = darker lines)
 
 // ===============================
 // FOG PASS CONFIG
