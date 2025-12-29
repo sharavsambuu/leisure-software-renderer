@@ -1,8 +1,11 @@
 /*
-    3D Software Renderer - PER-OBJECT MOTION BLUR (Velocity Buffer, CPU Post Process)
+    3D Software Renderer - PER-OBJECT MOTION BLUR (John Chapman style)
     - Render scene into RT_ColorDepthVelocity (Color + Depth + Velocity)
     - Velocity is computed per-pixel from current_clip - prev_clip (stored in Varyings)
-    - Post-process: sample backward along velocity in Canvas space
+    - Post-process:
+        (1) CENTERED blur kernel (Chapman "Blur centred")
+        (2) FPS-scaled velocity (stable blur across frame time)
+        (3) Depth-aware rejection (reduce background bleeding / halos)
 
     References:
     - https://john-chapman-graphics.blogspot.com/2013/01/per-object-motion-blur.html
@@ -50,9 +53,13 @@
 // ===============================
 // MOTION BLUR CONFIG
 // ===============================
-#define BLUR_MULTIPLIER     0.85f
-#define MAX_BLUR_SAMPLES    12
-#define MIN_VEL2_THRESHOLD  0.25f
+#define BLUR_MULTIPLIER      1.85f
+#define MAX_BLUR_SAMPLES     20
+#define MIN_VEL2_THRESHOLD   0.25f
+
+// Depth rejection
+// z-buffer stores view_z (LH), so near values are smaller magnitude.
+#define DEPTH_REJECT_EPS     0.25f
 
 // ==========================================
 // UNIFORMS & SHADERS
@@ -265,14 +272,8 @@ public:
         this->rotation_angle    = 0.0f;
         this->prev_rotation     = 0.0f;
 
-        // Tween-like bobbing (smooth):
-        // - different speed
-        // - different phase offset
-        // - different amplitude
         this->time_accum        = 0.0f + (float)idx * 0.77f;
-        //this->bob_speed         = 0.95f + 0.35f * (float)(idx % 5) + 0.15f * (float)(idx % 3);
-        this->bob_speed         = 1.5f + 0.6f * (float)(idx % 5);
-        //this->bob_amp           = 0.80f + 0.25f * (float)(idx % 4);
+        this->bob_speed         = 3.5f + 0.6f * (float)(idx % 5);
         this->bob_amp           = 2.0f + 0.8f * (float)(idx % 3);
     }
 
@@ -296,13 +297,11 @@ public:
 
     void update(float delta_time) override
     {
-        // Save previous state (for velocity)
         this->prev_position = this->position;
         this->prev_rotation = this->rotation_angle;
 
         this->time_accum += delta_time;
 
-        // Smooth tween-like vertical motion (sin is already smooth)
         float y = this->base_position.y + std::sin(this->time_accum * this->bob_speed) * this->bob_amp;
         this->position.y = y;
 
@@ -349,13 +348,12 @@ public:
         {
             for (int xx = 0; xx < MONKEY_COUNT_X; xx++)
             {
-                float x = (xx - 1) * MONKEY_SPACING_X; // -1,0,1
+                float x = (xx - 1) * MONKEY_SPACING_X;
                 float z = MONKEY_START_Z + (yy * MONKEY_SPACING_Z);
                 float y = MONKEY_BASE_Y;
 
                 bool rotate_enabled = ((idx % 3) != 0);
-                //float rotate_speed  = 20.0f + 15.0f * (idx % 4);
-                float rotate_speed = 60.0f + 40.0f * (idx % 4);
+                float rotate_speed = 120.0f + 80.0f * (idx % 4);
 
                 this->scene_objects.push_back(new MonkeyObject(
                     this->shared_monkey_geometry,
@@ -438,14 +436,15 @@ static void draw_triangle_velocity_tile(
                 interpolated.position      = bc.x * vout[0].position      + bc.y * vout[1].position      + bc.z * vout[2].position;
                 interpolated.prev_position = bc.x * vout[0].prev_position + bc.y * vout[1].prev_position + bc.z * vout[2].prev_position;
 
-                interpolated.normal    = glm::normalize(bc.x * vout[0].normal    + bc.y * vout[1].normal    + bc.z * vout[2].normal);
-                interpolated.world_pos = bc.x * vout[0].world_pos + bc.y * vout[1].world_pos + bc.z * vout[2].world_pos;
-                interpolated.view_z    = z;
+                interpolated.normal        = glm::normalize(bc.x * vout[0].normal    + bc.y * vout[1].normal    + bc.z * vout[2].normal);
+                interpolated.world_pos     = bc.x * vout[0].world_pos + bc.y * vout[1].world_pos + bc.z * vout[2].world_pos;
+                interpolated.view_z        = z;
 
                 FragOutput out = fragment_shader(interpolated);
 
                 rt.color.draw_pixel_screen_space(px, py, out.first);
 
+                // Store velocity in Canvas-space buffer (origin bottom-left)
                 int canvas_y = (h - 1) - py;
                 if (rt.velocity.in_bounds(px, canvas_y)) {
                     rt.velocity.at(px, canvas_y) = out.second;
@@ -463,14 +462,15 @@ static void post_process_motion_blur(
     const shs::RT_ColorDepthVelocity& src,
     shs::Canvas& dst,
     shs::Job::ThreadedPriorityJobSystem* job_system,
-    shs::Job::WaitGroup& wait_group)
+    shs::Job::WaitGroup& wait_group,
+    float velocity_scale)
 {
     int W = src.color.get_width();
     int H = src.color.get_height();
 
-    const auto& col = src.color.buffer();
-    const auto& vel = src.velocity;
-    auto& out = dst.buffer();
+    const auto& col = src.color.buffer();   // Canvas-space
+    const auto& vel = src.velocity;         // Canvas-space (+Y up)
+    auto& out = dst.buffer();               // Canvas-space
 
     int cols = (W + TILE_SIZE_X - 1) / TILE_SIZE_X;
     int rows = (H + TILE_SIZE_Y - 1) / TILE_SIZE_Y;
@@ -482,7 +482,7 @@ static void post_process_motion_blur(
 
             wait_group.add(1);
 
-            job_system->submit({[&, tx, ty]() {
+            job_system->submit({[&, tx, ty, velocity_scale]() {
 
                 int x0 = tx * TILE_SIZE_X;
                 int y0 = ty * TILE_SIZE_Y;
@@ -492,7 +492,7 @@ static void post_process_motion_blur(
                 for (int y = y0; y < y1; y++) {
                     for (int x = x0; x < x1; x++) {
 
-                        glm::vec2 v = vel.at(x, y) * BLUR_MULTIPLIER;
+                        glm::vec2 v = vel.at(x, y) * (BLUR_MULTIPLIER * velocity_scale);
 
                         if (glm::dot(v, v) < MIN_VEL2_THRESHOLD) {
                             out.at(x, y) = col.at(x, y);
@@ -504,16 +504,27 @@ static void post_process_motion_blur(
                         if (samples < 2) samples = 2;
                         if (samples > MAX_BLUR_SAMPLES) samples = MAX_BLUR_SAMPLES;
 
+                        // Depth is stored in screen-space (origin top-left), so convert canvas y -> screen y
+                        int y_screen0 = (H - 1) - y;
+                        float z0 = src.depth.get_depth_at(x, y_screen0);
+
                         float r = 0.0f, g = 0.0f, b = 0.0f;
                         float wsum = 0.0f;
 
                         for (int i = 0; i < samples; i++) {
                             float t = (samples == 1) ? 0.0f : ((float)i / (float)(samples - 1));
+                            float o = t - 0.5f; // (1) CENTERED blur kernel: [-0.5 .. +0.5]
 
-                            int sx = (int)(x - v.x * t);
-                            int sy = (int)(y - v.y * t);
+                            int sx = (int)(x - v.x * o);
+                            int sy = (int)(y - v.y * o);
 
                             if (!col.in_bounds(sx, sy)) continue;
+
+                            // Depth-aware rejection (reduce background bleeding)
+                            int sy_screen = (H - 1) - sy;
+                            float zs = src.depth.get_depth_at(sx, sy_screen);
+
+                            if (std::abs(zs - z0) > DEPTH_REJECT_EPS) continue;
 
                             shs::Color c = col.at(sx, sy);
                             r += (float)c.r;
@@ -588,7 +599,7 @@ public:
                         uniforms.view          = view;
                         uniforms.mvp           = proj * view * uniforms.model;
 
-                        // previous
+                        // previous (use prev view + prev model)
                         uniforms.prev_mvp       = proj * prev_view_matrix * monkey->get_prev_world_matrix();
 
                         uniforms.light_dir     = this->scene->light_direction;
@@ -767,7 +778,12 @@ int main(int argc, char* argv[])
         sys->process(delta_time);
         sys->render(delta_time);
 
-        post_process_motion_blur(rt_scene, post_canvas, job_system, blur_wait_group);
+        // FPS-scaled velocity (Chapman-style stability)
+        float target_dt = 1.0f / 60.0f;
+        float velocity_scale = (delta_time > 1e-6f) ? (target_dt / delta_time) : 1.0f;
+        velocity_scale = clampf(velocity_scale, 0.25f, 4.0f);
+
+        post_process_motion_blur(rt_scene, post_canvas, job_system, blur_wait_group, velocity_scale);
 
         screen_canvas->buffer() = post_canvas.buffer();
 
