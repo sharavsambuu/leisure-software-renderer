@@ -42,3 +42,6 @@ target_link_libraries(HelloMultiPass PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBR
 
 add_executable(HelloGlowingStar hello_glowing_star.cpp)
 target_link_libraries(HelloGlowingStar PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)
+
+add_executable(HelloCameraAndPerobjectMotionBlur hello_camera_and_perobject_motion_blur.cpp)
+target_link_libraries(HelloCameraAndPerobjectMotionBlur PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)
