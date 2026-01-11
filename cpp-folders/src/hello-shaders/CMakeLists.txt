@@ -43,3 +43,6 @@ target_link_libraries(HelloGreenNoise Threads::Threads ${SDL2_LIBRARIES} glm::gl
 
 add_executable(HelloMongolianFlag hello_mongolian_flag.cpp)
 target_link_libraries(HelloMongolianFlag Threads::Threads ${SDL2_LIBRARIES} glm::glm)
+
+add_executable(HelloWormHole hello_worm_hole.cpp)
+target_link_libraries(HelloWormHole Threads::Threads ${SDL2_LIBRARIES} glm::glm)
