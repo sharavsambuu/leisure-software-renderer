@@ -109,13 +109,13 @@
     sudo apt install libassimp-dev
     sudo ldconfig
 
-    If you windows 10, you can use WSL2 with Ubuntu 20.04LTS, and everything is almost same.
+    If you are using windows 10, you can use WSL2 with Ubuntu 20.04LTS, and everything is almost same.
 
 
 # Compilation steps
     cd cpp-folders && mkdir build && cd build
     cmake ..
-    make -j8
+    make -j20
     cd src/hello-pixel-primitives && ./HelloPixel
 
 

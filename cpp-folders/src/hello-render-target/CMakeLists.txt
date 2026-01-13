@@ -45,6 +45,3 @@ target_link_libraries(HelloGlowingStar PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LI
 
 add_executable(HelloCameraAndPerobjectMotionBlur hello_camera_and_perobject_motion_blur.cpp)
 target_link_libraries(HelloCameraAndPerobjectMotionBlur PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)
-
-add_executable(HelloShadowMapping hello_shadow_mapping.cpp)
-target_link_libraries(HelloShadowMapping PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)

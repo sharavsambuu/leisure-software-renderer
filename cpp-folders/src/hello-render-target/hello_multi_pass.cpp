@@ -57,8 +57,8 @@
 #define BASE_Y            0.0f
 
 // Faster motion
-#define WOBBLE_SPEED_MULT 2.65f
-#define ROTATE_SPEED_MULT 5.4f
+#define WOBBLE_SPEED_MULT 4.65f
+#define ROTATE_SPEED_MULT 10.4f
 
 // ===============================
 // JOHN CHAPMAN STYLE MOTION BLUR CONFIG

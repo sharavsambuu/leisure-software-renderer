@@ -64,7 +64,7 @@
 
 // Faster motion
 #define WOBBLE_SPEED_MULT 2.65f
-#define ROTATE_SPEED_MULT 5.4f
+#define ROTATE_SPEED_MULT 12.4f
 
 // ===============================
 // COMBINED MOTION BLUR CONFIG
@@ -363,8 +363,8 @@ public:
         this->rotate_speed_deg = (20.0f + 12.0f * float(idx % 4)) * ROTATE_SPEED_MULT;
 
         this->bob_speed = (0.6f + 0.25f * float(idx)) * WOBBLE_SPEED_MULT;
-        this->bob_amp   = 0.8f + 0.15f * float(idx % 3);
-        this->phase     = 1.37f * float(idx);
+        this->bob_amp   = 1.8f + 3.15f * float(idx % 3);
+        this->phase     = 4.37f * float(idx);
 
         this->time_accum      = 0.0f;
         this->rotation_angle  = 0.0f;

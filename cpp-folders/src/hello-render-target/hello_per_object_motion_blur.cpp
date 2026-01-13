@@ -273,8 +273,8 @@ public:
         this->prev_rotation     = 0.0f;
 
         this->time_accum        = 0.0f + (float)idx * 0.77f;
-        this->bob_speed         = 1.5f + 1.3f * (float)(idx % 5);
-        this->bob_amp           = 3.0f + 0.8f * (float)(idx % 3);
+        this->bob_speed         = 1.5f + 2.3f * (float)(idx % 5);
+        this->bob_amp           = 5.0f + 0.8f * (float)(idx % 3);
     }
 
     ~MonkeyObject() {}
