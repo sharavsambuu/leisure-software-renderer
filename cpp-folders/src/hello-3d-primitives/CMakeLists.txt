@@ -60,3 +60,6 @@ target_link_libraries(HelloPipelineOrenNayarShading PRIVATE ${SDL2_IMAGE_LIBRARI
 
 add_executable(HelloPipelineNormalZbufferDebug hello_pipeline_normal_zbuffer_debug.cpp)
 target_link_libraries(HelloPipelineNormalZbufferDebug PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)
+
+add_executable(HelloPipelineTextureMapping hello_pipeline_texture_mapping.cpp)
+target_link_libraries(HelloPipelineTextureMapping PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)
