@@ -52,3 +52,6 @@ target_link_libraries(HelloShadowMapping PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_
 
 add_executable(HelloWater hello_water.cpp)
 target_link_libraries(HelloWater PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)
+
+add_executable(HelloIblSkybox hello_ibl_skybox.cpp)
+target_link_libraries(HelloIblSkybox PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)
