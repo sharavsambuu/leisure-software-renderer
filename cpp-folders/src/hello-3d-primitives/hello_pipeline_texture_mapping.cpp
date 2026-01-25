@@ -361,12 +361,8 @@ public:
         for (int px = (int)bboxmin.x; px <= (int)bboxmax.x; px++) {
             for (int py = (int)bboxmin.y; py <= (int)bboxmax.y; py++) {
 
-                // header barycentric returns (v,w,u) but raster assumes (u,v,w).
-                glm::vec3 bc_raw = shs::Canvas::barycentric_coordinate(glm::vec2(px + 0.5f, py + 0.5f), v2d);
-                if (bc_raw.x < 0 || bc_raw.y < 0 || bc_raw.z < 0) continue;
-
-                // Remap to (u,v,w) for vertex0/1/2
-                glm::vec3 bc(bc_raw.z, bc_raw.x, bc_raw.y);
+                glm::vec3 bc = shs::Canvas::barycentric_coordinate(glm::vec2(px + 0.5f, py + 0.5f), v2d);
+                if (bc.x < 0 || bc.y < 0 || bc.z < 0) continue;
 
                 // Perspective-correct denominator
                 float invw_sum = bc.x * invw[0] + bc.y * invw[1] + bc.z * invw[2];

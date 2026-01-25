@@ -388,7 +388,8 @@ namespace shs
             float w = (d00 * d21 - d01 * d20) / denom;
             float u = 1.0f - v - w;
 
-            return glm::vec3(v, w, u);
+            //return glm::vec3(v, w, u);
+            return glm::vec3(u, v, w);
         }
 
         // ======================================================
@@ -571,9 +572,8 @@ namespace shs
             glm::vec3 screen_coord;
             screen_coord.x = (ndc_coord.x + 1.0f) * 0.5f * screen_width;
             screen_coord.y = (1.0f - ndc_coord.y) * 0.5f * screen_height;
-            // Хуучин демог эвдэхгүй тулд хадгалсан код.
-            // Дараагаар нь depth хийсвэрлэлт дээрээ бүрэн тохирсон үедээ ndc_coord.z рүү шилжих боломжтой 
-            screen_coord.z = clip_coord.w;
+            //screen_coord.z = clip_coord.w;
+            screen_coord.z = ndc_coord.z;
             return screen_coord;
         }
 
