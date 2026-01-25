@@ -301,6 +301,31 @@ namespace shs
             }
         }
 
+        static void draw_circle_poly(shs::Canvas &canvas, int cx, int cy, int r, int segments, shs::Pixel pixel) {
+            if (r <= 0) return;
+            if (segments < 3) segments = 3;
+
+            shs::Color color = pixel.get_color();
+
+            const double two_pi = 6.283185307179586;
+            const double step   = two_pi / (double)segments;
+
+            int x_prev = cx + (int)std::lround((double)r * std::cos(0.0));
+            int y_prev = cy + (int)std::lround((double)r * std::sin(0.0));
+
+            for (int i = 1; i <= segments; i++) {
+                double a = step * (double)i;
+                int x = cx + (int)std::lround((double)r * std::cos(a));
+                int y = cy + (int)std::lround((double)r * std::sin(a));
+
+                shs::Canvas::draw_line(canvas, x_prev, y_prev, x, y, shs::Pixel(color));
+
+                x_prev = x;
+                y_prev = y;
+            }
+        }
+
+
         inline static glm::vec3 barycentric_coordinate(const glm::vec2 &P, const std::vector<glm::vec2> &triangle_vertices)
         {
             const glm::vec2 &A = triangle_vertices[0];

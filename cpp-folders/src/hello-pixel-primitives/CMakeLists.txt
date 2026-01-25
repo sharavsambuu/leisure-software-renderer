@@ -24,15 +24,14 @@ set(CMAKE_CXX_FLAGS_DEBUG "-g")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
 
-
 add_executable(HelloPixel hello_pixel.cpp)
 target_link_libraries(HelloPixel PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES})
-
 
 add_executable(HelloLine hello_line.cpp)
 target_link_libraries(HelloLine PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES})
 
-
 add_executable(HelloTriangle hello_triangle.cpp)
 target_link_libraries(HelloTriangle Threads::Threads ${SDL2_LIBRARIES} glm::glm)
 
+add_executable(HelloCirclePoly hello_circle_poly.cpp)
+target_link_libraries(HelloCirclePoly Threads::Threads ${SDL2_LIBRARIES} glm::glm)
