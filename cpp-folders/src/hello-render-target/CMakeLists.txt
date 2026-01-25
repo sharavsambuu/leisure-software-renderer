@@ -27,6 +27,7 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
 # 3D model wireframe rendering related commands
 file(COPY obj DESTINATION "${CMAKE_CURRENT_BINARY_DIR}")
+file(COPY images DESTINATION "${CMAKE_CURRENT_BINARY_DIR}")
 
 add_executable(HelloPingPong hello_ping_pong.cpp)
 target_link_libraries(HelloPingPong PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)
