@@ -1,10 +1,13 @@
 /*
     3D Software Renderer - Threaded Blinn-Phong + Texture Mapping + OBJ UV
 
-    3D Model credit :
-        Subaru by mednios 
-        https://free3d.com/3d-model/my-subaru-43836.html
+    - my header returns (v, w, u) barycentric but raster assumes (u, v, w).
+    - Depth should use NDC z, not clip.w.
+    - UV and world_pos interpolation should be perspective-correct using 1/w.
 
+    3D Model credit :
+        Subaru by mednios
+        https://free3d.com/3d-model/my-subaru-43836.html
 */
 
 #include <string>
@@ -276,7 +279,6 @@ public:
 
         this->light_direction = glm::normalize(glm::vec3(-1.0f, -0.4f, 1.0f));
 
-        // Subaru-г камерын өмнө байрлуулах
         this->scene_objects.push_back(
             new SubaruObject(glm::vec3(0.0f, 0.0f, 25.0f), glm::vec3(0.08f), shs::Color{200, 200, 200, 255}, albedo)
         );
@@ -325,10 +327,19 @@ public:
         // [VERTEX STAGE]
         shs::Varyings vout[3];
         glm::vec3 screen_coords[3];
+        glm::vec3 ndc_coords[3];
+        float invw[3];
 
         for (int i = 0; i < 3; i++) {
             vout[i] = vertex_shader(vertices[i], normals[i], uvs[i]);
+
+            // screen x/y from helper
             screen_coords[i] = shs::Canvas::clip_to_screen(vout[i].position, canvas.get_width(), canvas.get_height());
+
+            // correct NDC + invw
+            float w = vout[i].position.w;
+            invw[i] = 1.0f / w;
+            ndc_coords[i] = glm::vec3(vout[i].position) * invw[i]; // (x/w, y/w, z/w)
         }
 
         // [RASTER PREP] - Bounding Box Clamped to Tile
@@ -339,7 +350,7 @@ public:
         for (int i = 0; i < 3; i++) {
             bboxmin = glm::max(glm::vec2(tile_min), glm::min(bboxmin, v2d[i]));
             bboxmax = glm::min(glm::vec2(tile_max), glm::max(bboxmax, v2d[i]));
-        }        
+        }
 
         if (bboxmin.x > bboxmax.x || bboxmin.y > bboxmax.y) return;
 
@@ -350,17 +361,48 @@ public:
         for (int px = (int)bboxmin.x; px <= (int)bboxmax.x; px++) {
             for (int py = (int)bboxmin.y; py <= (int)bboxmax.y; py++) {
 
-                glm::vec3 bc = shs::Canvas::barycentric_coordinate(glm::vec2(px + 0.5f, py + 0.5f), v2d);
-                if (bc.x < 0 || bc.y < 0 || bc.z < 0) continue;
+                // header barycentric returns (v,w,u) but raster assumes (u,v,w).
+                glm::vec3 bc_raw = shs::Canvas::barycentric_coordinate(glm::vec2(px + 0.5f, py + 0.5f), v2d);
+                if (bc_raw.x < 0 || bc_raw.y < 0 || bc_raw.z < 0) continue;
 
-                float z = bc.x * screen_coords[0].z + bc.y * screen_coords[1].z + bc.z * screen_coords[2].z;
-                if (z_buffer.test_and_set_depth(px, py, z)) {
+                // Remap to (u,v,w) for vertex0/1/2
+                glm::vec3 bc(bc_raw.z, bc_raw.x, bc_raw.y);
+
+                // Perspective-correct denominator
+                float invw_sum = bc.x * invw[0] + bc.y * invw[1] + bc.z * invw[2];
+                if (invw_sum <= 0.0f) continue;
+
+                // Depth (NDC z), perspective-correct
+                float z_over_w = bc.x * (ndc_coords[0].z * invw[0]) +
+                                 bc.y * (ndc_coords[1].z * invw[1]) +
+                                 bc.z * (ndc_coords[2].z * invw[2]);
+                float z_ndc = z_over_w / invw_sum; // expected ~[0,1] for LH
+
+                if (z_buffer.test_and_set_depth(px, py, z_ndc)) {
 
                     shs::Varyings interpolated;
-                    interpolated.normal    = glm::normalize(bc.x * vout[0].normal    + bc.y * vout[1].normal    + bc.z * vout[2].normal);
-                    interpolated.world_pos = bc.x * vout[0].world_pos + bc.y * vout[1].world_pos + bc.z * vout[2].world_pos;
-                    interpolated.uv        = bc.x * vout[0].uv + bc.y * vout[1].uv + bc.z * vout[2].uv;
-                    
+
+                    // Normal
+                    // affine then normalize
+                    interpolated.normal =
+                        glm::normalize(bc.x * vout[0].normal + bc.y * vout[1].normal + bc.z * vout[2].normal);
+
+                    // World pos
+                    // perspective-correct (stabilizes lighting)
+                    glm::vec3 wp_over_w =
+                        bc.x * (vout[0].world_pos * invw[0]) +
+                        bc.y * (vout[1].world_pos * invw[1]) +
+                        bc.z * (vout[2].world_pos * invw[2]);
+                    interpolated.world_pos = wp_over_w / invw_sum;
+
+                    // UV
+                    // perspective-correct 
+                    glm::vec2 uv_over_w =
+                        bc.x * (vout[0].uv * invw[0]) +
+                        bc.y * (vout[1].uv * invw[1]) +
+                        bc.z * (vout[2].uv * invw[2]);
+                    interpolated.uv = uv_over_w / invw_sum;
+
                     canvas.draw_pixel_screen_space(px, py, fragment_shader(interpolated));
                 }
             }
@@ -400,13 +442,13 @@ public:
                         if (!car) continue;
 
                         Uniforms uniforms;
-                        uniforms.model      = car->get_world_matrix();
-                        uniforms.mvp        = proj * view * uniforms.model;
-                        uniforms.light_dir  = this->scene->light_direction;
-                        uniforms.camera_pos = this->scene->viewer->position;
-                        uniforms.color      = car->color;
+                        uniforms.model       = car->get_world_matrix();
+                        uniforms.mvp         = proj * view * uniforms.model;
+                        uniforms.light_dir   = this->scene->light_direction;
+                        uniforms.camera_pos  = this->scene->viewer->position;
+                        uniforms.color       = car->color;
 
-                        uniforms.albedo     = car->albedo;
+                        uniforms.albedo      = car->albedo;
                         uniforms.use_texture = (car->albedo && car->albedo->valid());
 
                         const auto& verts = car->geometry->triangles;
@@ -519,7 +561,6 @@ int main(int argc, char* argv[])
     SDL_Surface *main_sdlsurface = main_canvas->create_sdl_surface();
     SDL_Texture *screen_texture  = SDL_CreateTextureFromSurface(renderer, main_sdlsurface);
 
-    // Texture load (BMP)
     shs::Texture2D car_tex = shs::load_texture_sdl_image("./obj/subaru/SUBARU1_M.bmp", true);
 
     Viewer          *viewer      = new Viewer(glm::vec3(0.0f, 5.0f, -35.0f), 50.0f);

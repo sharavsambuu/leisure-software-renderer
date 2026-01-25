@@ -180,6 +180,7 @@
 <p><img width="437" height="317" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/pseudo-lens-flare.png"></p>
 <p><img width="640" height="360" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/mongolian-flag.png"></p>
 <p><img width="320" height="320" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/fbm.png"></p>
+<p><img width="460" height="360" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/subaru.png"></p>
 
 
 
