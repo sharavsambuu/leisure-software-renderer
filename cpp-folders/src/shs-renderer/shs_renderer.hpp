@@ -148,6 +148,45 @@ namespace shs
     using ColorBuffer = Buffer<shs::Color>;
     using DepthBuffer = Buffer<float>;
 
+
+    // TEXTURE2D (SDL_image decode only) + BLIT
+    // - Texture2D нь Canvas-тай адил coordinate: (0,0) bottom-left, +Y up
+    // - SDL surface (top-left) -> Texture2D (bottom-left) нэг удаа flip хийгээд хадгална
+
+    namespace Tex
+    {
+        enum BlendMode : int {
+            BLEND_NONE  = 0,
+            BLEND_ALPHA = 1,
+        };
+
+        enum FilterMode : int {
+            FILTER_NEAREST  = 0,
+            FILTER_BILINEAR = 1,
+        };
+    }
+
+    struct Texture2D
+    {
+        int w = 0;
+        int h = 0;
+        shs::Buffer<shs::Color> texels;
+
+        Texture2D() {}
+        Texture2D(int width, int height, shs::Color clear = {0,0,0,0})
+            : w(width), h(height), texels(width, height, clear) {}
+
+        inline int width()  const { return w; }
+        inline int height() const { return h; }
+
+        inline bool valid() const { return (w > 0 && h > 0 && texels.size() > 0); }
+
+        inline shs::Color get(int x, int y) const {
+            if (!texels.in_bounds(x,y)) return {0,0,0,0};
+            return texels.at(x,y);
+        }
+    };
+
     // ==========================================
     // CORE CLASSES
     // ==========================================
@@ -631,6 +670,153 @@ namespace shs
     // RENDER TARGET (Color + Depth багцалсан)
     using RenderTarget = shs::RT_ColorDepth; 
 
+
+    // SDL_image ашиглан decode хийгээд Texture2D болгон хувиргана.
+    // flip_y=true бол SDL (top-left) -> Texture (bottom-left) хөрвүүлэлт хийнэ.
+    static inline shs::Texture2D load_texture_sdl_image(const std::string &path, bool flip_y = true)
+    {
+        SDL_Surface *loaded = IMG_Load(path.c_str());
+        if (!loaded) {
+            std::cout << "IMG_Load failed: " << path << " | " << IMG_GetError() << std::endl;
+            return shs::Texture2D();
+        }
+
+        SDL_Surface *converted = SDL_ConvertSurfaceFormat(loaded, SDL_PIXELFORMAT_RGBA32, 0);
+        SDL_FreeSurface(loaded);
+        if (!converted) {
+            std::cout << "SDL_ConvertSurfaceFormat failed: " << path << " | " << SDL_GetError() << std::endl;
+            return shs::Texture2D();
+        }
+
+        int w = converted->w;
+        int h = converted->h;
+
+        shs::Texture2D tex(w, h, shs::Color{0,0,0,0});
+
+        uint8_t *src_pixels = (uint8_t*)converted->pixels;
+        int pitch = converted->pitch;
+
+        for (int y = 0; y < h; ++y) {
+            int ty = flip_y ? (h - 1 - y) : y;
+
+            uint32_t *row = (uint32_t*)(src_pixels + y * pitch);
+            for (int x = 0; x < w; ++x) {
+                uint8_t r,g,b,a;
+                SDL_GetRGBA(row[x], converted->format, &r, &g, &b, &a);
+                tex.texels.at(x, ty) = shs::Color{r,g,b,a};
+            }
+        }
+
+        SDL_FreeSurface(converted);
+        return tex;
+    }
+
+    // integer clamp
+    static inline int clamp_i(int v, int lo, int hi) {
+        return (v < lo) ? lo : (v > hi ? hi : v);
+    }
+
+    // Alpha blend
+    static inline shs::Color alpha_blend(const shs::Color &dst, const shs::Color &src, uint8_t opacity)
+    {
+        // final_alpha = src.a * opacity / 255
+        uint32_t a = (uint32_t)src.a * (uint32_t)opacity;
+        uint32_t fa = a / 255; // 0..255
+
+        if (fa == 0) return dst;
+        if (fa == 255) return shs::Color{src.r, src.g, src.b, 255};
+
+        uint32_t inv = 255 - fa;
+
+        shs::Color out;
+        out.r = (uint8_t)((src.r * fa + dst.r * inv) / 255);
+        out.g = (uint8_t)((src.g * fa + dst.g * inv) / 255);
+        out.b = (uint8_t)((src.b * fa + dst.b * inv) / 255);
+        out.a = 255;
+        return out;
+    }
+
+    // BLIT
+    // - src_w/src_h == -1 => бүтэн texture ашиглана
+    // - dst_w/dst_h <= 0  => 1:1 (dst хэмжээ = src хэмжээ)
+    // - blend/filter нь optional
+    static inline void image_blit(
+        shs::Canvas &dst,
+        const shs::Texture2D &src,
+        int dst_x, int dst_y,
+
+        int src_x = 0, int src_y = 0, int src_w = -1, int src_h = -1,
+        int dst_w = -1, int dst_h = -1,
+
+        uint8_t opacity = 255,
+        int blend_mode = shs::Tex::BLEND_ALPHA,
+        int filter_mode = shs::Tex::FILTER_NEAREST
+    ){
+        (void)filter_mode; // nearest only
+
+        if (!src.valid()) return;
+
+        // src rect default
+        if (src_w < 0) src_w = src.w;
+        if (src_h < 0) src_h = src.h;
+
+        // clamp src rect inside texture
+        if (src_x < 0) { src_w += src_x; src_x = 0; }
+        if (src_y < 0) { src_h += src_y; src_y = 0; }
+        if (src_x + src_w > src.w) src_w = src.w - src_x;
+        if (src_y + src_h > src.h) src_h = src.h - src_y;
+        if (src_w <= 0 || src_h <= 0) return;
+
+        // dst size default = 1:1
+        if (dst_w <= 0) dst_w = src_w;
+        if (dst_h <= 0) dst_h = src_h;
+
+        // dst clipping
+        int x0 = dst_x;
+        int y0 = dst_y;
+        int x1 = dst_x + dst_w; // exclusive
+        int y1 = dst_y + dst_h; // exclusive
+
+        int clip_x0 = 0;
+        int clip_y0 = 0;
+        int clip_x1 = dst.get_width();
+        int clip_y1 = dst.get_height();
+
+        int draw_x0 = clamp_i(x0, clip_x0, clip_x1);
+        int draw_y0 = clamp_i(y0, clip_y0, clip_y1);
+        int draw_x1 = clamp_i(x1, clip_x0, clip_x1);
+        int draw_y1 = clamp_i(y1, clip_y0, clip_y1);
+
+        if (draw_x0 >= draw_x1 || draw_y0 >= draw_y1) return;
+
+        // nearest scale mapping
+        // sx = src_x + ( (dx - dst_x) * src_w ) / dst_w
+        // sy = src_y + ( (dy - dst_y) * src_h ) / dst_h
+        for (int y = draw_y0; y < draw_y1; ++y) {
+            int sy = src_y + (int)(((int64_t)(y - dst_y) * (int64_t)src_h) / (int64_t)dst_h);
+            if (sy < src_y) sy = src_y;
+            if (sy >= src_y + src_h) sy = src_y + src_h - 1;
+
+            for (int x = draw_x0; x < draw_x1; ++x) {
+                int sx = src_x + (int)(((int64_t)(x - dst_x) * (int64_t)src_w) / (int64_t)dst_w);
+                if (sx < src_x) sx = src_x;
+                if (sx >= src_x + src_w) sx = src_x + src_w - 1;
+
+                shs::Color sc = src.texels.at(sx, sy);
+                if (blend_mode == shs::Tex::BLEND_NONE || sc.a == 255) {
+                    if (opacity == 255) dst.draw_pixel(x, y, sc);
+                    else {
+                        shs::Color dc = dst.get_color_at(x, y);
+                        shs::Color s2 = sc; s2.a = (uint8_t)((uint32_t)sc.a * (uint32_t)opacity / 255);
+                        dst.draw_pixel(x, y, alpha_blend(dc, s2, 255));
+                    }
+                } else {
+                    shs::Color dc = dst.get_color_at(x, y);
+                    dst.draw_pixel(x, y, alpha_blend(dc, sc, opacity));
+                }
+            }
+        }
+    }
 
     // ==========================================
     // 3D SCENE CLASSES

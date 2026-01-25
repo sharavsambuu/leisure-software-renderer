@@ -23,6 +23,7 @@ set(CMAKE_CXX_FLAGS "-Wall -Wextra")
 set(CMAKE_CXX_FLAGS_DEBUG "-g")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
+file(COPY images DESTINATION "${CMAKE_CURRENT_BINARY_DIR}")
 
 add_executable(HelloPixel hello_pixel.cpp)
 target_link_libraries(HelloPixel PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES})
@@ -38,3 +39,6 @@ target_link_libraries(HelloCirclePoly Threads::Threads ${SDL2_LIBRARIES} glm::gl
 
 add_executable(HelloWatch hello_watch.cpp)
 target_link_libraries(HelloWatch Threads::Threads ${SDL2_LIBRARIES} glm::glm)
+
+add_executable(HelloTexture hello_texture.cpp)
+target_link_libraries(HelloTexture Threads::Threads ${SDL2_LIBRARIES} glm::glm ${SDL2_IMAGE_LIBRARIES})
