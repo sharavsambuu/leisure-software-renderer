@@ -181,6 +181,7 @@
 <p><img width="640" height="360" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/mongolian-flag.png"></p>
 <p><img width="320" height="320" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/fbm.png"></p>
 <p><img width="460" height="360" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/subaru.png"></p>
+<p><img width="790" height="590" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/shadow-mapping.png"></p>
 
 
 
