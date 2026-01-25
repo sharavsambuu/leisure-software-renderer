@@ -35,3 +35,6 @@ target_link_libraries(HelloTriangle Threads::Threads ${SDL2_LIBRARIES} glm::glm)
 
 add_executable(HelloCirclePoly hello_circle_poly.cpp)
 target_link_libraries(HelloCirclePoly Threads::Threads ${SDL2_LIBRARIES} glm::glm)
+
+add_executable(HelloWatch hello_watch.cpp)
+target_link_libraries(HelloWatch Threads::Threads ${SDL2_LIBRARIES} glm::glm)
