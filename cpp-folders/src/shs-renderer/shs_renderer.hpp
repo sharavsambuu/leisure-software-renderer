@@ -566,6 +566,7 @@ namespace shs
             }
         }
 
+        /*
         inline static glm::vec3 clip_to_screen(const glm::vec4 &clip_coord, int screen_width, int screen_height)
         {
             glm::vec3 ndc_coord = glm::vec3(clip_coord) / clip_coord.w;
@@ -575,7 +576,23 @@ namespace shs
             //screen_coord.z = clip_coord.w;
             screen_coord.z = ndc_coord.z;
             return screen_coord;
+        }*/
+
+        inline static glm::vec3 clip_to_screen(const glm::vec4 &clip_coord, int screen_width, int screen_height)
+        {
+            glm::vec3 ndc_coord = glm::vec3(clip_coord) / clip_coord.w;
+
+            glm::vec3 screen_coord;
+            // Map NDC [-1,+1] -> pixel [0..W-1], [0..H-1] (origin top-left, y down)
+            screen_coord.x = (ndc_coord.x + 1.0f) * 0.5f * float(screen_width  - 1);
+            screen_coord.y = (1.0f - ndc_coord.y) * 0.5f * float(screen_height - 1);
+
+            // Keep z in NDC (LH typically 0..1)
+            screen_coord.z = ndc_coord.z;
+
+            return screen_coord;
         }
+
 
         static void copy_to_SDLSurface(SDL_Surface *surface, shs::Canvas *canvas)
         {
