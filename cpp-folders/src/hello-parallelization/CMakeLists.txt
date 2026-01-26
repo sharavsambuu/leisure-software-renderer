@@ -64,3 +64,13 @@ target_link_libraries(HelloThreadJobSystemLocklessPriority Threads::Threads )
 
 add_executable(HelloJobSystemGraph hello_job_system_graph.cpp)
 target_link_libraries(HelloJobSystemGraph Threads::Threads)
+
+
+add_executable(HelloXsimdThreads hello_xsimd_threads.cpp)
+target_compile_features(HelloXsimdThreads PRIVATE cxx_std_20)
+target_link_libraries(HelloXsimdThreads PRIVATE xsimd)
+if (MSVC)
+  target_compile_options(HelloXsimdThreads PRIVATE /O2 /fp:fast)
+else()
+  target_compile_options(HelloXsimdThreads PRIVATE -O3 -ffast-math)
+endif()

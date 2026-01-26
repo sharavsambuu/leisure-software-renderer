@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.28)
 project("leisure-software-renderer")
 
 set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake/sdl2)
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake/assimp)
@@ -27,6 +28,16 @@ FetchContent_Declare(
     GIT_TAG        main
 )
 FetchContent_MakeAvailable(entt)
+
+message(STATUS "Fetching XSIMD")
+FetchContent_Declare(
+  xsimd
+  GIT_REPOSITORY https://github.com/xtensor-stack/xsimd.git
+  GIT_TAG 14.0.0
+  GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(xsimd)
+
 
 #
 # Too slow to fetch on my machine
