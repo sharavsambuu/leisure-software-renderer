@@ -31,11 +31,24 @@ file(COPY obj DESTINATION "${CMAKE_CURRENT_BINARY_DIR}")
 add_executable(HelloWireframe hello_wireframe.cpp)
 target_link_libraries(HelloWireframe PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)
 
+
+
 add_executable(Hello3DObject hello_3d_object.cpp)
 target_link_libraries(Hello3DObject PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)
 
+
 add_executable(HelloFlatShading hello_flat_shading.cpp)
 target_link_libraries(HelloFlatShading PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)
+
+add_executable(HelloFlatShadingXSIMD hello_flat_shading_xsimd.cpp)
+target_compile_features(HelloFlatShadingXSIMD PRIVATE cxx_std_20)
+target_link_libraries(HelloFlatShadingXSIMD PRIVATE xsimd ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)
+if (MSVC)
+  target_compile_options(HelloFlatShadingXSIMD PRIVATE /O2 /fp:fast /arch:AVX2)
+else()
+  target_compile_options(HelloFlatShadingXSIMD PRIVATE -O3 -ffast-math -mavx2 -mfma)
+endif()
+
 
 add_executable(HelloPipelineFlatShading hello_pipeline_flat_shading.cpp)
 target_link_libraries(HelloPipelineFlatShading PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)
