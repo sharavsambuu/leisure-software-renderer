@@ -183,7 +183,7 @@
 <p><img width="460" height="360" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/subaru.png"></p>
 <p><img width="790" height="590" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/shadow-mapping.png"></p>
 <p><img width="800" height="600" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/water-demo.png"></p>
-<p><img width="800" height="600" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/image-based-lighting.png"></p>
+<p><img width="1200" height="900" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/image-based-lighting.png"></p>
 
 
 

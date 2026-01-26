@@ -1,6 +1,10 @@
 /*
     IMAGE BASED LIGHTING WITH SKYBOX + SHADOW MAPPING + MOTION BLUR + Blinn-Phong
 
+    - PASS2 Motion Blur дээр per-pixel glm::inverse() хийдэг байсан (маш удаан) => frame тутам 1 удаа inverse хийнэ
+    - Motion blur pass дээр Canvas::get_color_at / draw_pixel олон дуудалтыг raw buffer-оор орлуулж overhead бууруулна
+    - MotionBuffer/depth дээр raw индексээр уншиж бичнэ (tile дотор bounds баталгаатай)
+
     Координат:
     - 3D          : LH, +Z forward, +Y up, +X right
     - Screen      : y down
@@ -44,9 +48,7 @@
 //#define CANVAS_HEIGHT     480
 //#define CANVAS_WIDTH      380
 //#define CANVAS_HEIGHT     280
-
 #define MOUSE_SENSITIVITY 0.2f
-
 
 #define THREAD_COUNT      20
 #define TILE_SIZE_X       160
@@ -629,15 +631,13 @@ struct FloorPlane
                 glm::vec3 p01(x0, y, z1);
 
                 // cell бүрт 2 ширхэг гурвалжин
-                // tri0: p00 p10 p11
-                // tri1: p00 p11 p01
                 verts.push_back(p00); verts.push_back(p10); verts.push_back(p11);
                 verts.push_back(p00); verts.push_back(p11); verts.push_back(p01);
 
                 norms.push_back(n); norms.push_back(n); norms.push_back(n);
                 norms.push_back(n); norms.push_back(n); norms.push_back(n);
 
-                // UV
+                // UV 
                 glm::vec2 uv00(tx0, tz0);
                 glm::vec2 uv10(tx1, tz0);
                 glm::vec2 uv11(tx1, tz1);
@@ -661,6 +661,12 @@ struct Uniforms
     glm::mat4 model;
     glm::mat4 view;
 
+    // -------------------------
+    // ОПТИМ: per-vertex inverse() устгахын тулд per-object урьдчилж бодно
+    // -------------------------
+    glm::mat4 mv;            // view * model
+    glm::mat3 normal_mat;    // transpose(inverse(mat3(model))) (эсвэл identity)
+
     glm::mat4 light_vp;
 
     glm::vec3 light_dir_world;
@@ -678,10 +684,10 @@ struct Uniforms
     const CubeMap *sky = nullptr;
 
     // IBL knobs
-    float ibl_ambient = 0.25f;     // ambient-ийн sky tint хэмжээ
-    float ibl_refl    = 0.35f;     // reflection хүч
-    float ibl_f0      = 0.04f;     // dielectric суурь reflectivity
-    float ibl_refl_mix = 1.0f;     // per-object multiplier
+    float ibl_ambient = 0.25f;
+    float ibl_refl    = 0.35f;
+    float ibl_f0      = 0.04f;
+    float ibl_refl_mix = 1.0f;
 };
 
 struct VaryingsFull
@@ -705,14 +711,20 @@ static VaryingsFull vertex_shader_full(
     const Uniforms&  u)
 {
     VaryingsFull out;
+
     out.position      = u.mvp * glm::vec4(aPos, 1.0f);
     out.prev_position = u.prev_mvp * glm::vec4(aPos, 1.0f);
 
-    out.world_pos     = glm::vec3(u.model * glm::vec4(aPos, 1.0f));
-    out.normal        = glm::normalize(glm::mat3(glm::transpose(glm::inverse(u.model))) * aNormal);
+    glm::vec4 world_h = u.model * glm::vec4(aPos, 1.0f);
+    out.world_pos     = glm::vec3(world_h);
+
+    // ОПТИМ: normal_mat нь per-object урьдчилж бодогдоно
+    out.normal        = glm::normalize(u.normal_mat * aNormal);
+
     out.uv            = aUV;
 
-    glm::vec4 view_pos = u.view * u.model * glm::vec4(aPos, 1.0f);
+    // ОПТИМ: mv = view * model нь per-object урьдчилж бодогдоно
+    glm::vec4 view_pos = u.mv * glm::vec4(aPos, 1.0f);
     out.view_z = view_pos.z;
 
     return out;
@@ -861,9 +873,6 @@ static shs::Color fragment_shader_full(const VaryingsFull& in, const Uniforms& u
 
     // --------------------------------------
     // Final combine (shadow: зөвхөн direct light дээр)
-    // - ambient        : sky-tinted
-    // - direct         : diffuse + specular (shadow factor)
-    // - ibl reflection : shadow-оос хамаарахгүй (environment light)
     // --------------------------------------
     glm::vec3 direct = shadow * (diffuse * baseColor + specular);
     glm::vec3 amb    = ambient * baseColor;
@@ -963,8 +972,6 @@ static inline VaryingsShadow shadow_vertex_shader(const glm::vec3& aPos, const U
 
 // ==========================================
 // SHADOW MAP RASTER (tiled)
-// - light clip -> screen mapping (shadow map space) ашиглана
-// - depth нь ndc z (0..1)
 // ==========================================
 
 static inline glm::vec3 clip_to_shadow_screen(const glm::vec4& clip, int W, int H)
@@ -1025,8 +1032,6 @@ static void draw_triangle_tile_shadow(
 
 // ==========================================
 // CAMERA PASS RASTER: Color + Depth(view_z) + Motion(full) + Shadow
-// - raster нь screen coords (y down) дээр ажиллана
-// - depth/motion нь Canvas coords (y up) дээр хадгална
 // ==========================================
 
 static inline glm::vec2 clip_to_screen_xy(const glm::vec4& clip, int w, int h)
@@ -1244,12 +1249,13 @@ static inline glm::vec2 ndc_to_screen_xy(const glm::vec3& ndc, int W, int H)
     return glm::vec2(sx, sy);
 }
 
-static inline glm::vec2 compute_camera_velocity_canvas(
+static inline glm::vec2 compute_camera_velocity_canvas_fast(
     int x, int y,
     float view_z,
     int W, int H,
     const glm::mat4& curr_viewproj,
     const glm::mat4& prev_viewproj,
+    const glm::mat4& inv_curr_viewproj,   // frame тутам 1 удаа тооцоод энд дамжуулна
     const glm::mat4& curr_proj)
 {
     if (view_z == std::numeric_limits<float>::max()) return glm::vec2(0.0f);
@@ -1259,8 +1265,8 @@ static inline glm::vec2 compute_camera_velocity_canvas(
 
     glm::vec4 clip_curr(ndc_xy.x, ndc_xy.y, ndc_z, 1.0f);
 
-    glm::mat4 inv_curr_vp = glm::inverse(curr_viewproj);
-    glm::vec4 world_h = inv_curr_vp * clip_curr;
+    // энд glm::inverse хийхгүй
+    glm::vec4 world_h = inv_curr_viewproj * clip_curr;
     if (std::abs(world_h.w) < 1e-6f) return glm::vec2(0.0f);
     glm::vec3 world = glm::vec3(world_h) / world_h.w;
 
@@ -1313,11 +1319,21 @@ static void combined_motion_blur_pass(
     int W = src.get_width();
     int H = src.get_height();
 
+    // Матрицууд (frame тутам 1 удаа)
     glm::mat4 curr_vp = curr_proj * curr_view;
     glm::mat4 prev_vp = prev_proj * prev_view;
 
+    // хамгийн үнэтэй inverse-г frame тутам 1 удаа
+    glm::mat4 inv_curr_vp = glm::inverse(curr_vp);
+
     int cols = (W + TILE_SIZE_X - 1) / TILE_SIZE_X;
     int rows = (H + TILE_SIZE_Y - 1) / TILE_SIZE_Y;
+
+    // Raw буферүүд (Canvas: y up)
+    const shs::Color* src_raw  = src.buffer().raw();
+    shs::Color*       dst_raw  = dst.buffer().raw();
+    const float*      z_raw    = depth.buffer().raw(); // depth нь Canvas coords дээр хадгалж байна
+    const glm::vec2*  v_raw    = v_full_buf.vel.data();
 
     wg.reset();
 
@@ -1325,29 +1341,31 @@ static void combined_motion_blur_pass(
         for (int tx = 0; tx < cols; tx++) {
 
             wg.add(1);
-            job_system->submit({[&, tx, ty]() {
+            job_system->submit({[=, &wg]() {
 
                 int x0 = tx * TILE_SIZE_X;
                 int y0 = ty * TILE_SIZE_Y;
                 int x1 = std::min(x0 + TILE_SIZE_X, W);
                 int y1 = std::min(y0 + TILE_SIZE_Y, H);
 
-                auto sample = [&](int sx, int sy) -> shs::Color {
+                auto sample_fast = [&](int sx, int sy) -> shs::Color {
                     sx = clampi(sx, 0, W - 1);
                     sy = clampi(sy, 0, H - 1);
-                    return src.get_color_at(sx, sy);
+                    return src_raw[sy * W + sx];
                 };
 
                 for (int y = y0; y < y1; y++) {
+                    int row_off = y * W;
+
                     for (int x = x0; x < x1; x++) {
 
-                        float vz = depth.get_depth_at(x, y);
+                        float vz = z_raw[row_off + x];
 
-                        glm::vec2 v_cam = compute_camera_velocity_canvas(
-                            x, y, vz, W, H, curr_vp, prev_vp, curr_proj
+                        glm::vec2 v_cam = compute_camera_velocity_canvas_fast(
+                            x, y, vz, W, H, curr_vp, prev_vp, inv_curr_vp, curr_proj
                         );
 
-                        glm::vec2 v_full = v_full_buf.get(x, y);
+                        glm::vec2 v_full = v_raw[row_off + x];
                         glm::vec2 v_obj_only = v_full - v_cam;
 
                         glm::vec2 v_total = w_obj * v_obj_only + w_cam * v_cam;
@@ -1364,7 +1382,7 @@ static void combined_motion_blur_pass(
                         }
 
                         if (len < 0.001f || samples <= 1) {
-                            dst.draw_pixel(x, y, src.get_color_at(x, y));
+                            dst_raw[row_off + x] = src_raw[row_off + x];
                             continue;
                         }
 
@@ -1376,13 +1394,14 @@ static void combined_motion_blur_pass(
                         for (int i = 0; i < samples; i++) {
                             float t = (samples == 1) ? 0.0f : (float(i) / float(samples - 1));
                             float a = (t - 0.5f) * 2.0f; // -1..+1
+
                             glm::vec2 p = glm::vec2(float(x), float(y)) + dir * (a * len);
 
                             int sx = clampi((int)std::round(p.x), 0, W - 1);
                             int sy = clampi((int)std::round(p.y), 0, H - 1);
 
                             float wgt = 1.0f - std::abs(a);
-                            shs::Color c = sample(sx, sy);
+                            shs::Color c = sample_fast(sx, sy);
 
                             r += wgt * float(c.r);
                             g += wgt * float(c.g);
@@ -1392,12 +1411,12 @@ static void combined_motion_blur_pass(
 
                         if (wsum < 0.0001f) wsum = 1.0f;
 
-                        dst.draw_pixel(x, y, shs::Color{
+                        dst_raw[row_off + x] = shs::Color{
                             (uint8_t)clampi((int)(r / wsum), 0, 255),
                             (uint8_t)clampi((int)(g / wsum), 0, 255),
                             (uint8_t)clampi((int)(b / wsum), 0, 255),
                             255
-                        });
+                        };
                     }
                 }
 
@@ -1636,8 +1655,13 @@ public:
                             Uniforms u;
                             u.model           = glm::mat4(1.0f);
                             u.view            = view;
-                            u.mvp             = proj * view * u.model;
-                            u.prev_mvp        = u.mvp; // floor нь хөдөлгөөнгүй
+
+                            u.mv              = u.view * u.model;
+                            u.mvp             = proj   * u.mv;
+                            u.prev_mvp        = u.mvp;             // floor нь хөдөлгөөнгүй
+                            u.normal_mat      = glm::mat3(1.0f);
+
+
                             u.light_vp        = light_vp;
                             u.light_dir_world = LIGHT_DIR_WORLD;
                             u.camera_pos      = scene->viewer->position;
@@ -1699,8 +1723,10 @@ public:
                                 Uniforms u;
                                 u.model           = model;
                                 u.view            = view;
-                                u.mvp             = mvp;
+                                u.mv              = u.view * u.model;
+                                u.mvp             = proj * u.mv;
                                 u.prev_mvp        = prev_mvp;
+                                u.normal_mat      = glm::transpose(glm::inverse(glm::mat3(u.model)));
                                 u.light_vp        = light_vp;
                                 u.light_dir_world = LIGHT_DIR_WORLD;
                                 u.camera_pos      = scene->viewer->position;
@@ -1751,8 +1777,10 @@ public:
                                 Uniforms u;
                                 u.model           = model;
                                 u.view            = view;
-                                u.mvp             = mvp;
+                                u.mv              = u.view * u.model;
+                                u.mvp             = proj   * u.mv;
                                 u.prev_mvp        = prev_mvp;
+                                u.normal_mat      = glm::transpose(glm::inverse(glm::mat3(u.model)));
                                 u.light_vp        = light_vp;
                                 u.light_dir_world = LIGHT_DIR_WORLD;
                                 u.camera_pos      = scene->viewer->position;
@@ -1766,12 +1794,12 @@ public:
                                 u.ibl_ambient     = 0.30f;
                                 u.ibl_refl        = 0.32f;
                                 u.ibl_f0          = 0.04f;
-                                u.ibl_refl_mix    = 0.35f; 
+                                u.ibl_refl_mix    = 0.35f;
 
                                 const auto& v = mk->geometry->triangles;
                                 const auto& n = mk->geometry->normals;
-                                // uv байхгүй байж болно
                                 static const glm::vec2 uv0(0.0f);
+
                                 for (size_t i = 0; i < v.size(); i += 3) {
                                     std::vector<glm::vec3> tri_v = { v[i], v[i+1], v[i+2] };
                                     std::vector<glm::vec3> tri_n = { n[i], n[i+1], n[i+2] };
@@ -2069,5 +2097,3 @@ int main(int argc, char* argv[])
     SDL_Quit();
     return 0;
 }
-
-

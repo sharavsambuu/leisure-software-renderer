@@ -53,5 +53,26 @@ target_link_libraries(HelloShadowMapping PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_
 add_executable(HelloWater hello_water.cpp)
 target_link_libraries(HelloWater PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)
 
+
 add_executable(HelloIblSkybox hello_ibl_skybox.cpp)
 target_link_libraries(HelloIblSkybox PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)
+
+
+add_executable(HelloIblSkyboxOpt hello_ibl_skybox_optimized.cpp)
+target_compile_features(HelloIblSkyboxOpt PRIVATE cxx_std_20)
+target_link_libraries(HelloIblSkyboxOpt PRIVATE xsimd ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)
+if (MSVC)
+  target_compile_options(HelloIblSkyboxOpt PRIVATE /O2 /fp:fast /arch:AVX2)
+else()
+  target_compile_options(HelloIblSkyboxOpt PRIVATE -O3 -ffast-math -mavx2 -mfma)
+endif()
+
+add_executable(HelloIblSkyboxXSIMD hello_ibl_skybox_xsimd.cpp)
+target_compile_features(HelloIblSkyboxXSIMD PRIVATE cxx_std_20)
+target_link_libraries(HelloIblSkyboxXSIMD PRIVATE xsimd ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)
+if (MSVC)
+  target_compile_options(HelloIblSkyboxXSIMD PRIVATE /O2 /fp:fast /arch:AVX2)
+else()
+  target_compile_options(HelloIblSkyboxXSIMD PRIVATE -O3 -ffast-math -mavx2 -mfma)
+endif()
+
