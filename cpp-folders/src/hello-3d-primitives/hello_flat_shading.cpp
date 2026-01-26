@@ -47,6 +47,8 @@ public:
         this->camera->vertical_angle   = 0.0f;
         this->camera->z_near           = 0.1f;    // Clipping plane: Ойрын хязгаар
         this->camera->z_far            = 1000.0f; // Clipping plane: Холын хязгаар
+
+        this->camera->update();
     }
     ~Viewer() { delete camera; }
 
@@ -179,11 +181,8 @@ public:
     void update(float delta_time) override
     {
         float rotation_speed = 30.0f;
-        this->rotation_angle -= rotation_speed * delta_time; 
-        if (this->rotation_angle <= -360.0f)
-        {
-            this->rotation_angle = 0.0f;
-        }
+        this->rotation_angle += rotation_speed * delta_time; 
+        if (this->rotation_angle >= 360.0f) this->rotation_angle -= 360.0f;
     }
     void render() override {}
 
@@ -229,9 +228,8 @@ public:
     Viewer       *viewer;
 
     // Гэрлийн чиглэл (World Space)
-    // Энэ вектор нь гэрлийн эх үүсвэр хаанаас тусаж байгааг заана.
-    // (1.0, -0.3, 1.0) гэдэг нь баруун, дээр, наанаас тусаж байна гэсэн үг.
-    glm::vec3 light_direction = glm::vec3(1.0f, -0.3f, 1.0f);
+    // World Space чиглэлээс гэрлийн эх үүсвэр лүү
+    glm::vec3 light_direction = glm::vec3(1.0f, 0.3f, 1.0f);
 };
 
 /**
@@ -290,19 +288,21 @@ public:
                         glm::vec4 vertex2_clip_space = projection_matrix * (model_view * glm::vec4(monkey->geometry->triangles[i + 1], 1.0f));
                         glm::vec4 vertex3_clip_space = projection_matrix * (model_view * glm::vec4(monkey->geometry->triangles[i + 2], 1.0f));
 
-                        // 3. CLIPPING (Таслах)
-                        // Камерын ард (W <= 0.1) байгаа зүйлсийг зурахгүй
-                        if (vertex1_clip_space.w <= 0.1f || vertex2_clip_space.w <= 0.1f || vertex3_clip_space.w <= 0.1f) 
+                        // 3. CLIPPING
+                        if (vertex1_clip_space.w <= 0.0f || vertex2_clip_space.w <= 0.0f || vertex3_clip_space.w <= 0.0f)
                             continue;
 
                         // 4. Normal Transformation (View Space руу)
-                        // Нормаль векторуудыг зөвхөн ModelView матрицаар хувиргана.
-                        // Projection хийх шаардлагагүй. w=0.0 байна.
-                        glm::vec3 n1 = glm::vec3(model_view * glm::vec4(monkey->geometry->normals[i    ], 0.0f));
-                        glm::vec3 n2 = glm::vec3(model_view * glm::vec4(monkey->geometry->normals[i + 1], 0.0f));
-                        glm::vec3 n3 = glm::vec3(model_view * glm::vec4(monkey->geometry->normals[i + 2], 0.0f));
-                        
-                        std::vector<glm::vec3> view_space_normals = {n1, n2, n3};
+                        glm::mat3 nmat = glm::transpose(glm::inverse(glm::mat3(model_view)));
+
+                        glm::vec3 n1 = nmat * monkey->geometry->normals[i];
+                        glm::vec3 n2 = nmat * monkey->geometry->normals[i + 1];
+                        glm::vec3 n3 = nmat * monkey->geometry->normals[i + 2];
+                        n1 = glm::normalize(n1);
+                        n2 = glm::normalize(n2);
+                        n3 = glm::normalize(n3);
+
+                        std::vector<glm::vec3> view_space_normals = { n1, n2, n3 };
 
                         // 5. Screen Space Conversion (Дэлгэцийн координат руу)
                         std::vector<glm::vec3> vertices_screen(3);

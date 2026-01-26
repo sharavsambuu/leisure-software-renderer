@@ -158,7 +158,7 @@ public:
     void update(float delta_time) override
     {
         float rotation_speed = 30.0f;
-        this->rotation_angle -= rotation_speed * delta_time; // Цагийн зүүний дагуу эргүүлнэ
+        this->rotation_angle += rotation_speed * delta_time; // Цагийн зүүний дагуу эргүүлнэ
         if (this->rotation_angle <= -360.0f)
         {
             this->rotation_angle = 0.0f;
@@ -247,9 +247,8 @@ public:
                         glm::vec4 vertex2_clip_space = projection_matrix * (view_matrix * (model_matrix * glm::vec4(monkey->geometry->triangles[i + 1], 1.0f)));
                         glm::vec4 vertex3_clip_space = projection_matrix * (view_matrix * (model_matrix * glm::vec4(monkey->geometry->triangles[i + 2], 1.0f))); // ЗАСВАР: vertex3 ашигласан
 
-                        // CLIPPING (Энгийн шалгалт)
-                        // W < 0.1 байвал камерын ард байна гэсэн үг тул зурахгүй
-                        if (vertex1_clip_space.w < 0.1f || vertex2_clip_space.w < 0.1f || vertex3_clip_space.w < 0.1f) continue;
+                        // CLIPPING
+                        if (vertex1_clip_space.w <= 0.0f || vertex2_clip_space.w <= 0.0f || vertex3_clip_space.w <= 0.0f) continue;
 
                         // SCREEN SPACE & CANVAS SPACE Хөрвүүлэлт
                         // clip_to_screen нь (0,0)-ийг Зүүн Дээд (Top-Left) буланд өгдөг.
@@ -257,10 +256,12 @@ public:
                         glm::vec3 v2_screen = shs::Canvas::clip_to_screen(vertex2_clip_space, CANVAS_WIDTH, CANVAS_HEIGHT);
                         glm::vec3 v3_screen = shs::Canvas::clip_to_screen(vertex3_clip_space, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-                        // Canvas дээр зурахад (0,0) нь Зүүн Доод (Bottom-Left) буланд байх ёстой.
-                        // Тиймээс Y координатыг (Height - Y) гэж хөрвүүлнэ.
-                        auto to_canvas_coords = [](glm::vec3 screen_pt, float height) -> glm::ivec2 {
-                            return glm::ivec2((int)screen_pt.x, (int)(height - screen_pt.y));
+                        
+                        auto to_canvas_coords = [](const glm::vec3& s, int H) -> glm::ivec2 {
+                            return glm::ivec2(
+                                (int)std::lround(s.x),
+                                (H - 1) - (int)std::lround(s.y)
+                            );
                         };
 
                         glm::ivec2 p1 = to_canvas_coords(v1_screen, CANVAS_HEIGHT);
