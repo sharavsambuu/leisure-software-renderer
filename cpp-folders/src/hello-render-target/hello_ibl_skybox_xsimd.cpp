@@ -1,21 +1,16 @@
 /*
     IMAGE BASED LIGHTING WITH SKYBOX + SHADOW MAPPING + MOTION BLUR + Blinn-Phong
+    + XSIMD OPTIMIZATIONS (PASS0 ShadowMap depth + PASS2 MotionBlur pack/buffer path)
 
-    - PASS2 Motion Blur дээр per-pixel glm::inverse() хийдэг байсан (маш удаан) => frame тутам 1 удаа inverse хийнэ
-    - Motion blur pass дээр Canvas::get_color_at / draw_pixel олон дуудалтыг raw buffer-оор орлуулж overhead бууруулна
-    - MotionBuffer/depth дээр raw индексээр уншиж бичнэ (tile дотор bounds баталгаатай)
+        PASS0: ShadowMap depth raster (edge function + contiguous depth буфер дээр SIMD compare/select/store)
+        PASS2: MotionBlur pass (Canvas raw buffer + u32 pack/unpack, overhead багасгах, SIMD-г хүнд хэсгүүдэд бэлтгэнэ)
+
 
     Координат:
     - 3D          : LH, +Z forward, +Y up, +X right
     - Screen      : y down
     - shs::Canvas : y up (bottom-left)
 
-    IBL :
-    - PASS1 эхлэхээс өмнө skybox background fill хийнэ
-    - Fragment дээр:
-        * Sky-tinted ambient (N чиглэлээр sample авна)
-        * Sky reflection (R чиглэлээр sample) + Schlick Fresnel
-    - Shadow mapping + Motion blur
 */
 
 #include <string>
@@ -25,6 +20,7 @@
 #include <cmath>
 #include <algorithm>
 #include <limits>
+#include <cstdint>
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
@@ -36,6 +32,8 @@
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
 
+#include <xsimd/xsimd.hpp>
+
 #include "shs_renderer.hpp"
 
 //#define WINDOW_WIDTH      800
@@ -44,10 +42,6 @@
 #define WINDOW_HEIGHT     900
 #define CANVAS_WIDTH      1200
 #define CANVAS_HEIGHT     900
-//#define CANVAS_WIDTH      580
-//#define CANVAS_HEIGHT     480
-//#define CANVAS_WIDTH      380
-//#define CANVAS_HEIGHT     280
 #define MOUSE_SENSITIVITY 0.2f
 
 #define THREAD_COUNT      20
@@ -126,6 +120,24 @@ static inline float schlick_fresnel(float F0, float NoV)
     return F0 + (1.0f - F0) * x5;
 }
 
+// ------------------------------------------
+// Color pack/unpack (little-endian x86 дээр хурдан)
+// ------------------------------------------
+static inline uint32_t pack_rgba_u32(const shs::Color& c)
+{
+    return (uint32_t)c.r | ((uint32_t)c.g << 8) | ((uint32_t)c.b << 16) | ((uint32_t)c.a << 24);
+}
+
+static inline shs::Color unpack_rgba_u32(uint32_t u)
+{
+    shs::Color c;
+    c.r = (uint8_t)(u & 0xFF);
+    c.g = (uint8_t)((u >> 8) & 0xFF);
+    c.b = (uint8_t)((u >> 16) & 0xFF);
+    c.a = (uint8_t)((u >> 24) & 0xFF);
+    return c;
+}
+
 // ==========================================
 // LH Ortho matrix (NDC z: 0..1)
 // ==========================================
@@ -199,7 +211,7 @@ static inline CubeMap load_cubemap_water_scene(const std::string& folder)
 }
 
 // dir_world -> cubemap (face + uv)
-// Энэ mapping нь LH +Z forward нөхцөлд "front=+Z", "back=-Z" гэсэн ойлголттой ажиллана.
+// Энэ mapping нь LH +Z forward нөхцөлд front=+Z, back=-Z гэж үзнэ.
 static inline glm::vec3 sample_cubemap_nearest_rgb01(const CubeMap& cm, const glm::vec3& dir_world)
 {
     if (!cm.valid()) return glm::vec3(0.0f);
@@ -217,29 +229,26 @@ static inline glm::vec3 sample_cubemap_nearest_rgb01(const CubeMap& cm, const gl
     float u = 0.5f, v = 0.5f;
 
     if (ax >= ay && ax >= az) {
-        // ±X
-        if (d.x > 0.0f) { // +X right
+        if (d.x > 0.0f) { // +X
             face = 0;
             u = (-d.z / ax);
             v = ( d.y / ax);
-        } else {          // -X left
+        } else {          // -X
             face = 1;
             u = ( d.z / ax);
             v = ( d.y / ax);
         }
     } else if (ay >= ax && ay >= az) {
-        // ±Y
-        if (d.y > 0.0f) { // +Y top
+        if (d.y > 0.0f) { // +Y
             face = 2;
             u = ( d.x / ay);
             v = (-d.z / ay);
-        } else {          // -Y bottom
+        } else {          // -Y
             face = 3;
             u = ( d.x / ay);
             v = ( d.z / ay);
         }
     } else {
-        // ±Z
         if (d.z > 0.0f) { // +Z front
             face = 4;
             u = ( d.x / az);
@@ -251,7 +260,6 @@ static inline glm::vec3 sample_cubemap_nearest_rgb01(const CubeMap& cm, const gl
         }
     }
 
-    // [-1,1] -> [0,1]
     u = 0.5f * (u + 1.0f);
     v = 0.5f * (v + 1.0f);
 
@@ -519,23 +527,23 @@ class MonkeyObject : public shs::AbstractObject3D
 public:
     MonkeyObject(glm::vec3 base_pos, glm::vec3 scale)
     {
-        this->geometry = new ModelGeometry("./obj/monkey/monkey.rawobj");
+        this->geometry           = new ModelGeometry("./obj/monkey/monkey.rawobj");
 
-        this->base_position = base_pos;
-        this->position      = base_pos;
-        this->scale         = scale;
+        this->base_position      = base_pos;
+        this->position           = base_pos;
+        this->scale              = scale;
 
-        this->time_accum     = 0.0f;
-        this->rotation_angle = 0.0f;
+        this->time_accum         = 0.0f;
+        this->rotation_angle     = 0.0f;
 
-        this->spin_deg_per_sec   = 320.0f;     // эргэлтийн хурд => motion blur харуулах дажгүй
-        this->wobble_hz          = 2.6f;       // савлалтын хурд (Hz)
-        this->wobble_amp_y       = 0.55f;      // дээш/доош савлалт
-        this->wobble_amp_xz      = 0.35f;      // жижиг дугуй савлалт (XZ)
-        this->wobble_phase_speed = 6.2831853f; // 2*pi (Hz-д ашиглана)
+        this->spin_deg_per_sec   = 320.0f;
+        this->wobble_hz          = 2.6f;
+        this->wobble_amp_y       = 0.55f;
+        this->wobble_amp_xz      = 0.35f;
+        this->wobble_phase_speed = 6.2831853f;
 
-        this->has_prev_mvp = false;
-        this->prev_mvp     = glm::mat4(1.0f);
+        this->has_prev_mvp       = false;
+        this->prev_mvp           = glm::mat4(1.0f);
     }
 
     ~MonkeyObject() { delete geometry; }
@@ -552,8 +560,7 @@ public:
     {
         time_accum += dt;
 
-        // y савлалт + xz жижиг дугуй хөдөлгөөн (motion blur-т гоё харагдана)
-        float w = wobble_phase_speed * wobble_hz;
+        float w     = wobble_phase_speed * wobble_hz;
 
         position    = base_position;
         position.y += std::sin(time_accum * w) * wobble_amp_y;
@@ -600,9 +607,8 @@ struct FloorPlane
     {
         verts.clear(); norms.clear(); uvs.clear();
 
-        // Tessellation
-        const int GRID_X = 48;   // x direction
-        const int GRID_Z = 48;   // z direction
+        const int GRID_X = 48;
+        const int GRID_Z = 48;
 
         float y  = 0.0f;
         float S  = half_size;
@@ -630,14 +636,12 @@ struct FloorPlane
                 glm::vec3 p11(x1, y, z1);
                 glm::vec3 p01(x0, y, z1);
 
-                // cell бүрт 2 ширхэг гурвалжин
                 verts.push_back(p00); verts.push_back(p10); verts.push_back(p11);
                 verts.push_back(p00); verts.push_back(p11); verts.push_back(p01);
 
                 norms.push_back(n); norms.push_back(n); norms.push_back(n);
                 norms.push_back(n); norms.push_back(n); norms.push_back(n);
 
-                // UV 
                 glm::vec2 uv00(tx0, tz0);
                 glm::vec2 uv10(tx1, tz0);
                 glm::vec2 uv11(tx1, tz1);
@@ -661,29 +665,23 @@ struct Uniforms
     glm::mat4 model;
     glm::mat4 view;
 
-    // -------------------------
-    // ОПТИМ: per-vertex inverse() устгахын тулд per-object урьдчилж бодно
-    // -------------------------
-    glm::mat4 mv;            // view * model
-    glm::mat3 normal_mat;    // transpose(inverse(mat3(model))) (эсвэл identity)
+    // per-object урьдчилж бодох
+    glm::mat4 mv;
+    glm::mat3 normal_mat;
 
     glm::mat4 light_vp;
 
     glm::vec3 light_dir_world;
     glm::vec3 camera_pos;
 
-    // Материал
     shs::Color base_color;
     const shs::Texture2D *albedo = nullptr;
     bool use_texture = false;
 
-    // ShadowMap pointer
     const ShadowMap *shadow = nullptr;
 
-    // SKYBOX IBL
     const CubeMap *sky = nullptr;
 
-    // IBL knobs
     float ibl_ambient = 0.25f;
     float ibl_refl    = 0.35f;
     float ibl_f0      = 0.04f;
@@ -692,12 +690,12 @@ struct Uniforms
 
 struct VaryingsFull
 {
-    glm::vec4 position;      // curr clip (camera)
-    glm::vec4 prev_position; // prev clip (camera)
+    glm::vec4 position;
+    glm::vec4 prev_position;
     glm::vec3 world_pos;
     glm::vec3 normal;
     glm::vec2 uv;
-    float     view_z;        // camera view_z (+Z forward)
+    float     view_z;
 };
 
 // ==========================================
@@ -712,27 +710,23 @@ static VaryingsFull vertex_shader_full(
 {
     VaryingsFull out;
 
-    out.position      = u.mvp * glm::vec4(aPos, 1.0f);
-    out.prev_position = u.prev_mvp * glm::vec4(aPos, 1.0f);
+    out.position       = u.mvp * glm::vec4(aPos, 1.0f);
+    out.prev_position  = u.prev_mvp * glm::vec4(aPos, 1.0f);
 
-    glm::vec4 world_h = u.model * glm::vec4(aPos, 1.0f);
-    out.world_pos     = glm::vec3(world_h);
+    glm::vec4 world_h  = u.model * glm::vec4(aPos, 1.0f);
+    out.world_pos      = glm::vec3(world_h);
 
-    // ОПТИМ: normal_mat нь per-object урьдчилж бодогдоно
-    out.normal        = glm::normalize(u.normal_mat * aNormal);
+    out.normal         = glm::normalize(u.normal_mat * aNormal);
+    out.uv             = aUV;
 
-    out.uv            = aUV;
-
-    // ОПТИМ: mv = view * model нь per-object урьдчилж бодогдоно
     glm::vec4 view_pos = u.mv * glm::vec4(aPos, 1.0f);
-    out.view_z = view_pos.z;
+    out.view_z         = view_pos.z;
 
     return out;
 }
 
 // ==========================================
 // SHADOW HELPERS
-// output uv in shadow-map convention (0,0 top-left, y down)
 // ==========================================
 
 static inline bool shadow_uvz_from_world(
@@ -749,8 +743,7 @@ static inline bool shadow_uvz_from_world(
 
     if (out_z_ndc < 0.0f || out_z_ndc > 1.0f) return false;
 
-    // ndc -> uv
-    // shadow map -> (0,0) top-left, y down
+    // ndc -> uv (shadow map: (0,0) top-left, y down)
     out_uv.x = ndc.x * 0.5f + 0.5f;
     out_uv.y = 1.0f - (ndc.y * 0.5f + 0.5f);
 
@@ -763,14 +756,12 @@ static inline float shadow_compare(
     float z_ndc,
     float bias)
 {
-    // uv outside => shadowгүй гэж үзье
     if (uv.x < 0.0f || uv.x > 1.0f || uv.y < 0.0f || uv.y > 1.0f) return 1.0f;
 
     int x = (int)std::lround(uv.x * float(sm.w - 1));
     int y = (int)std::lround(uv.y * float(sm.h - 1));
 
     float d = sm.sample(x, y);
-    // d == max() (хоосон) бол гэрэлтэй гэж үзнэ
     if (d == std::numeric_limits<float>::max()) return 1.0f;
 
     return (z_ndc <= d + bias) ? 1.0f : 0.0f;
@@ -784,7 +775,6 @@ static inline float shadow_factor_pcf_2x2(
 {
     if (!SHADOW_USE_PCF) return shadow_compare(sm, uv, z_ndc, bias);
 
-    // 2x2 PCF, хөрш 4 sample
     float fx = uv.x * float(sm.w - 1);
     float fy = uv.y * float(sm.h - 1);
 
@@ -798,7 +788,6 @@ static inline float shadow_factor_pcf_2x2(
     float s01 = (z_ndc <= sm.sample(x0,y1) + bias) ? 1.0f : 0.0f;
     float s11 = (z_ndc <= sm.sample(x1,y1) + bias) ? 1.0f : 0.0f;
 
-    // энгийн average
     return 0.25f * (s00 + s10 + s01 + s11);
 }
 
@@ -812,81 +801,62 @@ static shs::Color fragment_shader_full(const VaryingsFull& in, const Uniforms& u
     glm::vec3 L = glm::normalize(-u.light_dir_world);
     glm::vec3 V = glm::normalize(u.camera_pos - in.world_pos);
 
-    // Directional light
     float ambientStrength = 0.18f;
 
-    float diff = glm::max(glm::dot(N, L), 0.0f);
+    float diff        = glm::max(glm::dot(N, L), 0.0f);
     glm::vec3 diffuse = diff * glm::vec3(1.0f);
 
-    glm::vec3 H = glm::normalize(L + V);
+    glm::vec3 H            = glm::normalize(L + V);
     float specularStrength = 0.45f;
-    float shininess = 64.0f;
-    float spec = glm::pow(glm::max(glm::dot(N, H), 0.0f), shininess);
-    glm::vec3 specular = specularStrength * spec * glm::vec3(1.0f);
+    float shininess        = 64.0f;
+    float spec             = glm::pow(glm::max(glm::dot(N, H), 0.0f), shininess);
+    glm::vec3 specular     = specularStrength * spec * glm::vec3(1.0f);
 
-    // BaseColor
     glm::vec3 baseColor;
     if (u.use_texture && u.albedo && u.albedo->valid()) {
         shs::Color tc = sample_nearest(*u.albedo, in.uv);
-        baseColor = color_to_rgb01(tc);
+        baseColor     = color_to_rgb01(tc);
     } else {
         baseColor = color_to_rgb01(u.base_color);
     }
 
-    // Shadow factor (1 = lit, 0 = shadow)
     float shadow = 1.0f;
     if (u.shadow) {
         glm::vec2 suv;
         float sz;
         if (shadow_uvz_from_world(u.light_vp, in.world_pos, suv, sz)) {
-            // slope-scaled bias (гадаргуу гэрэлтэй хэр зэрэг зөрчилдөхөөс хамааруулна)
             float slope = 1.0f - glm::clamp(glm::dot(N, L), 0.0f, 1.0f);
             float bias  = SHADOW_BIAS_BASE + SHADOW_BIAS_SLOPE * slope;
             shadow = shadow_factor_pcf_2x2(*u.shadow, suv, sz, bias);
         }
     }
 
-    // --------------------------------------
-    // SKYBOX IBL (LDR cubemap => IBL-lite)
-    // --------------------------------------
     glm::vec3 envN(1.0f);
     glm::vec3 envR(0.0f);
 
     if (u.sky && u.sky->valid()) {
-        // ambient tint: N чиглэлээр sample хийх (хамгийн энгийн хувилбар)
-        envN = sample_cubemap_nearest_rgb01(*u.sky, N);
-
-        // reflection: R чиглэлээр sample
+        envN        = sample_cubemap_nearest_rgb01(*u.sky, N);
         glm::vec3 R = glm::reflect(-V, N);
         envR        = sample_cubemap_nearest_rgb01(*u.sky, R);
     }
 
-    // ambient-ийг sky tint-тэй mix хийх
     glm::vec3 ambient = ambientStrength * glm::mix(glm::vec3(1.0f), envN, clamp01(u.ibl_ambient));
 
-    // Fresnel (Schlick)
     float NoV = glm::max(0.0f, glm::dot(N, V));
     float F   = schlick_fresnel(u.ibl_f0, NoV);
 
-    // Reflection хүч (per-object mix орно)
     glm::vec3 refl = envR * (F * clamp01(u.ibl_refl) * clamp01(u.ibl_refl_mix));
 
-    // --------------------------------------
-    // Final combine (shadow: зөвхөн direct light дээр)
-    // --------------------------------------
     glm::vec3 direct = shadow * (diffuse * baseColor + specular);
     glm::vec3 amb    = ambient * baseColor;
     glm::vec3 result = amb + direct + refl;
 
     result = glm::clamp(result, 0.0f, 1.0f);
-
     return rgb01_to_color(result);
 }
 
 // ==========================================
 // SKYBOX BACKGROUND PASS (rt.color fill)
-// - Canvas coords: (0,0) bottom-left, +Y up
-// - Ray dir: world space
 // ==========================================
 
 static void skybox_background_pass(
@@ -913,11 +883,14 @@ static void skybox_background_pass(
 
     wg.reset();
 
+    // raw buffer дээр бичнэ (Canvas y-up)
+    shs::Color* dst_raw = dst.buffer().raw();
+
     for (int ty = 0; ty < rows; ty++) {
         for (int tx = 0; tx < cols; tx++) {
 
             wg.add(1);
-            job_system->submit({[&, tx, ty]() {
+            job_system->submit({[=, &wg, &sky, forward, right, up, aspect, tan_half_fov]() {
 
                 int x0 = tx * TILE_SIZE_X;
                 int y0 = ty * TILE_SIZE_Y;
@@ -925,9 +898,9 @@ static void skybox_background_pass(
                 int y1 = std::min(y0 + TILE_SIZE_Y, H);
 
                 for (int y = y0; y < y1; y++) {
+                    int row_off = y * W;
                     for (int x = x0; x < x1; x++) {
 
-                        // Canvas coords -> NDC (-1..1), y up
                         float fx = (float(x) + 0.5f) / float(W);
                         float fy = (float(y) + 0.5f) / float(H);
 
@@ -942,7 +915,7 @@ static void skybox_background_pass(
                         dir = glm::normalize(dir);
 
                         glm::vec3 c01 = sample_cubemap_nearest_rgb01(sky, dir);
-                        dst.draw_pixel(x, y, rgb01_to_color(c01));
+                        dst_raw[row_off + x] = rgb01_to_color(c01);
                     }
                 }
 
@@ -971,7 +944,7 @@ static inline VaryingsShadow shadow_vertex_shader(const glm::vec3& aPos, const U
 }
 
 // ==========================================
-// SHADOW MAP RASTER (tiled)
+// SHADOW MAP RASTER (XSIMD - edge function + contiguous depth)
 // ==========================================
 
 static inline glm::vec3 clip_to_shadow_screen(const glm::vec4& clip, int W, int H)
@@ -979,15 +952,78 @@ static inline glm::vec3 clip_to_shadow_screen(const glm::vec4& clip, int W, int 
     glm::vec3 ndc = glm::vec3(clip) / clip.w; // x,y in [-1,1], z in [0,1]
     glm::vec3 s;
     s.x = (ndc.x * 0.5f + 0.5f) * float(W - 1);
-    // shadow map space-г (0,0) top-left гэж үзээд y down ашиглана
-    s.y = (1.0f - (ndc.y * 0.5f + 0.5f)) * float(H - 1);
+    s.y = (1.0f - (ndc.y * 0.5f + 0.5f)) * float(H - 1); // (0,0) top-left
     s.z = ndc.z;
     return s;
 }
 
-static void draw_triangle_tile_shadow(
+struct ShadowTriProcessed
+{
+    // Edge функцүүд: E(x,y)=A*x + B*y + C
+    float A0, B0, C0;
+    float A1, B1, C1;
+    float A2, B2, C2;
+
+    float inv_area;
+
+    // z interpolation (screen space)
+    float z0, z1, z2;
+
+    int min_x, min_y, max_x, max_y;
+};
+
+static inline bool build_shadow_tri(
+    ShadowTriProcessed& out,
+    const glm::vec3& s0,
+    const glm::vec3& s1,
+    const glm::vec3& s2,
+    int W, int H,
+    glm::ivec2 tile_min, glm::ivec2 tile_max)
+{
+    // Bounding box (tile-д clip)
+    int min_x = std::max(tile_min.x, (int)std::floor(std::min({s0.x, s1.x, s2.x})));
+    int min_y = std::max(tile_min.y, (int)std::floor(std::min({s0.y, s1.y, s2.y})));
+    int max_x = std::min(tile_max.x, (int)std::ceil (std::max({s0.x, s1.x, s2.x})));
+    int max_y = std::min(tile_max.y, (int)std::ceil (std::max({s0.y, s1.y, s2.y})));
+
+    min_x = clampi(min_x, 0, W - 1);
+    max_x = clampi(max_x, 0, W - 1);
+    min_y = clampi(min_y, 0, H - 1);
+    max_y = clampi(max_y, 0, H - 1);
+
+    if (min_x > max_x || min_y > max_y) return false;
+
+    // Screen-space signed area
+    float area = (s1.x - s0.x) * (s2.y - s0.y) - (s1.y - s0.y) * (s2.x - s0.x);
+    if (std::abs(area) < 1e-8f) return false;
+
+    // area>0 гэсэн winding гэж үзээд inside тестийг (E>=0) ашиглана.
+    // Хэрвээ winding өөрчлөгдвөл E sign-ийг нэг мөр болгох шаардлагатай.
+    if (area <= 0.0f) return false;
+
+    out.inv_area = 1.0f / area;
+
+    out.z0 = s0.z;
+    out.z1 = s1.z;
+    out.z2 = s2.z;
+
+    out.min_x = min_x;
+    out.min_y = min_y;
+    out.max_x = max_x;
+    out.max_y = max_y;
+
+    // Edge функцүүдийг triangle (s0,s1,s2)-ийн дагуу байгуулна
+    // E0: edge (s0->s1) эсрэг тал нь s2
+    out.A0 = s0.y - s1.y; out.B0 = s1.x - s0.x; out.C0 = s0.x * s1.y - s0.y * s1.x;
+    out.A1 = s1.y - s2.y; out.B1 = s2.x - s1.x; out.C1 = s1.x * s2.y - s1.y * s2.x;
+    out.A2 = s2.y - s0.y; out.B2 = s0.x - s2.x; out.C2 = s2.x * s0.y - s2.y * s0.x;
+
+    return true;
+}
+
+static void draw_triangle_tile_shadow_xsimd(
     ShadowMap& sm,
-    const std::vector<glm::vec3>& tri_verts,
+    const glm::vec3 tri_verts[3],
     std::function<VaryingsShadow(const glm::vec3&)> vs,
     glm::ivec2 tile_min, glm::ivec2 tile_max)
 {
@@ -1000,38 +1036,107 @@ static void draw_triangle_tile_shadow(
         sc[i] = clip_to_shadow_screen(vout[i].position, sm.w, sm.h);
     }
 
-    glm::vec2 bboxmin(tile_max.x, tile_max.y);
-    glm::vec2 bboxmax(tile_min.x, tile_min.y);
-    std::vector<glm::vec2> v2d = { glm::vec2(sc[0]), glm::vec2(sc[1]), glm::vec2(sc[2]) };
+    ShadowTriProcessed tri;
+    if (!build_shadow_tri(tri, sc[0], sc[1], sc[2], sm.w, sm.h, tile_min, tile_max)) return;
 
-    for (int i = 0; i < 3; i++) {
-        bboxmin = glm::max(glm::vec2(tile_min), glm::min(bboxmin, v2d[i]));
-        bboxmax = glm::min(glm::vec2(tile_max), glm::max(bboxmax, v2d[i]));
-    }
+    namespace xs = xsimd;
+    using bf = xs::batch<float>;
 
-    if (bboxmin.x > bboxmax.x || bboxmin.y > bboxmax.y) return;
+    const int LANES = bf::size;
 
-    float area = (v2d[1].x - v2d[0].x) * (v2d[2].y - v2d[0].y) -
-                 (v2d[1].y - v2d[0].y) * (v2d[2].x - v2d[0].x);
+    // iota: [0.5, 1.5, 2.5, ...] (pixel center)
+    static bf iota = [](){
+        alignas(64) float tmp[64];
+        for (int i = 0; i < 64; ++i) tmp[i] = float(i) + 0.5f;
+        return bf::load_aligned(tmp);
+    }();
 
-    if (std::abs(area) < 1e-8f) return;
+    bf A0(tri.A0), B0(tri.B0), C0(tri.C0);
+    bf A1(tri.A1), B1(tri.B1), C1(tri.C1);
+    bf A2(tri.A2), B2(tri.B2), C2(tri.C2);
 
-    for (int px = (int)bboxmin.x; px <= (int)bboxmax.x; px++) {
-        for (int py = (int)bboxmin.y; py <= (int)bboxmax.y; py++) {
+    bf invArea(tri.inv_area);
 
-            glm::vec3 bc = shs::Canvas::barycentric_coordinate(glm::vec2(px + 0.5f, py + 0.5f), v2d);
-            if (bc.x < 0 || bc.y < 0 || bc.z < 0) continue;
+    bf z0(tri.z0), z1(tri.z1), z2(tri.z2);
 
-            float z = bc.x * sc[0].z + bc.y * sc[1].z + bc.z * sc[2].z;
-            if (z < 0.0f || z > 1.0f) continue;
+    float* zbuf = sm.depth.raw();
+    const int W = sm.w;
 
-            sm.test_and_set(px, py, z);
+    for (int y = tri.min_y; y <= tri.max_y; ++y)
+    {
+        bf yv(float(y) + 0.5f);
+
+        // Row constants: B*y + C
+        bf rowE0 = B0 * yv + C0;
+        bf rowE1 = B1 * yv + C1;
+        bf rowE2 = B2 * yv + C2;
+
+        int row_off = y * W;
+
+        int x = tri.min_x;
+
+        // SIMD хэсэг
+        for (; x + LANES - 1 <= tri.max_x; x += LANES)
+        {
+            bf xv(float(x) + 0.0f);
+            bf xpix = xv + iota; // center
+
+            bf E0 = A0 * xpix + rowE0;
+            bf E1 = A1 * xpix + rowE1;
+            bf E2 = A2 * xpix + rowE2;
+
+            auto inside = (E0 >= 0.0f) & (E1 >= 0.0f) & (E2 >= 0.0f);
+            if (!xs::any(inside)) continue;
+
+            // Barycentric weights (edge mapping)
+            bf w0 = E1 * invArea;
+            bf w1 = E2 * invArea;
+            bf w2 = E0 * invArea;
+
+            bf z_new = w0 * z0 + w1 * z1 + w2 * z2;
+
+            float* zptr = zbuf + row_off + x;
+
+            bf z_old = bf::load_unaligned(zptr);
+
+            // valid z range (0..1) check (cheap)
+            auto inz = (z_new >= 0.0f) & (z_new <= 1.0f);
+
+            auto pass = inside & inz & (z_new < z_old);
+            if (!xs::any(pass)) continue;
+
+            bf z_out = xs::select(pass, z_new, z_old);
+            z_out.store_unaligned(zptr);
+        }
+
+        // Tail scalar
+        for (; x <= tri.max_x; ++x)
+        {
+            float fx = float(x) + 0.5f;
+            float fy = float(y) + 0.5f;
+
+            float e0 = tri.A0 * fx + tri.B0 * fy + tri.C0;
+            float e1 = tri.A1 * fx + tri.B1 * fy + tri.C1;
+            float e2 = tri.A2 * fx + tri.B2 * fy + tri.C2;
+
+            if (e0 >= 0.0f && e1 >= 0.0f && e2 >= 0.0f)
+            {
+                float w0s = e1 * tri.inv_area;
+                float w1s = e2 * tri.inv_area;
+                float w2s = e0 * tri.inv_area;
+
+                float z = w0s * tri.z0 + w1s * tri.z1 + w2s * tri.z2;
+                if (z < 0.0f || z > 1.0f) continue;
+
+                int idx = row_off + x;
+                if (z < zbuf[idx]) zbuf[idx] = z;
+            }
         }
     }
 }
 
 // ==========================================
-// CAMERA PASS RASTER: Color + Depth(view_z) + Motion(full) + Shadow
+// CAMERA PASS RASTER HELPERS
 // ==========================================
 
 static inline glm::vec2 clip_to_screen_xy(const glm::vec4& clip, int w, int h)
@@ -1042,7 +1147,6 @@ static inline glm::vec2 clip_to_screen_xy(const glm::vec4& clip, int w, int h)
 
 // ======================================================
 // CAMERA PASS RASTER: Color + Depth(view_z) + Motion(full) + Shadow
-// near-plane clipping in clip-space (z >= 0 plane) + disable sign-cull
 // ======================================================
 
 static void draw_triangle_tile_color_depth_motion_shadow(
@@ -1077,7 +1181,6 @@ static void draw_triangle_tile_color_depth_motion_shadow(
         };
 
         auto intersect = [&](const VaryingsFull& a, const VaryingsFull& b) -> VaryingsFull {
-            // plane: z = 0  => a.z + t*(b.z-a.z) = 0
             float az = a.position.z;
             float bz = b.position.z;
             float denom = (bz - az);
@@ -1106,25 +1209,19 @@ static void draw_triangle_tile_color_depth_motion_shadow(
         return out;
     };
 
-    // --------------------------------------
-    // Vertex stage (triangle)
-    // --------------------------------------
     VaryingsFull v0 = vs(tri_verts[0], tri_norms[0], tri_uvs[0]);
     VaryingsFull v1 = vs(tri_verts[1], tri_norms[1], tri_uvs[1]);
     VaryingsFull v2 = vs(tri_verts[2], tri_norms[2], tri_uvs[2]);
 
     std::vector<VaryingsFull> poly = { v0, v1, v2 };
 
-    // Near-plane clip (homogeneous z >= 0)
     poly = clip_poly_near_z(poly);
     if (poly.size() < 3) return;
 
-    // Triangulate polygon fan: (0, i, i+1)
     for (int ti = 1; ti + 1 < (int)poly.size(); ++ti)
     {
         VaryingsFull tv[3] = { poly[0], poly[ti], poly[ti + 1] };
 
-        // Convert to screen coords (y down)
         glm::vec3 sc3[3];
         for (int i = 0; i < 3; ++i) {
             if (tv[i].position.w <= 1e-6f) goto next_tri;
@@ -1218,8 +1315,7 @@ static void draw_triangle_tile_color_depth_motion_shadow(
 }
 
 // ==========================================
-// CAMERA-ONLY VELOCITY RECONSTRUCTION (depth + matrices)
-// - depth нь view_z (camera space)
+// CAMERA-ONLY VELOCITY RECONSTRUCTION
 // ==========================================
 
 static inline float viewz_to_ndcz(float view_z, const glm::mat4& proj)
@@ -1231,7 +1327,6 @@ static inline float viewz_to_ndcz(float view_z, const glm::mat4& proj)
 
 static inline glm::vec2 canvas_to_ndc_xy(int x, int y, int W, int H)
 {
-    // Canvas: y up -> screen y down
     int py_screen = (H - 1) - y;
 
     float fx = (float(x) + 0.5f) / float(W);
@@ -1255,17 +1350,16 @@ static inline glm::vec2 compute_camera_velocity_canvas_fast(
     int W, int H,
     const glm::mat4& curr_viewproj,
     const glm::mat4& prev_viewproj,
-    const glm::mat4& inv_curr_viewproj,   // frame тутам 1 удаа тооцоод энд дамжуулна
+    const glm::mat4& inv_curr_viewproj,
     const glm::mat4& curr_proj)
 {
     if (view_z == std::numeric_limits<float>::max()) return glm::vec2(0.0f);
 
     glm::vec2 ndc_xy = canvas_to_ndc_xy(x, y, W, H);
-    float ndc_z = viewz_to_ndcz(view_z, curr_proj);
+    float ndc_z      = viewz_to_ndcz(view_z, curr_proj);
 
     glm::vec4 clip_curr(ndc_xy.x, ndc_xy.y, ndc_z, 1.0f);
 
-    // энд glm::inverse хийхгүй
     glm::vec4 world_h = inv_curr_viewproj * clip_curr;
     if (std::abs(world_h.w) < 1e-6f) return glm::vec2(0.0f);
     glm::vec3 world = glm::vec3(world_h) / world_h.w;
@@ -1289,16 +1383,40 @@ static inline glm::vec2 apply_soft_knee(glm::vec2 v, float knee, float max_len)
     if (len <= 1e-6f) return v;
     if (len <= knee) return v;
 
-    float t  = (len - knee) / std::max(1e-6f, (max_len - knee));
-    float t2 = t / (1.0f + t);
+    float t       = (len - knee) / std::max(1e-6f, (max_len - knee));
+    float t2      = t / (1.0f + t);
     float new_len = knee + (max_len - knee) * t2;
 
     return v * (new_len / len);
 }
 
 // ==========================================
-// COMBINED MOTION BLUR PASS (whole-screen)
+// COMBINED MOTION BLUR PASS (PASS2) - raw u32 path + precompute weights
 // ==========================================
+
+struct MotionBlurKernel
+{
+    int samples = 0;
+    float a[64];
+    float w[64];
+
+    MotionBlurKernel(int s=0) { init(s); }
+
+    void init(int s)
+    {
+        samples = s;
+        if (samples < 1) samples = 1;
+        if (samples > 64) samples = 64;
+
+        for (int i = 0; i < samples; ++i) {
+            float t  = (samples == 1) ? 0.0f : (float(i) / float(samples - 1));
+            float aa = (t - 0.5f) * 2.0f;       // -1..+1
+            float ww = 1.0f - std::abs(aa);     // triangle weight
+            a[i]     = aa;
+            w[i]     = ww;
+        }
+    }
+};
 
 static void combined_motion_blur_pass(
     const shs::Canvas& src,
@@ -1319,21 +1437,24 @@ static void combined_motion_blur_pass(
     int W = src.get_width();
     int H = src.get_height();
 
-    // Матрицууд (frame тутам 1 удаа)
-    glm::mat4 curr_vp = curr_proj * curr_view;
-    glm::mat4 prev_vp = prev_proj * prev_view;
-
-    // хамгийн үнэтэй inverse-г frame тутам 1 удаа
+    glm::mat4 curr_vp     = curr_proj * curr_view;
+    glm::mat4 prev_vp     = prev_proj * prev_view;
     glm::mat4 inv_curr_vp = glm::inverse(curr_vp);
+
+    MotionBlurKernel kernel(samples);
 
     int cols = (W + TILE_SIZE_X - 1) / TILE_SIZE_X;
     int rows = (H + TILE_SIZE_Y - 1) / TILE_SIZE_Y;
 
-    // Raw буферүүд (Canvas: y up)
+    // raw буферүүд
     const shs::Color* src_raw  = src.buffer().raw();
     shs::Color*       dst_raw  = dst.buffer().raw();
-    const float*      z_raw    = depth.buffer().raw(); // depth нь Canvas coords дээр хадгалж байна
+    const float*      z_raw    = depth.buffer().raw();
     const glm::vec2*  v_raw    = v_full_buf.vel.data();
+
+    // u32 view (strict aliasing эрсдэлтэй, гэхдээ x86 дээр практик дээр OK)
+    const uint32_t* src_u32 = reinterpret_cast<const uint32_t*>(src_raw);
+    uint32_t*       dst_u32 = reinterpret_cast<uint32_t*>(dst_raw);
 
     wg.reset();
 
@@ -1341,18 +1462,12 @@ static void combined_motion_blur_pass(
         for (int tx = 0; tx < cols; tx++) {
 
             wg.add(1);
-            job_system->submit({[=, &wg]() {
+            job_system->submit({[=, &wg, &kernel]() {
 
                 int x0 = tx * TILE_SIZE_X;
                 int y0 = ty * TILE_SIZE_Y;
                 int x1 = std::min(x0 + TILE_SIZE_X, W);
                 int y1 = std::min(y0 + TILE_SIZE_Y, H);
-
-                auto sample_fast = [&](int sx, int sy) -> shs::Color {
-                    sx = clampi(sx, 0, W - 1);
-                    sy = clampi(sy, 0, H - 1);
-                    return src_raw[sy * W + sx];
-                };
 
                 for (int y = y0; y < y1; y++) {
                     int row_off = y * W;
@@ -1381,42 +1496,50 @@ static void combined_motion_blur_pass(
                             len = MB_MAX_PIXELS;
                         }
 
-                        if (len < 0.001f || samples <= 1) {
-                            dst_raw[row_off + x] = src_raw[row_off + x];
+                        if (len < 0.001f || kernel.samples <= 1) {
+                            dst_u32[row_off + x] = src_u32[row_off + x];
                             continue;
                         }
 
                         glm::vec2 dir = v_total / len;
 
-                        float r = 0, g = 0, b = 0;
+                        float r = 0.0f, g = 0.0f, b = 0.0f;
                         float wsum = 0.0f;
 
-                        for (int i = 0; i < samples; i++) {
-                            float t = (samples == 1) ? 0.0f : (float(i) / float(samples - 1));
-                            float a = (t - 0.5f) * 2.0f; // -1..+1
+                        // clamp-ийг sample бүрт бага хийхийн тулд sx,sy-г нэг мөр clamp хийж уншина
+                        for (int i = 0; i < kernel.samples; i++) {
+
+                            float a     = kernel.a[i];
+                            float wgt   = kernel.w[i];
 
                             glm::vec2 p = glm::vec2(float(x), float(y)) + dir * (a * len);
 
-                            int sx = clampi((int)std::round(p.x), 0, W - 1);
-                            int sy = clampi((int)std::round(p.y), 0, H - 1);
+                            int sx = clampi((int)std::lround(p.x), 0, W - 1);
+                            int sy = clampi((int)std::lround(p.y), 0, H - 1);
 
-                            float wgt = 1.0f - std::abs(a);
-                            shs::Color c = sample_fast(sx, sy);
+                            uint32_t u = src_u32[sy * W + sx];
 
-                            r += wgt * float(c.r);
-                            g += wgt * float(c.g);
-                            b += wgt * float(c.b);
+                            float cr = float( (u      ) & 0xFF );
+                            float cg = float( (u >>  8) & 0xFF );
+                            float cb = float( (u >> 16) & 0xFF );
+
+                            r += wgt * cr;
+                            g += wgt * cg;
+                            b += wgt * cb;
                             wsum += wgt;
                         }
 
-                        if (wsum < 0.0001f) wsum = 1.0f;
+                        if (wsum < 1e-6f) wsum = 1.0f;
 
-                        dst_raw[row_off + x] = shs::Color{
-                            (uint8_t)clampi((int)(r / wsum), 0, 255),
-                            (uint8_t)clampi((int)(g / wsum), 0, 255),
-                            (uint8_t)clampi((int)(b / wsum), 0, 255),
-                            255
-                        };
+                        int rr = (int)(r / wsum);
+                        int gg = (int)(g / wsum);
+                        int bb = (int)(b / wsum);
+
+                        rr = clampi(rr, 0, 255);
+                        gg = clampi(gg, 0, 255);
+                        bb = clampi(bb, 0, 255);
+
+                        dst_u32[row_off + x] = (uint32_t)rr | ((uint32_t)gg << 8) | ((uint32_t)bb << 16) | (0xFFu << 24);
                     }
                 }
 
@@ -1458,11 +1581,11 @@ public:
     void process() override {}
 
     shs::Canvas* canvas;
-    Viewer* viewer;
+    Viewer*      viewer;
 
     const CubeMap* sky = nullptr;
 
-    FloorPlane* floor;
+    FloorPlane*   floor;
 
     SubaruObject* car;
     MonkeyObject* monkey;
@@ -1491,10 +1614,9 @@ public:
 
         shadow = new ShadowMap(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
 
-        // Камерын history
         has_prev_cam = false;
-        prev_view = glm::mat4(1.0f);
-        prev_proj = glm::mat4(1.0f);
+        prev_view    = glm::mat4(1.0f);
+        prev_proj    = glm::mat4(1.0f);
     }
 
     ~RendererSystem()
@@ -1508,7 +1630,6 @@ public:
     {
         (void)dt;
 
-        // Матрицууд
         glm::mat4 view = scene->viewer->camera->view_matrix;
         glm::mat4 proj = scene->viewer->camera->projection_matrix;
 
@@ -1519,7 +1640,6 @@ public:
 
         glm::mat4 light_view = glm::lookAtLH(light_pos, center, glm::vec3(0,1,0));
 
-        // Ortho bounds
         float L = -85.0f, R = 85.0f;
         float B = -55.0f, T = 95.0f;
         float zn = 0.1f, zf = 240.0f;
@@ -1528,7 +1648,7 @@ public:
         glm::mat4 light_vp = light_proj * light_view;
 
         // -----------------------
-        // PASS0: ShadowMap depth
+        // PASS0: ShadowMap depth (XSIMD raster)
         // -----------------------
         shadow->clear();
 
@@ -1554,17 +1674,14 @@ public:
                         // Floor
                         {
                             Uniforms u;
-                            u.model = glm::mat4(1.0f);
+                            u.model    = glm::mat4(1.0f);
                             u.light_vp = light_vp;
 
-                            for (size_t i = 0; i < scene->floor->verts.size(); i += 3) {
-                                std::vector<glm::vec3> tri = {
-                                    scene->floor->verts[i],
-                                    scene->floor->verts[i+1],
-                                    scene->floor->verts[i+2]
-                                };
+                            const auto& fv = scene->floor->verts;
+                            for (size_t i = 0; i < fv.size(); i += 3) {
+                                glm::vec3 tri[3] = { fv[i], fv[i+1], fv[i+2] };
 
-                                draw_triangle_tile_shadow(
+                                draw_triangle_tile_shadow_xsimd(
                                     *shadow,
                                     tri,
                                     [&u](const glm::vec3& p) { return shadow_vertex_shader(p, u); },
@@ -1579,13 +1696,13 @@ public:
                             // Subaru
                             if (auto* car = dynamic_cast<SubaruObject*>(obj)) {
                                 Uniforms u;
-                                u.model = car->get_world_matrix();
+                                u.model    = car->get_world_matrix();
                                 u.light_vp = light_vp;
 
                                 const auto& v = car->geometry->triangles;
                                 for (size_t i = 0; i < v.size(); i += 3) {
-                                    std::vector<glm::vec3> tri = { v[i], v[i+1], v[i+2] };
-                                    draw_triangle_tile_shadow(
+                                    glm::vec3 tri[3] = { v[i], v[i+1], v[i+2] };
+                                    draw_triangle_tile_shadow_xsimd(
                                         *shadow,
                                         tri,
                                         [&u](const glm::vec3& p) { return shadow_vertex_shader(p, u); },
@@ -1597,13 +1714,13 @@ public:
                             // Monkey
                             if (auto* mk = dynamic_cast<MonkeyObject*>(obj)) {
                                 Uniforms u;
-                                u.model = mk->get_world_matrix();
+                                u.model    = mk->get_world_matrix();
                                 u.light_vp = light_vp;
 
                                 const auto& v = mk->geometry->triangles;
                                 for (size_t i = 0; i < v.size(); i += 3) {
-                                    std::vector<glm::vec3> tri = { v[i], v[i+1], v[i+2] };
-                                    draw_triangle_tile_shadow(
+                                    glm::vec3 tri[3] = { v[i], v[i+1], v[i+2] };
+                                    draw_triangle_tile_shadow_xsimd(
                                         *shadow,
                                         tri,
                                         [&u](const glm::vec3& p) { return shadow_vertex_shader(p, u); },
@@ -1622,11 +1739,10 @@ public:
         }
 
         // -----------------------
-        // PASS1: Camera render -> RT_ColorDepthMotion (shadow + skybox IBL)
+        // PASS1: Camera render -> RT_ColorDepthMotion
         // -----------------------
         rt->clear(shs::Color{20,20,25,255});
 
-        // Skybox background fill (PASS1 эхлэхээс өмнө)
         if (scene->sky && scene->sky->valid()) {
             skybox_background_pass(rt->color, *scene->sky, *scene->viewer->camera, job_system, wg_sky);
         }
@@ -1655,27 +1771,24 @@ public:
                             Uniforms u;
                             u.model           = glm::mat4(1.0f);
                             u.view            = view;
-
                             u.mv              = u.view * u.model;
                             u.mvp             = proj   * u.mv;
-                            u.prev_mvp        = u.mvp;             // floor нь хөдөлгөөнгүй
+                            u.prev_mvp        = u.mvp;
                             u.normal_mat      = glm::mat3(1.0f);
-
 
                             u.light_vp        = light_vp;
                             u.light_dir_world = LIGHT_DIR_WORLD;
                             u.camera_pos      = scene->viewer->position;
-                            u.base_color      = shs::Color{ 120, 122, 128, 255 }; // саарал шал
+                            u.base_color      = shs::Color{ 120, 122, 128, 255 };
                             u.albedo          = nullptr;
                             u.use_texture     = false;
                             u.shadow          = shadow;
 
-                            // SKYBOX IBL
                             u.sky             = scene->sky;
                             u.ibl_ambient     = 0.30f;
                             u.ibl_refl        = 0.22f;
                             u.ibl_f0          = 0.04f;
-                            u.ibl_refl_mix    = 0.10f; // matte
+                            u.ibl_refl_mix    = 0.10f;
 
                             for (size_t i = 0; i < scene->floor->verts.size(); i += 3) {
                                 std::vector<glm::vec3> tri_v = {
@@ -1735,12 +1848,11 @@ public:
                                 u.use_texture     = (car->albedo && car->albedo->valid());
                                 u.shadow          = shadow;
 
-                                // SKYBOX IBL
                                 u.sky             = scene->sky;
                                 u.ibl_ambient     = 0.28f;
                                 u.ibl_refl        = 0.38f;
                                 u.ibl_f0          = 0.04f;
-                                u.ibl_refl_mix    = 0.60f; // машин: илүү reflect
+                                u.ibl_refl_mix    = 0.60f;
 
                                 const auto& v = car->geometry->triangles;
                                 const auto& n = car->geometry->normals;
@@ -1789,7 +1901,6 @@ public:
                                 u.use_texture     = false;
                                 u.shadow          = shadow;
 
-                                // SKYBOX IBL
                                 u.sky             = scene->sky;
                                 u.ibl_ambient     = 0.30f;
                                 u.ibl_refl        = 0.32f;
@@ -1828,7 +1939,7 @@ public:
             wg_cam.wait();
         }
 
-        // per-object prev_mvp commit (дараагийн frame-д motion зөв гарах)
+        // per-object prev_mvp commit
         {
             glm::mat4 view2 = scene->viewer->camera->view_matrix;
             glm::mat4 proj2 = scene->viewer->camera->projection_matrix;
@@ -1849,14 +1960,14 @@ public:
         }
 
         // -----------------------
-        // PASS2: Combined Motion Blur (whole-screen post)
+        // PASS2: Combined Motion Blur (raw u32 path)
         // -----------------------
         glm::mat4 curr_view = scene->viewer->camera->view_matrix;
         glm::mat4 curr_proj = scene->viewer->camera->projection_matrix;
 
         if (!has_prev_cam) {
-            prev_view = curr_view;
-            prev_proj = curr_proj;
+            prev_view    = curr_view;
+            prev_proj    = curr_proj;
             has_prev_cam = true;
         }
 
@@ -1877,12 +1988,10 @@ public:
             wg_mb
         );
 
-        // camera history commit
         prev_view = curr_view;
         prev_proj = curr_proj;
     }
 
-    // Эцсийн canvas-д харуулах буфер
     shs::Canvas& output() { return *mb_out; }
 
 private:
@@ -1890,17 +1999,15 @@ private:
     shs::Job::ThreadedPriorityJobSystem* job_system;
 
     RT_ColorDepthMotion* rt;
-    shs::Canvas* mb_out;
+    shs::Canvas*         mb_out;
 
     ShadowMap* shadow;
 
-    // WaitGroups
     shs::Job::WaitGroup wg_shadow;
     shs::Job::WaitGroup wg_cam;
     shs::Job::WaitGroup wg_mb;
     shs::Job::WaitGroup wg_sky;
 
-    // Camera history
     bool has_prev_cam;
     glm::mat4 prev_view;
     glm::mat4 prev_proj;
@@ -1916,7 +2023,6 @@ public:
     LogicSystem(DemoScene* scene) : scene(scene) {}
     void process(float dt) override
     {
-        // Камер update + объект update
         scene->viewer->update();
         for (auto* o : scene->scene_objects) o->update(dt);
     }
@@ -1971,6 +2077,10 @@ int main(int argc, char* argv[])
 {
     (void)argc; (void)argv;
 
+    // XSIMD мэдээлэл (CPU ISA)
+    std::cout << "XSIMD arch: " << xsimd::default_arch::name()
+              << " | batch<float>::size=" << xsimd::batch<float>::size << "\n";
+
     if (SDL_Init(SDL_INIT_VIDEO) < 0) return 1;
     IMG_Init(IMG_INIT_PNG | IMG_INIT_JPG);
 
@@ -1980,27 +2090,23 @@ int main(int argc, char* argv[])
     SDL_Renderer* renderer = nullptr;
     SDL_CreateWindowAndRenderer(WINDOW_WIDTH, WINDOW_HEIGHT, 0, &window, &renderer);
 
-    // Present canvas
     shs::Canvas* screen_canvas  = new shs::Canvas(CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{20,20,25,255});
     SDL_Surface* screen_surface = screen_canvas->create_sdl_surface();
     SDL_Texture* screen_texture = SDL_CreateTextureFromSurface(renderer, screen_surface);
 
-    // Texture load (Subaru albedo)
     shs::Texture2D car_tex = shs::load_texture_sdl_image("./obj/subaru/SUBARU1_M.bmp", true);
 
-    // Skybox cubemap load
     CubeMap sky = load_cubemap_water_scene("./images/skybox/water_scene");
     if (!sky.valid()) {
         std::cout << "Warning: Skybox cubemap load failed (images/skybox/water_scene/*.jpg)" << std::endl;
     }
 
-    // Scene
     Viewer*    viewer    = new Viewer(glm::vec3(0.0f, 10.0f, -42.0f), 55.0f);
     DemoScene* scene     = new DemoScene(screen_canvas, viewer, &car_tex, &sky);
 
     SystemProcessor* sys = new SystemProcessor(scene, job_system);
 
-    bool exit = false;
+    bool exit        = false;
     SDL_Event e;
     Uint32 last_tick = SDL_GetTicks();
     bool is_dragging = false;
@@ -2010,8 +2116,8 @@ int main(int argc, char* argv[])
     while (!exit)
     {
         Uint32 current_tick = SDL_GetTicks();
-        float dt = (current_tick - last_tick) / 1000.0f;
-        last_tick = current_tick;
+        float dt            = (current_tick - last_tick) / 1000.0f;
+        last_tick           = current_tick;
 
         while (SDL_PollEvent(&e))
         {
@@ -2054,7 +2160,6 @@ int main(int argc, char* argv[])
             }
         }
 
-        // Logic + render
         sys->process(dt);
         sys->render(dt);
 
@@ -2071,10 +2176,10 @@ int main(int argc, char* argv[])
         fps_timer += dt;
         if (fps_timer >= 1.0f) {
             std::string title =
-                "IBL + Shadow + MotionBlur | FPS: " + std::to_string(frames) +
+                "IBL + Shadow + MotionBlur + XSIMD | FPS: " + std::to_string(frames) +
                 " | Threads: " + std::to_string(THREAD_COUNT) +
-                " | Canvas: " + std::to_string(CANVAS_WIDTH) + "x" + std::to_string(CANVAS_HEIGHT); // +
-                //" | Shadow: " + std::to_string(SHADOW_MAP_SIZE);
+                " | Canvas: " + std::to_string(CANVAS_WIDTH) + "x" + std::to_string(CANVAS_HEIGHT) +
+                " | Shadow: " + std::to_string(SHADOW_MAP_SIZE);
             SDL_SetWindowTitle(window, title.c_str());
             frames = 0;
             fps_timer = 0.0f;
