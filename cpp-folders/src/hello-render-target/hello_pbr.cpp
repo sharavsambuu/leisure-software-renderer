@@ -97,7 +97,9 @@ ibl_reflection_strength : тухайн объектын reflection нэмэх/х
 // SHADOW MAP CONFIG
 // ------------------------------------------
 #define SHADOW_MAP_SIZE   2048
-static const glm::vec3 LIGHT_DIR_WORLD = glm::normalize(glm::vec3(-1.0f, -1.2f, 0.9f));
+
+
+static const glm::vec3 LIGHT_DIR_WORLD = glm::normalize(glm::vec3(0.4668f, -0.3487f, 0.8127f));
 
 // Shadow bias (acne vs peter-panning тохируулга)
 static const float SHADOW_BIAS_BASE   = 0.0025f;
