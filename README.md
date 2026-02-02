@@ -184,6 +184,7 @@
 <p><img width="800" height="600" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/water-demo.png"></p>
 <p><img width="1200" height="900" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/image-based-lighting.png"></p>
 <p><img width="1200" height="900" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/physics-based-rendering-brdf.png"></p>
+<p><img width="1200" height="900" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/physics-based-rendering-monkey.png"></p>
 
 
 

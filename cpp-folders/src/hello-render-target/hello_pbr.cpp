@@ -1207,6 +1207,7 @@ static shs::Color fragment_shader_pbr(const VaryingsFull& in, const Uniforms& u)
 
     // Fresnel
     glm::vec3 F  = PBR::fresnel_schlick(F0, NoV);
+    F           *= glm::vec3(1.0f, 0.96f, 0.90f); // blue attenuation
 
     // Energy split
     glm::vec3 kd = (glm::vec3(1.0f) - F) * (1.0f - metallic);
@@ -2075,7 +2076,7 @@ public:
                             // Material: floor plastic
                             u.mat.baseColor_srgb = shs::Color{120,122,128,255};
                             u.mat.metallic       = 0.00f;
-                            u.mat.roughness      = 0.78f;
+                            u.mat.roughness      = 0.70f;
                             u.mat.ao             = 1.00f;
 
                             u.albedo          = nullptr;
