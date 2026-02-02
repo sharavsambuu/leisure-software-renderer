@@ -176,7 +176,6 @@
 <p><img width="511" height="345" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/per-object-motion-blur-monkeys.png"></p>
 <p><img width="711" height="574" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/multi-pass-per-object-motion-blur.png"></p>
 <p><img width="836" height="719" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/multi-pass-motion-blur-dof-fxaa.png"></p>
-<p><img width="797" height="597" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/motion-blur-camera-perobject.png"></p>
 <p><img width="437" height="317" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/pseudo-lens-flare.png"></p>
 <p><img width="640" height="360" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/mongolian-flag.png"></p>
 <p><img width="320" height="320" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/fbm.png"></p>
@@ -184,6 +183,7 @@
 <p><img width="790" height="590" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/shadow-mapping.png"></p>
 <p><img width="800" height="600" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/water-demo.png"></p>
 <p><img width="1200" height="900" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/image-based-lighting.png"></p>
+<p><img width="1200" height="900" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/physics-based-rendering-brdf.png"></p>
 
 
 

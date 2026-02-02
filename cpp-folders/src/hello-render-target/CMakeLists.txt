@@ -76,3 +76,12 @@ else()
   target_compile_options(HelloIblSkyboxXSIMD PRIVATE -O3 -ffast-math -mavx2 -mfma)
 endif()
 
+
+add_executable(HelloPBR hello_pbr.cpp)
+target_compile_features(HelloPBR PRIVATE cxx_std_20)
+target_link_libraries(HelloPBR PRIVATE xsimd ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)
+if (MSVC)
+  target_compile_options(HelloPBR PRIVATE /O2 /fp:fast /arch:AVX2)
+else()
+  target_compile_options(HelloPBR PRIVATE -O3 -ffast-math -mavx2 -mfma)
+endif()
