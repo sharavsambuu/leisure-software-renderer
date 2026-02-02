@@ -1,22 +1,93 @@
 /*
-    IMAGE BASED LIGHTING WITH SKYBOX + SHADOW MAPPING + MOTION BLUR + Blinn-Phong
 
-    - PASS2 Motion Blur дээр per-pixel glm::inverse() хийдэг байсан (маш удаан) => frame тутам 1 удаа inverse хийнэ
-    - Motion blur pass дээр Canvas::get_color_at / draw_pixel олон дуудалтыг raw buffer-оор орлуулж overhead бууруулна
-    - MotionBuffer/depth дээр raw индексээр уншиж бичнэ (tile дотор bounds баталгаатай)
+IBL SOFTWARE RENDERER 
+    (Diffuse Irradiance + Prefiltered Specular IBL)
+    + Shadow Mapping 
+    + Motion Blur 
+    + Blinn-Phong Direct Lighting
 
-    Координат:
-    - 3D          : LH, +Z forward, +Y up, +X right
-    - Screen      : y down
-    - shs::Canvas : y up (bottom-left)
 
-    IBL :
-    - PASS1 эхлэхээс өмнө skybox background fill хийнэ
-    - Fragment дээр:
-        * Sky-tinted ambient (N чиглэлээр sample авна)
-        * Sky reflection (R чиглэлээр sample) + Schlick Fresnel
-    - Shadow mapping + Motion blur
+Зорилго:
+
+CPU-д суурилсан software renderer ээр уламжлалт Blinn-Phong гэрэлтүүлгийг 
+Image-Based Lighting ээр өргөтгөн хэрэгжүүлэх явдал юм.
+
+Өмнө нь:
+- Ambient     = тогтмол өнгө
+- Specular    = зөвхөн локал гэрлээс
+- Environment = skybox background байсан
+
+Энэ код үүнийг дараах байдлаар физикт ойр, тогтвортой болгож сайжруулсан
+
+
+IBL архитектур
+
+[1] Environment Cubemap (Skybox)
+    - LDR cubemap (6 нүүр) ачаалж
+    - float RGB01 формат руу хөрвүүлнэ
+    - Background зураг болон IBL-ийн эх үүсвэр
+
+[2] Diffuse IBL — Irradiance Cubemap
+    - Skybox-ийг cosine-weighted hemisphere интеграц хийж бага resolution-тэй cubemap болгоно
+    - Гадаргуу бүрийн normal (N)-аар sample хийнэ
+    - Constant ambient-ийг орлуулна
+    - Зөөлөн, чиглэлтэй орчны гэрэлтүүлэг үүсгэнэ
+        diffuse_ibl = baseColor × irradiance(N)
+
+[3] Specular IBL — Prefiltered Environment (Mip Chain)
+    - Environment cubemap-ийг roughness бүрээр prefilter хийнэ
+    - Mip level бүр нь өөр roughness төлөөлнө
+    - Reflection vector (R) + LOD -> sample
+
+    Blinn-Phong shininess -> roughness mapping:
+        roughness = sqrt(2 / (shininess + 2))
+
+[4] Fresnel (Schlick)
+    - View-angle-аас хамаарсан specular энерги
+    - Diffuse / Specular энерги хуваарилалтыг тогтвортой болгоно
+
+[5] Final Lighting Combine
+    - Direct Blinn-Phong (сүүдэртэй)
+    - Diffuse IBL (сүүдэргүй)
+    - Specular IBL (сүүдэргүй)
+
+
+Render pipeline
+
+PASS 0 : Shadow Map (Directional light, Ortho)
+PASS 1 : Camera Render
+        - Skybox background fill
+        - Geometry raster (color + depth + motion)
+        - Direct Blinn-Phong + IBL
+PASS 2 : Full-screen Motion Blur (object + camera velocity)
+
+
+IBL precompute нь startup үед нэг удаа хийгдэнэ
+  - Irradiance cubemap
+  - Prefiltered specular mip chain
+  - Runtime үед маш хурдан
+
+Specular prefilter-ийг base resolution cap хийсэн
+  -> 1024/2048 cubemap дээр freeze болохоос хамгаална
+
+- Сүүдрийн хувьд:
+  - Direct гэрэлтүүлэг дээр үйлчилнэ
+  - IBL-д сүүдэр тавихгүй
+
+- Motion blur:
+  - Object motion + Camera motion-ийг тусад нь тооцоолно
+  - Soft-knee clamp ашиглаж artifact багасгана
+
+
+Энэ код Physics Based Lightening-рүү шилжихэд бэлэн урьтач код гэхэд болно
+Одоогоор
+- HDR skybox ашиглаагүй (LDR)
+- BRDF LUT ашиглаагүй (simple Fresnel split)
+- PBR биш бөгөөд Blinn-Phong + IBL hybrid байдалтай хэрэгжүүлэлт юмаа
+
+
 */
+
 
 #include <string>
 #include <iostream>
@@ -25,6 +96,7 @@
 #include <cmath>
 #include <algorithm>
 #include <limits>
+#include <cstdint>
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
@@ -44,10 +116,9 @@
 #define WINDOW_HEIGHT     900
 #define CANVAS_WIDTH      1200
 #define CANVAS_HEIGHT     900
-//#define CANVAS_WIDTH      580
-//#define CANVAS_HEIGHT     480
-//#define CANVAS_WIDTH      380
-//#define CANVAS_HEIGHT     280
+//#define CANVAS_WIDTH      800
+//#define CANVAS_HEIGHT     600
+
 #define MOUSE_SENSITIVITY 0.2f
 
 #define THREAD_COUNT      20
@@ -86,6 +157,16 @@ static const float MB_KNEE_PIXELS  = 18.0f;
 // ------------------------------------------
 #define UV_FLIP_V 0
 
+// ------------------------------------------
+// IBL PRECOMPUTE CONFIG (startup нэг удаа)
+// ------------------------------------------
+static const int   IBL_IRR_SIZE      = 16;
+static const int   IBL_IRR_SAMPLES   = 64;
+
+static const int   IBL_SPEC_MIPCOUNT = 6;    // mip тоо (0..m-1)
+static const int   IBL_SPEC_SAMPLES  = 16;   // mip бүрийн texel тутмын sample
+static const int   IBL_SPEC_BASE_CAP = 256;  // env face size-г дээд тал нь 256
+
 // ==========================================
 // HELPERS
 // ==========================================
@@ -119,8 +200,8 @@ static inline shs::Color rgb01_to_color(const glm::vec3& c01)
 
 static inline float schlick_fresnel(float F0, float NoV)
 {
-    NoV = clamp01(NoV);
-    float x = 1.0f - NoV;
+    NoV      = clamp01(NoV);
+    float x  = 1.0f - NoV;
     float x2 = x * x;
     float x5 = x2 * x2 * x;
     return F0 + (1.0f - F0) * x5;
@@ -132,7 +213,6 @@ static inline float schlick_fresnel(float F0, float NoV)
 
 static inline glm::mat4 ortho_lh_zo(float left, float right, float bottom, float top, float znear, float zfar)
 {
-    // LH, z range [0,1]
     glm::mat4 m(1.0f);
     m[0][0] =  2.0f / (right - left);
     m[1][1] =  2.0f / (top - bottom);
@@ -198,9 +278,75 @@ static inline CubeMap load_cubemap_water_scene(const std::string& folder)
     return cm;
 }
 
+// ==========================================
+// IBL FLOAT CUBEMAP + BILINEAR SAMPLING
+// ==========================================
+
+struct CubeMapF
+{
+    int size = 0; // square face
+    std::vector<glm::vec3> face[6]; // rgb in [0,1]
+
+    inline bool valid() const {
+        if (size <= 0) return false;
+        for (int i=0;i<6;i++) if ((int)face[i].size() != size*size) return false;
+        return true;
+    }
+
+    inline const glm::vec3& at(int f, int x, int y) const {
+        return face[f][(size_t)y * (size_t)size + (size_t)x];
+    }
+};
+
+static inline CubeMapF cubemap_to_float_rgb01(const CubeMap& cm)
+{
+    CubeMapF out;
+    if (!cm.valid()) return out;
+
+    out.size = cm.face[0].w;
+
+    for (int f=0; f<6; ++f) {
+        // нүүр бүрийн хэмжээ нэг гэж үзнэ
+        out.face[f].resize((size_t)out.size * (size_t)out.size);
+        for (int y=0; y<out.size; ++y) {
+            for (int x=0; x<out.size; ++x) {
+                shs::Color c = cm.face[f].texels.at(x, y);
+                out.face[f][(size_t)y*out.size + (size_t)x] = color_to_rgb01(c);
+            }
+        }
+    }
+    return out;
+}
+
+static inline glm::vec3 sample_face_bilinear(const CubeMapF& cm, int face, float u, float v)
+{
+    u = clamp01(u);
+    v = clamp01(v);
+
+    float fx = u * float(cm.size - 1);
+    float fy = v * float(cm.size - 1);
+
+    int x0 = clampi((int)std::floor(fx), 0, cm.size - 1);
+    int y0 = clampi((int)std::floor(fy), 0, cm.size - 1);
+    int x1 = clampi(x0 + 1, 0, cm.size - 1);
+    int y1 = clampi(y0 + 1, 0, cm.size - 1);
+
+    float tx = fx - float(x0);
+    float ty = fy - float(y0);
+
+    const glm::vec3& c00 = cm.at(face, x0, y0);
+    const glm::vec3& c10 = cm.at(face, x1, y0);
+    const glm::vec3& c01 = cm.at(face, x0, y1);
+    const glm::vec3& c11 = cm.at(face, x1, y1);
+
+    glm::vec3 cx0 = glm::mix(c00, c10, tx);
+    glm::vec3 cx1 = glm::mix(c01, c11, tx);
+    return glm::mix(cx0, cx1, ty);
+}
+
 // dir_world -> cubemap (face + uv)
-// Энэ mapping нь LH +Z forward нөхцөлд "front=+Z", "back=-Z" гэсэн ойлголттой ажиллана.
-static inline glm::vec3 sample_cubemap_nearest_rgb01(const CubeMap& cm, const glm::vec3& dir_world)
+// Энэ mapping нь LH +Z forward нөхцөлд front=+Z, back=-Z гэсэн ойлголттой ажиллана.
+static inline glm::vec3 sample_cubemap_bilinear_rgb01(const CubeMapF& cm, const glm::vec3& dir_world)
 {
     if (!cm.valid()) return glm::vec3(0.0f);
 
@@ -255,10 +401,205 @@ static inline glm::vec3 sample_cubemap_nearest_rgb01(const CubeMap& cm, const gl
     u = 0.5f * (u + 1.0f);
     v = 0.5f * (v + 1.0f);
 
-    const shs::Texture2D& tex = cm.face[face];
-    shs::Color c = sample_nearest(tex, glm::vec2(u, v));
-    return color_to_rgb01(c);
+    return sample_face_bilinear(cm, face, u, v);
 }
+
+// ==========================================
+// IBL PRECOMPUTE: Irradiance + Prefiltered Specular Mips
+// ==========================================
+
+static inline glm::vec3 cubemap_dir_from_face_uv(int face, float u, float v)
+{
+    // u,v [0,1] -> a,b [-1,1]
+    float a = 2.0f * u - 1.0f;
+    float b = 2.0f * v - 1.0f;
+
+    glm::vec3 d(0.0f);
+
+    // дээрх cubemap sample mapping-тэй таарах ёстой
+    switch(face) {
+        case 0:  d = glm::vec3( 1.0f,  b, -a); break; // +X
+        case 1:  d = glm::vec3(-1.0f,  b,  a); break; // -X
+        case 2:  d = glm::vec3( a,  1.0f, -b); break; // +Y
+        case 3:  d = glm::vec3( a, -1.0f,  b); break; // -Y
+        case 4:  d = glm::vec3( a,  b,  1.0f); break; // +Z
+        case 5:  d = glm::vec3(-a,  b, -1.0f); break; // -Z
+        default: d = glm::vec3(0,0,1); break;
+    }
+    return glm::normalize(d);
+}
+
+// Cosine-weighted hemisphere sample (tangent space, +Z axis)
+static inline glm::vec3 cosine_sample_hemisphere(float u1, float u2)
+{
+    float r   = std::sqrt(u1);
+    float phi = 6.2831853f * u2;
+    float x   = r * std::cos(phi);
+    float y   = r * std::sin(phi);
+    float z   = std::sqrt(std::max(0.0f, 1.0f - u1));
+    return glm::vec3(x, y, z);
+}
+
+static inline void tangent_basis(const glm::vec3& N, glm::vec3& T, glm::vec3& B)
+{
+    // Энгийн тогтвортой basis
+    glm::vec3 up = (std::abs(N.y) < 0.999f) ? glm::vec3(0,1,0) : glm::vec3(1,0,0);
+    T            = glm::normalize(glm::cross(up, N));
+    B            = glm::cross(N, T);
+}
+
+static inline CubeMapF build_irradiance_cubemap(const CubeMapF& env, int outSize, int sampleCount)
+{
+    CubeMapF irr;
+    irr.size = outSize;
+    for (int f=0; f<6; ++f) irr.face[f].assign((size_t)outSize*(size_t)outSize, glm::vec3(0.0f));
+
+    for (int f=0; f<6; ++f) {
+        for (int y=0; y<outSize; ++y) {
+            for (int x=0; x<outSize; ++x) {
+
+                float u = (float(x) + 0.5f) / float(outSize);
+                float v = (float(y) + 0.5f) / float(outSize);
+
+                glm::vec3 N = cubemap_dir_from_face_uv(f, u, v);
+                glm::vec3 T,B;
+                tangent_basis(N, T, B);
+
+                glm::vec3 sum(0.0f);
+
+                // Texel бүрт deterministic random (хурдан, тогтвортой)
+                uint32_t seed = (uint32_t)(f*73856093u ^ x*19349663u ^ y*83492791u);
+                auto rnd01 = [&seed]() {
+                    seed = 1664525u * seed + 1013904223u;
+                    return float(seed & 0x00FFFFFFu) / float(0x01000000u);
+                };
+
+                for (int i=0; i<sampleCount; ++i) {
+                    float r1 = rnd01();
+                    float r2 = rnd01();
+
+                    glm::vec3 h = cosine_sample_hemisphere(r1, r2); // tangent-space
+                    glm::vec3 L = glm::normalize(T*h.x + B*h.y + N*h.z);
+
+                    sum += sample_cubemap_bilinear_rgb01(env, L);
+                }
+
+                irr.face[f][(size_t)y*outSize + (size_t)x] = sum / float(sampleCount);
+            }
+        }
+    }
+
+    return irr;
+}
+
+// Roughness -> Phong exponent (simple mapping)
+static inline float roughness_to_phong_exp(float rough)
+{
+    rough     = clamp01(rough);
+    float r2  = std::max(1e-4f, rough*rough);
+    float exp = (2.0f / r2) - 2.0f;
+    return std::max(1.0f, exp);
+}
+
+// Phong lobe sample around +Z (tangent space)
+static inline glm::vec3 phong_lobe_sample(float u1, float u2, float exp)
+{
+    float phi  = 6.2831853f * u1;
+    float cosT = std::pow(1.0f - u2, 1.0f / (exp + 1.0f));
+    float sinT = std::sqrt(std::max(0.0f, 1.0f - cosT*cosT));
+    return glm::vec3(std::cos(phi)*sinT, std::sin(phi)*sinT, cosT);
+}
+
+struct PrefilteredSpec
+{
+    std::vector<CubeMapF> mip; // mip[0]=sharp, mip[last]=blur
+
+    inline bool valid() const { return !mip.empty() && mip[0].valid(); }
+    inline int maxMip() const { return (int)mip.size(); }
+};
+
+static inline PrefilteredSpec build_prefiltered_spec(const CubeMapF& env, int baseSize, int mipCount, int samplesPerTexel)
+{
+    PrefilteredSpec out;
+    out.mip.resize(mipCount);
+
+    for (int m=0; m<mipCount; ++m) {
+        int sz = std::max(1, baseSize >> m);
+
+        std::cout << "STATUS :   IBL spec mip " << m << "/" << (mipCount - 1)
+                  << " | size   =" << sz
+                  << " | samples=" << samplesPerTexel
+                  << std::endl;
+
+        out.mip[m].size = sz;
+        for (int f=0; f<6; ++f) out.mip[m].face[f].assign((size_t)sz*(size_t)sz, glm::vec3(0.0f));
+
+        float rough = float(m) / float(std::max(1, mipCount - 1));
+        float exp   = roughness_to_phong_exp(rough);
+
+        for (int f=0; f<6; ++f) {
+            for (int y=0; y<sz; ++y) {
+                for (int x=0; x<sz; ++x) {
+
+                    float u = (float(x) + 0.5f) / float(sz);
+                    float v = (float(y) + 0.5f) / float(sz);
+
+                    glm::vec3 R = cubemap_dir_from_face_uv(f, u, v); // reflection dir
+                    glm::vec3 T,B;
+                    tangent_basis(R, T, B);
+
+                    glm::vec3 sum(0.0f);
+
+                    uint32_t seed = (uint32_t)(m*2654435761u ^ f*97531u ^ x*31337u ^ y*1337u);
+                    auto rnd01 = [&seed]() {
+                        seed = 1664525u * seed + 1013904223u;
+                        return float(seed & 0x00FFFFFFu) / float(0x01000000u);
+                    };
+
+                    for (int i=0; i<samplesPerTexel; ++i) {
+                        float r1 = rnd01();
+                        float r2 = rnd01();
+
+                        glm::vec3 s = phong_lobe_sample(r1, r2, exp);
+                        glm::vec3 L = glm::normalize(T*s.x + B*s.y + R*s.z);
+
+                        sum += sample_cubemap_bilinear_rgb01(env, L);
+                    }
+
+                    out.mip[m].face[f][(size_t)y*sz + (size_t)x] = sum / float(samplesPerTexel);
+                }
+            }
+        }
+    }
+
+    return out;
+}
+
+// Specular cubemap: trilinear mip sampling (m0,m1 mix)
+static inline glm::vec3 sample_cubemap_spec_trilinear(const PrefilteredSpec& ps, const glm::vec3& dir, float lod)
+{
+    if (!ps.valid()) return glm::vec3(0.0f);
+
+    float mmax = float(ps.maxMip() - 1);
+    lod = clampf(lod, 0.0f, mmax);
+
+    int m0 = (int)std::floor(lod);
+    int m1 = std::min(m0 + 1, ps.maxMip() - 1);
+    float t = lod - float(m0);
+
+    glm::vec3 c0 = sample_cubemap_bilinear_rgb01(ps.mip[m0], dir);
+    glm::vec3 c1 = sample_cubemap_bilinear_rgb01(ps.mip[m1], dir);
+    return glm::mix(c0, c1, t);
+}
+
+struct IBLResources
+{
+    CubeMapF env;        // float env
+    CubeMapF irradiance; // diffuse convolved
+    PrefilteredSpec spec;// prefiltered spec mips
+
+    inline bool valid() const { return env.valid() && irradiance.valid() && spec.valid(); }
+};
 
 // ==========================================
 // SHADOW MAP BUFFER (Depth only)
@@ -489,7 +830,6 @@ public:
     glm::mat4 get_world_matrix() override
     {
         glm::mat4 t = glm::translate(glm::mat4(1.0f), position);
-        // удаан clockwise (LH-д +Y тэнхлэгээр эргүүлнэ)
         glm::mat4 r = glm::rotate(glm::mat4(1.0f), glm::radians(rotation_angle), glm::vec3(0.0f, 1.0f, 0.0f));
         glm::mat4 s = glm::scale(glm::mat4(1.0f), scale);
         return t * r * s;
@@ -497,7 +837,7 @@ public:
 
     void update(float dt) override
     {
-        rotation_angle += 12.0f * dt; // clockwise
+        rotation_angle += 12.0f * dt;
         if (rotation_angle >= 360.0f) rotation_angle -= 360.0f;
     }
 
@@ -521,21 +861,21 @@ public:
     {
         this->geometry = new ModelGeometry("./obj/monkey/monkey.rawobj");
 
-        this->base_position = base_pos;
-        this->position      = base_pos;
-        this->scale         = scale;
+        this->base_position      = base_pos;
+        this->position           = base_pos;
+        this->scale              = scale;
 
-        this->time_accum     = 0.0f;
-        this->rotation_angle = 0.0f;
+        this->time_accum         = 0.0f;
+        this->rotation_angle     = 0.0f;
 
-        this->spin_deg_per_sec   = 320.0f;     // эргэлтийн хурд => motion blur харуулах дажгүй
-        this->wobble_hz          = 2.6f;       // савлалтын хурд (Hz)
-        this->wobble_amp_y       = 0.55f;      // дээш/доош савлалт
-        this->wobble_amp_xz      = 0.35f;      // жижиг дугуй савлалт (XZ)
-        this->wobble_phase_speed = 6.2831853f; // 2*pi (Hz-д ашиглана)
+        this->spin_deg_per_sec   = 320.0f;
+        this->wobble_hz          = 2.6f;
+        this->wobble_amp_y       = 0.55f;
+        this->wobble_amp_xz      = 0.35f;
+        this->wobble_phase_speed = 6.2831853f;
 
-        this->has_prev_mvp = false;
-        this->prev_mvp     = glm::mat4(1.0f);
+        this->has_prev_mvp       = false;
+        this->prev_mvp           = glm::mat4(1.0f);
     }
 
     ~MonkeyObject() { delete geometry; }
@@ -550,16 +890,15 @@ public:
 
     void update(float dt) override
     {
-        time_accum += dt;
+        time_accum     += dt;
 
-        // y савлалт + xz жижиг дугуй хөдөлгөөн (motion blur-т гоё харагдана)
-        float w = wobble_phase_speed * wobble_hz;
+        float w         = wobble_phase_speed * wobble_hz;
 
-        position    = base_position;
-        position.y += std::sin(time_accum * w) * wobble_amp_y;
+        position        = base_position;
+        position.y     += std::sin(time_accum * w) * wobble_amp_y;
 
-        position.x += std::cos(time_accum * w * 1.15f) * wobble_amp_xz;
-        position.z += std::sin(time_accum * w * 0.95f) * wobble_amp_xz;
+        position.x     += std::cos(time_accum * w * 1.15f) * wobble_amp_xz;
+        position.z     += std::sin(time_accum * w * 0.95f) * wobble_amp_xz;
 
         rotation_angle += spin_deg_per_sec * dt;
         if (rotation_angle > 360.0f) rotation_angle -= 360.0f;
@@ -600,9 +939,8 @@ struct FloorPlane
     {
         verts.clear(); norms.clear(); uvs.clear();
 
-        // Tessellation
-        const int GRID_X = 48;   // x direction
-        const int GRID_Z = 48;   // z direction
+        const int GRID_X = 48;
+        const int GRID_Z = 48;
 
         float y  = 0.0f;
         float S  = half_size;
@@ -630,14 +968,12 @@ struct FloorPlane
                 glm::vec3 p11(x1, y, z1);
                 glm::vec3 p01(x0, y, z1);
 
-                // cell бүрт 2 ширхэг гурвалжин
                 verts.push_back(p00); verts.push_back(p10); verts.push_back(p11);
                 verts.push_back(p00); verts.push_back(p11); verts.push_back(p01);
 
                 norms.push_back(n); norms.push_back(n); norms.push_back(n);
                 norms.push_back(n); norms.push_back(n); norms.push_back(n);
 
-                // UV 
                 glm::vec2 uv00(tx0, tz0);
                 glm::vec2 uv10(tx1, tz0);
                 glm::vec2 uv11(tx1, tz1);
@@ -661,11 +997,8 @@ struct Uniforms
     glm::mat4 model;
     glm::mat4 view;
 
-    // -------------------------
-    // ОПТИМ: per-vertex inverse() устгахын тулд per-object урьдчилж бодно
-    // -------------------------
-    glm::mat4 mv;            // view * model
-    glm::mat3 normal_mat;    // transpose(inverse(mat3(model))) (эсвэл identity)
+    glm::mat4 mv;
+    glm::mat3 normal_mat;
 
     glm::mat4 light_vp;
 
@@ -680,24 +1013,30 @@ struct Uniforms
     // ShadowMap pointer
     const ShadowMap *shadow = nullptr;
 
-    // SKYBOX IBL
+    // Skybox (background зориулалт)
     const CubeMap *sky = nullptr;
 
+    // IBL Resources (irradiance + prefiltered spec)
+    const IBLResources *ibl = nullptr;
+
     // IBL knobs
-    float ibl_ambient = 0.25f;
-    float ibl_refl    = 0.35f;
-    float ibl_f0      = 0.04f;
+    float ibl_ambient  = 0.30f;
+    float ibl_refl     = 0.35f;
+    float ibl_f0       = 0.04f;
     float ibl_refl_mix = 1.0f;
+
+    // Материалын shininess (Blinn-Phong) -> IBL spec roughness mapping-д ашиглана
+    float shininess = 64.0f;
 };
 
 struct VaryingsFull
 {
-    glm::vec4 position;      // curr clip (camera)
-    glm::vec4 prev_position; // prev clip (camera)
+    glm::vec4 position;
+    glm::vec4 prev_position;
     glm::vec3 world_pos;
     glm::vec3 normal;
     glm::vec2 uv;
-    float     view_z;        // camera view_z (+Z forward)
+    float     view_z;
 };
 
 // ==========================================
@@ -718,12 +1057,10 @@ static VaryingsFull vertex_shader_full(
     glm::vec4 world_h = u.model * glm::vec4(aPos, 1.0f);
     out.world_pos     = glm::vec3(world_h);
 
-    // ОПТИМ: normal_mat нь per-object урьдчилж бодогдоно
     out.normal        = glm::normalize(u.normal_mat * aNormal);
 
     out.uv            = aUV;
 
-    // ОПТИМ: mv = view * model нь per-object урьдчилж бодогдоно
     glm::vec4 view_pos = u.mv * glm::vec4(aPos, 1.0f);
     out.view_z = view_pos.z;
 
@@ -744,13 +1081,11 @@ static inline bool shadow_uvz_from_world(
     glm::vec4 clip = light_vp * glm::vec4(world_pos, 1.0f);
     if (std::abs(clip.w) < 1e-6f) return false;
 
-    glm::vec3 ndc = glm::vec3(clip) / clip.w; // x,y in [-1,1], z in [0,1]
-    out_z_ndc = ndc.z;
+    glm::vec3 ndc = glm::vec3(clip) / clip.w;
+    out_z_ndc     = ndc.z;
 
     if (out_z_ndc < 0.0f || out_z_ndc > 1.0f) return false;
 
-    // ndc -> uv
-    // shadow map -> (0,0) top-left, y down
     out_uv.x = ndc.x * 0.5f + 0.5f;
     out_uv.y = 1.0f - (ndc.y * 0.5f + 0.5f);
 
@@ -763,14 +1098,12 @@ static inline float shadow_compare(
     float z_ndc,
     float bias)
 {
-    // uv outside => shadowгүй гэж үзье
     if (uv.x < 0.0f || uv.x > 1.0f || uv.y < 0.0f || uv.y > 1.0f) return 1.0f;
 
     int x = (int)std::lround(uv.x * float(sm.w - 1));
     int y = (int)std::lround(uv.y * float(sm.h - 1));
 
     float d = sm.sample(x, y);
-    // d == max() (хоосон) бол гэрэлтэй гэж үзнэ
     if (d == std::numeric_limits<float>::max()) return 1.0f;
 
     return (z_ndc <= d + bias) ? 1.0f : 0.0f;
@@ -784,7 +1117,6 @@ static inline float shadow_factor_pcf_2x2(
 {
     if (!SHADOW_USE_PCF) return shadow_compare(sm, uv, z_ndc, bias);
 
-    // 2x2 PCF, хөрш 4 sample
     float fx = uv.x * float(sm.w - 1);
     float fy = uv.y * float(sm.h - 1);
 
@@ -798,12 +1130,11 @@ static inline float shadow_factor_pcf_2x2(
     float s01 = (z_ndc <= sm.sample(x0,y1) + bias) ? 1.0f : 0.0f;
     float s11 = (z_ndc <= sm.sample(x1,y1) + bias) ? 1.0f : 0.0f;
 
-    // энгийн average
     return 0.25f * (s00 + s10 + s01 + s11);
 }
 
 // ==========================================
-// FRAGMENT SHADER (Blinn-Phong + Texture + Shadow + Skybox IBL)
+// FRAGMENT SHADER (Direct Blinn-Phong + Shadow + IBL)
 // ==========================================
 
 static shs::Color fragment_shader_full(const VaryingsFull& in, const Uniforms& u)
@@ -812,7 +1143,9 @@ static shs::Color fragment_shader_full(const VaryingsFull& in, const Uniforms& u
     glm::vec3 L = glm::normalize(-u.light_dir_world);
     glm::vec3 V = glm::normalize(u.camera_pos - in.world_pos);
 
-    // Directional light
+    // -----------------------------
+    // Direct light (Blinn-Phong)
+    // -----------------------------
     float ambientStrength = 0.18f;
 
     float diff = glm::max(glm::dot(N, L), 0.0f);
@@ -820,7 +1153,7 @@ static shs::Color fragment_shader_full(const VaryingsFull& in, const Uniforms& u
 
     glm::vec3 H = glm::normalize(L + V);
     float specularStrength = 0.45f;
-    float shininess = 64.0f;
+    float shininess = u.shininess;
     float spec = glm::pow(glm::max(glm::dot(N, H), 0.0f), shininess);
     glm::vec3 specular = specularStrength * spec * glm::vec3(1.0f);
 
@@ -839,47 +1172,53 @@ static shs::Color fragment_shader_full(const VaryingsFull& in, const Uniforms& u
         glm::vec2 suv;
         float sz;
         if (shadow_uvz_from_world(u.light_vp, in.world_pos, suv, sz)) {
-            // slope-scaled bias (гадаргуу гэрэлтэй хэр зэрэг зөрчилдөхөөс хамааруулна)
             float slope = 1.0f - glm::clamp(glm::dot(N, L), 0.0f, 1.0f);
             float bias  = SHADOW_BIAS_BASE + SHADOW_BIAS_SLOPE * slope;
             shadow = shadow_factor_pcf_2x2(*u.shadow, suv, sz, bias);
         }
     }
 
-    // --------------------------------------
-    // SKYBOX IBL (LDR cubemap => IBL-lite)
-    // --------------------------------------
-    glm::vec3 envN(1.0f);
-    glm::vec3 envR(0.0f);
+    // -----------------------------
+    // IBL (Diffuse irradiance + Prefiltered specular)
+    // -----------------------------
+    glm::vec3 ibl_diffuse(0.0f);
+    glm::vec3 ibl_spec(0.0f);
 
-    if (u.sky && u.sky->valid()) {
-        // ambient tint: N чиглэлээр sample хийх (хамгийн энгийн хувилбар)
-        envN = sample_cubemap_nearest_rgb01(*u.sky, N);
+    if (u.ibl && u.ibl->valid()) {
 
-        // reflection: R чиглэлээр sample
+        // 1) Diffuse irradiance
+        glm::vec3 irr = sample_cubemap_bilinear_rgb01(u.ibl->irradiance, N);
+
+        // 2) Specular prefiltered + LOD
+        //    Blinn-Phong shininess -> roughness (practical mapping)
+        float rough = std::sqrt(2.0f / (shininess + 2.0f)); // 0..1
+        float lod = rough * float(u.ibl->spec.maxMip() - 1);
+
         glm::vec3 R = glm::reflect(-V, N);
-        envR        = sample_cubemap_nearest_rgb01(*u.sky, R);
+        glm::vec3 prefiltered = sample_cubemap_spec_trilinear(u.ibl->spec, R, lod);
+
+        // Fresnel
+        float NoV = glm::max(0.0f, glm::dot(N, V));
+        float F   = schlick_fresnel(u.ibl_f0, NoV);
+
+        // Энерги split (маш энгийн, гэхдээ их үр дүнтэй)
+        float ks = F;
+        float kd = 1.0f - ks;
+
+        ibl_diffuse = kd * irr * clamp01(u.ibl_ambient);
+        ibl_spec    = ks * prefiltered * clamp01(u.ibl_refl) * clamp01(u.ibl_refl_mix);
     }
 
-    // ambient-ийг sky tint-тэй mix хийх
-    glm::vec3 ambient = ambientStrength * glm::mix(glm::vec3(1.0f), envN, clamp01(u.ibl_ambient));
-
-    // Fresnel (Schlick)
-    float NoV = glm::max(0.0f, glm::dot(N, V));
-    float F   = schlick_fresnel(u.ibl_f0, NoV);
-
-    // Reflection хүч (per-object mix орно)
-    glm::vec3 refl = envR * (F * clamp01(u.ibl_refl) * clamp01(u.ibl_refl_mix));
-
-    // --------------------------------------
-    // Final combine (shadow: зөвхөн direct light дээр)
-    // --------------------------------------
+    // -----------------------------
+    // Final combine
+    // - Shadow зөвхөн direct дээр
+    // - IBL дээр shadow тавихгүй
+    // -----------------------------
     glm::vec3 direct = shadow * (diffuse * baseColor + specular);
-    glm::vec3 amb    = ambient * baseColor;
-    glm::vec3 result = amb + direct + refl;
+    glm::vec3 amb    = ambientStrength * baseColor; // жижиг “legacy” ambient үлдээж болно
+    glm::vec3 result = amb + direct + (ibl_diffuse * baseColor) + ibl_spec;
 
     result = glm::clamp(result, 0.0f, 1.0f);
-
     return rgb01_to_color(result);
 }
 
@@ -898,6 +1237,9 @@ static void skybox_background_pass(
 {
     if (!sky.valid()) return;
 
+    // Skybox background-д LDR Texture2D ашиглая
+    // Энэ пасс зөвхөн background зураг.
+
     int W = dst.get_width();
     int H = dst.get_height();
 
@@ -910,6 +1252,40 @@ static void skybox_background_pass(
 
     int cols = (W + TILE_SIZE_X - 1) / TILE_SIZE_X;
     int rows = (H + TILE_SIZE_Y - 1) / TILE_SIZE_Y;
+
+    // Skybox-д nearest sample хэрэглэж байсан хуучин mapping-ийг хурдан байдлаар үлдээв:
+    auto sample_cubemap_nearest_rgb01_ldr = [&](const glm::vec3& dir_world) -> glm::vec3 {
+
+        glm::vec3 d = dir_world;
+        float len = glm::length(d);
+        if (len < 1e-8f) return glm::vec3(0.0f);
+        d /= len;
+
+        float ax = std::abs(d.x);
+        float ay = std::abs(d.y);
+        float az = std::abs(d.z);
+
+        int face = 0;
+        float u = 0.5f, v = 0.5f;
+
+        if (ax >= ay && ax >= az) {
+            if (d.x > 0.0f) { face = 0; u = (-d.z / ax); v = ( d.y / ax); }
+            else            { face = 1; u = ( d.z / ax); v = ( d.y / ax); }
+        } else if (ay >= ax && ay >= az) {
+            if (d.y > 0.0f) { face = 2; u = ( d.x / ay); v = (-d.z / ay); }
+            else            { face = 3; u = ( d.x / ay); v = ( d.z / ay); }
+        } else {
+            if (d.z > 0.0f) { face = 4; u = ( d.x / az); v = ( d.y / az); }
+            else            { face = 5; u = (-d.x / az); v = ( d.y / az); }
+        }
+
+        u = 0.5f * (u + 1.0f);
+        v = 0.5f * (v + 1.0f);
+
+        const shs::Texture2D& tex = sky.face[face];
+        shs::Color c = sample_nearest(tex, glm::vec2(u, v));
+        return color_to_rgb01(c);
+    };
 
     wg.reset();
 
@@ -927,7 +1303,6 @@ static void skybox_background_pass(
                 for (int y = y0; y < y1; y++) {
                     for (int x = x0; x < x1; x++) {
 
-                        // Canvas coords -> NDC (-1..1), y up
                         float fx = (float(x) + 0.5f) / float(W);
                         float fy = (float(y) + 0.5f) / float(H);
 
@@ -941,7 +1316,7 @@ static void skybox_background_pass(
 
                         dir = glm::normalize(dir);
 
-                        glm::vec3 c01 = sample_cubemap_nearest_rgb01(sky, dir);
+                        glm::vec3 c01 = sample_cubemap_nearest_rgb01_ldr(dir);
                         dst.draw_pixel(x, y, rgb01_to_color(c01));
                     }
                 }
@@ -976,10 +1351,9 @@ static inline VaryingsShadow shadow_vertex_shader(const glm::vec3& aPos, const U
 
 static inline glm::vec3 clip_to_shadow_screen(const glm::vec4& clip, int W, int H)
 {
-    glm::vec3 ndc = glm::vec3(clip) / clip.w; // x,y in [-1,1], z in [0,1]
+    glm::vec3 ndc = glm::vec3(clip) / clip.w;
     glm::vec3 s;
     s.x = (ndc.x * 0.5f + 0.5f) * float(W - 1);
-    // shadow map space-г (0,0) top-left гэж үзээд y down ашиглана
     s.y = (1.0f - (ndc.y * 0.5f + 0.5f)) * float(H - 1);
     s.z = ndc.z;
     return s;
@@ -1036,7 +1410,7 @@ static void draw_triangle_tile_shadow(
 
 static inline glm::vec2 clip_to_screen_xy(const glm::vec4& clip, int w, int h)
 {
-    glm::vec3 s = shs::Canvas::clip_to_screen(clip, w, h); // screen (x right, y down)
+    glm::vec3 s = shs::Canvas::clip_to_screen(clip, w, h);
     return glm::vec2(s.x, s.y);
 }
 
@@ -1077,7 +1451,6 @@ static void draw_triangle_tile_color_depth_motion_shadow(
         };
 
         auto intersect = [&](const VaryingsFull& a, const VaryingsFull& b) -> VaryingsFull {
-            // plane: z = 0  => a.z + t*(b.z-a.z) = 0
             float az = a.position.z;
             float bz = b.position.z;
             float denom = (bz - az);
@@ -1106,25 +1479,19 @@ static void draw_triangle_tile_color_depth_motion_shadow(
         return out;
     };
 
-    // --------------------------------------
-    // Vertex stage (triangle)
-    // --------------------------------------
     VaryingsFull v0 = vs(tri_verts[0], tri_norms[0], tri_uvs[0]);
     VaryingsFull v1 = vs(tri_verts[1], tri_norms[1], tri_uvs[1]);
     VaryingsFull v2 = vs(tri_verts[2], tri_norms[2], tri_uvs[2]);
 
     std::vector<VaryingsFull> poly = { v0, v1, v2 };
 
-    // Near-plane clip (homogeneous z >= 0)
     poly = clip_poly_near_z(poly);
     if (poly.size() < 3) return;
 
-    // Triangulate polygon fan: (0, i, i+1)
     for (int ti = 1; ti + 1 < (int)poly.size(); ++ti)
     {
         VaryingsFull tv[3] = { poly[0], poly[ti], poly[ti + 1] };
 
-        // Convert to screen coords (y down)
         glm::vec3 sc3[3];
         for (int i = 0; i < 3; ++i) {
             if (tv[i].position.w <= 1e-6f) goto next_tri;
@@ -1195,6 +1562,7 @@ static void draw_triangle_tile_color_depth_motion_shadow(
 
                         in.view_z = vz;
 
+                        // Motion vector (object+camera)
                         glm::vec2 curr_s = clip_to_screen_xy(in.position, W, H);
                         glm::vec2 prev_s = clip_to_screen_xy(in.prev_position, W, H);
                         glm::vec2 v_screen = curr_s - prev_s;
@@ -1219,7 +1587,6 @@ static void draw_triangle_tile_color_depth_motion_shadow(
 
 // ==========================================
 // CAMERA-ONLY VELOCITY RECONSTRUCTION (depth + matrices)
-// - depth нь view_z (camera space)
 // ==========================================
 
 static inline float viewz_to_ndcz(float view_z, const glm::mat4& proj)
@@ -1231,7 +1598,6 @@ static inline float viewz_to_ndcz(float view_z, const glm::mat4& proj)
 
 static inline glm::vec2 canvas_to_ndc_xy(int x, int y, int W, int H)
 {
-    // Canvas: y up -> screen y down
     int py_screen = (H - 1) - y;
 
     float fx = (float(x) + 0.5f) / float(W);
@@ -1255,7 +1621,7 @@ static inline glm::vec2 compute_camera_velocity_canvas_fast(
     int W, int H,
     const glm::mat4& curr_viewproj,
     const glm::mat4& prev_viewproj,
-    const glm::mat4& inv_curr_viewproj,   // frame тутам 1 удаа тооцоод энд дамжуулна
+    const glm::mat4& inv_curr_viewproj,
     const glm::mat4& curr_proj)
 {
     if (view_z == std::numeric_limits<float>::max()) return glm::vec2(0.0f);
@@ -1265,7 +1631,6 @@ static inline glm::vec2 compute_camera_velocity_canvas_fast(
 
     glm::vec4 clip_curr(ndc_xy.x, ndc_xy.y, ndc_z, 1.0f);
 
-    // энд glm::inverse хийхгүй
     glm::vec4 world_h = inv_curr_viewproj * clip_curr;
     if (std::abs(world_h.w) < 1e-6f) return glm::vec2(0.0f);
     glm::vec3 world = glm::vec3(world_h) / world_h.w;
@@ -1319,20 +1684,17 @@ static void combined_motion_blur_pass(
     int W = src.get_width();
     int H = src.get_height();
 
-    // Матрицууд (frame тутам 1 удаа)
     glm::mat4 curr_vp = curr_proj * curr_view;
     glm::mat4 prev_vp = prev_proj * prev_view;
 
-    // хамгийн үнэтэй inverse-г frame тутам 1 удаа
     glm::mat4 inv_curr_vp = glm::inverse(curr_vp);
 
     int cols = (W + TILE_SIZE_X - 1) / TILE_SIZE_X;
     int rows = (H + TILE_SIZE_Y - 1) / TILE_SIZE_Y;
 
-    // Raw буферүүд (Canvas: y up)
     const shs::Color* src_raw  = src.buffer().raw();
     shs::Color*       dst_raw  = dst.buffer().raw();
-    const float*      z_raw    = depth.buffer().raw(); // depth нь Canvas coords дээр хадгалж байна
+    const float*      z_raw    = depth.buffer().raw();
     const glm::vec2*  v_raw    = v_full_buf.vel.data();
 
     wg.reset();
@@ -1393,7 +1755,7 @@ static void combined_motion_blur_pass(
 
                         for (int i = 0; i < samples; i++) {
                             float t = (samples == 1) ? 0.0f : (float(i) / float(samples - 1));
-                            float a = (t - 0.5f) * 2.0f; // -1..+1
+                            float a = (t - 0.5f) * 2.0f;
 
                             glm::vec2 p = glm::vec2(float(x), float(y)) + dir * (a * len);
 
@@ -1435,11 +1797,12 @@ static void combined_motion_blur_pass(
 class DemoScene : public shs::AbstractSceneState
 {
 public:
-    DemoScene(shs::Canvas* canvas, Viewer* viewer, const shs::Texture2D* car_tex, const CubeMap* sky)
+    DemoScene(shs::Canvas* canvas, Viewer* viewer, const shs::Texture2D* car_tex, const CubeMap* sky, const IBLResources* ibl)
     {
         this->canvas = canvas;
         this->viewer = viewer;
         this->sky    = sky;
+        this->ibl    = ibl;
 
         floor  = new FloorPlane(55.0f, 140.0f);
         car    = new SubaruObject(glm::vec3(-6.0f, 0.0f, 26.0f), glm::vec3(0.08f), car_tex);
@@ -1461,6 +1824,7 @@ public:
     Viewer* viewer;
 
     const CubeMap* sky = nullptr;
+    const IBLResources* ibl = nullptr;
 
     FloorPlane* floor;
 
@@ -1471,7 +1835,7 @@ public:
 };
 
 // ==========================================
-// RENDERER SYSTEM (Shadow + Camera + MotionBlur + Skybox IBL)
+// RENDERER SYSTEM (Shadow + Camera + MotionBlur + Skybox + IBL)
 // ==========================================
 
 class RendererSystem : public shs::AbstractSystem
@@ -1491,7 +1855,6 @@ public:
 
         shadow = new ShadowMap(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
 
-        // Камерын history
         has_prev_cam = false;
         prev_view = glm::mat4(1.0f);
         prev_proj = glm::mat4(1.0f);
@@ -1508,7 +1871,6 @@ public:
     {
         (void)dt;
 
-        // Матрицууд
         glm::mat4 view = scene->viewer->camera->view_matrix;
         glm::mat4 proj = scene->viewer->camera->projection_matrix;
 
@@ -1519,7 +1881,6 @@ public:
 
         glm::mat4 light_view = glm::lookAtLH(light_pos, center, glm::vec3(0,1,0));
 
-        // Ortho bounds
         float L = -85.0f, R = 85.0f;
         float B = -55.0f, T = 95.0f;
         float zn = 0.1f, zf = 240.0f;
@@ -1576,7 +1937,6 @@ public:
                         // Objects
                         for (shs::AbstractObject3D* obj : scene->scene_objects)
                         {
-                            // Subaru
                             if (auto* car = dynamic_cast<SubaruObject*>(obj)) {
                                 Uniforms u;
                                 u.model = car->get_world_matrix();
@@ -1594,7 +1954,6 @@ public:
                                 }
                             }
 
-                            // Monkey
                             if (auto* mk = dynamic_cast<MonkeyObject*>(obj)) {
                                 Uniforms u;
                                 u.model = mk->get_world_matrix();
@@ -1622,7 +1981,7 @@ public:
         }
 
         // -----------------------
-        // PASS1: Camera render -> RT_ColorDepthMotion (shadow + skybox IBL)
+        // PASS1: Camera render -> RT_ColorDepthMotion
         // -----------------------
         rt->clear(shs::Color{20,20,25,255});
 
@@ -1658,24 +2017,26 @@ public:
 
                             u.mv              = u.view * u.model;
                             u.mvp             = proj   * u.mv;
-                            u.prev_mvp        = u.mvp;             // floor нь хөдөлгөөнгүй
+                            u.prev_mvp        = u.mvp;
                             u.normal_mat      = glm::mat3(1.0f);
-
 
                             u.light_vp        = light_vp;
                             u.light_dir_world = LIGHT_DIR_WORLD;
                             u.camera_pos      = scene->viewer->position;
-                            u.base_color      = shs::Color{ 120, 122, 128, 255 }; // саарал шал
+                            u.base_color      = shs::Color{ 120, 122, 128, 255 };
                             u.albedo          = nullptr;
                             u.use_texture     = false;
                             u.shadow          = shadow;
 
-                            // SKYBOX IBL
                             u.sky             = scene->sky;
+
+                            // IBL
+                            u.ibl             = scene->ibl;
                             u.ibl_ambient     = 0.30f;
-                            u.ibl_refl        = 0.22f;
+                            u.ibl_refl        = 0.20f;
                             u.ibl_f0          = 0.04f;
-                            u.ibl_refl_mix    = 0.10f; // matte
+                            u.ibl_refl_mix    = 0.08f;  // matte floor
+                            u.shininess       = 32.0f;  // floor
 
                             for (size_t i = 0; i < scene->floor->verts.size(); i += 3) {
                                 std::vector<glm::vec3> tri_v = {
@@ -1735,12 +2096,15 @@ public:
                                 u.use_texture     = (car->albedo && car->albedo->valid());
                                 u.shadow          = shadow;
 
-                                // SKYBOX IBL
                                 u.sky             = scene->sky;
+
+                                // IBL
+                                u.ibl             = scene->ibl;
                                 u.ibl_ambient     = 0.28f;
-                                u.ibl_refl        = 0.38f;
+                                u.ibl_refl        = 0.45f;
                                 u.ibl_f0          = 0.04f;
-                                u.ibl_refl_mix    = 0.60f; // машин: илүү reflect
+                                u.ibl_refl_mix    = 0.70f; // car reflect
+                                u.shininess       = 96.0f;
 
                                 const auto& v = car->geometry->triangles;
                                 const auto& n = car->geometry->normals;
@@ -1789,12 +2153,15 @@ public:
                                 u.use_texture     = false;
                                 u.shadow          = shadow;
 
-                                // SKYBOX IBL
                                 u.sky             = scene->sky;
+
+                                // IBL
+                                u.ibl             = scene->ibl;
                                 u.ibl_ambient     = 0.30f;
-                                u.ibl_refl        = 0.32f;
+                                u.ibl_refl        = 0.28f;
                                 u.ibl_f0          = 0.04f;
                                 u.ibl_refl_mix    = 0.35f;
+                                u.shininess       = 48.0f;
 
                                 const auto& v = mk->geometry->triangles;
                                 const auto& n = mk->geometry->normals;
@@ -1828,7 +2195,7 @@ public:
             wg_cam.wait();
         }
 
-        // per-object prev_mvp commit (дараагийн frame-д motion зөв гарах)
+        // per-object prev_mvp commit
         {
             glm::mat4 view2 = scene->viewer->camera->view_matrix;
             glm::mat4 proj2 = scene->viewer->camera->projection_matrix;
@@ -1877,12 +2244,10 @@ public:
             wg_mb
         );
 
-        // camera history commit
         prev_view = curr_view;
         prev_proj = curr_proj;
     }
 
-    // Эцсийн canvas-д харуулах буфер
     shs::Canvas& output() { return *mb_out; }
 
 private:
@@ -1894,13 +2259,11 @@ private:
 
     ShadowMap* shadow;
 
-    // WaitGroups
     shs::Job::WaitGroup wg_shadow;
     shs::Job::WaitGroup wg_cam;
     shs::Job::WaitGroup wg_mb;
     shs::Job::WaitGroup wg_sky;
 
-    // Camera history
     bool has_prev_cam;
     glm::mat4 prev_view;
     glm::mat4 prev_proj;
@@ -1916,7 +2279,6 @@ public:
     LogicSystem(DemoScene* scene) : scene(scene) {}
     void process(float dt) override
     {
-        // Камер update + объект update
         scene->viewer->update();
         for (auto* o : scene->scene_objects) o->update(dt);
     }
@@ -1988,15 +2350,51 @@ int main(int argc, char* argv[])
     // Texture load (Subaru albedo)
     shs::Texture2D car_tex = shs::load_texture_sdl_image("./obj/subaru/SUBARU1_M.bmp", true);
 
-    // Skybox cubemap load
+    // Skybox cubemap load (LDR)
     CubeMap sky = load_cubemap_water_scene("./images/skybox/water_scene");
     if (!sky.valid()) {
         std::cout << "Warning: Skybox cubemap load failed (images/skybox/water_scene/*.jpg)" << std::endl;
     }
 
+    // IBL precompute (програм эхлэхэд нэг удаа)
+    IBLResources ibl;
+    if (sky.valid()) {
+        std::cout << "STATUS : IBL precompute started..." << std::endl;
+
+        ibl.env = cubemap_to_float_rgb01(sky);
+        if (ibl.env.valid()) {
+
+            std::cout << "STATUS : IBL diffuse irradiance building..."
+                      << " | size=" << IBL_IRR_SIZE
+                      << " | samples=" << IBL_IRR_SAMPLES
+                      << std::endl;
+
+            ibl.irradiance = build_irradiance_cubemap(ibl.env, IBL_IRR_SIZE, IBL_IRR_SAMPLES);
+
+            // Specular prefilter нь тооцоолоход өртөг өндөртэй.
+            // Env хэмжээ 1024/2048 байвал mip0 дээрээ асар олон texel болно.
+            // Тиймээс base resolution-г cap хийнэ (жишээ нь 512 эсвэл 256 гэх мэт).
+            int specBase = std::min(IBL_SPEC_BASE_CAP, ibl.env.size);
+
+            std::cout << "STATUS : IBL specular prefilter building..."
+                      << " | base=" << specBase
+                      << " | mips=" << IBL_SPEC_MIPCOUNT
+                      << " | samples=" << IBL_SPEC_SAMPLES
+                      << std::endl;
+
+            ibl.spec = build_prefiltered_spec(ibl.env, specBase, IBL_SPEC_MIPCOUNT, IBL_SPEC_SAMPLES);
+        }
+
+        if (!ibl.valid()) {
+            std::cout << "Warning: IBL precompute failed (falling back to direct lighting only)." << std::endl;
+        } else {
+            std::cout << "STATUS : IBL precompute done." << std::endl;
+        }
+    }
+
     // Scene
     Viewer*    viewer    = new Viewer(glm::vec3(0.0f, 10.0f, -42.0f), 55.0f);
-    DemoScene* scene     = new DemoScene(screen_canvas, viewer, &car_tex, &sky);
+    DemoScene* scene     = new DemoScene(screen_canvas, viewer, &car_tex, &sky, (ibl.valid() ? &ibl : nullptr));
 
     SystemProcessor* sys = new SystemProcessor(scene, job_system);
 
@@ -2073,8 +2471,7 @@ int main(int argc, char* argv[])
             std::string title =
                 "IBL + Shadow + MotionBlur | FPS: " + std::to_string(frames) +
                 " | Threads: " + std::to_string(THREAD_COUNT) +
-                " | Canvas: " + std::to_string(CANVAS_WIDTH) + "x" + std::to_string(CANVAS_HEIGHT); // +
-                //" | Shadow: " + std::to_string(SHADOW_MAP_SIZE);
+                " | Canvas: " + std::to_string(CANVAS_WIDTH) + "x" + std::to_string(CANVAS_HEIGHT);
             SDL_SetWindowTitle(window, title.c_str());
             frames = 0;
             fps_timer = 0.0f;
