@@ -79,84 +79,11 @@ struct TileBin {
 // SCENE CLASSES
 // ==========================================
 
-class Viewer
-{
-public:
-    Viewer(glm::vec3 position, float speed)
-    {
-        this->position = position;
-        this->speed    = speed;
+// Using standardized shs::Viewer
+using Viewer = shs::Viewer;
 
-        this->camera                   = new shs::Camera3D();
-        this->camera->position         = this->position;
-        this->camera->width            = float(CANVAS_WIDTH);
-        this->camera->height           = float(CANVAS_HEIGHT);
-        this->camera->field_of_view    = 45.0f;
-        this->camera->horizontal_angle = 0.0f;
-        this->camera->vertical_angle   = 0.0f;
-        this->camera->z_near           = 0.1f;
-        this->camera->z_far            = 1000.0f;
-        this->camera->update();
-    }
-    ~Viewer() { delete camera; }
-
-    void update() {
-        this->camera->position         = this->position;
-        this->camera->horizontal_angle = this->horizontal_angle;
-        this->camera->vertical_angle   = this->vertical_angle;
-        this->camera->update();
-    }
-
-    glm::vec3 get_direction_vector() { return this->camera->direction_vector; }
-    glm::vec3 get_right_vector()     { return this->camera->right_vector; }
-
-    shs::Camera3D *camera = nullptr;
-    glm::vec3 position    = glm::vec3(0.0f);
-    float horizontal_angle = 0.0f;
-    float vertical_angle   = 0.0f;
-    float speed            = 0.0f;
-};
-
-class ModelGeometry
-{
-public:
-    ModelGeometry(const std::string& model_path) {
-        unsigned int flags = aiProcess_Triangulate | aiProcess_GenNormals | aiProcess_FlipUVs;
-        const aiScene *scene = importer.ReadFile(model_path.c_str(), flags);
-        if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
-            std::cerr << "Error loading model: " << importer.GetErrorString() << std::endl;
-            return;
-        }
-
-        triangles.reserve(100000);
-        normals.reserve(100000);
-
-        for (unsigned int i = 0; i < scene->mNumMeshes; ++i) {
-            aiMesh *mesh = scene->mMeshes[i];
-            for (unsigned int j = 0; j < mesh->mNumFaces; ++j) {
-                aiFace face = mesh->mFaces[j];
-                if (face.mNumIndices != 3) continue;
-
-                for(int k=0; k<3; ++k) {
-                    aiVector3D v = mesh->mVertices[face.mIndices[k]];
-                    triangles.push_back(glm::vec3(v.x, v.y, v.z));
-
-                    if (mesh->HasNormals()) {
-                        aiVector3D n = mesh->mNormals[face.mIndices[k]];
-                        normals.push_back(glm::vec3(n.x, n.y, n.z));
-                    } else {
-                        normals.push_back(glm::vec3(0,0,1));
-                    }
-                }
-            }
-        }
-    }
-    ~ModelGeometry() { importer.FreeScene(); }
-
-    std::vector<glm::vec3> triangles;
-    std::vector<glm::vec3> normals;
-    Assimp::Importer importer;
-};
+// Using standardized shs::ModelGeometry
+using ModelGeometry = shs::ModelGeometry;
 
 class MonkeyObject : public shs::AbstractObject3D
 {
@@ -234,7 +161,7 @@ public:
     void process(float /*delta_time*/) override
     {
         // 1) CLEAR (Color+Depth)
-        scene->rt->clear(shs::Color{0, 0, 0, 255});
+        scene->rt->clear(shs::Color::black());
 
         // Bin болон tri list-ээ цэвэрлэх
         for (auto &bin : tile_bins) bin.tri_indices.clear();
@@ -598,7 +525,7 @@ int main(int argc, char* argv[])
 
     shs::Job::ThreadedPriorityJobSystem *jobs = new shs::Job::ThreadedPriorityJobSystem(cores);
 
-    Viewer          *viewer = new Viewer(glm::vec3(0.0f, 10.0f, -50.0f), 150.0f);
+    Viewer          *viewer = new Viewer(glm::vec3(0.0f, 10.0f, -50.0f), 150.0f, CANVAS_WIDTH, CANVAS_HEIGHT);
     HelloScene      *scene  = new HelloScene(rt, viewer);
     SystemProcessor *sys    = new SystemProcessor(scene, jobs);
 

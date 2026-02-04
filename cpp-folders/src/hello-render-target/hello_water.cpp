@@ -102,22 +102,14 @@ static inline float clampf(float v, float lo, float hi)
 
 static inline float clamp01(float v) { return (v < 0.0f) ? 0.0f : (v > 1.0f ? 1.0f : v); }
 
-// ==========================================
-// LH Ortho matrix (NDC z: 0..1)
-// ==========================================
+// Using standardized shs::ShadowMap, shs::MotionBuffer, shs::RT_ColorDepthVelocity
+//using ShadowMap    = shs::ShadowMap;
+//using MotionBuffer = shs::MotionBuffer;
+//using RT_ColorDepthMotion = shs::RT_ColorDepthVelocity;
 
-static inline glm::mat4 ortho_lh_zo(float left, float right, float bottom, float top, float znear, float zfar)
-{
-    glm::mat4 m(1.0f);
-    m[0][0] =  2.0f / (right - left);
-    m[1][1] =  2.0f / (top - bottom);
-    m[2][2] =  1.0f / (zfar - znear);
-
-    m[3][0] = -(right + left) / (right - left);
-    m[3][1] = -(top + bottom) / (top - bottom);
-    m[3][2] = -znear / (zfar - znear);
-    return m;
-}
+// Using standardized shs::Viewer and shs::ModelGeometry
+//using Viewer        = shs::Viewer;
+//using ModelGeometry = shs::ModelGeometry;
 
 // ==========================================
 // TEXTURE SAMPLER (nearest)
@@ -194,7 +186,7 @@ static inline glm::vec3 gamma_2p2(const glm::vec3& x)
 // ==========================================
 // SHADOW MAP BUFFER (Depth only)
 // ==========================================
-
+/*
 struct ShadowMap
 {
     int w = 0;
@@ -230,11 +222,11 @@ struct ShadowMap
         return depth.at(x,y);
     }
 };
-
+*/
 // ==========================================
 // MOTION BUFFER (Canvas coords, pixels, +Y up)
 // ==========================================
-
+/*
 struct MotionBuffer
 {
     MotionBuffer() : w(0), h(0) {}
@@ -267,11 +259,12 @@ struct MotionBuffer
     int w, h;
     std::vector<glm::vec2> vel;
 };
+*/
 
 // ==========================================
 // RT: Color + Depth(view_z) + Motion(full)
 // ==========================================
-
+/*
 struct RT_ColorDepthMotion
 {
     RT_ColorDepthMotion(int W, int H, float zn, float zf, shs::Color clear_col)
@@ -287,10 +280,11 @@ struct RT_ColorDepthMotion
         motion.clear();
     }
 
-    shs::Canvas  color;
-    shs::ZBuffer depth;   // view_z
-    MotionBuffer motion;  // v_full
+    shs::Canvas       color;
+    shs::ZBuffer      depth;   // view_z
+    shs::MotionBuffer motion;  // v_full
 };
+*/
 
 // ==========================================
 // CAMERA + VIEWER
@@ -651,7 +645,7 @@ struct Uniforms
     const shs::Texture2D *albedo = nullptr;
     bool use_texture = false;
 
-    const ShadowMap *shadow = nullptr;
+    const shs::ShadowMap *shadow = nullptr;
 
     const shs::Canvas* reflection_color = nullptr;
     glm::mat4          reflection_vp    = glm::mat4(1.0f);
@@ -717,7 +711,7 @@ static inline bool shadow_uvz_from_world(
 }
 
 static inline float shadow_factor_pcf_2x2(
-    const ShadowMap& sm,
+    const shs::ShadowMap& sm,
     glm::vec2 uv,
     float z_ndc,
     float bias)
@@ -906,7 +900,7 @@ static inline void water_flow_normal_and_foam(
     {
         float h0 = fbm2(p * 1.2f);
         float h1 = fbm2(p * 2.7f + 11.0f);
-        float h  = (h0 * 0.65f + h1 * 0.35f);
+        //float h  = (h0 * 0.65f + h1 * 0.35f);
 
         float e = 0.18f;
         float hx = fbm2((p + glm::vec2(e, 0)) * 1.2f) - fbm2((p - glm::vec2(e, 0)) * 1.2f);
@@ -947,8 +941,8 @@ static shs::Color fragment_shader_full(const VaryingsFull& in, const Uniforms& u
 
     glm::vec3 baseColor;
     if (u.use_texture && u.albedo && u.albedo->valid()) {
-        shs::Color tc = sample_nearest(*u.albedo, in.uv);
-        baseColor = glm::vec3(tc.r, tc.g, tc.b) / 255.0f;
+        shs::Color tc = shs::sample_nearest(*u.albedo, in.uv);
+        baseColor     = glm::vec3(tc.r, tc.g, tc.b) / 255.0f;
     } else {
         baseColor = glm::vec3(u.base_color.r, u.base_color.g, u.base_color.b) / 255.0f;
     }
@@ -1131,7 +1125,7 @@ static inline glm::vec3 clip_to_shadow_screen(const glm::vec4& clip, int W, int 
 }
 
 static void draw_triangle_tile_shadow(
-    ShadowMap& sm,
+    shs::ShadowMap& sm,
     const std::vector<glm::vec3>& tri_verts,
     std::function<VaryingsShadow(const glm::vec3&)> vs,
     glm::ivec2 tile_min, glm::ivec2 tile_max)
@@ -1186,7 +1180,7 @@ static inline glm::vec2 clip_to_screen_xy(const glm::vec4& clip, int w, int h)
 }
 
 static void draw_triangle_tile_color_depth_motion_shadow(
-    RT_ColorDepthMotion& rt,
+    shs::RT_ColorDepthMotion& rt,
     const std::vector<glm::vec3>& tri_verts,
     const std::vector<glm::vec3>& tri_norms,
     const std::vector<glm::vec2>& tri_uvs,
@@ -1293,9 +1287,7 @@ static void draw_triangle_tile_color_depth_motion_shadow(
 
                     float vz = bc.x * tv[0].view_z + bc.y * tv[1].view_z + bc.z * tv[2].view_z;
 
-                    int cy = (H - 1) - py;
-
-                    if (rt.depth.test_and_set_depth(px, cy, vz)) {
+                    if (rt.depth.test_and_set_depth_screen_space(px, py, vz)) {
 
                         float w0 = tv[0].position.w;
                         float w1 = tv[1].position.w;
@@ -1339,7 +1331,7 @@ static void draw_triangle_tile_color_depth_motion_shadow(
                         if (len > MB_MAX_PIXELS && len > 1e-6f) {
                             v_canvas *= (MB_MAX_PIXELS / len);
                         }
-                        rt.motion.set(px, cy, v_canvas);
+                        rt.velocity.set_screen_space(px, py, v_canvas);
 
                         rt.color.draw_pixel_screen_space(px, py, fs(in));
                     }
@@ -1435,7 +1427,7 @@ static inline glm::vec2 apply_soft_knee(glm::vec2 v, float knee, float max_len)
 static void combined_motion_blur_pass(
     const shs::Canvas& src,
     const shs::ZBuffer& depth,
-    const MotionBuffer& v_full_buf,
+    const shs::Buffer<glm::vec2>& v_full_buf, //const shs::MotionBuffer& v_full_buf,
     shs::Canvas& dst,
     const glm::mat4& curr_view,
     const glm::mat4& curr_proj,
@@ -1485,7 +1477,8 @@ static void combined_motion_blur_pass(
                             x, y, vz, W, H, curr_vp, prev_vp, curr_proj
                         );
 
-                        glm::vec2 v_full = v_full_buf.get(x, y);
+                        //glm::vec2 v_full = v_full_buf.get(x, y);
+                        glm::vec2 v_full = v_full_buf.at(x, y); 
                         glm::vec2 v_obj_only = v_full - v_cam;
 
                         glm::vec2 v_total = w_obj * v_obj_only + w_cam * v_cam;
@@ -1619,7 +1612,7 @@ public:
     RendererSystem(DemoScene* scene, shs::Job::ThreadedPriorityJobSystem* job_sys)
         : scene(scene), job_system(job_sys)
     {
-        rt = new RT_ColorDepthMotion(
+        rt = new shs::RT_ColorDepthMotion(
             CANVAS_WIDTH, CANVAS_HEIGHT,
             scene->viewer->camera->z_near,
             scene->viewer->camera->z_far,
@@ -1628,14 +1621,14 @@ public:
 
         mb_out = new shs::Canvas(CANVAS_WIDTH, CANVAS_HEIGHT, CLEAR_BG);
 
-        reflection_rt = new RT_ColorDepthMotion(
+        reflection_rt = new shs::RT_ColorDepthMotion(
             CANVAS_WIDTH, CANVAS_HEIGHT,
             scene->viewer->camera->z_near,
             scene->viewer->camera->z_far,
             CLEAR_BG
         );
 
-        shadow = new ShadowMap(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
+        shadow = new shs::ShadowMap(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
 
         has_prev_cam = false;
         prev_view = glm::mat4(1.0f);
@@ -1666,12 +1659,12 @@ public:
 
         glm::mat4 light_view = glm::lookAtLH(light_pos, center, glm::vec3(0,1,0));
 
-        float L = -85.0f, R = 85.0f;
-        float B = -55.0f, T = 95.0f;
-        float zn = 0.1f, zf = 240.0f;
+        float L  = -85.0f, R  = 85.0f;
+        float B  = -55.0f, T  = 95.0f;
+        float zn =   0.1f, zf = 240.0f;
 
-        glm::mat4 light_proj = ortho_lh_zo(L, R, B, T, zn, zf);
-        glm::mat4 light_vp = light_proj * light_view;
+        glm::mat4 light_proj = shs::Math::ortho_lh_zo(L, R, B, T, zn, zf);
+        glm::mat4 light_vp   = light_proj * light_view;
 
         // -----------------------
         // PASS0: ShadowMap depth
@@ -2228,7 +2221,7 @@ public:
         combined_motion_blur_pass(
             rt->color,
             rt->depth,
-            rt->motion,
+            rt->velocity, //rt->motion,
             *mb_out,
             curr_view,
             curr_proj,
@@ -2252,11 +2245,11 @@ private:
     DemoScene* scene;
     shs::Job::ThreadedPriorityJobSystem* job_system;
 
-    RT_ColorDepthMotion* rt;
-    RT_ColorDepthMotion* reflection_rt;
+    shs::RT_ColorDepthMotion* rt;
+    shs::RT_ColorDepthMotion* reflection_rt;
     shs::Canvas* mb_out;
 
-    ShadowMap* shadow;
+    shs::ShadowMap* shadow;
 
     shs::Job::WaitGroup wg_shadow;
     shs::Job::WaitGroup wg_refl;

@@ -109,10 +109,6 @@ public:
     {
         this->color = new_color;
     }
-    void set_color(shs::Pixel new_pixel)
-    {
-        this->color = new_pixel.get_color();
-    }
 
     shs::Color color{0, 255, 0, 255};
     float      speed          = 0.5f;
@@ -186,18 +182,18 @@ int main()
         SDL_RenderClear(renderer);
 
         // software rendering or drawing stuffs goes around here
-        shs::Canvas::fill_pixel(*main_canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT, shs::Pixel::black_pixel());
-        shs::Canvas::fill_pixel(*main_canvas, 10, 10, 20, 30, shs::Pixel::white_pixel());
+        shs::Canvas::fill_pixel(*main_canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color::black());
+        shs::Canvas::fill_pixel(*main_canvas, 10, 10, 20, 30, shs::Color::white());
 
 
         // rendering scene objects
 
         TriangleObject& first_object = scene[0];
-        first_object.set_color(shs::Pixel::green_pixel());
+        first_object.set_color(shs::Color::green());
         first_object.render(*main_canvas);
 
         TriangleObject& second_object = scene[1];
-        second_object.set_color(shs::Pixel::random_pixel());
+        second_object.set_color(shs::Color::random());
         second_object.render(*main_canvas);
 
         TriangleObject& third_object = scene[2];

@@ -23,14 +23,7 @@
 #define TILE_SIZE_X        40
 #define TILE_SIZE_Y        40
 
-static inline float clampf(float v, float lo, float hi) { return std::max(lo, std::min(hi, v)); }
-static inline int   clampi(int v, int lo, int hi)       { return std::max(lo, std::min(hi, v)); }
-
-static inline glm::vec2 rot2(glm::vec2 v, float t)
-{
-    float s = std::sin(t), c = std::cos(t);
-    return glm::vec2(c*v.x - s*v.y, s*v.x + c*v.y);
-}
+// Use optimized shs::Math routines
 
 static inline glm::vec3 aces_tonemap(glm::vec3 c)
 {
@@ -101,7 +94,9 @@ static inline glm::vec3 render_wormhole(glm::vec2 pixel_xy, float time_sec)
     ro += rgt * 0.75f + up * 0.15f;
 
     glm::vec2 uv = (2.0f * pixel_xy - glm::vec2(CANVAS_WIDTH, CANVAS_HEIGHT)) / float(CANVAS_HEIGHT);
-    uv = rot2(uv, t * 0.15f);
+    // Use glm::rotate or fixed inline if needed, but keeping it simple for now
+    float s_rot = std::sin(t * 0.15f), c_rot = std::cos(t * 0.15f);
+    uv = glm::vec2(c_rot*uv.x - s_rot*uv.y, s_rot*uv.x + c_rot*uv.y);
 
     d = glm::normalize(fwd + uv.x * rgt + uv.y * up);
 
@@ -115,7 +110,8 @@ static inline glm::vec3 render_wormhole(glm::vec2 pixel_xy, float time_sec)
         b.x -= c.x;
         b.y -= c.y;
 
-        glm::vec2 bw = rot2(glm::sin(glm::vec2(b.x, b.y)), t*1.5f + b.z*3.0f);
+        float s_rot2 = std::sin(t*1.5f + b.z*3.0f), c_rot2 = std::cos(t*1.5f + b.z*3.0f);
+        glm::vec2 bw = glm::vec2(c_rot2*glm::sin(b.x) - s_rot2*glm::sin(b.y), s_rot2*glm::sin(b.x) + c_rot2*glm::sin(b.y));
         b.x = bw.x;
         b.y = bw.y;
 
@@ -155,9 +151,9 @@ static inline shs::Color fragment_shader(glm::vec2 pixel_xy, float time_sec)
     glm::vec3 rgb255 = glm::clamp(col, glm::vec3(0.0f), glm::vec3(1.0f)) * 255.0f;
 
     return shs::Color{
-        (uint8_t)clampi((int)std::round(rgb255.r), 0, 255),
-        (uint8_t)clampi((int)std::round(rgb255.g), 0, 255),
-        (uint8_t)clampi((int)std::round(rgb255.b), 0, 255),
+        (uint8_t)shs::Math::clamp((int)std::round(rgb255.r), 0, 255),
+        (uint8_t)shs::Math::clamp((int)std::round(rgb255.g), 0, 255),
+        (uint8_t)shs::Math::clamp((int)std::round(rgb255.b), 0, 255),
         255
     };
 }

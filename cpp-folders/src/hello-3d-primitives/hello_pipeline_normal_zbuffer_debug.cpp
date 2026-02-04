@@ -122,7 +122,7 @@ shs::Color depth_fragment_shader(const shs::Varyings& in, const Uniforms& u)
 // ==========================================
 // SCENE & OBJECT CLASSES
 // ==========================================
-
+/*
 class Viewer
 {
 public:
@@ -160,41 +160,10 @@ public:
     float          vertical_angle;
     float          speed;
 };
+*/
 
-class ModelGeometry
-{
-public:
-    ModelGeometry(std::string model_path)
-    {
-        unsigned int flags = aiProcess_Triangulate | aiProcess_GenSmoothNormals | aiProcess_FlipUVs | aiProcess_JoinIdenticalVertices;
-        const aiScene *scene = this->importer.ReadFile(model_path.c_str(), flags);
-        if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
-            std::cerr << "Model load error: " << this->importer.GetErrorString() << std::endl;
-            return;
-        }
-
-        for (unsigned int i = 0; i < scene->mNumMeshes; ++i) {
-            aiMesh *mesh = scene->mMeshes[i];
-            for (unsigned int j = 0; j < mesh->mNumFaces; ++j) {
-                if (mesh->mFaces[j].mNumIndices == 3) {
-                    for(int k=0; k<3; k++) {
-                        aiVector3D v = mesh->mVertices[mesh->mFaces[j].mIndices[k]];
-                        this->triangles.push_back(glm::vec3(v.x, v.y, v.z));
-                        if (mesh->HasNormals()) {
-                            aiVector3D n = mesh->mNormals[mesh->mFaces[j].mIndices[k]];
-                            this->normals.push_back(glm::vec3(n.x, n.y, n.z));
-                        } else {
-                            this->normals.push_back(glm::vec3(0, 0, 1));
-                        }
-                    }
-                }
-            }
-        }
-    }
-    std::vector<glm::vec3> triangles;
-    std::vector<glm::vec3> normals;
-    Assimp::Importer importer;
-};
+// Using standardized shs::ModelGeometry
+using ModelGeometry = shs::ModelGeometry;
 
 class MonkeyObject : public shs::AbstractObject3D
 {
@@ -229,7 +198,7 @@ public:
 class HelloScene : public shs::AbstractSceneState
 {
 public:
-    HelloScene(shs::Canvas *canvas, Viewer *viewer) 
+    HelloScene(shs::Canvas *canvas, shs::Viewer *viewer) 
     {
         this->canvas = canvas;
         this->viewer = viewer;
@@ -248,7 +217,7 @@ public:
 
     std::vector<shs::AbstractObject3D *> scene_objects;
     shs::Canvas *canvas;
-    Viewer *viewer;
+    shs::Viewer *viewer;
     glm::vec3 light_direction;
 };
 
@@ -419,7 +388,7 @@ public:
         wait_group.wait();
 
         // Дэлгэц хуваах шугамууд зурах (Үндсэн thread)
-        shs::Pixel white = shs::Pixel::white_pixel();
+        shs::Color white = shs::Color::white();
         shs::Canvas::draw_line(*this->scene->canvas, w/3, 0, w/3, h, white);
         shs::Canvas::draw_line(*this->scene->canvas, (w/3)*2, 0, (w/3)*2, h, white);
     }
@@ -493,7 +462,7 @@ int main(int argc, char* argv[])
     SDL_Surface *main_sdlsurface = main_canvas->create_sdl_surface();
     SDL_Texture *screen_texture = SDL_CreateTextureFromSurface(renderer, main_sdlsurface);
 
-    Viewer *viewer = new Viewer(glm::vec3(0.0f, 5.0f, -20.0f), 50.0f);
+    shs::Viewer *viewer = new shs::Viewer(glm::vec3(0.0f, 5.0f, -20.0f), 50.0f, CANVAS_WIDTH, CANVAS_HEIGHT);
     HelloScene *hello_scene = new HelloScene(main_canvas, viewer);
     SystemProcessor *sys = new SystemProcessor(hello_scene, job_system);
 
@@ -543,7 +512,7 @@ int main(int argc, char* argv[])
         }
 
         sys->process(delta_time);
-        shs::Canvas::fill_pixel(*main_canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{20, 20, 25, 255}); 
+        shs::Canvas::fill_pixel(*main_canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color::black()); 
         sys->render(delta_time);
 
         shs::Canvas::copy_to_SDLSurface(main_sdlsurface, main_canvas);

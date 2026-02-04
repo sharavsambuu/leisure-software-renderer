@@ -30,99 +30,14 @@
 /**
  * Камерын байршил, чиглэл, харах өнцөг зэргийг удирдана.
  */
-class Viewer
-{
-public:
-    Viewer(glm::vec3 position, float speed)
-    {
-        this->position                 = position;
-        this->speed                    = speed;
-        this->camera                   = new shs::Camera3D();
-        this->camera->position         = this->position;
-        // Камерын viewport хэмжээ
-        this->camera->width            = float(CANVAS_WIDTH);
-        this->camera->height           = float(CANVAS_HEIGHT);
-        // Харах өнцөг (FOV)
-        this->camera->field_of_view    = 45.0f;
-        this->camera->horizontal_angle = 0.0f;
-        this->camera->vertical_angle   = 0.0f;
-        // Clipping planes (наана болон цаана харагдах хязгаар)
-        this->camera->z_near           = 0.1f;
-        this->camera->z_far            = 1000.0f;
-    }
-    ~Viewer() { delete camera; }
-
-    // Камерын матрицыг шинэчлэх функц
-    void update()
-    {
-        this->camera->position         = this->position;
-        this->camera->horizontal_angle = this->horizontal_angle;
-        this->camera->vertical_angle   = this->vertical_angle;
-        this->camera->update(); // View болон Projection матрицыг дахин бодно
-    }
-
-    glm::vec3 get_direction_vector()
-    {
-        return this->camera->direction_vector;
-    }
-    glm::vec3 get_right_vector()
-    {
-        return this->camera->right_vector;
-    }
-
-    shs::Camera3D *camera;
-    glm::vec3 position;
-    float horizontal_angle;
-    float vertical_angle;
-    float speed;
-};
+// Using standardized shs::Viewer
+using Viewer = shs::Viewer;
 
 /**
  * 3D моделийн файлыг (жишээ нь .obj) уншиж, оройн цэгүүдийг (vertices) хадгална.
  */
-class ModelGeometry
-{
-public:
-    ModelGeometry(std::string model_path)
-    {
-        Assimp::Importer importer;
-        // Assimp ашиглан файлыг унших
-        const aiScene *scene = importer.ReadFile(model_path.c_str(), aiProcessPreset_TargetRealtime_Quality);
-        
-        if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
-        {
-            std::cerr << "Алдаа: Модель уншихад алдаа гарлаа: " << importer.GetErrorString() << std::endl;
-            return;
-        }
-
-        // Бүх mesh-үүдээр давтаж vertex-үүдийг авна
-        for (unsigned int i = 0; i < scene->mNumMeshes; ++i)
-        {
-            aiMesh *mesh = scene->mMeshes[i];
-
-            for (unsigned int j = 0; j < mesh->mNumFaces; ++j)
-            {
-                aiFace face = mesh->mFaces[j];
-
-                // Зөвхөн гурвалжин (triangle) дүрсүүдийг авна
-                if (face.mNumIndices == 3)
-                {
-                    aiVector3D vertex1 = mesh->mVertices[face.mIndices[0]];
-                    aiVector3D vertex2 = mesh->mVertices[face.mIndices[1]];
-                    aiVector3D vertex3 = mesh->mVertices[face.mIndices[2]];
-
-                    this->triangles.push_back(glm::vec3(vertex1.x, vertex1.y, vertex1.z));
-                    this->triangles.push_back(glm::vec3(vertex2.x, vertex2.y, vertex2.z));
-                    this->triangles.push_back(glm::vec3(vertex3.x, vertex3.y, vertex3.z));
-                }
-            }
-        }
-        std::cout << model_path << " амжилттай уншигдлаа. Нийт гурвалжин: " << this->triangles.size() / 3 << std::endl;
-    }
-    ~ModelGeometry() {}
-
-    std::vector<glm::vec3> triangles;
-};
+// Using standardized shs::ModelGeometry
+using ModelGeometry = shs::ModelGeometry;
 
 /**
  * Тухайн 3D объектын байршил, эргэлт, хэмжээг удирдана.
@@ -270,9 +185,9 @@ public:
 
                         // WIREFRAME ЗУРАХ
                         // Canvas дээр шулуун зурна
-                        shs::Canvas::draw_line(*this->scene->canvas, p1.x, p1.y, p2.x, p2.y, shs::Pixel::green_pixel());
-                        shs::Canvas::draw_line(*this->scene->canvas, p1.x, p1.y, p3.x, p3.y, shs::Pixel::green_pixel());
-                        shs::Canvas::draw_line(*this->scene->canvas, p2.x, p2.y, p3.x, p3.y, shs::Pixel::green_pixel());
+                        shs::Canvas::draw_line(*this->scene->canvas, p1.x, p1.y, p2.x, p2.y, shs::Color::green());
+                        shs::Canvas::draw_line(*this->scene->canvas, p1.x, p1.y, p3.x, p3.y, shs::Color::green());
+                        shs::Canvas::draw_line(*this->scene->canvas, p2.x, p2.y, p3.x, p3.y, shs::Color::green());
                     }
                 }
             }
@@ -369,7 +284,7 @@ int main(int argc, char* argv[])
 
     // Viewer үүсгэх (Байршил: Z=-50, Хурд: 150)
     // Left-Handed системд +Z нь урагшаа гэж тооцвол камераа -Z дээр тавьж 0 руу харуулна.
-    Viewer *viewer = new Viewer(glm::vec3(0.0f, 10.0f, -50.0f), 150.0f);
+    Viewer *viewer = new Viewer(glm::vec3(0.0f, 10.0f, -50.0f), 150.0f, CANVAS_WIDTH, CANVAS_HEIGHT);
 
     HelloScene      *hello_scene      = new HelloScene(main_canvas, viewer);
     SystemProcessor *system_processor = new SystemProcessor(hello_scene);
@@ -428,7 +343,7 @@ int main(int argc, char* argv[])
         SDL_RenderClear(renderer); // SDL дэлгэц цэвэрлэх
 
         // Canvas-аа хараар будаж цэвэрлэх
-        shs::Canvas::fill_pixel(*main_canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT, shs::Pixel::black_pixel());
+        shs::Canvas::fill_pixel(*main_canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color::black());
 
         // SOFTWARE RENDER - Програмаар зурах (Wireframe render)
         system_processor->render(delta_time_float);

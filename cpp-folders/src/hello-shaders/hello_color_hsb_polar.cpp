@@ -24,70 +24,31 @@
 * - https://thebookofshaders.com/06/
 */
 
-std::array<double, 4> rescale_vec4_1_255(const std::array<double, 4> &input_arr)
+glm::vec3 hsb_to_rgb(const glm::vec3& c)
 {
-    std::array<double, 4> output_arr;
-    for (size_t i = 0; i < input_arr.size(); ++i)
-    {
-        double clamped_value = std::max(0.0, std::min(1.0, input_arr[i]));
-        double scaled_value = clamped_value * 255.0;
-        output_arr[i] = scaled_value;
-    }
-    return output_arr;
-}
-
-std::array<double, 3> mix_vec3(const std::array<double, 3> &array1, const std::array<double, 3> &array2, double factor)
-{
-    std::array<double, 3> result;
-    for (size_t i = 0; i < result.size(); ++i)
-    {
-        result[i] = (1.0 - factor) * array1[i] + factor * array2[i];
-    }
-    return result;
-}
-
-std::array<double, 3> hsb_to_rgb(std::array<double, 3> c)
-{
-    
-    std::array<double, 3> vec = {0.0, 4.0, 2.0};
-    std::array<double, 3> rgb = {
-        std::clamp<double>(std::abs(std::fmod(c[0]*6.0+vec[0], 6.0)-3.0)-1.0, 0.0, 1.0),
-        std::clamp<double>(std::abs(std::fmod(c[0]*6.0+vec[1], 6.0)-3.0)-1.0, 0.0, 1.0),
-        std::clamp<double>(std::abs(std::fmod(c[0]*6.0+vec[2], 6.0)-3.0)-1.0, 0.0, 1.0)
+    glm::vec3 vec = {0.0, 4.0, 2.0};
+    glm::vec3 rgb = {
+        std::clamp<float>(std::abs(std::fmod(c[0]*6.0+vec[0], 6.0)-3.0)-1.0, 0.0, 1.0),
+        std::clamp<float>(std::abs(std::fmod(c[0]*6.0+vec[1], 6.0)-3.0)-1.0, 0.0, 1.0),
+        std::clamp<float>(std::abs(std::fmod(c[0]*6.0+vec[2], 6.0)-3.0)-1.0, 0.0, 1.0)
     };
     rgb[0] = rgb[0]*rgb[0]*(3.0-2.0*rgb[0]);
     rgb[1] = rgb[1]*rgb[1]*(3.0-2.0*rgb[1]);
     rgb[2] = rgb[2]*rgb[2]*(3.0-2.0*rgb[2]);
 
-    std::array<double, 3> ones   = {1.0, 1.0, 1.0};
-    std::array<double, 3> output = mix_vec3(ones, rgb, c[2]);
-    output[0] = output[0]*c[2];
-    output[1] = output[1]*c[2];
-    output[2] = output[2]*c[2];
-    
-    return output;
+    glm::vec3 output = shs::Math::mix(glm::vec3(1.0f), rgb, c[1]);
+    return output * c[2];
 }
 
-double vec2_length(const std::array<double, 2> &vec)
+shs::Color fragment_shader(std::array<double, 2> uniform_uv, double uniform_time)
 {
-    double x = vec[0];
-    double y = vec[1];
-    return std::sqrt(x * x + y * y);
-}
+    glm::vec2 st    = {float(uniform_uv[0]/CANVAS_WIDTH), float(uniform_uv[1]/CANVAS_HEIGHT)};
+    glm::vec2 to_center = {0.5-st.x, 0.5-st.y};
+    float angle  = std::atan2(to_center.y, to_center.x);
+    float radius = glm::length(to_center)*2.0;
 
-std::array<double, 4> fragment_shader(std::array<double, 2> uniform_uv, double uniform_time)
-{
-    std::array<double, 2> st    = {uniform_uv[0]/CANVAS_WIDTH, uniform_uv[1]/CANVAS_HEIGHT};
-    std::array<double, 3> color = {0.0, 0.0, 0.0};
-
-    std::array<double, 2> to_center = {0.5-st[0], 0.5-st[1]};
-    double angle  = std::atan2(to_center[1], to_center[0]);
-    double radius = vec2_length(to_center)*2.0;
-
-    color = hsb_to_rgb(std::array<double, 3> {angle/TWO_PI+0.5, radius, 1.0});
-
-    std::array<double, 4> output_arr = {color[0], color[1], color[2], 1.0};
-    return rescale_vec4_1_255(output_arr);
+    glm::vec3 color = hsb_to_rgb(glm::vec3{angle/TWO_PI+0.5, radius, 1.0});
+    return shs::rgb01_to_color(color);
 };
 
 
@@ -163,10 +124,10 @@ int main()
                     for (int x = start_x; x < end_x; x++) {
                         for (int y = start_y; y < end_y; y++) {
                             std::array<double, 2> uv = {float(x), float(y)};
-                            std::array<double, 4> shader_output = fragment_shader(uv, time_accumulator);
+                            shs::Color shader_output = fragment_shader(uv, time_accumulator);
                             {
                                 //std::lock_guard<std::mutex> lock(canvas_mutex);
-                                shs::Canvas::draw_pixel(*main_canvas, x, y, shs::Color{u_int8_t(shader_output[0]), u_int8_t(shader_output[1]), u_int8_t(shader_output[2]), u_int8_t(shader_output[3])});
+                                shs::Canvas::draw_pixel(*main_canvas, x, y, shader_output);
                             }
                         }
                     }

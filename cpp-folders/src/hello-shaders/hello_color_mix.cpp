@@ -22,36 +22,13 @@
 * - https://thebookofshaders.com/06/
 */
 
-std::array<double, 4> rescale_vec4_1_255(const std::array<double, 4> &input_arr)
+shs::Color fragment_shader(std::array<double, 2> uniform_uv, double uniform_time)
 {
-    std::array<double, 4> output_arr;
-    for (size_t i = 0; i < input_arr.size(); ++i)
-    {
-        double clamped_value = std::max(0.0, std::min(1.0, input_arr[i]));
-        double scaled_value = clamped_value * 255.0;
-        output_arr[i] = scaled_value;
-    }
-    return output_arr;
-}
-
-std::array<double, 3> mix_vec3(const std::array<double, 3> &array1, const std::array<double, 3> &array2, double factor)
-{
-    std::array<double, 3> result;
-    for (size_t i = 0; i < result.size(); ++i)
-    {
-        result[i] = (1.0 - factor) * array1[i] + factor * array2[i];
-    }
-    return result;
-}
-
-std::array<double, 4> fragment_shader(std::array<double, 2> uniform_uv, double uniform_time)
-{
-    std::array<double, 3> color_a = {0.149, 0.141, 0.912};
-    std::array<double, 3> color_b = {1.000, 0.833, 0.224};
-    double pct = std::abs(std::sin(uniform_time));
-    std::array<double, 3> mixed_color = mix_vec3(color_a, color_b, pct);
-    std::array<double, 4> output_arr = {mixed_color[0], mixed_color[1], mixed_color[2], 1.0};
-    return rescale_vec4_1_255(output_arr);
+    glm::vec3 color_a = {0.149, 0.141, 0.912};
+    glm::vec3 color_b = {1.000, 0.833, 0.224};
+    float pct = std::abs(std::sin((float)uniform_time));
+    glm::vec3 mixed_color = shs::Math::mix(color_a, color_b, pct);
+    return shs::rgb01_to_color(mixed_color);
 };
 
 
@@ -127,10 +104,10 @@ int main()
                     for (int x = start_x; x < end_x; x++) {
                         for (int y = start_y; y < end_y; y++) {
                             std::array<double, 2> uv = {float(x), float(y)};
-                            std::array<double, 4> shader_output = fragment_shader(uv, time_accumulator);
+                            shs::Color shader_output = fragment_shader(uv, time_accumulator);
                             {
                                 //std::lock_guard<std::mutex> lock(canvas_mutex);
-                                shs::Canvas::draw_pixel(*main_canvas, x, y, shs::Color{u_int8_t(shader_output[0]), u_int8_t(shader_output[1]), u_int8_t(shader_output[2]), u_int8_t(shader_output[3])});
+                                shs::Canvas::draw_pixel(*main_canvas, x, y, shader_output);
                             }
                         }
                     }

@@ -23,61 +23,23 @@
 * - https://thebookofshaders.com/06/
 */
 
-std::array<double, 4> rescale_vec4_1_255(const std::array<double, 4> &input_arr)
-{
-    std::array<double, 4> output_arr;
-    for (size_t i = 0; i < input_arr.size(); ++i)
-    {
-        double clamped_value = std::max(0.0, std::min(1.0, input_arr[i]));
-        double scaled_value = clamped_value * 255.0;
-        output_arr[i] = scaled_value;
-    }
-    return output_arr;
-}
-
-double smoothstep(double edge0, double edge1, double x) {
-    x = std::clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
-    return x * x * (3.0 - 2.0 * x);
-}
-
 float plot(std::array<double, 2> st, double pct)
 {
-    return smoothstep(pct - 0.01, pct, st[1]) -
-           smoothstep(pct, pct + 0.01, st[1]);
+    return shs::Math::smoothstep(float(pct - 0.01), float(pct), float(st[1])) -
+           shs::Math::smoothstep(float(pct), float(pct + 0.01), float(st[1]));
 }
 
-std::array<double, 3> mix_vec3(const std::array<double, 3> &array1, const std::array<double, 3> &array2, double factor)
+shs::Color fragment_shader(std::array<double, 2> uniform_uv, double uniform_time)
 {
-    std::array<double, 3> result;
-    for (size_t i = 0; i < result.size(); ++i)
-    {
-        result[i] = (1.0 - factor) * array1[i] + factor * array2[i];
-    }
-    return result;
-}
-
-std::array<double, 3> mix_vec3(const std::array<double, 3> &array1, const std::array<double, 3> &array2, const std::array<double, 3> &factors)
-{
-    std::array<double, 3> result;
-    for (size_t i = 0; i < result.size(); ++i)
-    {
-        result[i] = (1.0 - factors[i]) * array1[i] + factors[i] * array2[i];
-    }
-    return result;
-}
-
-std::array<double, 4> fragment_shader(std::array<double, 2> uniform_uv, double uniform_time)
-{
-    std::array<double, 2> st      = {uniform_uv[0]/CANVAS_WIDTH, uniform_uv[1]/CANVAS_HEIGHT};
-    std::array<double, 3> color_a = {0.149, 0.141, 0.912};
-    std::array<double, 3> color_b = {1.000, 0.833, 0.224};
-    std::array<double, 3> pct     = {st[0], st[0], st[0]};
-    std::array<double, 3> color   = mix_vec3(color_a, color_b, pct);
-    color = mix_vec3(color, std::array<double, 3> {1.0,0.0,0.0}, plot(st, pct[0]));
-    color = mix_vec3(color, std::array<double, 3> {0.0,1.0,0.0}, plot(st, pct[1]));
-    color = mix_vec3(color, std::array<double, 3> {0.0,0.0,1.0}, plot(st, pct[2]));
-    std::array<double, 4> output_arr = {color[0], color[1], color[2], 1.0};
-    return rescale_vec4_1_255(output_arr);
+    glm::vec2 st      = {float(uniform_uv[0]/CANVAS_WIDTH), float(uniform_uv[1]/CANVAS_HEIGHT)};
+    glm::vec3 color_a = {0.149, 0.141, 0.912};
+    glm::vec3 color_b = {1.000, 0.833, 0.224};
+    glm::vec3 pct     = {st.x, st.x, st.x};
+    glm::vec3 color   = shs::Math::mix(color_a, color_b, pct.x);
+    color = shs::Math::mix(color, glm::vec3{1.0,0.0,0.0}, plot({st.x, st.y}, pct[0]));
+    color = shs::Math::mix(color, glm::vec3{0.0,1.0,0.0}, plot({st.x, st.y}, pct[1]));
+    color = shs::Math::mix(color, glm::vec3{0.0,0.0,1.0}, plot({st.x, st.y}, pct[2]));
+    return shs::rgb01_to_color(color);
 };
 
 
@@ -153,10 +115,10 @@ int main()
                     for (int x = start_x; x < end_x; x++) {
                         for (int y = start_y; y < end_y; y++) {
                             std::array<double, 2> uv = {float(x), float(y)};
-                            std::array<double, 4> shader_output = fragment_shader(uv, time_accumulator);
+                            shs::Color shader_output = fragment_shader(uv, time_accumulator);
                             {
                                 //std::lock_guard<std::mutex> lock(canvas_mutex);
-                                shs::Canvas::draw_pixel(*main_canvas, x, y, shs::Color{u_int8_t(shader_output[0]), u_int8_t(shader_output[1]), u_int8_t(shader_output[2]), u_int8_t(shader_output[3])});
+                                shs::Canvas::draw_pixel(*main_canvas, x, y, shader_output);
                             }
                         }
                     }

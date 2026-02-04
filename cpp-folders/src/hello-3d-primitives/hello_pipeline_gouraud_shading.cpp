@@ -101,6 +101,17 @@ public:
         camera->field_of_view = 60.0f; camera->z_near = 0.1f; camera->z_far = 1000.0f;
         horizontal_angle = 0.0f; vertical_angle = 0.0f;
     }
+    Viewer(glm::vec3 pos, float spd, int w, int h) : position(pos), speed(spd) {
+        camera = new shs::Camera3D();
+        camera->position = pos;
+        camera->width = w;
+        camera->height = h;
+        camera->field_of_view = 60.0f;
+        camera->z_near = 0.1f;
+        camera->z_far = 1000.0f;
+        horizontal_angle = 0.0f;
+        vertical_angle = 0.0f;
+    }
     ~Viewer() { delete camera; }
     void update() {
         camera->position         = position;
@@ -324,7 +335,8 @@ int main(int argc, char* argv[]) {
     SDL_Surface *main_sdlsurface = main_canvas->create_sdl_surface();
     SDL_Texture *screen_texture = SDL_CreateTextureFromSurface(renderer, main_sdlsurface);
 
-    Viewer *viewer = new Viewer(glm::vec3(0, 5, -20), 50.0f);
+    Viewer *viewer = new Viewer(glm::vec3(0, 5, -20), 50.0f, CANVAS_WIDTH, CANVAS_HEIGHT);
+    
     HelloScene *hello_scene = new HelloScene(main_canvas, viewer);
     SystemProcessor *sys = new SystemProcessor(hello_scene, job_system);
 
@@ -350,7 +362,7 @@ int main(int argc, char* argv[]) {
             }
         }
         sys->process(delta_time);
-        shs::Canvas::fill_pixel(*main_canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{20, 20, 25, 255}); 
+        shs::Canvas::fill_pixel(*main_canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color::black()); 
         sys->render(delta_time);
         shs::Canvas::copy_to_SDLSurface(main_sdlsurface, main_canvas);
         SDL_UpdateTexture(screen_texture, NULL, main_sdlsurface->pixels, main_sdlsurface->pitch);

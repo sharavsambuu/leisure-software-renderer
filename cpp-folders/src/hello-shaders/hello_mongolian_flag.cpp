@@ -39,17 +39,7 @@ const std::vector<glm::ivec3> triangles = {
 };
 const int len = 307;
 
-float hash(glm::vec2 p) {
-    glm::uvec2 q = glm::uvec2(glm::ivec2(p)) * glm::uvec2(1597334673U, 3812015801U);
-    uint32_t n = (q.x ^ q.y) * 1597334673U;
-    return static_cast<float>(n) / static_cast<float>(0xffffffffU);
-}
-
-glm::vec4 rescale_vec4_1_255(const glm::vec4 &input_vec) {
-    glm::vec4 clamped_value = glm::clamp(input_vec, 0.0f, 1.0f);
-    glm::vec4 scaled_value  = clamped_value * 255.0f;
-    return scaled_value;
-}
+// Use PROJECT_STANDARDIZED helpers
 bool same_side(glm::vec3 p1, glm::vec3 p2, glm::vec3 a, glm::vec3 b) {
     glm::vec3 cp1 = glm::cross(b - a, p1 - a);
     glm::vec3 cp2 = glm::cross(b - a, p2 - a);
@@ -104,7 +94,7 @@ glm::vec3 paint_soyombo(glm::vec2 uv, float res_xdivy) {
     return out_color;
 }
 
-glm::vec4 fragment_shader(glm::vec2 u_uv, float u_time)
+shs::Color fragment_shader(glm::vec2 u_uv, float u_time)
 {
     glm::vec2 uv = u_uv/glm::vec2(CANVAS_WIDTH, CANVAS_HEIGHT);
     glm::vec2 st = u_uv/glm::vec2(CANVAS_WIDTH, CANVAS_HEIGHT);
@@ -121,11 +111,9 @@ glm::vec4 fragment_shader(glm::vec2 u_uv, float u_time)
     out_color += w * .225;
     float v = 16. * st.x * (1. - st.x) * st.y * (1. - st.y);
 	out_color *= 1. - .6 * exp2(-1.75 * v);
-    out_color -= hash(u_uv)*0.004;
+    out_color -= shs::Math::f_random(u_uv)*0.004;
     
-    glm::vec4 frag_color = glm::vec4(out_color, 1.0);
-    
-    return rescale_vec4_1_255(frag_color);
+    return shs::rgb01_to_color(out_color);
 };
 
 
@@ -201,10 +189,10 @@ int main()
                     for (int x = start_x; x < end_x; x++) {
                         for (int y = start_y; y < end_y; y++) {
                             glm::vec2 uv = {float(x), float(y)};
-                            glm::vec4 shader_output = fragment_shader(uv, time_accumulator);
+                            shs::Color shader_output = fragment_shader(uv, time_accumulator);
                             {
                                 //std::lock_guard<std::mutex> lock(canvas_mutex);
-                                shs::Canvas::draw_pixel(*main_canvas, x, y, shs::Color{u_int8_t(shader_output[0]), u_int8_t(shader_output[1]), u_int8_t(shader_output[2]), u_int8_t(shader_output[3])});
+                                shs::Canvas::draw_pixel(*main_canvas, x, y, shader_output);
                             }
                         }
                     }

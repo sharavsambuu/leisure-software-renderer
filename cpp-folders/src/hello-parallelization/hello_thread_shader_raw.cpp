@@ -26,53 +26,7 @@
 #define EXECUTOR_POOL_SIZE 8    // Thread-ийн тоо
 #define NUM_OCTAVES        5
 
-glm::vec4 rescale_vec4_1_255(const glm::vec4 &input_vec) {
-    glm::vec4 clamped_value = glm::clamp(input_vec, 0.0f, 1.0f);
-    glm::vec4 scaled_value  = clamped_value * 255.0f;
-    return scaled_value;
-}
-
-// Function to generate a random value based on input vector using GLM
-float random(const glm::vec2& _st) {
-    return glm::fract(glm::sin(glm::dot(_st, glm::vec2(12.9898f, 78.233f))) * 43758.5453123f);
-}
-
-// Function to calculate noise using GLM
-float noise(const glm::vec2& _st) {
-    glm::vec2 i = glm::floor(_st);
-    glm::vec2 f = glm::fract(_st);
-
-    float a = random(i);
-    float b = random(i + glm::vec2(1.0f, 0.0f));
-    float c = random(i + glm::vec2(0.0f, 1.0f));
-    float d = random(i + glm::vec2(1.0f, 1.0f));
-
-    glm::vec2 u = f * f * (3.0f - 2.0f * f);
-
-    return glm::mix(a, b, u.x) +
-           (c - a) * u.y * (1.0f - u.x) +
-           (d - b) * u.x * u.y;
-}
-
-float fbm(const glm::vec2& st) {
-    glm::vec2 _st = st;
-    float v = 0.0f;
-    float a = 0.5f;
-    glm::vec2 shift(100.0f);
-    
-    glm::mat2 rot(cos(0.5f), sin(0.5f),
-                  -sin(0.5f), cos(0.5f));
-
-    for (int i = 0; i < NUM_OCTAVES; ++i) {
-        v += a * glm::simplex(_st); 
-        _st = rot * _st * 2.0f + shift;
-        a *= 0.5f;
-    }
-
-    return v;
-}
-
-glm::vec4 fragment_shader(glm::vec2 uniform_uv, float uniform_time)
+shs::Color fragment_shader(glm::vec2 uniform_uv, float uniform_time)
 {
     glm::vec2 st = (uniform_uv/glm::vec2(CANVAS_WIDTH, CANVAS_HEIGHT))*3.0f;
     st += float(glm::abs(glm::sin(uniform_time*0.1f)*3.0f))*st;
@@ -80,30 +34,30 @@ glm::vec4 fragment_shader(glm::vec2 uniform_uv, float uniform_time)
 
     glm::vec2 q(0.0);
 
-    q.x = fbm(st + 0.00f * uniform_time);
-    q.y = fbm(st + glm::vec2(1.0f));
+    q.x = shs::Math::fbm(st + 0.00f * uniform_time);
+    q.y = shs::Math::fbm(st + glm::vec2(1.0f));
 
     glm::vec2 r(0.0f);
-    r.x = fbm(st + 1.0f * q + glm::vec2(1.7f, 9.2f) + 0.15f * uniform_time);
-    r.y = fbm(st + 1.0f * q + glm::vec2(8.3f, 2.8f) + 0.126f * uniform_time);
+    r.x = shs::Math::fbm(st + 1.0f * q + glm::vec2(1.7f, 9.2f) + 0.15f * uniform_time);
+    r.y = shs::Math::fbm(st + 1.0f * q + glm::vec2(8.3f, 2.8f) + 0.126f * uniform_time);
 
-    float f = fbm(st + r);
+    float f = shs::Math::fbm(st + r);
 
-    color = glm::mix(glm::vec3(0.101961f, 0.619608f, 0.666667f),
+    color = shs::Math::mix(glm::vec3(0.101961f, 0.619608f, 0.666667f),
                      glm::vec3(0.666667f, 0.666667f, 0.498039f),
                      glm::clamp((f * f) * 4.0f, 0.0f, 1.0f));
 
-    color = glm::mix(color,
+    color = shs::Math::mix(color,
                      glm::vec3(0.0f, 0.0f, 0.164706f),
                      glm::clamp(glm::length(q), 0.0f, 1.0f));
 
-    color = glm::mix(color,
+    color = shs::Math::mix(color,
                      glm::vec3(0.666667f, 1.0f, 1.0f),
                      glm::clamp(glm::length(r.x), 0.0f, 1.0f));
     
 
-    glm::vec4 output_arr = glm::vec4(color*float(f*f*f+0.6f*f*f+0.5*f),1.0f);
-    return rescale_vec4_1_255(output_arr);
+    glm::vec3 final_color = color*float(f*f*f+0.6f*f*f+0.5*f);
+    return shs::rgb01_to_color(final_color);
 };
 
 
@@ -177,16 +131,11 @@ int main(int argc, char* argv[])
                 for (int y = start_y; y < end_y; y++) {
                     for (int x = 0; x < CANVAS_WIDTH; x++) {
                         glm::vec2 uv = {float(x), float(y)};
-                        glm::vec4 shader_output = fragment_shader(uv, time_accumulator);
+                        shs::Color shader_output = fragment_shader(uv, time_accumulator);
                         
                         // Thread бүр өөр Y координат дээр ажиллаж байгаа тул 
                         // санах ойн давхцал (Race Condition) үүсэхгүй.
-                        main_canvas->draw_pixel(x, y, shs::Color{
-                            (uint8_t)shader_output[0], 
-                            (uint8_t)shader_output[1], 
-                            (uint8_t)shader_output[2], 
-                            (uint8_t)shader_output[3]
-                        });
+                        main_canvas->draw_pixel(x, y, shader_output);
                     }
                 }
             });

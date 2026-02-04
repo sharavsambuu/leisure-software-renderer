@@ -165,7 +165,7 @@ static inline shs::Color sample_nearest(const shs::Texture2D &tex, glm::vec2 uv)
 // ==========================================
 // SHADOW MAP BUFFER (Depth only)
 // ==========================================
-
+/*
 struct ShadowMap
 {
     int w = 0;
@@ -205,11 +205,12 @@ struct ShadowMap
         return depth.at(x,y);
     }
 };
+*/
 
 // ==========================================
 // MOTION BUFFER (Canvas coords, pixels, +Y up)
 // ==========================================
-
+/*
 struct MotionBuffer
 {
     MotionBuffer() : w(0), h(0) {}
@@ -242,12 +243,12 @@ struct MotionBuffer
     int w, h;
     std::vector<glm::vec2> vel;
 };
-
+*/
 // ==========================================
 // RT: Color + Depth(view_z) + Motion(full)
 // - depth нь Canvas coords дээр хадгална (y up)
 // ==========================================
-
+/*
 struct RT_ColorDepthMotion
 {
     RT_ColorDepthMotion(int W, int H, float zn, float zf, shs::Color clear_col)
@@ -267,7 +268,9 @@ struct RT_ColorDepthMotion
     shs::ZBuffer depth;   // view_z (camera convention)
     MotionBuffer motion;  // v_full (object+camera)
 };
+*/
 
+/*
 // ==========================================
 // CAMERA + VIEWER
 // ==========================================
@@ -309,7 +312,7 @@ public:
     float          vertical_angle;
     float          speed;
 };
-
+*/
 // ==========================================
 // GEOMETRY (Assimp) - triangles + normals + uvs
 // ==========================================
@@ -577,7 +580,7 @@ struct Uniforms
     bool use_texture = false;
 
     // ShadowMap pointer
-    const ShadowMap *shadow = nullptr;
+    const shs::ShadowMap *shadow = nullptr;
 };
 
 struct VaryingsFull
@@ -643,7 +646,7 @@ static inline bool shadow_uvz_from_world(
 }
 
 static inline float shadow_compare(
-    const ShadowMap& sm,
+    const shs::ShadowMap& sm,
     glm::vec2 uv,
     float z_ndc,
     float bias)
@@ -662,7 +665,7 @@ static inline float shadow_compare(
 }
 
 static inline float shadow_factor_pcf_2x2(
-    const ShadowMap& sm,
+    const shs::ShadowMap& sm,
     glm::vec2 uv,
     float z_ndc,
     float bias)
@@ -711,7 +714,7 @@ static shs::Color fragment_shader_full(const VaryingsFull& in, const Uniforms& u
 
     glm::vec3 baseColor;
     if (u.use_texture && u.albedo && u.albedo->valid()) {
-        shs::Color tc = sample_nearest(*u.albedo, in.uv);
+        shs::Color tc = shs::sample_nearest(*u.albedo, in.uv);
         baseColor = glm::vec3(tc.r, tc.g, tc.b) / 255.0f;
     } else {
         baseColor = glm::vec3(u.base_color.r, u.base_color.g, u.base_color.b) / 255.0f;
@@ -784,7 +787,7 @@ static inline glm::vec3 clip_to_shadow_screen(const glm::vec4& clip, int W, int 
 // ==========================================
 
 static void draw_triangle_tile_shadow(
-    ShadowMap& sm,
+    shs::ShadowMap& sm,
     const std::vector<glm::vec3>& tri_verts,
     std::function<VaryingsShadow(const glm::vec3&)> vs,
     glm::ivec2 tile_min, glm::ivec2 tile_max)
@@ -847,7 +850,7 @@ static inline glm::vec2 clip_to_screen_xy(const glm::vec4& clip, int w, int h)
 // ======================================================
 
 static void draw_triangle_tile_color_depth_motion_shadow(
-    RT_ColorDepthMotion& rt,
+    shs::RT_ColorDepthMotion& rt,
     const std::vector<glm::vec3>& tri_verts,
     const std::vector<glm::vec3>& tri_norms,
     const std::vector<glm::vec2>& tri_uvs,
@@ -961,9 +964,7 @@ static void draw_triangle_tile_color_depth_motion_shadow(
 
                     float vz = bc.x * tv[0].view_z + bc.y * tv[1].view_z + bc.z * tv[2].view_z;
 
-                    int cy = (H - 1) - py;
-
-                    if (rt.depth.test_and_set_depth(px, cy, vz)) {
+                    if (rt.depth.test_and_set_depth_screen_space(px, py, vz)) {
 
                         float w0 = tv[0].position.w;
                         float w1 = tv[1].position.w;
@@ -1005,7 +1006,7 @@ static void draw_triangle_tile_color_depth_motion_shadow(
                         if (len > MB_MAX_PIXELS && len > 1e-6f) {
                             v_canvas *= (MB_MAX_PIXELS / len);
                         }
-                        rt.motion.set(px, cy, v_canvas);
+                        rt.velocity.set_screen_space(px, py, v_canvas);
 
                         rt.color.draw_pixel_screen_space(px, py, fs(in));
                     }
@@ -1104,7 +1105,7 @@ static inline glm::vec2 apply_soft_knee(glm::vec2 v, float knee, float max_len)
 static void combined_motion_blur_pass(
     const shs::Canvas& src,
     const shs::ZBuffer& depth,
-    const MotionBuffer& v_full_buf,
+    const shs::Buffer<glm::vec2>& v_full_buf, //const shs::MotionBuffer& v_full_buf,
     shs::Canvas& dst,
     const glm::mat4& curr_view,
     const glm::mat4& curr_proj,
@@ -1154,7 +1155,7 @@ static void combined_motion_blur_pass(
                             x, y, vz, W, H, curr_vp, prev_vp, curr_proj
                         );
 
-                        glm::vec2 v_full = v_full_buf.get(x, y);
+                        glm::vec2 v_full = v_full_buf.at(x, y); //glm::vec2 v_full = v_full_buf.get(x, y);
                         glm::vec2 v_obj_only = v_full - v_cam;
 
                         glm::vec2 v_total = w_obj * v_obj_only + w_cam * v_cam;
@@ -1223,7 +1224,7 @@ static void combined_motion_blur_pass(
 class DemoScene : public shs::AbstractSceneState
 {
 public:
-    DemoScene(shs::Canvas* canvas, Viewer* viewer, const shs::Texture2D* car_tex)
+    DemoScene(shs::Canvas* canvas, shs::Viewer* viewer, const shs::Texture2D* car_tex)
     {
         this->canvas = canvas;
         this->viewer = viewer;
@@ -1245,7 +1246,7 @@ public:
     void process() override {}
 
     shs::Canvas* canvas;
-    Viewer* viewer;
+    shs::Viewer* viewer;
 
     FloorPlane* floor;
 
@@ -1265,7 +1266,7 @@ public:
     RendererSystem(DemoScene* scene, shs::Job::ThreadedPriorityJobSystem* job_sys)
         : scene(scene), job_system(job_sys)
     {
-        rt = new RT_ColorDepthMotion(
+        rt = new shs::RT_ColorDepthMotion(
             CANVAS_WIDTH, CANVAS_HEIGHT,
             scene->viewer->camera->z_near,
             scene->viewer->camera->z_far,
@@ -1274,12 +1275,12 @@ public:
 
         mb_out = new shs::Canvas(CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{20,20,25,255});
 
-        shadow = new ShadowMap(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
+        shadow = new shs::ShadowMap(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
 
         // Камерын history
         has_prev_cam = false;
-        prev_view = glm::mat4(1.0f);
-        prev_proj = glm::mat4(1.0f);
+        prev_view    = glm::mat4(1.0f);
+        prev_proj    = glm::mat4(1.0f);
     }
 
     ~RendererSystem()
@@ -1331,7 +1332,7 @@ public:
                 for (int tx = 0; tx < cols; tx++) {
 
                     wg_shadow.add(1);
-                    job_system->submit({[=]() {
+                    job_system->submit({[=, this]() {
 
                         glm::ivec2 t_min(tx * TILE_SIZE_X, ty * TILE_SIZE_Y);
                         glm::ivec2 t_max(std::min((tx + 1) * TILE_SIZE_X, W) - 1,
@@ -1425,7 +1426,7 @@ public:
                 for (int tx = 0; tx < cols; tx++) {
 
                     wg_cam.add(1);
-                    job_system->submit({[=]() {
+                    job_system->submit({[=, this]() {
 
                         glm::ivec2 t_min(tx * TILE_SIZE_X, ty * TILE_SIZE_Y);
                         glm::ivec2 t_max(std::min((tx + 1) * TILE_SIZE_X, W) - 1,
@@ -1640,10 +1641,10 @@ private:
     DemoScene* scene;
     shs::Job::ThreadedPriorityJobSystem* job_system;
 
-    RT_ColorDepthMotion* rt;
-    shs::Canvas* mb_out;
+    shs::RT_ColorDepthMotion* rt;
+    shs::Canvas*              mb_out;
 
-    ShadowMap* shadow;
+    shs::ShadowMap* shadow;
 
     // WaitGroups
     shs::Job::WaitGroup wg_shadow;
@@ -1738,8 +1739,8 @@ int main(int argc, char* argv[])
     shs::Texture2D car_tex = shs::load_texture_sdl_image("./obj/subaru/SUBARU1_M.bmp", true);
 
     // Scene
-    Viewer*    viewer    = new Viewer(glm::vec3(0.0f, 10.0f, -42.0f), 55.0f);
-    DemoScene* scene     = new DemoScene(screen_canvas, viewer, &car_tex);
+    shs::Viewer* viewer    = new shs::Viewer(glm::vec3(0.0f, 10.0f, -42.0f), 55.0f);
+    DemoScene*   scene     = new DemoScene(screen_canvas, viewer, &car_tex);
     
     SystemProcessor* sys = new SystemProcessor(scene, job_system);
 

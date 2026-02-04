@@ -56,30 +56,8 @@ struct Uniforms {
     bool use_texture = false;
 };
 
-static inline float clamp01(float v) { return (v < 0.0f) ? 0.0f : (v > 1.0f ? 1.0f : v); }
 
-static inline shs::Color sample_nearest(const shs::Texture2D &tex, glm::vec2 uv)
-{
-    float u = uv.x;
-    float v = uv.y;
-
-#if UV_FLIP_V
-    v = 1.0f - v;
-#endif
-
-    u = clamp01(u);
-    v = clamp01(v);
-
-    int x = (int)std::lround(u * (float)(tex.w - 1));
-    int y = (int)std::lround(v * (float)(tex.h - 1));
-
-    if (x < 0) x = 0;
-    if (y < 0) y = 0;
-    if (x >= tex.w) x = tex.w - 1;
-    if (y >= tex.h) y = tex.h - 1;
-
-    return tex.texels.at(x, y);
-}
+// Helpers are now used from shs namespace inside shs_renderer.hpp.
 
 /*
     VERTEX SHADER (Blinn-Phong + UV pass-through)
@@ -140,97 +118,11 @@ shs::Color blinn_phong_tex_fragment_shader(const shs::Varyings& in, const Unifor
 // SCENE & OBJECT CLASSES
 // ==========================================
 
-class Viewer
-{
-public:
-    Viewer(glm::vec3 position, float speed)
-    {
-        this->position              = position;
-        this->speed                 = speed;
-        this->camera                = new shs::Camera3D();
-        this->camera->position      = this->position;
-        this->camera->width         = float(CANVAS_WIDTH);
-        this->camera->height        = float(CANVAS_HEIGHT);
-        this->camera->field_of_view = 60.0f;
-        this->camera->z_near        = 0.1f;
-        this->camera->z_far         = 1000.0f;
-        this->horizontal_angle      = 0.0f;
-        this->vertical_angle        = 0.0f;
-    }
-    ~Viewer() { delete camera; }
+// Using standardized shs::Viewer
+using Viewer = shs::Viewer;
 
-    void update()
-    {
-        this->camera->position         = this->position;
-        this->camera->horizontal_angle = this->horizontal_angle;
-        this->camera->vertical_angle   = this->vertical_angle;
-        this->camera->update();
-    }
-
-    glm::vec3 get_direction_vector() { return this->camera->direction_vector; }
-    glm::vec3 get_right_vector() { return this->camera->right_vector; }
-
-    shs::Camera3D *camera;
-    glm::vec3      position;
-    float          horizontal_angle;
-    float          vertical_angle;
-    float          speed;
-};
-
-class ModelGeometry
-{
-public:
-    ModelGeometry(std::string model_path)
-    {
-        unsigned int flags =
-            aiProcess_Triangulate |
-            aiProcess_GenSmoothNormals |
-            aiProcess_JoinIdenticalVertices;
-
-        const aiScene *scene = this->importer.ReadFile(model_path.c_str(), flags);
-        if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
-            std::cerr << "Model load error: " << this->importer.GetErrorString() << std::endl;
-            return;
-        }
-
-        for (unsigned int i = 0; i < scene->mNumMeshes; ++i) {
-            aiMesh *mesh = scene->mMeshes[i];
-
-            bool has_uv = mesh->HasTextureCoords(0);
-
-            for (unsigned int j = 0; j < mesh->mNumFaces; ++j) {
-                if (mesh->mFaces[j].mNumIndices != 3) continue;
-
-                for(int k = 0; k < 3; k++) {
-                    unsigned int idx = mesh->mFaces[j].mIndices[k];
-
-                    aiVector3D v = mesh->mVertices[idx];
-                    this->triangles.push_back(glm::vec3(v.x, v.y, v.z));
-
-                    if (mesh->HasNormals()) {
-                        aiVector3D n = mesh->mNormals[idx];
-                        this->normals.push_back(glm::vec3(n.x, n.y, n.z));
-                    } else {
-                        this->normals.push_back(glm::vec3(0, 0, 1));
-                    }
-
-                    if (has_uv) {
-                        aiVector3D t = mesh->mTextureCoords[0][idx];
-                        this->uvs.push_back(glm::vec2(t.x, t.y));
-                    } else {
-                        this->uvs.push_back(glm::vec2(0.0f));
-                    }
-                }
-            }
-        }
-    }
-
-    std::vector<glm::vec3> triangles;
-    std::vector<glm::vec3> normals;
-    std::vector<glm::vec2> uvs;
-
-    Assimp::Importer importer;
-};
+// Using standardized shs::ModelGeometry
+using ModelGeometry = shs::ModelGeometry;
 
 class SubaruObject : public shs::AbstractObject3D
 {
@@ -559,7 +451,7 @@ int main(int argc, char* argv[])
 
     shs::Texture2D car_tex = shs::load_texture_sdl_image("./obj/subaru/SUBARU1_M.bmp", true);
 
-    Viewer          *viewer      = new Viewer(glm::vec3(0.0f, 5.0f, -35.0f), 50.0f);
+    Viewer          *viewer      = new Viewer(glm::vec3(0.0f, 5.0f, -35.0f), 50.0f, CANVAS_WIDTH, CANVAS_HEIGHT);
     HelloScene      *hello_scene = new HelloScene(main_canvas, viewer, &car_tex);
     SystemProcessor *sys         = new SystemProcessor(hello_scene, job_system);
 

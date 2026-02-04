@@ -31,123 +31,14 @@
 /**
  * Камерын байршил, чиглэл, харах өнцөг зэргийг удирдана.
  */
-class Viewer
-{
-public:
-    Viewer(glm::vec3 position, float speed)
-    {
-        this->position                 = position;
-        this->speed                    = speed;
-        this->camera                   = new shs::Camera3D();
-        this->camera->position         = this->position;
-        this->camera->width            = float(CANVAS_WIDTH);
-        this->camera->height           = float(CANVAS_HEIGHT);
-        this->camera->field_of_view    = 45.0f;
-        this->camera->horizontal_angle = 0.0f;
-        this->camera->vertical_angle   = 0.0f;
-        this->camera->z_near           = 0.1f;    // Clipping plane: Ойрын хязгаар
-        this->camera->z_far            = 1000.0f; // Clipping plane: Холын хязгаар
-
-        this->camera->update();
-    }
-    ~Viewer() { delete camera; }
-
-    // Камерын мэдээллийг шинэчлэх
-    void update()
-    {
-        this->camera->position         = this->position;
-        this->camera->horizontal_angle = this->horizontal_angle;
-        this->camera->vertical_angle   = this->vertical_angle;
-        
-        // Матрицуудыг (View & Projection) шинэчлэн бодно
-        this->camera->update(); 
-    }
-
-    glm::vec3 get_direction_vector()
-    {
-        return this->camera->direction_vector;
-    }
-    glm::vec3 get_right_vector()
-    {
-        return this->camera->right_vector;
-    }
-
-    shs::Camera3D *camera;
-    glm::vec3 position;
-    float horizontal_angle;
-    float vertical_angle;
-    float speed;
-};
+// Using standardized shs::Viewer
+using Viewer = shs::Viewer;
 
 /**
  * 3D моделийн файлыг (.obj) уншиж, оройн цэг (vertex) болон нормалиудыг (normal) хадгална.
  */
-class ModelGeometry
-{
-public:
-    ModelGeometry(std::string model_path)
-    {
-        // Assimp тохиргоо: 
-        // - Triangulate: Бүх дүрсийг гурвалжин болгоно
-        // - GenNormals: Нормаль вектор байхгүй бол тооцож гаргана
-        // - FlipUVs: Текстурын координатыг Y тэнхлэгээр эргүүлнэ (OpenGL style)
-        unsigned int flags = aiProcess_Triangulate | aiProcess_GenNormals | aiProcess_FlipUVs;
-        
-        const aiScene *scene = this->importer.ReadFile(model_path.c_str(), flags);
-        if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
-        {
-            std::cerr << "Алдаа: Модель уншиж чадсангүй: " << this->importer.GetErrorString() << std::endl;
-            return;
-        }
-
-        // Бүх mesh-үүдээр давтаж өгөгдлийг авна
-        for (unsigned int i = 0; i < scene->mNumMeshes; ++i)
-        {
-            aiMesh *mesh = scene->mMeshes[i];
-
-            for (unsigned int j = 0; j < mesh->mNumFaces; ++j)
-            {
-                aiFace face = mesh->mFaces[j];
-
-                if (face.mNumIndices == 3)
-                {
-                    // Оройн цэгүүд (Vertices)
-                    aiVector3D v1 = mesh->mVertices[face.mIndices[0]];
-                    aiVector3D v2 = mesh->mVertices[face.mIndices[1]];
-                    aiVector3D v3 = mesh->mVertices[face.mIndices[2]];
-                    
-                    this->triangles.push_back(glm::vec3(v1.x, v1.y, v1.z));
-                    this->triangles.push_back(glm::vec3(v2.x, v2.y, v2.z));
-                    this->triangles.push_back(glm::vec3(v3.x, v3.y, v3.z));
-
-                    // Нормаль векторууд (Normals)
-                    if (mesh->HasNormals()) {
-                        aiVector3D n1 = mesh->mNormals[face.mIndices[0]];
-                        aiVector3D n2 = mesh->mNormals[face.mIndices[1]];
-                        aiVector3D n3 = mesh->mNormals[face.mIndices[2]];
-                        this->normals.push_back(glm::vec3(n1.x, n1.y, n1.z));
-                        this->normals.push_back(glm::vec3(n2.x, n2.y, n2.z));
-                        this->normals.push_back(glm::vec3(n3.x, n3.y, n3.z));
-                    } else {
-                        // Хэрэв нормаль байхгүй бол default утга өгнө
-                        this->normals.push_back(glm::vec3(0, 0, 1));
-                        this->normals.push_back(glm::vec3(0, 0, 1));
-                        this->normals.push_back(glm::vec3(0, 0, 1));
-                    }
-                }
-            }
-        }
-        std::cout << model_path << " амжилттай уншигдлаа." << std::endl;
-    }
-    ~ModelGeometry()
-    {
-        this->importer.FreeScene();
-    }
-
-    std::vector<glm::vec3> triangles;
-    std::vector<glm::vec3> normals;
-    Assimp::Importer       importer;
-};
+// Using standardized shs::ModelGeometry
+using ModelGeometry = shs::ModelGeometry;
 
 /**
  * Тухайн 3D объектын байршил, эргэлт, хэмжээг удирдана.
@@ -403,7 +294,7 @@ int main(int argc, char* argv[])
 
     // Viewer үүсгэх (Байршил: Z=-50, Хурд: 150)
     // Left-Handed системд +Z нь урагшаа. Камер 0 руу харахын тулд -Z дээр байна.
-    Viewer *viewer = new Viewer(glm::vec3(0.0f, 10.0f, -50.0f), 150.0f);
+    Viewer *viewer = new Viewer(glm::vec3(0.0f, 10.0f, -50.0f), 150.0f, CANVAS_WIDTH, CANVAS_HEIGHT);
 
     HelloScene      *hello_scene      = new HelloScene(main_canvas, viewer);
     SystemProcessor *system_processor = new SystemProcessor(hello_scene);
@@ -460,7 +351,7 @@ int main(int argc, char* argv[])
         SDL_RenderClear(renderer);
 
         // Canvas-ийг хараар будах
-        shs::Canvas::fill_pixel(*main_canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT, shs::Pixel::black_pixel());
+        shs::Canvas::fill_pixel(*main_canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color::black());
 
         // 3D Rendering хийх
         system_processor->render(delta_time_float);

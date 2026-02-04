@@ -943,9 +943,7 @@ static void draw_triangle_tile_color_depth_softshadow(
 
                 float vz = bc.x * tv[0].view_z + bc.y * tv[1].view_z + bc.z * tv[2].view_z;
 
-                int cy = (H - 1) - py;
-
-                if (depth.test_and_set_depth(px, cy, vz)) {
+                if (depth.test_and_set_depth_screen_space(px, py, vz)) {
 
                     float w0 = tv[0].position.w;
                     float w1 = tv[1].position.w;
@@ -997,10 +995,10 @@ static shs::Color fragment_shader_softshadow(const VaryingsFull& in, const Unifo
     // BaseColor
     glm::vec3 baseColor;
     if (u.use_texture && u.albedo && u.albedo->valid()) {
-        shs::Color tc = sample_nearest(*u.albedo, in.uv);
-        baseColor = color_to_rgb01(tc);
+        shs::Color tc = shs::sample_nearest(*u.albedo, in.uv);
+        baseColor     = shs::color_to_rgb01(tc);
     } else {
-        baseColor = color_to_rgb01(u.base_color);
+        baseColor = shs::color_to_rgb01(u.base_color);
     }
 
     // Blinn-Phong

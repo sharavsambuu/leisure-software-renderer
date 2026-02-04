@@ -24,51 +24,30 @@
 
 #define PIXELS_PER_JOB     4096
 
-static inline glm::vec4 rescale_vec4_1_255(const glm::vec4 &input_vec) {
-    return glm::clamp(input_vec, 0.0f, 1.0f) * 255.0f;
-}
-
-static float fbm(const glm::vec2& st) {
-    glm::vec2 _st = st;
-    float v = 0.0f;
-    float a = 0.5f;
-    glm::vec2 shift(100.0f);
-
-    glm::mat2 rot(cos(0.5f), sin(0.5f),
-                  -sin(0.5f), cos(0.5f));
-
-    for (int i = 0; i < NUM_OCTAVES; ++i) {
-        v += a * glm::simplex(_st);
-        _st = rot * _st * 2.0f + shift;
-        a *= 0.5f;
-    }
-    return v;
-}
-
-static glm::vec4 fragment_shader(glm::vec2 uniform_uv, float uniform_time)
+static shs::Color fragment_shader(glm::vec2 uniform_uv, float uniform_time)
 {
     glm::vec2 st = (uniform_uv / glm::vec2(CANVAS_WIDTH, CANVAS_HEIGHT)) * 3.0f;
     st += float(glm::abs(glm::sin(uniform_time * 0.1f) * 3.0f)) * st;
 
     glm::vec2 q(0.0f);
-    q.x = fbm(st + 0.00f * uniform_time);
-    q.y = fbm(st + glm::vec2(1.0f));
+    q.x = shs::Math::fbm(st + 0.00f * uniform_time);
+    q.y = shs::Math::fbm(st + glm::vec2(1.0f));
 
     glm::vec2 r(0.0f);
-    r.x = fbm(st + 1.0f * q + glm::vec2(1.7f, 9.2f) + 0.15f * uniform_time);
-    r.y = fbm(st + 1.0f * q + glm::vec2(8.3f, 2.8f) + 0.126f * uniform_time);
+    r.x = shs::Math::fbm(st + 1.0f * q + glm::vec2(1.7f, 9.2f) + 0.15f * uniform_time);
+    r.y = shs::Math::fbm(st + 1.0f * q + glm::vec2(8.3f, 2.8f) + 0.126f * uniform_time);
 
-    float f = fbm(st + r);
+    float f = shs::Math::fbm(st + r);
 
-    glm::vec3 color = glm::mix(glm::vec3(0.101961f, 0.619608f, 0.666667f),
+    glm::vec3 color = shs::Math::mix(glm::vec3(0.101961f, 0.619608f, 0.666667f),
                                glm::vec3(0.666667f, 0.666667f, 0.498039f),
                                glm::clamp((f * f) * 4.0f, 0.0f, 1.0f));
 
-    color = glm::mix(color, glm::vec3(0.0f, 0.0f, 0.164706f), glm::clamp(glm::length(q), 0.0f, 1.0f));
-    color = glm::mix(color, glm::vec3(0.666667f, 1.0f, 1.0f), glm::clamp(glm::length(r.x), 0.0f, 1.0f));
+    color = shs::Math::mix(color, glm::vec3(0.0f, 0.0f, 0.164706f), glm::clamp(glm::length(q), 0.0f, 1.0f));
+    color = shs::Math::mix(color, glm::vec3(0.666667f, 1.0f, 1.0f), glm::clamp(glm::length(r.x), 0.0f, 1.0f));
 
-    glm::vec4 out = glm::vec4(color * float(f*f*f + 0.6f*f*f + 0.5f*f), 1.0f);
-    return rescale_vec4_1_255(out);
+    glm::vec3 final_color = color * float(f*f*f + 0.6f*f*f + 0.5f*f);
+    return shs::rgb01_to_color(final_color);
 }
 
 int main(int argc, char* argv[])
@@ -133,11 +112,9 @@ int main(int argc, char* argv[])
                     int y = idx / W;
 
                     glm::vec2 uv = { (float)x, (float)y };
-                    glm::vec4 s  = fragment_shader(uv, time_accumulator);
+                    shs::Color color = fragment_shader(uv, time_accumulator);
 
-                    main_canvas->draw_pixel(x, y, shs::Color{
-                        (uint8_t)s[0], (uint8_t)s[1], (uint8_t)s[2], (uint8_t)s[3]
-                    });
+                    main_canvas->draw_pixel(x, y, color);
                 }
 
                 wg.done();

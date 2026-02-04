@@ -23,7 +23,7 @@ static inline void angle_to_dir(double angle_deg, double &dx, double &dy)
     dy = std::sin(a);
 }
 
-static void draw_hand(shs::Canvas &canvas, int cx, int cy, double angle_deg, int len, shs::Pixel p)
+static void draw_hand(shs::Canvas &canvas, int cx, int cy, double angle_deg, int len, shs::Color p)
 {
     double dx, dy;
     angle_to_dir(angle_deg, dx, dy);
@@ -32,7 +32,7 @@ static void draw_hand(shs::Canvas &canvas, int cx, int cy, double angle_deg, int
     shs::Canvas::draw_line(canvas, cx, cy, x1, y1, p);
 }
 
-static void draw_tick(shs::Canvas &canvas, int cx, int cy, double angle_deg, int r0, int r1, shs::Pixel p)
+static void draw_tick(shs::Canvas &canvas, int cx, int cy, double angle_deg, int r0, int r1, shs::Color p)
 {
     double dx, dy;
     angle_to_dir(angle_deg, dx, dy);
@@ -67,11 +67,11 @@ int main()
     const int cy = CANVAS_HEIGHT / 2;
     const int R  = (CANVAS_HEIGHT < CANVAS_WIDTH ? CANVAS_HEIGHT : CANVAS_WIDTH) / 2 - 10;
 
-    shs::Pixel yellow(255, 220, 40, 255);
-    shs::Pixel red   = shs::Pixel::red_pixel();
-    shs::Pixel green = shs::Pixel::green_pixel();
-    shs::Pixel blue  = shs::Pixel::blue_pixel();
-    shs::Pixel white = shs::Pixel::white_pixel();
+    shs::Color yellow(255, 220, 40, 255);
+    shs::Color red   = shs::Color::red();
+    shs::Color green = shs::Color::green();
+    shs::Color blue  = shs::Color::blue();
+    shs::Color white = shs::Color::white();
 
     while (!exit)
     {
@@ -103,7 +103,7 @@ int main()
         double min_deg  = min  * 6.0;
         double hour_deg = hour * 30.0;   // 360/12
 
-        shs::Canvas::fill_pixel(*main_canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT, shs::Pixel::black_pixel());
+        shs::Canvas::fill_pixel(*main_canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color::black());
 
         shs::Canvas::draw_circle_poly(*main_canvas, cx, cy, R, 180, yellow);
 

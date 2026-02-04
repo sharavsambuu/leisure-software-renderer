@@ -67,12 +67,12 @@ int main()
         SDL_RenderClear(renderer);
 
         // software rendering or drawing stuffs goes around here
-        shs::Canvas::fill_pixel(*main_canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT, shs::Pixel::black_pixel());
+        shs::Canvas::fill_pixel(*main_canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color::black());
 
-        main_canvas->draw_pixel(10, 10, shs::Pixel::red_pixel());
-        shs::Canvas::draw_pixel(*main_canvas, 20, 20, shs::Pixel::green_pixel());
-        shs::Canvas::draw_pixel(*main_canvas, 30, 50, shs::Pixel::random_pixel());
-        shs::Canvas::fill_pixel(*main_canvas, 60, 30, 70, 50, shs::Pixel::white_pixel());
+        main_canvas->draw_pixel(10, 10, shs::Color::red());
+        shs::Canvas::draw_pixel(*main_canvas, 20, 20, shs::Color::green());
+        shs::Canvas::draw_pixel(*main_canvas, 30, 50, shs::Color::random());
+        shs::Canvas::fill_pixel(*main_canvas, 60, 30, 70, 50, shs::Color::white());
         shs::Canvas::fill_random_pixel(*main_canvas, 60, 55, 80, 70);
 
 

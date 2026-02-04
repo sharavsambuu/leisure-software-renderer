@@ -24,13 +24,7 @@
 // Энэ тоог багасгавал үсэг жижиг, ихэсгэвэл том болно.
 #define FONT_SCALE         16.0f 
 
-glm::vec4 rescale_vec4_1_255(const glm::vec4 &input_vec) {
-    glm::vec4 clamped_value = glm::clamp(input_vec, 0.0f, 1.0f);
-    glm::vec4 scaled_value  = clamped_value * 255.0f;
-    return scaled_value;
-}
-
-glm::vec4 fragment_shader(glm::vec2 u_uv, float u_time)
+shs::Color fragment_shader(glm::vec2 u_uv, float u_time)
 {
     glm::vec2 i = u_uv;
     
@@ -45,11 +39,11 @@ glm::vec4 fragment_shader(glm::vec2 u_uv, float u_time)
     // Борооны унах координатын тооцоолол
     glm::vec2 p = glm::vec2(0.0f, floor_i.y + static_cast<int>(u_time * (speed + offset)));
 
-    glm::vec4 o(0.0f); 
+    glm::vec3 o(0.0f); 
 
     // Random brightness (үсэг болгоны тод бүдэг байдал)
     // p векторыг hash хийж random тоо гаргаж байна
-    float noise = glm::fract(435.34f * glm::sin(glm::dot(p, glm::vec2(12.9898f, 78.233f))));
+    float noise = shs::Math::f_random(p);
     
     o.g = noise; // Ногоон сувагт онооно
 
@@ -60,10 +54,7 @@ glm::vec4 fragment_shader(glm::vec2 u_uv, float u_time)
     
     o *= mask;
 
-    // Өнгийг бага зэрэг цайвар ногоон болгох (Matrix look)
-    // o.r = o.g * 0.2f; // Optional: бага зэрэг цайвар болгох
-
-    return rescale_vec4_1_255(o);
+    return shs::rgb01_to_color(o);
 };
 
 
@@ -126,16 +117,11 @@ int main()
                             // shader-луу илгээнэ. Ингэснээр Matrix-ийн "нүднүүд" томорно.
                             glm::vec2 uv = { float(x) / FONT_SCALE, float(y) / FONT_SCALE };
                             
-                            glm::vec4 shader_output = fragment_shader(uv, time_accumulator);
+                            shs::Color shader_output = fragment_shader(uv, time_accumulator);
                             
                             // Multithreading ашиглаж байгаа ч pixel coordinate бүр давхцахгүй тул
                             // lock хийх шаардлагагүй, шууд бичих нь хурдан.
-                            shs::Canvas::draw_pixel(*main_canvas, x, y, shs::Color{
-                                (uint8_t)shader_output[0], 
-                                (uint8_t)shader_output[1], 
-                                (uint8_t)shader_output[2], 
-                                (uint8_t)shader_output[3]
-                            });
+                            shs::Canvas::draw_pixel(*main_canvas, x, y, shader_output);
                         }
                     }
                 });

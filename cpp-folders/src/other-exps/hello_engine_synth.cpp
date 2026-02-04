@@ -18,6 +18,7 @@
 #include <cstdio>
 #include <vector>
 #include <algorithm>
+#include "shs_renderer.hpp"
 #include <atomic>
 #include <cstring>
 
@@ -39,7 +40,6 @@ static std::atomic<uint32_t> g_load_u       { f2u(0.25f)  };
 static std::atomic<uint32_t> g_torqueMul_u  { f2u(1.0f)   };
 static std::atomic<uint32_t> g_shiftBurst_u { f2u(0.0f)   };
 
-static inline float clamp01(float x) { return (x < 0.f) ? 0.f : (x > 1.f) ? 1.f : x; }
 static inline float softclip(float x) {
     const float a = 1.5f;
     return x / (1.0f + a * std::fabs(x));
@@ -189,11 +189,11 @@ struct EngineSynth {
         float thr  = thrSm.process(thrIn);
         float load = loadSm.process(loadIn);
 
-        thr  = clamp01(thr);
-        load = clamp01(load);
+        thr  = shs::Math::clamp01(thr);
+        load = shs::Math::clamp01(load);
 
         float torqueMul = std::clamp(torqueMulIn, 0.0f, 1.15f);
-        float burst     = clamp01(shiftBurstIn);
+        float burst     = shs::Math::clamp01(shiftBurstIn);
 
         float starter = 0.0f;
         float catchEnv = 0.0f;
@@ -206,7 +206,7 @@ struct EngineSynth {
         }
         if (tStart >= 0.45f && tStart < 0.85f) {
             float u = (tStart - 0.45f) / 0.40f;
-            catchEnv = clamp01(u);
+            catchEnv = shs::Math::clamp01(u);
         }
 
         float f0 = (rpm / 60.0f) * (0.5f * float(cylinders));
@@ -260,7 +260,7 @@ struct EngineSynth {
         float x = amp * base + noiseGain * ncol + crack;
 
         if (tStart < 1.0f) {
-            float blend = clamp01(catchEnv);
+            float blend = shs::Math::clamp01(catchEnv);
             x = (1.0f - blend) * (starter) + blend * x;
         }
 
@@ -462,12 +462,10 @@ struct CarModel {
     float sRampEnd         = 0.60f;
     float sSetEnd          = 0.80f;
 
-    static inline float lerp(float a, float b, float t) { return a + (b - a) * t; }
-
     inline void compute_shift_points(float throttle, float& upRpm, float& downRpm) const {
-        float t = clamp01(throttle);
-        upRpm = lerp(3200.0f, upshiftRpmBase, t);
-        downRpm = lerp(1100.0f, downshiftRpmBase, t);
+        float t = shs::Math::clamp01(throttle);
+        upRpm = shs::Math::lerp(3200.0f, upshiftRpmBase, t);
+        downRpm = shs::Math::lerp(1100.0f, downshiftRpmBase, t);
     }
 
     inline float compute_rpm_target_from_speed() const {
@@ -500,35 +498,35 @@ struct CarModel {
 
         shiftBurst = tri_pulse(s, sSwapAt, 0.028f);
 
-        float preBoost = 1.0f + 0.06f * clamp01(s / sPreEnd);
+        float preBoost = 1.0f + 0.06f * shs::Math::clamp01(s / sPreEnd);
 
         float cutMul = 1.0f;
         if (s <= sCutEnd) {
             float u = (s - sPreEnd) / (sCutEnd - sPreEnd);
-            u = clamp01(u);
-            cutMul = 1.0f - u;
+            u       = shs::Math::clamp01(u);
+            cutMul  = 1.0f - u;
         } else cutMul = 0.0f;
 
         float rampMul = 0.0f;
         if (s >= sSwapAt && s <= sRampEnd) {
             float u = (s - sSwapAt) / (sRampEnd - sSwapAt);
-            u = clamp01(u);
+            u       = shs::Math::clamp01(u);
             rampMul = u;
         } else if (s > sRampEnd) rampMul = 1.0f;
 
         float settleMul = 1.0f;
         if (s >= sRampEnd && s <= sSetEnd) {
-            float u = (s - sRampEnd) / (sSetEnd - sRampEnd);
-            u = clamp01(u);
+            float u      = (s - sRampEnd) / (sSetEnd - sRampEnd);
+            u            = shs::Math::clamp01(u);
             float wob    = std::sin(2.0f * PI * 2.0f * u) * std::exp(-3.5f * u);
-            float wobAmp = 0.030f + 0.020f * clamp01(throttle);
-            settleMul = 1.0f + wobAmp * wob;
+            float wobAmp = 0.030f + 0.020f * shs::Math::clamp01(throttle);
+            settleMul =   1.0f + wobAmp * wob;
         }
 
         float stabMul = 1.0f;
         if (s > sSetEnd) {
             float u = (s - sSetEnd) / (1.0f - sSetEnd);
-            u = clamp01(u);
+            u       = shs::Math::clamp01(u);
             stabMul = 1.0f + (settleMul - 1.0f) * (1.0f - u);
         }
 
@@ -548,7 +546,7 @@ struct CarModel {
     }
 
     void step(float dt, float throttle) {
-        throttle = clamp01(throttle);
+        throttle = shs::Math::clamp01(throttle);
 
         if (shifting) update_shift(dt, throttle);
 
@@ -702,11 +700,11 @@ int main(int, char**) {
             if (thrTarget > 0.0f) thrTarget = std::max(0.0f, thrTarget - decay);
             else thrTarget = 0.0f;
         }
-        thrTarget = clamp01(thrTarget);
+        thrTarget = shs::Math::clamp01(thrTarget);
 
         // Throttle smoothing
         thr += 0.12f * (thrTarget - thr);
-        thr = clamp01(thr);
+        thr = shs::Math::clamp01(thr);
 
         car.step(dt, thr);
 

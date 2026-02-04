@@ -100,77 +100,11 @@ shs::Color blinn_phong_fragment_shader(const shs::Varyings& in, const Uniforms& 
 // SCENE & OBJECT CLASSES
 // ==========================================
 
-class Viewer
-{
-public:
-    Viewer(glm::vec3 position, float speed)
-    {
-        this->position              = position;
-        this->speed                 = speed;
-        this->camera                = new shs::Camera3D();
-        this->camera->position      = this->position;
-        this->camera->width         = float(CANVAS_WIDTH);
-        this->camera->height        = float(CANVAS_HEIGHT);
-        this->camera->field_of_view = 60.0f;
-        this->camera->z_near        = 0.1f;
-        this->camera->z_far         = 1000.0f;
-        this->horizontal_angle      = 0.0f;
-        this->vertical_angle        = 0.0f;
-    }
-    ~Viewer() { delete camera; }
+// Using standardized shs::Viewer
+using Viewer = shs::Viewer;
 
-    void update()
-    {
-        this->camera->position         = this->position;
-        this->camera->horizontal_angle = this->horizontal_angle;
-        this->camera->vertical_angle   = this->vertical_angle;
-        this->camera->update(); 
-    }
-
-    glm::vec3 get_direction_vector() { return this->camera->direction_vector; }
-    glm::vec3 get_right_vector() { return this->camera->right_vector; }
-
-    shs::Camera3D *camera;
-    glm::vec3      position;
-    float          horizontal_angle;
-    float          vertical_angle;
-    float          speed;
-};
-
-class ModelGeometry
-{
-public:
-    ModelGeometry(std::string model_path)
-    {
-        unsigned int flags = aiProcess_Triangulate | aiProcess_GenSmoothNormals | aiProcess_FlipUVs | aiProcess_JoinIdenticalVertices;
-        const aiScene *scene = this->importer.ReadFile(model_path.c_str(), flags);
-        if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
-            std::cerr << "Model load error: " << this->importer.GetErrorString() << std::endl;
-            return;
-        }
-
-        for (unsigned int i = 0; i < scene->mNumMeshes; ++i) {
-            aiMesh *mesh = scene->mMeshes[i];
-            for (unsigned int j = 0; j < mesh->mNumFaces; ++j) {
-                if (mesh->mFaces[j].mNumIndices == 3) {
-                    for(int k=0; k<3; k++) {
-                        aiVector3D v = mesh->mVertices[mesh->mFaces[j].mIndices[k]];
-                        this->triangles.push_back(glm::vec3(v.x, v.y, v.z));
-                        if (mesh->HasNormals()) {
-                            aiVector3D n = mesh->mNormals[mesh->mFaces[j].mIndices[k]];
-                            this->normals.push_back(glm::vec3(n.x, n.y, n.z));
-                        } else {
-                            this->normals.push_back(glm::vec3(0, 0, 1));
-                        }
-                    }
-                }
-            }
-        }
-    }
-    std::vector<glm::vec3> triangles;
-    std::vector<glm::vec3> normals;
-    Assimp::Importer importer;
-};
+// Using standardized shs::ModelGeometry
+using ModelGeometry = shs::ModelGeometry;
 
 class MonkeyObject : public shs::AbstractObject3D
 {
@@ -447,7 +381,7 @@ int main(int argc, char* argv[])
     SDL_Surface *main_sdlsurface = main_canvas->create_sdl_surface();
     SDL_Texture *screen_texture  = SDL_CreateTextureFromSurface(renderer, main_sdlsurface);
 
-    Viewer          *viewer      = new Viewer(glm::vec3(0.0f, 5.0f, -20.0f), 50.0f);
+    Viewer          *viewer      = new Viewer(glm::vec3(0.0f, 5.0f, -20.0f), 50.0f, CANVAS_WIDTH, CANVAS_HEIGHT);
     HelloScene      *hello_scene = new HelloScene(main_canvas, viewer);
     SystemProcessor *sys         = new SystemProcessor(hello_scene, job_system);
 
@@ -504,7 +438,7 @@ int main(int argc, char* argv[])
         }
 
         sys->process(delta_time);
-        shs::Canvas::fill_pixel(*main_canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{20, 20, 25, 255}); 
+        shs::Canvas::fill_pixel(*main_canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color::black()); 
         sys->render(delta_time);
 
         shs::Canvas::copy_to_SDLSurface(main_sdlsurface, main_canvas);

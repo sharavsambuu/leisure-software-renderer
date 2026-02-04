@@ -101,76 +101,11 @@ shs::Color flat_fragment_shader(const shs::Varyings& in, const Uniforms& u)
 // SCENE & OBJECT CLASSES
 // ==========================================
 
-class Viewer
-{
-public:
-    Viewer(glm::vec3 position, float speed)
-    {
-        this->position              = position;
-        this->speed                 = speed;
-        this->camera                = new shs::Camera3D();
-        this->camera->position      = this->position;
-        this->camera->width         = float(CANVAS_WIDTH);
-        this->camera->height        = float(CANVAS_HEIGHT);
-        this->camera->field_of_view = 60.0f;
-        this->camera->z_near        = 0.1f;
-        this->camera->z_far         = 1000.0f;
-    }
-    ~Viewer() { delete camera; }
+// Using standardized shs::Viewer
+using Viewer = shs::Viewer;
 
-    void update()
-    {
-        this->camera->position = this->position;
-        this->camera->update(); // View болон Projection матрицыг шинэчилнэ
-    }
-
-    glm::vec3 get_direction_vector() { return this->camera->direction_vector; }
-    glm::vec3 get_right_vector() { return this->camera->right_vector; }
-
-    shs::Camera3D *camera;
-    glm::vec3 position;
-    float speed;
-};
-
-class ModelGeometry
-{
-public:
-    ModelGeometry(std::string model_path)
-    {
-        // aiProcess_Triangulate, Бүх дүрсийг гурвалжин болгоно
-        // aiProcess_GenNormals, Нормаль байхгүй бол үүсгэнэ
-        unsigned int flags = aiProcess_Triangulate | aiProcess_GenNormals | aiProcess_FlipUVs;
-        
-        const aiScene *scene = this->importer.ReadFile(model_path.c_str(), flags);
-        if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
-            std::cerr << "Model load error: " << this->importer.GetErrorString() << std::endl;
-            return;
-        }
-
-        for (unsigned int i = 0; i < scene->mNumMeshes; ++i) {
-            aiMesh *mesh = scene->mMeshes[i];
-            for (unsigned int j = 0; j < mesh->mNumFaces; ++j) {
-                if (mesh->mFaces[j].mNumIndices == 3) {
-                    for(int k=0; k<3; k++) {
-                        aiVector3D v = mesh->mVertices[mesh->mFaces[j].mIndices[k]];
-                        this->triangles.push_back(glm::vec3(v.x, v.y, v.z));
-
-                        if (mesh->HasNormals()) {
-                            aiVector3D n = mesh->mNormals[mesh->mFaces[j].mIndices[k]];
-                            this->normals.push_back(glm::vec3(n.x, n.y, n.z));
-                        } else {
-                            this->normals.push_back(glm::vec3(0, 0, 1));
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    std::vector<glm::vec3> triangles;
-    std::vector<glm::vec3> normals;
-    Assimp::Importer       importer;
-};
+// Using standardized shs::ModelGeometry
+using ModelGeometry = shs::ModelGeometry;
 
 class MonkeyObject : public shs::AbstractObject3D
 {
@@ -453,7 +388,7 @@ int main(int argc, char* argv[])
     SDL_Texture *screen_texture = SDL_CreateTextureFromSurface(renderer, main_sdlsurface);
 
     // Камерын байршлыг бага зэрэг хойшлуулж тохируулав
-    Viewer *viewer = new Viewer(glm::vec3(0.0f, 5.0f, -20.0f), 100.0f);
+    Viewer *viewer = new Viewer(glm::vec3(0.0f, 5.0f, -20.0f), 100.0f, CANVAS_WIDTH, CANVAS_HEIGHT);
     HelloScene *hello_scene = new HelloScene(main_canvas, viewer);
     SystemProcessor *sys = new SystemProcessor(hello_scene, job_system);
 
@@ -489,7 +424,7 @@ int main(int argc, char* argv[])
         sys->process(delta_time);
 
         // Clear Screen (Хар саарал дэвсгэр)
-        shs::Canvas::fill_pixel(*main_canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{30, 30, 30, 255});
+        shs::Canvas::fill_pixel(*main_canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color::black());
         
         // Render Scene using Job System (Threaded)
         sys->render(delta_time);

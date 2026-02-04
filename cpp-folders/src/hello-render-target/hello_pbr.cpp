@@ -155,94 +155,19 @@ static const float DIRECT_LIGHT_INTENSITY = 3.0f; // Нарны гэрлийн �
 // HELPERS
 // ==========================================
 
-static inline int clampi(int v, int lo, int hi)
-{
-    if (v < lo) return lo;
-    if (v > hi) return hi;
-    return v;
-}
-
-static inline float clampf(float v, float lo, float hi)
-{
-    if (v < lo) return lo;
-    if (v > hi) return hi;
-    return v;
-}
-
-static inline float clamp01(float v) { return (v < 0.0f) ? 0.0f : (v > 1.0f ? 1.0f : v); }
-static inline float saturate(float v) { return clamp01(v); }
-
-static inline glm::vec3 color_to_srgb01(const shs::Color& c)
-{
-    return glm::vec3(float(c.r), float(c.g), float(c.b)) / 255.0f;
-}
-
-static inline shs::Color srgb01_to_color(const glm::vec3& c01)
-{
-    glm::vec3 c = glm::clamp(c01, 0.0f, 1.0f) * 255.0f;
-    return shs::Color{ (uint8_t)c.x, (uint8_t)c.y, (uint8_t)c.z, 255 };
-}
-
-// sRGB -> Linear (pow)
-static inline glm::vec3 srgb_to_linear(glm::vec3 srgb01)
-{
-    srgb01 = glm::clamp(srgb01, 0.0f, 1.0f);
-    return glm::pow(srgb01, glm::vec3(PBR_GAMMA));
-}
-
-static inline glm::vec3 linear_to_srgb(glm::vec3 lin01)
-{
-    lin01 = glm::clamp(lin01, 0.0f, 1.0f);
-    return glm::pow(lin01, glm::vec3(1.0f / PBR_GAMMA));
-}
-
-// tonemap (Reinhard)
-static inline glm::vec3 tonemap_reinhard(glm::vec3 x)
-{
-    return x / (glm::vec3(1.0f) + x);
-}
+// Helpers are now used from shs::Math and shs namespace in shs_renderer.hpp.
 
 // ==========================================
 // LH Ortho matrix (NDC z: 0..1)
 // ==========================================
 
-static inline glm::mat4 ortho_lh_zo(float left, float right, float bottom, float top, float znear, float zfar)
-{
-    glm::mat4 m(1.0f);
-    m[0][0] =  2.0f / (right - left);
-    m[1][1] =  2.0f / (top - bottom);
-    m[2][2] =  1.0f / (zfar - znear);
-
-    m[3][0] = -(right + left) / (right - left);
-    m[3][1] = -(top + bottom) / (top - bottom);
-    m[3][2] = -znear / (zfar - znear);
-    return m;
-}
+// shs::Math::ortho_lh_zo is now shs::Math::ortho_lh_zo
 
 // ==========================================
 // TEXTURE SAMPLER (nearest, returns sRGB color)
 // ==========================================
 
-static inline shs::Color sample_nearest_srgb(const shs::Texture2D &tex, glm::vec2 uv)
-{
-    float u = uv.x;
-    float v = uv.y;
-
-#if UV_FLIP_V
-    v = 1.0f - v;
-#endif
-
-    u = clamp01(u);
-    v = clamp01(v);
-
-    int x = (int)std::lround(u * (float)(tex.w - 1));
-    int y = (int)std::lround(v * (float)(tex.h - 1));
-
-    x = clampi(x, 0, tex.w - 1);
-    y = clampi(y, 0, tex.h - 1);
-
-    return tex.texels.at(x, y);
-}
+// sample_nearest_srgb is now replaced by shs_renderer standardized sampling if needed.
 
 /*
 // ==========================================
@@ -308,8 +233,8 @@ static inline CubeMapLinear cubemap_ldr_to_linear(const shs::CubeMap& cm)
         for (int y=0; y<out.size; ++y) {
             for (int x=0; x<out.size; ++x) {
                 shs::Color c = cm.face[f].texels.at(x, y);
-                glm::vec3 srgb01 = color_to_srgb01(c);
-                out.face[f][(size_t)y*out.size + (size_t)x] = srgb_to_linear(srgb01);
+                glm::vec3 srgb01 = shs::color_to_rgb01(c);
+                out.face[f][(size_t)y*out.size + (size_t)x] = shs::srgb_to_linear(srgb01);
             }
         }
     }
@@ -318,16 +243,16 @@ static inline CubeMapLinear cubemap_ldr_to_linear(const shs::CubeMap& cm)
 
 static inline glm::vec3 sample_face_bilinear_linear(const CubeMapLinear& cm, int face, float u, float v)
 {
-    u = clamp01(u);
-    v = clamp01(v);
+    u = shs::Math::saturate(u);
+    v = shs::Math::saturate(v);
 
     float fx = u * float(cm.size - 1);
     float fy = v * float(cm.size - 1);
 
-    int x0   = clampi((int)std::floor(fx), 0, cm.size - 1);
-    int y0   = clampi((int)std::floor(fy), 0, cm.size - 1);
-    int x1   = clampi(x0 + 1, 0, cm.size - 1);
-    int y1   = clampi(y0 + 1, 0, cm.size - 1);
+    int x0   = shs::Math::clamp((int)std::floor(fx), 0, cm.size - 1);
+    int y0   = shs::Math::clamp((int)std::floor(fy), 0, cm.size - 1);
+    int x1   = shs::Math::clamp(x0 + 1, 0, cm.size - 1);
+    int y1   = shs::Math::clamp(y0 + 1, 0, cm.size - 1);
 
     float tx = fx - float(x0);
     float ty = fy - float(y0);
@@ -491,7 +416,7 @@ static inline CubeMapLinear build_env_irradiance(const shs::AbstractSky& sky, in
 //  PREFILTER
 static inline float roughness_to_phong_exp(float rough)
 {
-    rough     = clamp01(rough);
+    rough     = shs::Math::saturate(rough);
     float r2  = std::max(1e-4f, rough*rough);
     float exp = (2.0f / r2) - 2.0f;
     return std::max(1.0f, exp);
@@ -582,7 +507,7 @@ static inline glm::vec3 sample_prefiltered_spec_trilinear(
     if (!ps.valid()) return glm::vec3(0.0f);
 
     float mmax = float(ps.mip_count() - 1);
-    lod        = clampf(lod, 0.0f, mmax);
+    lod        = shs::Math::clampf(lod, 0.0f, mmax);
 
     int m0  = (int)std::floor(lod);
     int m1  = std::min(m0 + 1, ps.mip_count() - 1);
@@ -614,7 +539,7 @@ namespace PBR
 
     static inline glm::vec3 fresnel_schlick(glm::vec3 F0, float NoV)
     {
-        NoV      = saturate(NoV);
+        NoV      = shs::Math::saturate(NoV);
         float x  = 1.0f - NoV;
         float x2 = x*x;
         float x5 = x2*x2*x;
@@ -623,7 +548,7 @@ namespace PBR
 
     static inline float ndf_ggx(float NoH, float alpha)
     {
-        NoH      = saturate(NoH);
+        NoH      = shs::Math::saturate(NoH);
         float a2 = alpha * alpha;
         float d  = (NoH*NoH) * (a2 - 1.0f) + 1.0f;
         return a2 / (PI * d * d);
@@ -631,13 +556,13 @@ namespace PBR
 
     static inline float g_schlick_ggx(float NoV, float k)
     {
-        NoV = saturate(NoV);
+        NoV = shs::Math::saturate(NoV);
         return NoV / (NoV * (1.0f - k) + k);
     }
 
     static inline float g_smith(float NoV, float NoL, float roughness)
     {
-        roughness = clampf(roughness, PBR_MIN_ROUGHNESS, 1.0f);
+        roughness = shs::Math::clampf(roughness, PBR_MIN_ROUGHNESS, 1.0f);
 
         // UE4 style k
         float r   = roughness + 1.0f;
@@ -653,203 +578,14 @@ namespace PBR
 // SHADOW MAP BUFFER (Depth only)
 // ==========================================
 
-struct ShadowMap
-{
-    int w = 0;
-    int h = 0;
-    shs::Buffer<float> depth;  // light NDC z (0..1)
+// Using standardized shs::ShadowMap, shs::MotionBuffer, shs::RT_ColorDepthVelocity
+using ShadowMap           = shs::ShadowMap;
+using MotionBuffer        = shs::MotionBuffer;
+using RT_ColorDepthMotion = shs::RT_ColorDepthVelocity;
 
-    ShadowMap() {}
-    ShadowMap(int W, int H) { init(W, H); }
-
-    void init(int W, int H)
-    {
-        w = W; h = H;
-        depth = shs::Buffer<float>(w, h, std::numeric_limits<float>::max());
-    }
-
-    inline void clear()
-    {
-        depth.clear(std::numeric_limits<float>::max());
-    }
-
-    inline bool test_and_set(int x, int y, float z_ndc)
-    {
-        if (!depth.in_bounds(x,y)) return false;
-        float& d = depth.at(x,y);
-        if (z_ndc < d) { d = z_ndc; return true; }
-        return false;
-    }
-
-    inline float sample(int x, int y) const
-    {
-        x = clampi(x, 0, w - 1);
-        y = clampi(y, 0, h - 1);
-        return depth.at(x,y);
-    }
-};
-
-// ==========================================
-// MOTION BUFFER (Canvas coords, pixels, +Y up)
-// ==========================================
-
-struct MotionBuffer
-{
-    MotionBuffer() : w(0), h(0) {}
-    MotionBuffer(int W, int H) { init(W,H); }
-
-    void init(int W, int H)
-    {
-        w = W; h = H;
-        vel.assign((size_t)w * (size_t)h, glm::vec2(0.0f));
-    }
-
-    inline void clear()
-    {
-        std::fill(vel.begin(), vel.end(), glm::vec2(0.0f));
-    }
-
-    inline glm::vec2 get(int x, int y) const
-    {
-        x = clampi(x, 0, w - 1);
-        y = clampi(y, 0, h - 1);
-        return vel[(size_t)y * (size_t)w + (size_t)x];
-    }
-
-    inline void set(int x, int y, const glm::vec2& v)
-    {
-        if (x < 0 || x >= w || y < 0 || y >= h) return;
-        vel[(size_t)y * (size_t)w + (size_t)x] = v;
-    }
-
-    int w, h;
-    std::vector<glm::vec2> vel;
-};
-
-// ==========================================
-// RT: Color + Depth(view_z) + Motion(full)
-// ==========================================
-
-struct RT_ColorDepthMotion
-{
-    RT_ColorDepthMotion(int W, int H, float zn, float zf, shs::Color clear_col)
-        : color(W, H, clear_col), depth(W, H, zn, zf), motion(W, H)
-    {
-        clear(clear_col);
-    }
-
-    inline void clear(shs::Color c)
-    {
-        color.buffer().clear(c);
-        depth.clear();
-        motion.clear();
-    }
-
-    shs::Canvas  color;
-    shs::ZBuffer depth;   // view_z
-    MotionBuffer motion;  // v_full
-};
-
-// ==========================================
-// CAMERA + VIEWER
-// ==========================================
-
-class Viewer
-{
-public:
-    Viewer(glm::vec3 position, float speed)
-    {
-        this->position              = position;
-        this->speed                 = speed;
-        this->camera                = new shs::Camera3D();
-        this->camera->position      = this->position;
-        this->camera->width         = float(CANVAS_WIDTH);
-        this->camera->height        = float(CANVAS_HEIGHT);
-        this->camera->field_of_view = 60.0f;
-        this->camera->z_near        = 0.1f;
-        this->camera->z_far         = 1000.0f;
-        this->horizontal_angle      = 0.0f;
-        this->vertical_angle        = 0.0f;
-        update();
-    }
-    ~Viewer() { delete camera; }
-
-    void update()
-    {
-        this->camera->position         = this->position;
-        this->camera->horizontal_angle = this->horizontal_angle;
-        this->camera->vertical_angle   = this->vertical_angle;
-        this->camera->update();
-    }
-
-    glm::vec3 get_direction_vector() { return this->camera->direction_vector; }
-    glm::vec3 get_right_vector()     { return this->camera->right_vector; }
-
-    shs::Camera3D *camera;
-    glm::vec3      position;
-    float          horizontal_angle;
-    float          vertical_angle;
-    float          speed;
-};
-
-// ==========================================
-// GEOMETRY (Assimp) - triangles + normals + uvs
-// ==========================================
-
-class ModelGeometry
-{
-public:
-    ModelGeometry(const std::string& model_path)
-    {
-        unsigned int flags =
-            aiProcess_Triangulate |
-            aiProcess_GenSmoothNormals |
-            aiProcess_JoinIdenticalVertices;
-
-        const aiScene *scene = importer.ReadFile(model_path.c_str(), flags);
-        if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
-            std::cerr << "Model load error: " << importer.GetErrorString() << std::endl;
-            return;
-        }
-
-        for (unsigned int i = 0; i < scene->mNumMeshes; ++i) {
-            aiMesh *mesh = scene->mMeshes[i];
-            bool has_uv = mesh->HasTextureCoords(0);
-
-            for (unsigned int j = 0; j < mesh->mNumFaces; ++j) {
-                if (mesh->mFaces[j].mNumIndices != 3) continue;
-
-                for (int k = 0; k < 3; k++) {
-                    unsigned int idx = mesh->mFaces[j].mIndices[k];
-
-                    aiVector3D v = mesh->mVertices[idx];
-                    triangles.push_back(glm::vec3(v.x, v.y, v.z));
-
-                    if (mesh->HasNormals()) {
-                        aiVector3D n = mesh->mNormals[idx];
-                        normals.push_back(glm::vec3(n.x, n.y, n.z));
-                    } else {
-                        normals.push_back(glm::vec3(0, 1, 0));
-                    }
-
-                    if (has_uv) {
-                        aiVector3D t = mesh->mTextureCoords[0][idx];
-                        uvs.push_back(glm::vec2(t.x, t.y));
-                    } else {
-                        uvs.push_back(glm::vec2(0.0f));
-                    }
-                }
-            }
-        }
-    }
-
-    std::vector<glm::vec3> triangles;
-    std::vector<glm::vec3> normals;
-    std::vector<glm::vec2> uvs;
-
-private:
-    Assimp::Importer importer;
-};
+// Using standardized shs::Viewer and shs::ModelGeometry
+using Viewer        = shs::Viewer;
+using ModelGeometry = shs::ModelGeometry;
 
 // ==========================================
 // SCENE OBJECTS
@@ -1169,10 +905,10 @@ static inline float shadow_factor_pcf_2x2(
     float fx  = uv.x * float(sm.w - 1);
     float fy  = uv.y * float(sm.h - 1);
 
-    int x0    = clampi((int)std::floor(fx), 0, sm.w - 1);
-    int y0    = clampi((int)std::floor(fy), 0, sm.h - 1);
-    int x1    = clampi(x0 + 1, 0, sm.w - 1);
-    int y1    = clampi(y0 + 1, 0, sm.h - 1);
+    int x0    = shs::Math::clamp((int)std::floor(fx), 0, sm.w - 1);
+    int y0    = shs::Math::clamp((int)std::floor(fy), 0, sm.h - 1);
+    int x1    = shs::Math::clamp(x0 + 1, 0, sm.w - 1);
+    int y1    = shs::Math::clamp(y0 + 1, 0, sm.h - 1);
 
     float s00 = (z_ndc <= sm.sample(x0,y0) + bias) ? 1.0f : 0.0f;
     float s10 = (z_ndc <= sm.sample(x1,y0) + bias) ? 1.0f : 0.0f;
@@ -1203,15 +939,15 @@ static shs::Color fragment_shader_pbr(const VaryingsFull& in, const Uniforms& u)
 
     if (u.use_texture && u.albedo && u.albedo->valid()) {
         shs::Color tc = sample_nearest_srgb(*u.albedo, in.uv);
-        baseColor_linear = srgb_to_linear(color_to_srgb01(tc));
+        baseColor_linear = shs::srgb_to_linear(shs::color_to_rgb01(tc));
     } else {
-        baseColor_linear = srgb_to_linear(color_to_srgb01(u.mat.baseColor_srgb));
+        baseColor_linear = shs::srgb_to_linear(shs::color_to_rgb01(u.mat.baseColor_srgb));
     }
 
     // Material parameters
-    float metallic  = clamp01(u.mat.metallic);
-    float roughness = clampf(u.mat.roughness, PBR_MIN_ROUGHNESS, 1.0f);
-    float ao        = clamp01(u.mat.ao);
+    float metallic  = shs::Math::saturate(u.mat.metallic);
+    float roughness = shs::Math::clampf(u.mat.roughness, PBR_MIN_ROUGHNESS, 1.0f);
+    float ao        = shs::Math::saturate(u.mat.ao);
 
     // F0 (dielectric 0.04 -> металд baseColor хэрэглэгдэнэ)
     glm::vec3 F0 = glm::mix(glm::vec3(0.04f), baseColor_linear, metallic);
@@ -1256,7 +992,7 @@ static shs::Color fragment_shader_pbr(const VaryingsFull& in, const Uniforms& u)
         // Diffuse IBL
         glm::vec3 irradiance  = sample_cubemap_linear(u.ibl->env_irradiance, N);
         glm::vec3 diffuseIBL  = irradiance * baseColor_linear * kd;
-        diffuseIBL           *= clamp01(u.ibl_diffuse_intensity);
+        diffuseIBL           *= shs::Math::saturate(u.ibl_diffuse_intensity);
 
         // Specular IBL (prefiltered * F)
         glm::vec3 R           = glm::reflect(-V, N);
@@ -1265,7 +1001,7 @@ static shs::Color fragment_shader_pbr(const VaryingsFull& in, const Uniforms& u)
         glm::vec3 prefiltered = sample_prefiltered_spec_trilinear(u.ibl->env_prefiltered_spec, R, lod);
 
         glm::vec3 specIBL     = prefiltered * F;
-        specIBL              *= clamp01(u.ibl_specular_intensity) * clamp01(u.ibl_reflection_strength);
+        specIBL              *= shs::Math::saturate(u.ibl_specular_intensity) * shs::Math::saturate(u.ibl_reflection_strength);
 
         ibl                   = diffuseIBL + specIBL;
     }
@@ -1282,10 +1018,10 @@ static shs::Color fragment_shader_pbr(const VaryingsFull& in, const Uniforms& u)
 
     // Exposure + Tonemap + Gamma -> sRGB 8-bit
     color_linear        *= PBR_EXPOSURE;
-    color_linear         = tonemap_reinhard(color_linear);
-    glm::vec3 color_srgb = linear_to_srgb(color_linear);
+    color_linear         = shs::tonemap_reinhard(color_linear);
+    glm::vec3 color_srgb = shs::linear_to_srgb(color_linear);
 
-    return srgb01_to_color(color_srgb);
+    return shs::rgb01_to_color(color_srgb);
 }
 
 // ==========================================
@@ -1345,10 +1081,10 @@ static void skybox_background_pass(
                         glm::vec3 sky_lin = sky.sample(dir);
 
                         sky_lin *= SKY_EXPOSURE;
-                        sky_lin  = tonemap_reinhard(sky_lin);
-                        glm::vec3 out_srgb = linear_to_srgb(sky_lin);
+                        sky_lin  = shs::tonemap_reinhard(sky_lin);
+                        glm::vec3 out_srgb = shs::linear_to_srgb(sky_lin);
 
-                        dst.draw_pixel(x, y, srgb01_to_color(out_srgb));
+                        dst.draw_pixel(x, y, shs::rgb01_to_color(out_srgb));
                     }
                 }
 
@@ -1474,11 +1210,11 @@ static void draw_triangle_tile_color_depth_motion(
         };
 
         auto intersect = [&](const VaryingsFull& a, const VaryingsFull& b) -> VaryingsFull {
-            float az = a.position.z;
-            float bz = b.position.z;
+            float az    = a.position.z;
+            float bz    = b.position.z;
             float denom = (bz - az);
-            float t = (std::abs(denom) < 1e-8f) ? 0.0f : ((0.0f - az) / denom);
-            t = clampf(t, 0.0f, 1.0f);
+            float t     = (std::abs(denom) < 1e-8f) ? 0.0f : ((0.0f - az) / denom);
+            t           = shs::Math::clampf(t, 0.0f, 1.0f);
             return lerp_vary(a, b, t);
         };
 
@@ -1550,9 +1286,7 @@ static void draw_triangle_tile_color_depth_motion(
 
                     float vz = bc.x * tv[0].view_z + bc.y * tv[1].view_z + bc.z * tv[2].view_z;
 
-                    int cy = (H - 1) - py;
-
-                    if (rt.depth.test_and_set_depth(px, cy, vz)) {
+                    if (rt.depth.test_and_set_depth_screen_space(px, py, vz)) {
 
                         float w0 = tv[0].position.w;
                         float w1 = tv[1].position.w;
@@ -1595,7 +1329,7 @@ static void draw_triangle_tile_color_depth_motion(
                         if (len > MB_MAX_PIXELS && len > 1e-6f) {
                             v_canvas *= (MB_MAX_PIXELS / len);
                         }
-                        rt.motion.set(px, cy, v_canvas);
+                        rt.velocity.set_screen_space(px, py, v_canvas);
 
                         rt.color.draw_pixel_screen_space(px, py, fs(vin));
                     }
@@ -1692,7 +1426,7 @@ static inline glm::vec2 apply_soft_knee(glm::vec2 v, float knee, float max_len)
 static void combined_motion_blur_pass(
     const shs::Canvas& src,
     const shs::ZBuffer& depth,
-    const MotionBuffer& v_full_buf,
+    const shs::Buffer<glm::vec2>& v_full_buf, // const MotionBuffer& v_full_buf,
     shs::Canvas& dst,
     const glm::mat4& curr_view,
     const glm::mat4& curr_proj,
@@ -1719,7 +1453,8 @@ static void combined_motion_blur_pass(
     const shs::Color* src_raw  = src.buffer().raw();
     shs::Color*       dst_raw  = dst.buffer().raw();
     const float*      z_raw    = depth.buffer().raw();
-    const glm::vec2*  v_raw    = v_full_buf.vel.data();
+    //const glm::vec2*  v_raw    = v_full_buf.vel.data();
+    const glm::vec2*  v_raw    = v_full_buf.raw();
 
     wg.reset();
 
@@ -1735,8 +1470,8 @@ static void combined_motion_blur_pass(
                 int y1 = std::min(y0 + TILE_SIZE_Y, H);
 
                 auto sample_fast = [&](int sx, int sy) -> shs::Color {
-                    sx = clampi(sx, 0, W - 1);
-                    sy = clampi(sy, 0, H - 1);
+                    sx = shs::Math::clamp(sx, 0, W - 1);
+                    sy = shs::Math::clamp(sy, 0, H - 1);
                     return src_raw[sy * W + sx];
                 };
 
@@ -1783,8 +1518,8 @@ static void combined_motion_blur_pass(
 
                             glm::vec2 p = glm::vec2(float(x), float(y)) + dir * (a * len);
 
-                            int sx = clampi((int)std::round(p.x), 0, W - 1);
-                            int sy = clampi((int)std::round(p.y), 0, H - 1);
+                            int sx = shs::Math::clamp((int)std::round(p.x), 0, W - 1);
+                            int sy = shs::Math::clamp((int)std::round(p.y), 0, H - 1);
 
                             float wgt = 1.0f - std::abs(a);
                             shs::Color c = sample_fast(sx, sy);
@@ -1798,9 +1533,9 @@ static void combined_motion_blur_pass(
                         if (wsum < 0.0001f) wsum = 1.0f;
 
                         dst_raw[row_off + x] = shs::Color{
-                            (uint8_t)clampi((int)(r / wsum), 0, 255),
-                            (uint8_t)clampi((int)(g / wsum), 0, 255),
-                            (uint8_t)clampi((int)(b / wsum), 0, 255),
+                            (uint8_t)shs::Math::clamp((int)(r / wsum), 0, 255),
+                            (uint8_t)shs::Math::clamp((int)(g / wsum), 0, 255),
+                            (uint8_t)shs::Math::clamp((int)(b / wsum), 0, 255),
                             255
                         };
                     }
@@ -1908,7 +1643,7 @@ public:
         float B = -55.0f, T = 95.0f;
         float zn = 0.1f, zf = 240.0f;
 
-        glm::mat4 light_proj = ortho_lh_zo(L, R, B, T, zn, zf);
+        glm::mat4 light_proj = shs::Math::ortho_lh_zo(L, R, B, T, zn, zf);
         glm::mat4 light_vp = light_proj * light_view;
 
         // -----------------------
@@ -2445,7 +2180,7 @@ int main(int argc, char* argv[])
     }
 
     // Scene
-    Viewer*    viewer    = new Viewer(glm::vec3(0.0f, 10.0f, -42.0f), 55.0f);
+    Viewer*    viewer    = new Viewer(glm::vec3(0.0f, 10.0f, -42.0f), 55.0f, CANVAS_WIDTH, CANVAS_HEIGHT);
     DemoScene* scene     = new DemoScene(screen_canvas, viewer, &car_tex, active_sky, (ibl.valid() ? &ibl : nullptr));
 
     SystemProcessor* sys = new SystemProcessor(scene, job_system);

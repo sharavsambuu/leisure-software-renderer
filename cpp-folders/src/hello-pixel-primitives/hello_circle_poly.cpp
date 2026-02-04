@@ -14,19 +14,18 @@
 #define CANVAS_WIDTH      320
 #define CANVAS_HEIGHT     240
 
-struct MovingCircle
-{
+struct MovingCircle {
     float cx, cy;
     float vx, vy;
     int   r;
     int   segments;
-    shs::Pixel pixel;
+    shs::Color color;
 };
 
-static shs::Pixel random_pixel(std::mt19937 &rng)
+static shs::Color random_color(std::mt19937 &rng)
 {
     std::uniform_int_distribution<int> dist(0, 255);
-    return shs::Pixel((uint8_t)dist(rng), (uint8_t)dist(rng), (uint8_t)dist(rng), 255);
+    return shs::Color((uint8_t)dist(rng), (uint8_t)dist(rng), (uint8_t)dist(rng), 255);
 }
 
 static float randf(std::mt19937 &rng, float a, float b)
@@ -73,7 +72,7 @@ int main()
         MovingCircle c;
         c.r        = randi(rng, 12, 50);
         c.segments = randi(rng, 36, 140);
-        c.pixel    = random_pixel(rng);
+        c.color    = random_color(rng);
 
         c.cx = randf(rng, (float)c.r, (float)(CANVAS_WIDTH  - 1 - c.r));
         c.cy = randf(rng, (float)c.r, (float)(CANVAS_HEIGHT - 1 - c.r));
@@ -134,7 +133,7 @@ int main()
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
 
-        shs::Canvas::fill_pixel(*main_canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT, shs::Pixel::black_pixel());
+        shs::Canvas::fill_pixel(*main_canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color::black());
 
         for (const auto &c : circles)
         {
@@ -144,7 +143,7 @@ int main()
                 (int)std::lround(c.cy),
                 c.r,
                 c.segments,
-                c.pixel
+                c.color
             );
         }
 

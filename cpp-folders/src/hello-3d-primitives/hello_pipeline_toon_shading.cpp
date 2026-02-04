@@ -93,42 +93,11 @@ shs::Color toon_fragment_shader(const shs::Varyings& in, const Uniforms& u)
 // SCENE & OBJECT CLASSES
 // ==========================================
 
-class Viewer {
-public:
-    Viewer(glm::vec3 pos, float spd) : position(pos), speed(spd) {
-        camera = new shs::Camera3D(); camera->position = pos;
-        camera->width = CANVAS_WIDTH; camera->height = CANVAS_HEIGHT;
-        camera->field_of_view = 60.0f; camera->z_near = 0.1f; camera->z_far = 1000.0f;
-        horizontal_angle = 0.0f; vertical_angle = 0.0f;
-    }
-    ~Viewer() { delete camera; }
-    void update() {
-        camera->position = position;
-        camera->horizontal_angle = horizontal_angle;
-        camera->vertical_angle = vertical_angle;
-        camera->update();
-    }
-    glm::vec3 get_direction_vector() { return camera->direction_vector; }
-    glm::vec3 get_right_vector() { return camera->right_vector; }
-    shs::Camera3D *camera; glm::vec3 position; float horizontal_angle, vertical_angle, speed;
-};
+// Using standardized shs::Viewer
+using Viewer = shs::Viewer;
 
-class ModelGeometry {
-public:
-    ModelGeometry(std::string path) {
-        const aiScene *scene = importer.ReadFile(path, aiProcess_Triangulate | aiProcess_GenSmoothNormals | aiProcess_FlipUVs | aiProcess_JoinIdenticalVertices);
-        if(!scene || !scene->mRootNode) return;
-        aiMesh *mesh = scene->mMeshes[0];
-        for(unsigned int i=0; i<mesh->mNumFaces; i++) {
-            for(int k=0; k<3; k++) {
-                aiVector3D v = mesh->mVertices[mesh->mFaces[i].mIndices[k]];
-                triangles.push_back(glm::vec3(v.x, v.y, v.z));
-                if(mesh->HasNormals()) { aiVector3D n = mesh->mNormals[mesh->mFaces[i].mIndices[k]]; normals.push_back(glm::vec3(n.x, n.y, n.z)); }
-            }
-        }
-    }
-    std::vector<glm::vec3> triangles, normals; Assimp::Importer importer;
-};
+// Using standardized shs::ModelGeometry
+using ModelGeometry = shs::ModelGeometry;
 
 class MonkeyObject : public shs::AbstractObject3D {
 public:
@@ -326,7 +295,7 @@ int main(int argc, char* argv[]) {
     SDL_Surface *main_sdlsurface = main_canvas->create_sdl_surface();
     SDL_Texture *screen_texture = SDL_CreateTextureFromSurface(renderer, main_sdlsurface);
 
-    Viewer *viewer = new Viewer(glm::vec3(0, 5, -20), 50.0f);
+    Viewer *viewer = new Viewer(glm::vec3(0, 5, -20), 50.0f, CANVAS_WIDTH, CANVAS_HEIGHT);
     HelloScene *hello_scene = new HelloScene(main_canvas, viewer);
     SystemProcessor *sys = new SystemProcessor(hello_scene, job_system);
 
@@ -352,7 +321,7 @@ int main(int argc, char* argv[]) {
             }
         }
         sys->process(delta_time);
-        shs::Canvas::fill_pixel(*main_canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{30, 30, 40, 255}); 
+        shs::Canvas::fill_pixel(*main_canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color::black()); 
         sys->render(delta_time);
         shs::Canvas::copy_to_SDLSurface(main_sdlsurface, main_canvas);
         SDL_UpdateTexture(screen_texture, NULL, main_sdlsurface->pixels, main_sdlsurface->pitch);
