@@ -1,6 +1,6 @@
 /*
 
-Volumetric Light Shafts (Screen-space)
+Volumetric Light Shafts (Screen-space) + PCSS Soft Shadows
 
 
 Нарны чиглэлд тархсан агаарт (манан, тоос, уур) гэрлийн урд чиглэл (forward scattering) 
@@ -13,8 +13,9 @@ Volumetric Light Shafts (Screen-space)
 
 Render pipeline
 
-1. PASS-1: PBR + IBL
+1. PASS-1: PBR + IBL + PCSS Shadows
    - HDR lighting
+   - PCSS Soft Shadows (Blocker Search -> Penumbra -> Variable PCF)
    - Tonemap + Gamma
    - LDR sRGB framebuffer үүсгэнэ
 
@@ -98,10 +99,10 @@ Screen-space ашиглагдсан шалтгаан
 
 //#define WINDOW_WIDTH      800
 //#define WINDOW_HEIGHT     600
-#define WINDOW_WIDTH      1200
-#define WINDOW_HEIGHT     900
-#define CANVAS_WIDTH      900
-#define CANVAS_HEIGHT     700
+#define WINDOW_WIDTH      800
+#define WINDOW_HEIGHT     600
+#define CANVAS_WIDTH      800
+#define CANVAS_HEIGHT     600
 
 
 #define MOUSE_SENSITIVITY 0.2f
@@ -121,8 +122,24 @@ static const glm::vec3 LIGHT_DIR_WORLD = glm::normalize(glm::vec3(0.4668f, -0.34
 static const float SHADOW_BIAS_BASE   = 0.0025f;
 static const float SHADOW_BIAS_SLOPE  = 0.0100f;
 
-// PCF (2x2) шүүлт
-static const bool  SHADOW_USE_PCF     = true;
+// ------------------------------------------
+// PCSS (SOFT SHADOWS) CONFIG
+// ------------------------------------------
+// Гэрлийн хэмжээ томрох тусам penumbra томрох буюу soft болно
+static const float LIGHT_UV_RADIUS_BASE = 0.0035f;
+
+// Blocker search radius
+static const float PCSS_BLOCKER_SEARCH_RADIUS_TEXELS = 18.0f;
+
+// Filter radius clamp (PCF-ийн final blur)
+static const float PCSS_MIN_FILTER_RADIUS_TEXELS = 1.0f;
+static const float PCSS_MAX_FILTER_RADIUS_TEXELS = 28.0f;
+
+// Sample counts
+static const int   PCSS_BLOCKER_SAMPLES = 12;
+static const int   PCSS_PCF_SAMPLES     = 24;
+
+static const float PCSS_EPSILON = 1e-5f;
 
 // ------------------------------------------
 // MOTION BLUR CONFIG
@@ -167,27 +184,31 @@ struct LightShaftParams
 {
     bool  enable         = true;
 
-    int   steps          = 28;        // 16..40
-    float max_dist       = 110.0f;    // world units
-    float min_dist       = 1.0f;      // camera-аас эхлэх зай
+    int   steps          = 40;        // Ray marching алхмын тоо
+    float max_dist       = 110.0f;    // Ray march зогсох хамгийн их зай
+    float min_dist       = 1.0f;      // Камераас эхлэх зай
 
     // Fog/scattering
-    float base_density   = 0.15f;     // global multiplier
-    float height_falloff = 0.12f;     // exp(-max(0,y)*falloff)
+    float base_density   = 0.18f;     // Агаарын ерөнхий нягт
+    float height_falloff = 0.10f;     // Шингэрэх коэффициент
+    
+    // Dust & Noise тохиргоо
+    float noise_scale    = 0.65f;     // Тоосны үүлний хэмжээ (Noise frequency)
+    float noise_strength = 0.60f;     // Тоосны нягтын өөрчлөлт (0=жигд, 1=багцлагдсан)
+    float jitter_amount  = 1.0f;      // Ray marching алхмыг санамсаргүйгээр зөрүүлэх (Grainy look)
+    float ambient_strength = 0.08f;   // Сүүдэр доторх тоосны харагдах хэмжээ (Ambient scattering)
 
-    float sigma_s        = 0.030f;    // scattering coefficient
-    float sigma_t        = 0.065f;    // extinction coefficient (>= sigma_s)
+    float sigma_s        = 0.030f;    // Scattering strength
+    float sigma_t        = 0.065f;    // Total extinction (>= sigma_s)
 
     // Henyey–Greenstein phase
-    float g              = 0.86f;     // 0.6..0.9
+    float g              = 0.82f;     // Forward scattering cone (өтгөн туяа мэт байлгахын тулд бага зэрэг өргөн утга хэрэгтэй)
 
-    float intensity      = 0.25f;
+    float intensity      = 0.35f;     // Эцсийн нэмэх хүч
 
     bool  use_shadow     = true;
     float shadow_bias    = 0.0045f;
     bool  shadow_pcf_2x2 = true;
-
-
 };
 
 // ==========================================
@@ -393,7 +414,7 @@ static inline glm::vec3 sample_cubemap_linear(const CubeMapLinear& cm, const glm
     float az = std::abs(d.z);
 
     int face = 0;
-    float u = 0.5f, v = 0.5f;
+    float u  = 0.5f, v = 0.5f;
 
     if (ax >= ay && ax >= az) {
         // ±X
@@ -1144,7 +1165,7 @@ static VaryingsFull vertex_shader_full(
 }
 
 // ==========================================
-// SHADOW HELPERS
+// SHADOW HELPERS + PCSS
 // ==========================================
 
 static inline bool shadow_uvz_from_world(
@@ -1167,52 +1188,197 @@ static inline bool shadow_uvz_from_world(
     return true;
 }
 
-static inline float shadow_compare(
-    const ShadowMap& sm,
-    glm::vec2 uv,
-    float z_ndc,
-    float bias)
+// PCSS-д зориулсан helper
+static inline float shadow_sample_depth_uv(const ShadowMap& sm, glm::vec2 uv)
 {
+    // uv -> nearest depth
+    if (uv.x < 0.0f || uv.x > 1.0f || uv.y < 0.0f || uv.y > 1.0f)
+        return std::numeric_limits<float>::max();
+
+    int x = (int)std::lround(uv.x * float(sm.w - 1));
+    int y = (int)std::lround(uv.y * float(sm.h - 1));
+    return sm.sample(x, y);
+}
+
+// Poisson disk offsets (2D) — fixed pattern
+static const glm::vec2 POISSON_32[32] =
+{
+    glm::vec2(-0.613392f,  0.617481f),
+    glm::vec2( 0.170019f, -0.040254f),
+    glm::vec2(-0.299417f,  0.791925f),
+    glm::vec2( 0.645680f,  0.493210f),
+    glm::vec2(-0.651784f,  0.717887f),
+    glm::vec2( 0.421003f,  0.027070f),
+    glm::vec2(-0.817194f, -0.271096f),
+    glm::vec2(-0.705374f, -0.668203f),
+    glm::vec2( 0.977050f, -0.108615f),
+    glm::vec2( 0.063326f,  0.142369f),
+    glm::vec2( 0.203528f,  0.214331f),
+    glm::vec2(-0.667531f,  0.326090f),
+    glm::vec2(-0.098422f, -0.295755f),
+    glm::vec2(-0.885922f,  0.215369f),
+    glm::vec2( 0.566637f,  0.605213f),
+    glm::vec2( 0.039766f, -0.396100f),
+    glm::vec2( 0.751946f,  0.453352f),
+    glm::vec2( 0.078707f, -0.715323f),
+    glm::vec2(-0.075838f, -0.529344f),
+    glm::vec2( 0.724479f, -0.580798f),
+    glm::vec2( 0.222999f, -0.215125f),
+    glm::vec2(-0.467574f, -0.405438f),
+    glm::vec2(-0.248268f, -0.814753f),
+    glm::vec2( 0.354411f, -0.887570f),
+    glm::vec2( 0.175817f,  0.382366f),
+    glm::vec2( 0.487472f, -0.063082f),
+    glm::vec2(-0.084078f,  0.898312f),
+    glm::vec2( 0.488876f, -0.783441f),
+    glm::vec2( 0.470016f,  0.217933f),
+    glm::vec2(-0.696890f, -0.549791f),
+    glm::vec2(-0.149693f,  0.605762f),
+    glm::vec2( 0.034211f,  0.979980f)
+};
+
+// Hash / rotate (per-pixel) — banding багасгах
+static inline uint32_t hash_u32(uint32_t x)
+{
+    // mix
+    x ^= x >> 16;
+    x *= 0x7feb352dU;
+    x ^= x >> 15;
+    x *= 0x846ca68bU;
+    x ^= x >> 16;
+    return x;
+}
+static inline float hash01(uint32_t x)
+{
+    return float(hash_u32(x) & 0x00FFFFFFu) / float(0x01000000u);
+}
+static inline glm::vec2 rotate2(const glm::vec2& p, float a)
+{
+    float c = std::cos(a);
+    float s = std::sin(a);
+    return glm::vec2(c * p.x - s * p.y, s * p.x + c * p.y);
+}
+
+// PCSS Soft Shadow Factor
+static inline float pcss_shadow_factor(
+    const ShadowMap& sm,
+    const glm::vec2& uv,
+    float z_receiver,
+    float bias,
+    int px, int py)
+{
+    // UV гадуур бол lit
     if (uv.x < 0.0f || uv.x > 1.0f || uv.y < 0.0f || uv.y > 1.0f) return 1.0f;
 
-    int x   = (int)std::lround(uv.x * float(sm.w - 1));
-    int y   = (int)std::lround(uv.y * float(sm.h - 1));
+    // Shadow map дээр depth бичигдээгүй хэсэг -> lit
+    float centerDepth = shadow_sample_depth_uv(sm, uv);
+    if (centerDepth == std::numeric_limits<float>::max()) return 1.0f;
 
-    float d = sm.sample(x, y);
-    if (d == std::numeric_limits<float>::max()) return 1.0f;
+    // --------------------------------------
+    // Blocker Search
+    // --------------------------------------
+    // texel space radius -> uv space
+    float texelSizeU = 1.0f / float(sm.w);
+    float texelSizeV = 1.0f / float(sm.h);
 
-    return (z_ndc <= d + bias) ? 1.0f : 0.0f;
-}
+    float searchRadiusTex = PCSS_BLOCKER_SEARCH_RADIUS_TEXELS;
+    float searchRadiusU   = searchRadiusTex * texelSizeU;
+    float searchRadiusV   = searchRadiusTex * texelSizeV;
 
-static inline float shadow_factor_pcf_2x2(
-    const ShadowMap& sm,
-    glm::vec2 uv,
-    float z_ndc,
-    float bias)
-{
-    if (!SHADOW_USE_PCF) return shadow_compare(sm, uv, z_ndc, bias);
+    // per-pixel rotation
+    uint32_t seed = (uint32_t)(px * 1973u ^ py * 9277u ^ 0x9e3779b9u);
+    float ang = hash01(seed) * 6.2831853f;
 
-    float fx  = uv.x * float(sm.w - 1);
-    float fy  = uv.y * float(sm.h - 1);
+    float blockerSum = 0.0f;
+    int   blockerCnt = 0;
 
-    int x0    = clampi((int)std::floor(fx), 0, sm.w - 1);
-    int y0    = clampi((int)std::floor(fy), 0, sm.h - 1);
-    int x1    = clampi(x0 + 1, 0, sm.w - 1);
-    int y1    = clampi(y0 + 1, 0, sm.h - 1);
+    // blocker: depth < receiver - bias
+    float zTest = z_receiver - bias;
 
-    float s00 = (z_ndc <= sm.sample(x0,y0) + bias) ? 1.0f : 0.0f;
-    float s10 = (z_ndc <= sm.sample(x1,y0) + bias) ? 1.0f : 0.0f;
-    float s01 = (z_ndc <= sm.sample(x0,y1) + bias) ? 1.0f : 0.0f;
-    float s11 = (z_ndc <= sm.sample(x1,y1) + bias) ? 1.0f : 0.0f;
+    for (int i = 0; i < PCSS_BLOCKER_SAMPLES; ++i)
+    {
+        glm::vec2 o   = POISSON_32[i & 31];
+        o             = rotate2(o, ang);
 
-    return 0.25f * (s00 + s10 + s01 + s11);
+        glm::vec2 suv = uv + glm::vec2(o.x * searchRadiusU, o.y * searchRadiusV);
+
+        float d = shadow_sample_depth_uv(sm, suv);
+        if (d == std::numeric_limits<float>::max()) continue;
+
+        if (d < zTest)
+        {
+            blockerSum += d;
+            blockerCnt++;
+        }
+    }
+
+    // blocker байхгүй бол shadow байхгүй гэж үзнэ
+    if (blockerCnt <= 0) return 1.0f;
+
+    float avgBlocker = blockerSum / float(blockerCnt);
+
+    // --------------------------------------
+    // Penumbra ойролцоолох
+    // --------------------------------------
+    // Directional light-ийн PCSS-ийн түгээмэл approximation:
+    // penumbra ~ (zR - zB) / zB * lightSize
+    float zB = std::max(PCSS_EPSILON, avgBlocker);
+    float zR = std::max(PCSS_EPSILON, z_receiver);
+
+    float penumbraRatio = (zR - zB) / zB;
+    penumbraRatio = std::max(0.0f, penumbraRatio);
+
+    // UV radius base нь гэрлийн хэмжээний proxy
+    float filterRadiusUvU  = LIGHT_UV_RADIUS_BASE * penumbraRatio;
+    float filterRadiusUvV  = LIGHT_UV_RADIUS_BASE * penumbraRatio;
+
+    // texel clamp (хэт их blur хийгдэхээс хамгаална)
+    float filterRadiusTexU = filterRadiusUvU / texelSizeU;
+    float filterRadiusTexV = filterRadiusUvV / texelSizeV;
+
+    float filterRadiusTex  = 0.5f * (filterRadiusTexU + filterRadiusTexV);
+    filterRadiusTex        = clampf(filterRadiusTex, PCSS_MIN_FILTER_RADIUS_TEXELS, PCSS_MAX_FILTER_RADIUS_TEXELS);
+
+    filterRadiusUvU = filterRadiusTex * texelSizeU;
+    filterRadiusUvV = filterRadiusTex * texelSizeV;
+
+    // --------------------------------------
+    // Variable PCF (final soft filtering)
+    // --------------------------------------
+    float litSum = 0.0f;
+    int   litCnt = 0;
+
+    // дахин өөр seed ашиглаад rotation өөрчилж болно
+    float ang2 = hash01(seed ^ 0xB5297A4Du) * 6.2831853f;
+
+    for (int i = 0; i < PCSS_PCF_SAMPLES; ++i)
+    {
+        glm::vec2 o = POISSON_32[i & 31];
+        o = rotate2(o, ang2);
+
+        glm::vec2 suv = uv + glm::vec2(o.x * filterRadiusUvU, o.y * filterRadiusUvV);
+
+        float d = shadow_sample_depth_uv(sm, suv);
+        if (d == std::numeric_limits<float>::max()) {
+            // map-д бичигдээгүй хэсгийг lit гэж үзээд тогтвортой болгож болно
+            litSum += 1.0f;
+            litCnt++;
+            continue;
+        }
+
+        litSum += (z_receiver <= d + bias) ? 1.0f : 0.0f;
+        litCnt++;
+    }
+
+    if (litCnt <= 0) return 1.0f;
+    return litSum / float(litCnt);
 }
 
 // ==========================================
-// PBR FRAGMENT SHADER (Direct GGX + IBL)
+// PBR FRAGMENT SHADER (Direct GGX + IBL + PCSS)
 // ==========================================
 
-static shs::Color fragment_shader_pbr(const VaryingsFull& in, const Uniforms& u)
+static shs::Color fragment_shader_pbr(const VaryingsFull& in, const Uniforms& u, int px, int py)
 {
     glm::vec3 N = glm::normalize(in.normal);
     glm::vec3 V = glm::normalize(u.camera_pos - in.world_pos);
@@ -1260,7 +1426,8 @@ static shs::Color fragment_shader_pbr(const VaryingsFull& in, const Uniforms& u)
         if (shadow_uvz_from_world(u.light_vp, in.world_pos, suv, sz)) {
             float slope = 1.0f - glm::clamp(glm::dot(N, L), 0.0f, 1.0f);
             float bias  = SHADOW_BIAS_BASE + SHADOW_BIAS_SLOPE * slope;
-            shadow      = shadow_factor_pcf_2x2(*u.shadow, suv, sz, bias);
+            // PCSS Implementation:
+            shadow = pcss_shadow_factor(*u.shadow, suv, sz, bias, px, py);
         }
     }
     direct *= shadow;
@@ -1490,7 +1657,7 @@ static void draw_triangle_tile_color_depth_motion(
     const std::vector<glm::vec3>& tri_norms,
     const std::vector<glm::vec2>& tri_uvs,
     std::function<VaryingsFull(const glm::vec3&, const glm::vec3&, const glm::vec2&)> vs,
-    std::function<shs::Color(const VaryingsFull&)> fs,
+    std::function<shs::Color(const VaryingsFull&, int, int)> fs, // Updated to take px, py
     glm::ivec2 tile_min, glm::ivec2 tile_max)
 {
     int W = rt.color.get_width();
@@ -1645,7 +1812,7 @@ static void draw_triangle_tile_color_depth_motion(
                         }
                         rt.motion.set(px, cy, v_canvas);
 
-                        rt.color.draw_pixel_screen_space(px, py, fs(vin));
+                        rt.color.draw_pixel_screen_space(px, py, fs(vin, px, py));
                     }
                 }
             }
@@ -1976,8 +2143,25 @@ static inline float volumetric_shadow_visibility(
     glm::vec2 uv; float z;
     if (!shadow_uvz_from_world(light_vp, world_pos, uv, z)) return 1.0f;
 
+    // Volumetric shafts, PCF 2x2
     return shadow_factor_pcf_2x2_raw(shadow_raw, sw, sh, uv, z, p.shadow_bias, p.shadow_pcf_2x2);
 }
+
+
+// ------------------------------------------
+// NOISE HELPER
+// ------------------------------------------
+
+// 3D Noise: Тоосны бөөгнөрөл (clumps) үүсгэхэд ашиглана.
+// Sine долгионуудыг хольж бага зэргийн үүл маягтай бүтэц үүсгэнэ.
+static inline float volumetric_cloud_noise(const glm::vec3& p, float scale)
+{
+    glm::vec3 s = p * scale;
+    // вариац үүсгэхэд зориулсан синусойд холилт
+    float n = std::sin(s.x) * std::cos(s.y) * std::sin(s.z + s.x * 0.5f);
+    return n * 0.5f + 0.5f; // Map to [0..1]
+}
+
 
 static void light_shafts_pass(
     const shs::Canvas& src,
@@ -1999,8 +2183,11 @@ static void light_shafts_pass(
     shs::Job::ThreadedPriorityJobSystem* job_system,
     shs::Job::WaitGroup& wg)
 {
-
+    // Tint colors for atmosphere
+    // Нарны тусгалтай хэсгийн өнгө (Light Shafts tint)
     const glm::vec3 shafts_tint = glm::vec3(0.92f, 0.96f, 1.00f);
+    // Сүүдэр болон тоосны үндсэн өнгө (Ambient Dust tint)
+    const glm::vec3 ambient_tint = glm::vec3(0.60f, 0.65f, 0.70f);
 
     const int W = src.get_width();
     const int H = src.get_height();
@@ -2035,9 +2222,10 @@ static void light_shafts_pass(
 
                 float view_z = z_raw[row + x];
 
+                // Depth мэдрэг termination логик
                 float ray_max = p.max_dist;
                 if (view_z != std::numeric_limits<float>::max()) {
-                    ray_max = std::min(ray_max, std::max(p.min_dist, view_z - 0.25f)); // 0.25 world units
+                    ray_max = std::min(ray_max, std::max(p.min_dist, view_z - 0.25f)); // 0.25 world units offset
                 }
                 if (ray_max <= p.min_dist) {
                     dst_raw[row + x] = base_srgb;
@@ -2046,45 +2234,70 @@ static void light_shafts_pass(
 
                 glm::vec3 view_dir = reconstruct_world_dir_from_pixel(x, y, W, H, inv_curr_vp, cam_pos);
 
-
                 float cosTheta = glm::dot(view_dir, sun_dir);
                 float phase    = phase_hg(cosTheta, p.g);
 
-                float gate = saturate((cosTheta - 0.25f) / 0.75f);
-                phase     *= gate;
-
+                // Нарны эргэн тойронд гэрэлтүүлгийг төвлөрүүлэх (Gate function)
+                float gate = saturate((cosTheta - 0.1f) / 0.9f);
                 
                 int steps = std::max(1, p.steps);
                 float ds  = ray_max / float(steps);
-                float t   = p.min_dist;
+
+                // JITTERING (Dithering)
+                // Pixel бүрийн ray эхлэх цэгийг санамсаргүйгээр бага зэрэг шилжүүлнэ.
+                // banding буюу зурааслаг харагдах эффектийг арилгаж, grain буюу тоосорхог байдалтай харагдуулна.
+                uint32_t seed = (uint32_t)(x * 1973u ^ y * 9277u);
+                float random_val = float(seed & 0xFFFF) / 65536.0f;
+                float t = p.min_dist + (random_val * ds * p.jitter_amount);
 
                 float Tm = 1.0f;
                 glm::vec3 Ls(0.0f);
 
                 for (int i = 0; i < steps; ++i) {
+                    if (t >= ray_max) break;
 
                     glm::vec3 wp = cam_pos + view_dir * t;
 
+                    // Суурь нягтралшил (Height Fog тооцолол)
                     float dens = fog_density(p, wp);
-                    if (dens > 1e-6f) {
 
+                    // Агаарын нягтыг 3D noise ашиглан өөрчилж, тоосны бөөгнөрөл мягтай юм үүсгэх.
+                    if (dens > 1e-6f) {
+                        float dust = volumetric_cloud_noise(wp, p.noise_scale);
+                        // суурь нягтралшилийг noise-той холих
+                        dens *= glm::mix(1.0f, dust, p.noise_strength);
+                    }
+
+                    if (dens > 1e-6f) {
                         float vis = volumetric_shadow_visibility(p, shadow_raw, shadow_w, shadow_h, light_vp, wp);
 
                         float sigma_s = p.sigma_s * dens;
                         float sigma_t = p.sigma_t * dens;
 
-                        float scatter = Tm * sigma_s * phase * vis * ds;
+                        // Ambient + Direct Lighting
+                        // Direct Light (vis > 0 үед харагдана)
+                        float direct_light = phase * vis * gate; 
 
-                        float dist01 = t / std::max(1e-3f, ray_max);
-                        float dist_fall = 1.0f - dist01;        // linear
-                        dist_fall *= dist_fall;                 // quadratic
-                        scatter   *= dist_fall;
+                        // Ambient Light (vis = 0 үед буюу сүүдэрт ч харагдана)
+                        // ингэснээр сүүдэр дотор тоос байгаа юм шиг санагдуулна.
+                        float ambient_light = p.ambient_strength;
 
-                        //float height_att = exp(-pos.y * p.height_falloff);
-                        //scatter *= height_att;
+                        // Нийлбэр гэрэлтүүлэг
+                        float light_term = (direct_light * p.intensity) + ambient_light;
+                        
+                        // Scattering хуримтлуулах
+                        float scatter = Tm * sigma_s * light_term * ds;
 
-                        //Ls += glm::vec3(scatter);
-                        Ls += shafts_tint * scatter;
+                        // Distance attenuation (холоос харахад манан хэтэрхий тоо байж болохгүй)
+                        float dist01 = t / std::max(1e-3f, p.max_dist);
+                        float dist_fall = 1.0f - (dist01 * dist01); 
+                        scatter *= dist_fall;
+
+                        // Tint холих
+                        // Гэрэлтэй хэсэгт shafts_tint, сүүдэрт ambient_tint ашиглана.
+                        glm::vec3 current_tint = glm::mix(ambient_tint, shafts_tint, vis);
+                        
+                        Ls += current_tint * scatter;
 
                         Tm *= std::exp(-sigma_t * ds);
 
@@ -2097,15 +2310,14 @@ static void light_shafts_pass(
                 glm::vec3 base01  = color_to_srgb01(base_srgb);
                 glm::vec3 baseLin = srgb_to_linear(base01);
 
-                // PASS1 аль хэдийн tonemap+gamma хийсэн (LDR sRGB).
-                // тиймээс энд дахин tonemap хийхгүй. Зөвхөн linear дээр нэмээд буцаана.
-                glm::vec3 outLin = baseLin + (Ls * p.intensity);
+                // volumetric оролцоог сайжруулах
+                glm::vec3 outLin = baseLin + Ls;
 
-                outLin = glm::min(outLin, glm::vec3(1.0f));   // hard cap
+                // Soft re-tonemap шалгалт
+                outLin = outLin / (1.0f + outLin * 0.15f); 
 
-                // LDR pipeline тул clamp хийж цагаан өнгө хэт их болохоос сэргийлнэ.
+                // LDR clamp
                 outLin = glm::clamp(outLin, 0.0f, 1.0f);
-
 
                 // Linear -> sRGB буцаана
                 glm::vec3 outSrgb = linear_to_srgb(outLin);
@@ -2134,6 +2346,7 @@ static void light_shafts_pass(
         }
     }
 }
+
 
 // ==========================================
 // SCENE STATE
@@ -2179,7 +2392,7 @@ public:
 };
 
 // ==========================================
-// RENDERER SYSTEM (Shadow + Camera + Shafts + MotionBlur + Skybox + PBR)
+// RENDERER SYSTEM (Shadow + Camera + Shafts + MotionBlur + Skybox + PBR + PCSS)
 // ==========================================
 
 class RendererSystem : public shs::AbstractSystem
@@ -2430,8 +2643,8 @@ public:
                                     [&u](const glm::vec3& p, const glm::vec3& n, const glm::vec2& uv) {
                                         return vertex_shader_full(p, n, uv, u);
                                     },
-                                    [&u](const VaryingsFull& vin) {
-                                        return fragment_shader_pbr(vin, u);
+                                    [&u](const VaryingsFull& vin, int px, int py) {
+                                        return fragment_shader_pbr(vin, u, px, py);
                                     },
                                     t_min, t_max
                                 );
@@ -2493,8 +2706,8 @@ public:
                                         [&u](const glm::vec3& p, const glm::vec3& nn, const glm::vec2& uv) {
                                             return vertex_shader_full(p, nn, uv, u);
                                         },
-                                        [&u](const VaryingsFull& vin) {
-                                            return fragment_shader_pbr(vin, u);
+                                        [&u](const VaryingsFull& vin, int px, int py) {
+                                            return fragment_shader_pbr(vin, u, px, py);
                                         },
                                         t_min, t_max
                                     );
@@ -2553,8 +2766,8 @@ public:
                                         [&u](const glm::vec3& p, const glm::vec3& nn, const glm::vec2& uv) {
                                             return vertex_shader_full(p, nn, uv, u);
                                         },
-                                        [&u](const VaryingsFull& vin) {
-                                            return fragment_shader_pbr(vin, u);
+                                        [&u](const VaryingsFull& vin, int px, int py) {
+                                            return fragment_shader_pbr(vin, u, px, py);
                                         },
                                         t_min, t_max
                                     );
@@ -2873,7 +3086,7 @@ int main(int argc, char* argv[])
         fps_timer += dt;
         if (fps_timer >= 1.0f) {
             std::string title =
-                "PBR (GGX+IBL) + Shadow + Shafts + MotionBlur | FPS: " + std::to_string(frames) +
+                "PBR (GGX+IBL) + PCSS Soft Shadow + Shafts + MotionBlur | FPS: " + std::to_string(frames) +
                 " | Threads: " + std::to_string(THREAD_COUNT) +
                 " | Canvas: " + std::to_string(CANVAS_WIDTH) + "x" + std::to_string(CANVAS_HEIGHT);
             SDL_SetWindowTitle(window, title.c_str());

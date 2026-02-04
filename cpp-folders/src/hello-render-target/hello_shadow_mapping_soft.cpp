@@ -103,7 +103,7 @@ static const float PCSS_BLOCKER_SEARCH_RADIUS_TEXELS = 18.0f;
 
 // Filter radius clamp (PCF-ийн final blur) - хэт их blur болохоос хамгаална
 static const float PCSS_MIN_FILTER_RADIUS_TEXELS = 1.0f;
-static const float PCSS_MAX_FILTER_RADIUS_TEXELS = 42.0f;
+static const float PCSS_MAX_FILTER_RADIUS_TEXELS = 28.0f;
 
 // Sample counts (ихсэх тусам CPU тооцооллын өртөг нэмэгдэнэ)
 static const int   PCSS_BLOCKER_SAMPLES = 12;
@@ -1004,7 +1004,7 @@ static shs::Color fragment_shader_softshadow(const VaryingsFull& in, const Unifo
     }
 
     // Blinn-Phong
-    float ambientStrength = 0.18f;
+    float ambientStrength = 0.22f;
 
     float diff = glm::max(glm::dot(N, L), 0.0f);
     glm::vec3 diffuse = diff * glm::vec3(1.0f);
