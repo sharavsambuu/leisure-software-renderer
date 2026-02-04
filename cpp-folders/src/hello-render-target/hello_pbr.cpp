@@ -80,6 +80,11 @@ ibl_reflection_strength : тухайн объектын reflection нэмэх/х
 
 #include "shs_renderer.hpp"
 
+
+// 1: Математик суурьтай тэнгэр
+// 0: Текстур суурьтай тэнгэр буюу skybox
+#define USE_PROCEDURAL_SKY 0
+
 //#define WINDOW_WIDTH      800
 //#define WINDOW_HEIGHT     600
 #define WINDOW_WIDTH      1200
@@ -143,6 +148,8 @@ static const float PBR_EXPOSURE      = 1.75f;   // brightness
 static const float PBR_GAMMA         = 2.2f;
 static const float PBR_MIN_ROUGHNESS = 0.04f;
 static const float SKY_EXPOSURE      = 1.85f;
+
+static const float DIRECT_LIGHT_INTENSITY = 3.0f; // Нарны гэрлийн хүч (light_shafts demo-той ижил 3.0 болгов)
 
 // ==========================================
 // HELPERS
@@ -237,6 +244,7 @@ static inline shs::Color sample_nearest_srgb(const shs::Texture2D &tex, glm::vec
     return tex.texels.at(x, y);
 }
 
+/*
 // ==========================================
 // SKYBOX CUBEMAP (6 faces) + sampler
 // Texture2D coordinate: (0,0) bottom-left, +Y up
@@ -253,10 +261,11 @@ struct CubeMapLDR
         return true;
     }
 };
+*/
 
-static inline CubeMapLDR load_cubemap_water_scene(const std::string& folder)
+static inline shs::CubeMap load_cubemap_water_scene(const std::string& folder)
 {
-    CubeMapLDR cm;
+    shs::CubeMap cm;
     cm.face[0] = shs::load_texture_sdl_image(folder + "/right.jpg",  true);
     cm.face[1] = shs::load_texture_sdl_image(folder + "/left.jpg",   true);
     cm.face[2] = shs::load_texture_sdl_image(folder + "/top.jpg",    true);
@@ -287,7 +296,7 @@ struct CubeMapLinear
 };
 
 // LDR cubemap (sRGB) -> linear float cubemap
-static inline CubeMapLinear cubemap_ldr_to_linear(const CubeMapLDR& cm)
+static inline CubeMapLinear cubemap_ldr_to_linear(const shs::CubeMap& cm)
 {
     CubeMapLinear out;
     if (!cm.valid()) return out;
@@ -435,7 +444,7 @@ static inline void tangent_basis(const glm::vec3& N, glm::vec3& T, glm::vec3& B)
     B            = glm::cross(N, T);
 }
 
-static inline CubeMapLinear build_env_irradiance(const CubeMapLinear& env_radiance, int outSize, int sampleCount)
+static inline CubeMapLinear build_env_irradiance(const shs::AbstractSky& sky, int outSize, int sampleCount)
 {
     CubeMapLinear irr;
     irr.size = outSize;
@@ -468,7 +477,7 @@ static inline CubeMapLinear build_env_irradiance(const CubeMapLinear& env_radian
                     glm::vec3 h = cosine_sample_hemisphere(r1, r2);
                     glm::vec3 L = glm::normalize(T*h.x + B*h.y + N*h.z);
 
-                    sum += sample_cubemap_linear(env_radiance, L);
+                    sum += sky.sample(L);
                 }
 
                 irr.face[f][(size_t)y*outSize + (size_t)x] = sum / float(sampleCount);
@@ -505,7 +514,7 @@ struct PrefilteredSpecular
 };
 
 static inline PrefilteredSpecular build_env_prefiltered_specular(
-    const CubeMapLinear& env_radiance,
+    const shs::AbstractSky& sky,
     int baseSize,
     int mipCount,
     int samplesPerTexel)
@@ -553,7 +562,7 @@ static inline PrefilteredSpecular build_env_prefiltered_specular(
                         glm::vec3 s = phong_lobe_sample(r1, r2, exp);
                         glm::vec3 L = glm::normalize(T*s.x + B*s.y + R*s.z);
 
-                        sum += sample_cubemap_linear(env_radiance, L);
+                        sum += sky.sample(L);
                     }
 
                     out.mip[m].face[f][(size_t)y*sz + (size_t)x] = sum / float(samplesPerTexel);
@@ -1060,7 +1069,7 @@ struct Uniforms
     const ShadowMap *shadow = nullptr;
 
     // Skybox background
-    const CubeMapLDR *sky = nullptr;
+    const shs::AbstractSky *sky = nullptr;
 
     // IBL
     const EnvIBL *ibl = nullptr;
@@ -1223,7 +1232,7 @@ static shs::Color fragment_shader_pbr(const VaryingsFull& in, const Uniforms& u)
     glm::vec3 direct_diffuse  = kd * baseColor_linear * (1.0f / PBR::PI);
     glm::vec3 direct_specular = (D * G) * F / glm::max(1e-6f, (4.0f * NoV * NoL));
 
-    glm::vec3 direct_radiance = glm::vec3(3.0f); // directional light color/intensity
+    glm::vec3 direct_radiance = glm::vec3(DIRECT_LIGHT_INTENSITY); // Нарны гэрлийн өнгө/хүч
     glm::vec3 direct = (direct_diffuse + direct_specular) * direct_radiance * NoL;
 
     // Shadow (direct)
@@ -1267,6 +1276,10 @@ static shs::Color fragment_shader_pbr(const VaryingsFull& in, const Uniforms& u)
     // Final shading (linear HDR)
     glm::vec3 color_linear = direct + ibl;
 
+    // Minimum Ambient (Fake bounce fallback) - Сүүдэр хэт хар гарахаас сэргийлэх
+    glm::vec3 min_ambient = baseColor_linear * 0.03f * ao;
+    color_linear += min_ambient;
+
     // Exposure + Tonemap + Gamma -> sRGB 8-bit
     color_linear        *= PBR_EXPOSURE;
     color_linear         = tonemap_reinhard(color_linear);
@@ -1281,13 +1294,11 @@ static shs::Color fragment_shader_pbr(const VaryingsFull& in, const Uniforms& u)
 
 static void skybox_background_pass(
     shs::Canvas& dst,
-    const CubeMapLDR& sky,
+    const shs::AbstractSky& sky,
     const shs::Camera3D& cam,
     shs::Job::ThreadedPriorityJobSystem* job_system,
     shs::Job::WaitGroup& wg)
 {
-    if (!sky.valid()) return;
-
     int W = dst.get_width();
     int H = dst.get_height();
 
@@ -1300,39 +1311,6 @@ static void skybox_background_pass(
 
     int cols = (W + TILE_SIZE_X - 1) / TILE_SIZE_X;
     int rows = (H + TILE_SIZE_Y - 1) / TILE_SIZE_Y;
-
-    auto sample_cubemap_nearest_srgb01 = [&](const glm::vec3& dir_world) -> glm::vec3 {
-
-        glm::vec3 d = dir_world;
-        float len = glm::length(d);
-        if (len < 1e-8f) return glm::vec3(0.0f);
-        d /= len;
-
-        float ax = std::abs(d.x);
-        float ay = std::abs(d.y);
-        float az = std::abs(d.z);
-
-        int face = 0;
-        float u = 0.5f, v = 0.5f;
-
-        if (ax >= ay && ax >= az) {
-            if (d.x > 0.0f) { face = 0; u = (-d.z / ax); v = ( d.y / ax); }
-            else            { face = 1; u = ( d.z / ax); v = ( d.y / ax); }
-        } else if (ay >= ax && ay >= az) {
-            if (d.y > 0.0f) { face = 2; u = ( d.x / ay); v = (-d.z / ay); }
-            else            { face = 3; u = ( d.x / ay); v = ( d.z / ay); }
-        } else {
-            if (d.z > 0.0f) { face = 4; u = ( d.x / az); v = ( d.y / az); }
-            else            { face = 5; u = (-d.x / az); v = ( d.y / az); }
-        }
-
-        u = 0.5f * (u + 1.0f);
-        v = 0.5f * (v + 1.0f);
-
-        const shs::Texture2D& tex = sky.face[face];
-        shs::Color c = sample_nearest_srgb(tex, glm::vec2(u, v));
-        return color_to_srgb01(c);
-    };
 
     wg.reset();
 
@@ -1363,11 +1341,9 @@ static void skybox_background_pass(
 
                         dir = glm::normalize(dir);
 
-                        // Skybox texture нь sRGB гэж үзээд: linear -> exposure -> tonemap -> gamma
-                        glm::vec3 sky_srgb = sample_cubemap_nearest_srgb01(dir);
-                        glm::vec3 sky_lin  = srgb_to_linear(sky_srgb);
+                        // Sky radiance: (Already Linear in procedural, but CubeMapSky sample() also returns linear)
+                        glm::vec3 sky_lin = sky.sample(dir);
 
-                        //sky_lin *= PBR_EXPOSURE;
                         sky_lin *= SKY_EXPOSURE;
                         sky_lin  = tonemap_reinhard(sky_lin);
                         glm::vec3 out_srgb = linear_to_srgb(sky_lin);
@@ -1671,6 +1647,7 @@ static inline glm::vec2 compute_camera_velocity_canvas_fast(
     const glm::mat4& inv_curr_viewproj,
     const glm::mat4& curr_proj)
 {
+    (void)curr_viewproj;
     if (view_z == std::numeric_limits<float>::max()) return glm::vec2(0.0f);
 
     glm::vec2 ndc_xy = canvas_to_ndc_xy(x, y, W, H);
@@ -1844,7 +1821,7 @@ static void combined_motion_blur_pass(
 class DemoScene : public shs::AbstractSceneState
 {
 public:
-    DemoScene(shs::Canvas* canvas, Viewer* viewer, const shs::Texture2D* car_tex, const CubeMapLDR* sky, const EnvIBL* ibl)
+    DemoScene(shs::Canvas* canvas, Viewer* viewer, const shs::Texture2D* car_tex, const shs::AbstractSky* sky, const EnvIBL* ibl)
     {
         this->canvas = canvas;
         this->viewer = viewer;
@@ -1870,7 +1847,7 @@ public:
     shs::Canvas*      canvas;
     Viewer*           viewer;
 
-    const CubeMapLDR* sky = nullptr;
+    const shs::AbstractSky* sky = nullptr;
     const EnvIBL*     ibl = nullptr;
 
     FloorPlane*       floor;
@@ -2032,7 +2009,7 @@ public:
         rt->clear(shs::Color{20,20,25,255});
 
         // Skybox background fill
-        if (scene->sky && scene->sky->valid()) {
+        if (scene->sky) {
             skybox_background_pass(rt->color, *scene->sky, *scene->viewer->camera, job_system, wg_sky);
         }
 
@@ -2084,9 +2061,10 @@ public:
                             u.albedo          = nullptr;
                             u.use_texture     = false;
 
-                            u.ibl_diffuse_intensity   = 0.55f;
-                            u.ibl_specular_intensity  = 0.30f;
-                            u.ibl_reflection_strength = 0.10f;
+                            // IBL тохиргоог дахин нэмэгдүүлж сүүдрийг гэгээтэй болгов
+                            u.ibl_diffuse_intensity   = 1.30f;
+                            u.ibl_specular_intensity  = 0.60f;
+                            u.ibl_reflection_strength = 0.20f;
 
                             for (size_t i = 0; i < scene->floor->verts.size(); i += 3) {
                                 std::vector<glm::vec3> tri_v = {
@@ -2158,9 +2136,10 @@ public:
                                 u.albedo      = car->albedo;
                                 u.use_texture = (car->albedo && car->albedo->valid());
 
-                                u.ibl_diffuse_intensity   = 0.42f;
-                                u.ibl_specular_intensity  = 0.65f;
-                                u.ibl_reflection_strength = 0.85f;
+                                // Тэнгэрийн тусгал (Glow эффект нэмэгдэв)
+                                u.ibl_diffuse_intensity   = 1.50f;
+                                u.ibl_specular_intensity  = 1.00f;
+                                u.ibl_reflection_strength = 1.20f;
 
                                 const auto& v = car->geometry->triangles;
                                 const auto& n = car->geometry->normals;
@@ -2219,9 +2198,10 @@ public:
                                 u.albedo      = nullptr;
                                 u.use_texture = false;
 
-                                u.ibl_diffuse_intensity   = 0.25f;
-                                u.ibl_specular_intensity  = 0.55f;
-                                u.ibl_reflection_strength = 0.80f;
+                                // Monkey IBL (Алтан тусгалыг тодруулав)
+                                u.ibl_diffuse_intensity   = 1.00f;
+                                u.ibl_specular_intensity  = 1.80f;
+                                u.ibl_reflection_strength = 1.00f;
 
                                 const auto& v = mk->geometry->triangles;
                                 const auto& n = mk->geometry->normals;
@@ -2410,29 +2390,43 @@ int main(int argc, char* argv[])
     // Texture load (Subaru albedo)
     shs::Texture2D car_tex = shs::load_texture_sdl_image("./obj/subaru/SUBARU1_M.bmp", true);
 
-    // Skybox cubemap load (LDR)
-    CubeMapLDR sky = load_cubemap_water_scene("./images/skybox/water_scene");
-    if (!sky.valid()) {
-        std::cout << "Warning: Skybox cubemap load failed (images/skybox/water_scene/*.jpg)" << std::endl;
-    }
+    // Тэнгэрийн эх үүсвэрийг тохируулах (Skybox эсвэл Procedural)
+    shs::AbstractSky* active_sky = nullptr;
+    shs::CubeMap      ldr_cm;
 
-    // IBL precompute (програм эхлэхэд нэг удаа)
+#if USE_PROCEDURAL_SKY
+    // "Pro" түвшний математик тэнгэр
+    active_sky = new shs::AnalyticSky(LIGHT_DIR_WORLD);
+    std::cout << "STATUS : Using Analytic Procedural Sky" << std::endl;
+#else
+    // Текстурт суурилсан тэнгэр (Skybox)
+    ldr_cm = load_cubemap_water_scene("./images/skybox/water_scene");
+    if (!ldr_cm.valid()) {
+        std::cout << "Warning: Skybox cubemap load failed (images/skybox/water_scene/*.jpg)" << std::endl;
+    } else {
+        // Texture Skybox-ийг үүсгэх (Default 1.0f intensity, давхар exposure хийхгүйн тулд)
+        active_sky = new shs::CubeMapSky(ldr_cm, 1.0f);
+        std::cout << "STATUS : Using CubeMap Skybox (Normalized Intensity)" << std::endl;
+    }
+#endif
+
+    // IBL precompute (програм эхлэхэд нэг удаа, сонгосон тэнгэрийн эх үүсвэрээс тооцоолно)
     EnvIBL ibl;
-    if (sky.valid()) {
+    if (active_sky) {
         std::cout << "STATUS : IBL precompute started..." << std::endl;
 
-        ibl.env_radiance = cubemap_ldr_to_linear(sky);
-        if (ibl.env_radiance.valid()) {
-
+        {
             std::cout << "STATUS : IBL irradiance building..."
                       << " | size=" << IBL_IRR_SIZE
                       << " | samples=" << IBL_IRR_SAMPLES
                       << std::endl;
 
-            ibl.env_irradiance = build_env_irradiance(ibl.env_radiance, IBL_IRR_SIZE, IBL_IRR_SAMPLES);
+            ibl.env_irradiance = build_env_irradiance(*active_sky, IBL_IRR_SIZE, IBL_IRR_SAMPLES);
 
             // Prefilter base cap
-            int specBase = std::min(IBL_SPEC_BASE_CAP, ibl.env_radiance.size);
+            // Procedural sky has no fixed resolution, use 512 as base
+            int specBase = USE_PROCEDURAL_SKY ? 512 : ldr_cm.face[0].w;
+            specBase = std::min(IBL_SPEC_BASE_CAP, specBase);
 
             std::cout << "STATUS : IBL specular prefilter building..."
                       << " | base=" << specBase
@@ -2440,7 +2434,7 @@ int main(int argc, char* argv[])
                       << " | samples=" << IBL_SPEC_SAMPLES
                       << std::endl;
 
-            ibl.env_prefiltered_spec = build_env_prefiltered_specular(ibl.env_radiance, specBase, IBL_SPEC_MIPCOUNT, IBL_SPEC_SAMPLES);
+            ibl.env_prefiltered_spec = build_env_prefiltered_specular(*active_sky, specBase, IBL_SPEC_MIPCOUNT, IBL_SPEC_SAMPLES);
         }
 
         if (!ibl.valid()) {
@@ -2452,7 +2446,7 @@ int main(int argc, char* argv[])
 
     // Scene
     Viewer*    viewer    = new Viewer(glm::vec3(0.0f, 10.0f, -42.0f), 55.0f);
-    DemoScene* scene     = new DemoScene(screen_canvas, viewer, &car_tex, &sky, (ibl.valid() ? &ibl : nullptr));
+    DemoScene* scene     = new DemoScene(screen_canvas, viewer, &car_tex, active_sky, (ibl.valid() ? &ibl : nullptr));
 
     SystemProcessor* sys = new SystemProcessor(scene, job_system);
 
@@ -2539,6 +2533,7 @@ int main(int argc, char* argv[])
     delete sys;
     delete scene;
     delete viewer;
+    delete active_sky;
 
     delete screen_canvas;
     delete job_system;

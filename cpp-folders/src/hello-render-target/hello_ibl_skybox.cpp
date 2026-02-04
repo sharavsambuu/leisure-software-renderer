@@ -168,95 +168,9 @@ static inline shs::Color sample_nearest(const shs::Texture2D &tex, glm::vec2 uv)
 }
 
 // ==========================================
-// SKYBOX CUBEMAP (6 faces) + sampler
-// Texture2D coordinate: (0,0) bottom-left, +Y up
+// SKYBOX CUBEMAP (Removed local implementation)
+// Uses shs::CubeMap and shs::AbstractSky from header
 // ==========================================
-
-struct CubeMap
-{
-    // 0:+X right, 1:-X left, 2:+Y top, 3:-Y bottom, 4:+Z front, 5:-Z back
-    shs::Texture2D face[6];
-
-    inline bool valid() const
-    {
-        for (int i = 0; i < 6; ++i) if (!face[i].valid()) return false;
-        return true;
-    }
-};
-
-static inline CubeMap load_cubemap_water_scene(const std::string& folder)
-{
-    CubeMap cm;
-    cm.face[0] = shs::load_texture_sdl_image(folder + "/right.jpg",  true);
-    cm.face[1] = shs::load_texture_sdl_image(folder + "/left.jpg",   true);
-    cm.face[2] = shs::load_texture_sdl_image(folder + "/top.jpg",    true);
-    cm.face[3] = shs::load_texture_sdl_image(folder + "/bottom.jpg", true);
-    cm.face[4] = shs::load_texture_sdl_image(folder + "/front.jpg",  true);
-    cm.face[5] = shs::load_texture_sdl_image(folder + "/back.jpg",   true);
-    return cm;
-}
-
-// dir_world -> cubemap (face + uv)
-// Энэ mapping нь LH +Z forward нөхцөлд "front=+Z", "back=-Z" гэсэн ойлголттой ажиллана.
-static inline glm::vec3 sample_cubemap_nearest_rgb01(const CubeMap& cm, const glm::vec3& dir_world)
-{
-    if (!cm.valid()) return glm::vec3(0.0f);
-
-    glm::vec3 d = dir_world;
-    float len = glm::length(d);
-    if (len < 1e-8f) return glm::vec3(0.0f);
-    d /= len;
-
-    float ax = std::abs(d.x);
-    float ay = std::abs(d.y);
-    float az = std::abs(d.z);
-
-    int face = 0;
-    float u = 0.5f, v = 0.5f;
-
-    if (ax >= ay && ax >= az) {
-        // ±X
-        if (d.x > 0.0f) { // +X right
-            face = 0;
-            u = (-d.z / ax);
-            v = ( d.y / ax);
-        } else {          // -X left
-            face = 1;
-            u = ( d.z / ax);
-            v = ( d.y / ax);
-        }
-    } else if (ay >= ax && ay >= az) {
-        // ±Y
-        if (d.y > 0.0f) { // +Y top
-            face = 2;
-            u = ( d.x / ay);
-            v = (-d.z / ay);
-        } else {          // -Y bottom
-            face = 3;
-            u = ( d.x / ay);
-            v = ( d.z / ay);
-        }
-    } else {
-        // ±Z
-        if (d.z > 0.0f) { // +Z front
-            face = 4;
-            u = ( d.x / az);
-            v = ( d.y / az);
-        } else {          // -Z back
-            face = 5;
-            u = (-d.x / az);
-            v = ( d.y / az);
-        }
-    }
-
-    // [-1,1] -> [0,1]
-    u = 0.5f * (u + 1.0f);
-    v = 0.5f * (v + 1.0f);
-
-    const shs::Texture2D& tex = cm.face[face];
-    shs::Color c = sample_nearest(tex, glm::vec2(u, v));
-    return color_to_rgb01(c);
-}
 
 // ==========================================
 // SHADOW MAP BUFFER (Depth only)
@@ -675,7 +589,7 @@ struct Uniforms
     const ShadowMap *shadow = nullptr;
 
     // SKYBOX IBL
-    const CubeMap *sky = nullptr;
+    const shs::AbstractSky *sky = nullptr;
 
     // IBL knobs
     float ibl_ambient = 0.25f;     // ambient-ийн sky tint хэмжээ
@@ -840,13 +754,13 @@ static shs::Color fragment_shader_full(const VaryingsFull& in, const Uniforms& u
     glm::vec3 envN(1.0f);
     glm::vec3 envR(0.0f);
 
-    if (u.sky && u.sky->valid()) {
-        // ambient tint: N чиглэлээр sample хийх (хамгийн энгийн хувилбар)
-        envN = sample_cubemap_nearest_rgb01(*u.sky, N);
+    if (u.sky) {
+        // ambient tint: N чиглэлээр sample хийх (Linear out)
+        envN = u.sky->sample(N);
 
-        // reflection: R чиглэлээр sample
+        // reflection: R чиглэлээр sample (Linear out)
         glm::vec3 R = glm::reflect(-V, N);
-        envR        = sample_cubemap_nearest_rgb01(*u.sky, R);
+        envR        = u.sky->sample(R);
     }
 
     // ambient-ийг sky tint-тэй mix хийх
@@ -882,12 +796,13 @@ static shs::Color fragment_shader_full(const VaryingsFull& in, const Uniforms& u
 
 static void skybox_background_pass(
     shs::Canvas& dst,
-    const CubeMap& sky,
+    const shs::AbstractSky& sky,
     const shs::Camera3D& cam,
     shs::Job::ThreadedPriorityJobSystem* job_system,
     shs::Job::WaitGroup& wg)
 {
-    if (!sky.valid()) return;
+    // sky-г гадна талд шалгасан гэж үзье (эсвэл pointer-оор дамжуулах)
+    // if (!sky.valid()) return; 
 
     int W = dst.get_width();
     int H = dst.get_height();
@@ -932,8 +847,23 @@ static void skybox_background_pass(
 
                         dir = glm::normalize(dir);
 
-                        glm::vec3 c01 = sample_cubemap_nearest_rgb01(sky, dir);
-                        dst.draw_pixel(x, y, rgb01_to_color(c01));
+                        // sample returns Linear
+                        glm::vec3 c_lin = sky.sample(dir);
+                        
+                        // Дэлгэцэнд гаргахдаа sRGB руу буцаах хэрэгтэй (энгийн Reinhard + LinearTosRGB)
+                        // Гэхдээ энд demo дээр шууд linear->sRGB хийчихье (Simple)
+                        // Бодит проектод tone mapping хийх нь зөв.
+                        
+                        // Энгийн reinhard : c / (1+c) ? 
+                        // Эсвэл шууд clamp ?
+                        // hello_pbr.cpp дээр tonemap_reinhard ашиглаж байгаа.
+                        // Энд IBL skybox demo дээр өмнө нь шууд RGB01 авч байсан (LDR).
+                        // Одоо HDR/Linear орж ирж байгаа тул clamp хийж байгаад sRGB болгоё.
+                        
+                        c_lin = glm::clamp(c_lin, 0.0f, 1.0f);
+                        glm::vec3 c_srgb = shs::linear_to_srgb(c_lin);
+                        
+                        dst.draw_pixel(x, y, rgb01_to_color(c_srgb));
                     }
                 }
 
@@ -1416,7 +1346,7 @@ static void combined_motion_blur_pass(
 class DemoScene : public shs::AbstractSceneState
 {
 public:
-    DemoScene(shs::Canvas* canvas, Viewer* viewer, const shs::Texture2D* car_tex, const CubeMap* sky)
+    DemoScene(shs::Canvas* canvas, Viewer* viewer, const shs::Texture2D* car_tex, const shs::AbstractSky* sky)
     {
         this->canvas = canvas;
         this->viewer = viewer;
@@ -1441,7 +1371,7 @@ public:
     shs::Canvas* canvas;
     Viewer* viewer;
 
-    const CubeMap* sky = nullptr;
+    const shs::AbstractSky* sky = nullptr;
 
     FloorPlane* floor;
 
@@ -1608,7 +1538,7 @@ public:
         rt->clear(shs::Color{20,20,25,255});
 
         // Skybox background fill (PASS1 эхлэхээс өмнө)
-        if (scene->sky && scene->sky->valid()) {
+        if (scene->sky) {
             skybox_background_pass(rt->color, *scene->sky, *scene->viewer->camera, job_system, wg_sky);
         }
 
@@ -1960,15 +1890,27 @@ int main(int argc, char* argv[])
     // Texture load (Subaru albedo)
     shs::Texture2D car_tex = shs::load_texture_sdl_image("./obj/subaru/SUBARU1_M.bmp", true);
 
-    // Skybox cubemap load
-    CubeMap sky = load_cubemap_water_scene("./images/skybox/water_scene");
-    if (!sky.valid()) {
+    // Skybox cubemap load (LDR -> CubeMapSky (AbstractSky))
+    shs::CubeMap ldr_cm;
+    ldr_cm.face[0] = shs::load_texture_sdl_image("./images/skybox/water_scene/right.jpg",  true);
+    ldr_cm.face[1] = shs::load_texture_sdl_image("./images/skybox/water_scene/left.jpg",   true);
+    ldr_cm.face[2] = shs::load_texture_sdl_image("./images/skybox/water_scene/top.jpg",    true);
+    ldr_cm.face[3] = shs::load_texture_sdl_image("./images/skybox/water_scene/bottom.jpg", true);
+    ldr_cm.face[4] = shs::load_texture_sdl_image("./images/skybox/water_scene/front.jpg",  true);
+    ldr_cm.face[5] = shs::load_texture_sdl_image("./images/skybox/water_scene/back.jpg",   true);
+
+    shs::AbstractSky* active_sky = nullptr;
+    if (!ldr_cm.valid()) {
         std::cout << "Warning: Skybox cubemap load failed (images/skybox/water_scene/*.jpg)" << std::endl;
+    } else {
+        // Use shared CubeMapSky (1.0f intensity for LDR look)
+        active_sky = new shs::CubeMapSky(ldr_cm, 1.0f);
+        std::cout << "STATUS : Using Shared CubeMapSky" << std::endl;
     }
 
     // Scene
     Viewer*    viewer    = new Viewer(glm::vec3(0.0f, 10.0f, -42.0f), 55.0f);
-    DemoScene* scene     = new DemoScene(screen_canvas, viewer, &car_tex, &sky);
+    DemoScene* scene     = new DemoScene(screen_canvas, viewer, &car_tex, active_sky);
 
     SystemProcessor* sys = new SystemProcessor(scene, job_system);
 
@@ -2056,6 +1998,7 @@ int main(int argc, char* argv[])
     delete sys;
     delete scene;
     delete viewer;
+    delete active_sky; // Clean up sky
 
     delete screen_canvas;
     delete job_system;

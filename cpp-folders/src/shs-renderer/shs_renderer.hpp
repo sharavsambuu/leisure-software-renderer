@@ -1,19 +1,60 @@
 /*
-    CUSTOM SOFTWARE RENDERER (shs_renderer.hpp)
 
-    2025-12-28 UPDATE:
-    - Added unified Buffer<T> abstraction (general container)
-    - Canvas and ZBuffer now use Buffer<T> internally
-    - Public APIs preserved to avoid breaking existing demos
-    - New aliases: ColorBuffer, DepthBuffer (and optional future buffers)
-    - Added RenderTarget abstraction (Canvas + ZBuffer bundled)
+    shs_renderer.hpp
 
-    Abstractable or replaceable by common abstractions in the future:
-    - shs::Canvas → Buffer<shs::Color> (aka ColorBuffer)
-    - shs::ZBuffer → Buffer<float> (aka DepthBuffer)
-    - Canvas::color_ + ZBuffer::depth_ → Buffer<T>::data (unified storage)
-    - any extra per-pixel buffers (normals, IDs, masks) → Buffer<T>
-    - shs::RenderTarget → future generalized multi-attachment target (optional)
+    Үндсэн хийсвэрлэлт болон бүтэц:
+
+    1. Buffer<T> (ColorBuffer, DepthBuffer)
+       - Санах ойд өгөгдлийг шугаман байдлаар хадгалах ерөнхий класс (T төрлөөр).
+       - Canvas болон ZBuffer нь дотроо энэхүү Buffer<T>-ийг ашиглана.
+
+    2. RenderTarget
+       - Олон төрлийн буфферийг (Color, Depth, Motion, г.м) нэгтгэсэн бүтэц.
+       - Рендер хийх үед эдгээр буфферууд руу зэрэг бичих боломжийг олгоно.
+
+    3. Texture2D
+       - Зураг болон текстур өгөгдлийг хадгалах бүтэц.
+       - (0,0) цэг нь зүүн доод буланд байрлана.
+
+    4. AbstractSky
+       - Тэнгэр болон орчны гэрэлтүүлгийг тооцоолох ерөнхий интерфэйс.
+       - Текстур (CubeMapSky) болон Математик (Procedural/Analytic) хувилбаруудтай.
+
+    
+    
+    Координатын системийн тохиролцоо:
+
+    Model -> World -> View -> Projection -> NDC -> Screen -> shs::Canvas
+
+    1. Model Space (3D):
+       - Эхлэл цэг (0,0,0) нь тухайн моделийн төв.
+       - X: Баруун, Y: Дээш, Z: Урагшаа (LH)
+
+    2. World Space (3D):
+       - Бүх моделиудын нэгдсэн орон зай.
+       - X: Баруун, Y: Дээш, Z: Урагшаа
+
+    3. View Space (3D):
+       - Камерын байрлал (0,0,0) дээр байна.
+       - X: Баруун, Y: Дээш, Z: Урагшаа
+
+    4. Projection/Clip/NDC Space:
+       - [-1.0, 1.0] утгын мужид дүрслэгдэнэ.
+       - X: Баруун, Y: Дээш, Z: Урагшаа (normalize хийсний дараа)
+
+    5. Screen Space (2D):
+       - Эхлэл цэг (0,0) нь Зүүн-Дээд буланд.
+       - X: Зүүнээс баруун тийш.
+       - Y: Дээд талаас доош.
+       - Растеризаци энэ шатанд хийгдэнэ.
+
+    6. shs::Canvas Space (2D):
+       - Эхлэл цэг (0,0) нь Зүүн-Доод буланд.
+       - X: Зүүнээс баруун тийш.
+       - Y: Доод талаас дээш.
+       - Screen Space -> Canvas Space хөрвүүлэлт: y_canvas = HEIGHT - y_screen
+
+    
 */
 
 #pragma once
@@ -50,7 +91,23 @@
 namespace shs
 {
     // ==========================================
-    // BASIC DATA STRUCTURES
+    // ӨНГӨНИЙ ОГТОРГУЙ ХӨРВҮҮЛЭЛТ (sRGB <-> Linear)
+    // ==========================================
+
+    // sRGB -ээс Linear руу хөрвүүлэх (Гамма залруулга)
+    static inline glm::vec3 srgb_to_linear(glm::vec3 srgb01, float gamma = 2.2f)
+    {
+        return glm::pow(glm::clamp(srgb01, 0.0f, 1.0f), glm::vec3(gamma));
+    }
+
+    // Linear -ээс sRGB руу хөрвүүлэх (Дэлгэцэнд харуулахын өмнө)
+    static inline glm::vec3 linear_to_srgb(glm::vec3 lin01, float gamma = 2.2f)
+    {
+        return glm::pow(glm::clamp(lin01, 0.0f, 1.0f), glm::vec3(1.0f / gamma));
+    }
+
+    // ==========================================
+    // ҮНДСЭН ӨГӨГДЛИЙН БҮТЦҮҮД (Basic Structures)
     // ==========================================
 
     struct Color
@@ -68,14 +125,15 @@ namespace shs
         glm::vec3 v3;
     };
 
-    // Shader-үүд хооронд дамжих өгөгдлийн бүтэц (Interpolated values)
+    // Shader хооронд дамжих өгөгдөл (Varyings)
+    // Vertex Shader-ээс Fragment Shader руу дөхөлт хийгдэж хийгдэж очно.
     struct Varyings {
-        glm::vec4 position;        // current clip-space position
-        glm::vec4 prev_position;   // previous clip-space position (for velocity)
-        glm::vec3 normal;
-        glm::vec3 world_pos;
-        glm::vec2 uv;
-        float view_z;
+        glm::vec4 position;        // Clip-space байрлал
+        glm::vec4 prev_position;   // Өмнөх фреймийн clip-space байрлал (Velocity тооцоход хэрэгтэй)
+        glm::vec3 normal;          // Нормал вектор
+        glm::vec3 world_pos;       // World-space байрлал
+        glm::vec2 uv;              // Текстурын координат
+        float view_z;              // Камерын Z зай (Depth)
     };
 
     class Pixel
@@ -106,8 +164,9 @@ namespace shs
     };
 
     // ==========================================
-    // GENERIC BUFFER<T> ABSTRACTION
-    // - 2D өгөгдөл хадгалах боломжтой (w,h) эсвэл h=1 гэж өгөөд 1D өгөгдөл хадгалахаар ашиглаж болно.
+    // БУФФЕР ХИЙСВЭРЛЭЛТ (Buffer<T>)
+    // - Санах ойд өгөгдлийг 2D (w*h) хэлбэрээр хадгалах ерөнхий класс.
+    // - Өнгө, Гүн (Depth), эсвэл өөр дурын төрлийн өгөгдөл хадгалж болно.
     // ==========================================
 
     template<typename T>
@@ -124,16 +183,19 @@ namespace shs
         inline int width()  const { return w; }
         inline int height() const { return h; }
 
+        // Хязгаар дотор байгаа эсэхийг шалгах
         inline bool in_bounds(int x, int y) const {
             return (x >= 0 && x < w && y >= 0 && y < h);
         }
 
+        // 2D -> 1D индекс рүү хөрвүүлэх
         inline int idx(int x, int y) const { return y * w + x; }
 
+        // Пиксел рүү хандах (Unsafe буюу хурдан)
         inline T& at(int x, int y) { return data[(size_t)idx(x,y)]; }
         inline const T& at(int x, int y) const { return data[(size_t)idx(x,y)]; }
 
-        // Optional 1D access (for tables / lists). Safe if you treat it as 1D.
+        // 1D байдлаар хандах (Optional)
         inline T& at(int i) { return data[(size_t)i]; }
         inline const T& at(int i) const { return data[(size_t)i]; }
 
@@ -144,14 +206,16 @@ namespace shs
         inline const T* raw() const { return data.data(); }
     };
 
-    // Semantic aliases
+    // Ойлгомжтой болгох үүднээс нэршил өгөх (Aliases)
     using ColorBuffer = Buffer<shs::Color>;
     using DepthBuffer = Buffer<float>;
 
 
-    // TEXTURE2D (SDL_image decode only) + BLIT
-    // - Texture2D нь Canvas-тай адил coordinate: (0,0) bottom-left, +Y up
-    // - SDL surface (top-left) -> Texture2D (bottom-left) нэг удаа flip хийгээд хадгална
+    // ==========================================
+    // ТЕКСТУР БОЛОН BLIT ҮЙЛДЛҮҮД (Texture2D + Blit)
+    // - Texture2D координатын систем: (0,0) нь зүүн доод буланд, +Y дээш.
+    // - SDL surface (top-left) -> Texture2D (bottom-left) хөрвүүлэлт хийх шаардлагатай.
+    // ==========================================
 
     namespace Tex
     {
@@ -185,6 +249,213 @@ namespace shs
             if (!texels.in_bounds(x,y)) return {0,0,0,0};
             return texels.at(x,y);
         }
+    };
+
+    // ==========================================
+    // ТЭНГЭР БОЛОН ОРЧНЫ ГЭРЭЛТҮҮЛЭГ (Sky & Environment)
+    // ==========================================
+
+    struct CubeMap
+    {
+        // 0:+X баруун, 1:-X зүүн, 2:+Y дээд, 3:-Y доод, 4:+Z урд, 5:-Z хойд
+        shs::Texture2D face[6];
+
+        inline bool valid() const
+        {
+            for (int i = 0; i < 6; ++i) if (!face[i].valid()) return false;
+            return true;
+        }
+    };
+
+    // Орчны гэрэлтүүлэг болон тэнгэрийг төлөөлөх суурь класс
+    class AbstractSky
+    {
+    public:
+        virtual ~AbstractSky() {}
+        // Өгөгдсөн чиглэлд тохирох өнгийг буцаана (Radiance/Color)
+        virtual glm::vec3 sample(const glm::vec3& direction) const = 0;
+    };
+
+    // Текстурт суурилсан энгийн Skybox (+ Intensity control + Bilinear)
+    class CubeMapSky : public AbstractSky
+    {
+    public:
+        CubeMapSky(const CubeMap& cm, float intensity = 1.0f) 
+            : cm_(cm), intensity_(intensity) {}
+
+        // Bilinear өнгө холих функц (sRGB -> Linear хөрвүүлэлт хийх)
+        glm::vec3 sample_face_bilinear(const shs::Texture2D& tex, float u, float v) const
+        {
+            u = glm::clamp(u, 0.0f, 1.0f);
+            v = glm::clamp(v, 0.0f, 1.0f);
+
+            float fx = u * float(tex.w - 1);
+            float fy = v * float(tex.h - 1);
+
+            int x0 = (int)std::floor(fx);
+            int y0 = (int)std::floor(fy);
+            int x1 = std::min(x0 + 1, tex.w - 1);
+            int y1 = std::min(y0 + 1, tex.h - 1);
+
+            float tx = fx - float(x0);
+            float ty = fy - float(y0);
+
+            // 4 хөрш пикселийг унших (sRGB)
+            shs::Color c00 = tex.get(x0, y0);
+            shs::Color c10 = tex.get(x1, y0);
+            shs::Color c01 = tex.get(x0, y1);
+            shs::Color c11 = tex.get(x1, y1);
+
+            // sRGB -> Linear 
+            auto to_lin = [](const shs::Color& c) {
+                glm::vec3 s = glm::vec3(c.r, c.g, c.b) / 255.0f;
+                return srgb_to_linear(s);
+            };
+
+            glm::vec3 v00 = to_lin(c00);
+            glm::vec3 v10 = to_lin(c10);
+            glm::vec3 v01 = to_lin(c01);
+            glm::vec3 v11 = to_lin(c11);
+
+            // Bilinear дөхөлт
+            glm::vec3 vx0 = glm::mix(v00, v10, tx);
+            glm::vec3 vx1 = glm::mix(v01, v11, tx);
+            return glm::mix(vx0, vx1, ty);
+        }
+
+        glm::vec3 sample(const glm::vec3& direction) const override
+        {
+            if (!cm_.valid()) return glm::vec3(0.0f);
+
+            glm::vec3 d = direction;
+            float len = glm::length(d);
+            if (len < 1e-8f) return glm::vec3(0.0f);
+            d /= len;
+
+            float ax = std::abs(d.x);
+            float ay = std::abs(d.y);
+            float az = std::abs(d.z);
+
+            int face = 0;
+            float u = 0.5f, v = 0.5f;
+
+            if (ax >= ay && ax >= az) {
+                if (d.x > 0.0f) { face = 0; u = (-d.z / ax); v = ( d.y / ax); }
+                else            { face = 1; u = ( d.z / ax); v = ( d.y / ax); }
+            } else if (ay >= ax && ay >= az) {
+                if (d.y > 0.0f) { face = 2; u = ( d.x / ay); v = (-d.z / ay); }
+                else            { face = 3; u = ( d.x / ay); v = ( d.z / ay); }
+            } else {
+                if (d.z > 0.0f) { face = 4; u = ( d.x / az); v = ( d.y / az); }
+                else            { face = 5; u = (-d.x / az); v = ( d.y / az); }
+            }
+
+            u = 0.5f * (u + 1.0f);
+            v = 0.5f * (v + 1.0f);
+
+            const shs::Texture2D& tex = cm_.face[face];
+            
+            // Bilinear
+            return sample_face_bilinear(tex, u, v) * intensity_;
+        }
+
+    private:
+        CubeMap cm_;
+        float   intensity_;
+    };
+
+    // Математик тооцоололд суурилсан тэнгэр (Procedural)
+    class ProceduralSky : public AbstractSky
+    {
+    public:
+        ProceduralSky(glm::vec3 sun_dir = glm::normalize(glm::vec3(0.4668f, -0.3487f, 0.8127f)))
+            : sun_direction(sun_dir) {}
+
+        glm::vec3 sample(const glm::vec3& dir) const override
+        {
+            glm::vec3 d = glm::normalize(dir);
+            float t = glm::clamp(d.y * 0.5f + 0.5f, 0.0f, 1.0f);
+            
+            // Тэнгэрийн градиент (Zenith -> Horizon)
+            glm::vec3 zenith_color  = glm::vec3(0.05f, 0.2f, 0.5f);
+            glm::vec3 horizon_color = glm::vec3(0.3f, 0.6f, 1.0f);
+            glm::vec3 sky_color     = glm::mix(horizon_color, zenith_color, t);
+            
+            // Нарны диск
+            float sun_dot = glm::dot(d, -glm::normalize(sun_direction));
+            if (sun_dot > 0.9998f) {
+                sky_color = glm::vec3(15.0f); // Нарны хурц гэрэл
+            } else if (sun_dot > 0.9990f) {
+                float glow = (sun_dot - 0.9990f) / (0.9998f - 0.9990f);
+                sky_color = glm::mix(sky_color, glm::vec3(10.0f, 8.0f, 4.0f), glow);
+            }
+            
+            return sky_color;
+        }
+
+        glm::vec3 sun_direction;
+    };
+
+    // Аналитик тэнгэр (Агаар мандлын сарнилт болон нарны туяаг загварчилсан)
+    class AnalyticSky : public AbstractSky
+    {
+    public:
+        AnalyticSky(glm::vec3 sun_dir = glm::normalize(glm::vec3(0.4668f, -0.3487f, 0.8127f)))
+            : sun_direction(sun_dir) {}
+
+        glm::vec3 sample(const glm::vec3& dir) const override
+        {
+            glm::vec3 d = glm::normalize(dir);
+            glm::vec3 s = -glm::normalize(sun_direction); // Нарны зүг
+
+            float cosTheta = glm::clamp(d.y, -1.0f, 1.0f);
+            float cosGamma = glm::dot(d, s);
+
+            // 1. Тэнгэрийн үндсэн өнгө болон газрын өнгө (Zenith, Horizon, Ground)
+            // PBR-д орчны гэрэл хангалттай байхын тулд өнгөний хүчийг нэмэв
+            glm::vec3 zenith_color  = glm::vec3(0.30f, 0.70f, 1.70f);
+            glm::vec3 horizon_color = glm::vec3(1.30f, 1.64f, 2.00f);
+            glm::vec3 ground_base   = glm::vec3(0.30f, 0.26f, 0.22f);
+            
+            // Нарны өндрөөс хамаарч өнгө хувиргах (Sun height influence)
+            float sun_height = glm::clamp(s.y, 0.0f, 1.0f);
+            zenith_color  = glm::mix(glm::vec3(0.02f, 0.02f, 0.05f), zenith_color,  sun_height);
+            horizon_color = glm::mix(glm::vec3(0.4f, 0.15f, 0.05f),  horizon_color, sun_height);
+            
+            // Газарт тэнгэр болон нарны туяанаас бага зэрэг өнгө нэмэх
+            glm::vec3 ground_color = glm::mix(ground_base * 0.5f, ground_base, sun_height);
+            ground_color += horizon_color * 0.05f; // Ambient reflection from horizon
+
+            // Тэнгэр ба газрын шилжилтийг зөөлрүүлэх (Continuous smooth gradient)
+            float sky_ground_factor = glm::smoothstep(-0.15f, 0.15f, cosTheta);
+            
+            // Дээд талын тэнгэрийн уусалт (Zenith to Horizon)
+            glm::vec3 upper_sky = glm::mix(zenith_color, horizon_color, std::pow(1.0f - glm::max(0.0f, cosTheta), 3.0f));
+            
+            // Доод талын газрын уусалт: Тэнгэрийн хаяа руу дөхөх тусам агаар мандлын манан (haze) нэмэгдэнэ
+            float haze_factor = std::pow(1.0f + glm::min(0.0f, cosTheta), 4.0f);
+            glm::vec3 lower_sky = glm::mix(ground_color, horizon_color * 0.5f, haze_factor);
+            
+            glm::vec3 sky_color = glm::mix(lower_sky, upper_sky, sky_ground_factor);
+
+            // 2. Нарны туяа болон гэрэлтэлт (Mie Scattering approx)
+            // Sun Glow (Нарны эргэн тойрон дахь зөөлөн туяа)
+            float glow_strength = std::pow(glm::clamp(cosGamma, 0.0f, 1.0f), 12.0f);
+            glm::vec3 sun_glow_color = glm::vec3(1.0f, 0.8f, 0.4f) * 4.0f * sun_height;
+            sky_color += sun_glow_color * glow_strength;
+
+            // Sun Disk (Нарны биет)
+            if (cosGamma > 0.9998f) {
+                sky_color = glm::vec3(4.0f, 3.5f, 3.0f); // Нарны өнгийг илүү тэнцвэртэй болгов
+            } else if (cosGamma > 0.9992f) {
+                float edge = (cosGamma - 0.9992f) / (0.9998f - 0.9992f);
+                sky_color = glm::mix(sky_color, glm::vec3(3.0f, 2.5f, 1.5f), edge);
+            }
+
+            return sky_color;
+        }
+
+        glm::vec3 sun_direction;
     };
 
     // ==========================================
@@ -566,18 +837,6 @@ namespace shs
             }
         }
 
-        /*
-        inline static glm::vec3 clip_to_screen(const glm::vec4 &clip_coord, int screen_width, int screen_height)
-        {
-            glm::vec3 ndc_coord = glm::vec3(clip_coord) / clip_coord.w;
-            glm::vec3 screen_coord;
-            screen_coord.x = (ndc_coord.x + 1.0f) * 0.5f * screen_width;
-            screen_coord.y = (1.0f - ndc_coord.y) * 0.5f * screen_height;
-            //screen_coord.z = clip_coord.w;
-            screen_coord.z = ndc_coord.z;
-            return screen_coord;
-        }*/
-
         inline static glm::vec3 clip_to_screen(const glm::vec4 &clip_coord, int screen_width, int screen_height)
         {
             glm::vec3 ndc_coord = glm::vec3(clip_coord) / clip_coord.w;
@@ -592,7 +851,6 @@ namespace shs
 
             return screen_coord;
         }
-
 
         static void copy_to_SDLSurface(SDL_Surface *surface, shs::Canvas *canvas)
         {
@@ -640,7 +898,7 @@ namespace shs
     };
 
     // ==========================================
-    // RENDER TARGET VARIANTS (NO OOP)
+    // RENDER TARGET ТӨРЛҮҮД
     // ==========================================
     struct RT_Color {
         shs::Canvas color;
@@ -684,11 +942,11 @@ namespace shs
         }
     };
 
-    // RENDER TARGET (Color + Depth багцалсан)
+    // RENDER TARGET (Color + Depth багцалсан үндсэн төрөл)
     using RenderTarget = shs::RT_ColorDepth; 
 
 
-    // SDL_image ашиглан decode хийгээд Texture2D болгон хувиргана.
+    // SDL_image ашиглан зураг уншиж Texture2D болгох
     // flip_y=true бол SDL (top-left) -> Texture (bottom-left) хөрвүүлэлт хийнэ.
     static inline shs::Texture2D load_texture_sdl_image(const std::string &path, bool flip_y = true)
     {
@@ -728,12 +986,12 @@ namespace shs
         return tex;
     }
 
-    // integer clamp
+    // Тоон утгыг хязгаарлах (Integer clamp)
     static inline int clamp_i(int v, int lo, int hi) {
         return (v < lo) ? lo : (v > hi ? hi : v);
     }
 
-    // Alpha blend
+    // Альфа холилтын функц (Alpha blend)
     static inline shs::Color alpha_blend(const shs::Color &dst, const shs::Color &src, uint8_t opacity)
     {
         // final_alpha = src.a * opacity / 255
@@ -753,7 +1011,7 @@ namespace shs
         return out;
     }
 
-    // BLIT
+    // ЗУРАГ ХУУЛАХ (Blit)
     // - src_w/src_h == -1 => бүтэн texture ашиглана
     // - dst_w/dst_h <= 0  => 1:1 (dst хэмжээ = src хэмжээ)
     // - blend/filter нь optional
@@ -791,8 +1049,8 @@ namespace shs
         // dst clipping
         int x0 = dst_x;
         int y0 = dst_y;
-        int x1 = dst_x + dst_w; // exclusive
-        int y1 = dst_y + dst_h; // exclusive
+        int x1 = dst_x + dst_w;
+        int y1 = dst_y + dst_h;
 
         int clip_x0 = 0;
         int clip_y0 = 0;
@@ -836,18 +1094,18 @@ namespace shs
     }
 
     // ==========================================
-    // 3D SCENE CLASSES
+    // 3D КАМЕР, ОБЬЕКТ БОЛОН ЗАГВАРУУД
     // ==========================================
 
     class Camera3D
     {
     public:
         Camera3D() {
-            this->width = 10.0; this->height = 10.0;
+            this->width  = 10.0; this->height = 10.0;
             this->z_near = 0.1f; this->z_far = 1000.0f;
-            this->field_of_view = 45.0f;
+            this->field_of_view    = 45.0f;
             this->horizontal_angle = 0.0f; this->vertical_angle = 0.0f;
-            this->position = glm::vec3(0.0, 0.0, -5.0);
+            this->position         = glm::vec3(0.0, 0.0, -5.0);
             this->direction_vector = glm::vec3(0.0, 0.0, 1.0);
             update();
         }
@@ -858,12 +1116,12 @@ namespace shs
                 sin(glm::radians(this->vertical_angle)),
                 cos(glm::radians(this->vertical_angle)) * cos(glm::radians(this->horizontal_angle)));
 
-            this->direction_vector = glm::normalize(this->direction_vector);
-            glm::vec3 world_up = glm::vec3(0.0f, 1.0f, 0.0f);
-            this->right_vector = glm::normalize(glm::cross(world_up, this->direction_vector));
-            this->up_vector = glm::normalize(glm::cross(this->direction_vector, this->right_vector));
+            this->direction_vector  = glm::normalize(this->direction_vector);
+            glm::vec3 world_up      = glm::vec3(0.0f, 1.0f, 0.0f);
+            this->right_vector      = glm::normalize(glm::cross(world_up, this->direction_vector));
+            this->up_vector         = glm::normalize(glm::cross(this->direction_vector, this->right_vector));
             this->projection_matrix = glm::perspectiveLH(glm::radians(this->field_of_view), 4.0f/3.0f, this->z_near, this->z_far);
-            this->view_matrix = glm::lookAtLH(this->position, this->position + this->direction_vector, this->up_vector);
+            this->view_matrix       = glm::lookAtLH(this->position, this->position + this->direction_vector, this->up_vector);
         }
 
         glm::mat4 view_matrix;
@@ -894,7 +1152,7 @@ namespace shs
     };
 
     // ==========================================
-    // COMMAND PATTERN
+    // Command Pattern
     // ==========================================
 
     class Command {
@@ -955,7 +1213,7 @@ namespace shs
     };
 
     // ==========================================
-    // UTILITIES
+    // ТУСЛАХ КЛАССУУД
     // ==========================================
     namespace Util {
         class Obj3DFile {
@@ -1020,7 +1278,7 @@ namespace shs
     }
 
     // ==========================================
-    // JOB SYSTEM (Thread Safe)
+    // ОЛОН THREAD АЖИЛЛУУЛАХ СИСТЕМ (Job System)
     // ==========================================
 
     namespace Job
@@ -1033,7 +1291,7 @@ namespace shs
             std::function<void()> task;
             int priority;
 
-            // max-heap comparator
+            // max-heap comparator (Өндөр урьтамжтай нь эхэлж гарна)
             bool operator<(const JobEntry& other) const {
                 return priority < other.priority;
             }
