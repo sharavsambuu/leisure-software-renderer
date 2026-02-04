@@ -181,10 +181,9 @@
 <p><img width="320" height="320" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/fbm.png"></p>
 <p><img width="460" height="360" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/subaru.png"></p>
 <p><img width="800" height="600" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/shadow-mapping-soft.png"></p>
-<p><img width="800" height="600" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/water-demo.png"></p>
 <p><img width="1200" height="900" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/image-based-lighting.png"></p>
-<p><img width="1200" height="900" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/physics-based-rendering-brdf.png"></p>
 <p><img width="1200" height="900" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/physics-based-rendering-monkey.png"></p>
+<p><img width="1200" height="900" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/physics-based-rendering-light-shafts.png"></p>
 <p><img width="1200" height="900" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/physics-based-rendering-light-shafts-1.png"></p>
 
 
