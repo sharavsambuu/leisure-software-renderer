@@ -1,10 +1,45 @@
 /*
-    SHADOW MAPPING 
 
-    Координат:
-    - 3D          : LH, +Z forward, +Y up, +X right
-    - Screen      : y down
-    - shs::Canvas : y up (bottom-left)
+    Soft Shadows PCSS (Percentage Closer Soft Shadows)
+
+
+Зорилго:
+Өмнөч Shadow Mapping (PASS0 depth + PASS1 shading) хэрэгжүүлэлтээ ашиглаад
+penumbra сүүдэр бүхий soft shadows хэрэгжүүлэх
+
+
+PCSS хэрэгжүүлэлт :
+1) PASS0: Directional light-аас ortho projection ашиглан shadow map (depth) бичнэ.
+2) PASS1: Pixel бүр дээр light-space (uv,z) координат гаргаж авна:
+    - Blocker Search    : Receiver (pixel)-ийн дор байгаа blocker-уудын дундаж depth-ийг (avgBlockerZ) олно.
+    - Penumbra Estimate : (zReceiver - avgBlockerZ) / avgBlockerZ гэсэн харьцаагаар penumbra хэмжээ (radius) тооцно.
+    - Variable PCF      : Penumbra radius-тай proportional radius-аар олон sample авч зөөлөн filter хийнэ.
+
+Soft shadow болгож байгаа шалтгаанууд: 
+- Receiver ба blocker-ийн зай ихсэх тусам penumbra өргөснө (сүүдрийн ирмэг улам их blur-даж эхлэнэ).
+- Blocker ойрхон бол penumbra жижиг буюу хатуу маягтай сүүдэр болно.
+
+
+Бүрэлдэхүүн хэсгүүд
+- ShadowMap: 
+    depth buffer (float, light NDC z: 0..1)
+- shadow_uvz_from_world(): 
+    world_pos -> (uv, z_ndc)
+- pcss_shadow_factor(): 
+    PCSS алгоритм (blocker search + penumbra + pcf)
+
+Тайлбарууд
+- LIGHT_UV_RADIUS_BASE: 
+  гэрлийн диск том байх тусам сүүдэр зөөлөн болно
+- PCSS_BLOCKER_SAMPLES: 
+  blocker search дээжүүдийн тоо
+- PCSS_PCF_SAMPLES: 
+  PCF дээжүүдийн тоо
+- PCSS_MIN/MAX_FILTER_RADIUS_TEXELS: 
+  хэт их blur хийгдэхээс сэргийлнэ
+- SHADOW_BIAS_BASE + SHADOW_BIAS_SLOPE: 
+  acne vs peter-panning тэнцвэрийг барина
+
 */
 
 #include <string>
@@ -14,6 +49,7 @@
 #include <cmath>
 #include <algorithm>
 #include <limits>
+#include <cstdint>
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
@@ -27,105 +63,90 @@
 
 #include "shs_renderer.hpp"
 
+// ------------------------------------------
+// WINDOW / CANVAS
+// ------------------------------------------
 #define WINDOW_WIDTH      800
 #define WINDOW_HEIGHT     600
 #define CANVAS_WIDTH      800
 #define CANVAS_HEIGHT     600
+
 #define MOUSE_SENSITIVITY 0.2f
 
+// ------------------------------------------
+// THREAD / TILING
+// ------------------------------------------
 #define THREAD_COUNT      20
-#define TILE_SIZE_X       80
-#define TILE_SIZE_Y       80
+#define TILE_SIZE_X       160
+#define TILE_SIZE_Y       160
 
 // ------------------------------------------
 // SHADOW MAP CONFIG
 // ------------------------------------------
 #define SHADOW_MAP_SIZE   2048
 
-
 static const glm::vec3 LIGHT_DIR_WORLD = glm::normalize(glm::vec3(0.4668f, -0.3487f, 0.8127f));
 
-// Shadow bias (acne vs peter-panning тохируулга)
+// Bias (acne vs peter-panning)
 static const float SHADOW_BIAS_BASE   = 0.0025f;
 static const float SHADOW_BIAS_SLOPE  = 0.0100f;
 
-// PCF (2x2) шүүлт
-static const bool  SHADOW_USE_PCF     = true;
+// ------------------------------------------
+// PCSS (SOFT SHADOWS) CONFIG
+// ------------------------------------------
+// Гэрлийн хэмжээ томрох тусам penumbra томрох буюу soft болно
+// Үүнийг UV-space дээрх үндсэн radius гэж ойлгож болно (0..1)
+static const float LIGHT_UV_RADIUS_BASE = 0.0035f;
+
+// Blocker search radius (receiver-ээс blocker хайх хүрээ) - texel-ээр clamp хийнэ
+static const float PCSS_BLOCKER_SEARCH_RADIUS_TEXELS = 18.0f;
+
+// Filter radius clamp (PCF-ийн final blur) - хэт их blur болохоос хамгаална
+static const float PCSS_MIN_FILTER_RADIUS_TEXELS = 1.0f;
+static const float PCSS_MAX_FILTER_RADIUS_TEXELS = 42.0f;
+
+// Sample counts (ихсэх тусам CPU тооцооллын өртөг нэмэгдэнэ)
+static const int   PCSS_BLOCKER_SAMPLES = 12;
+static const int   PCSS_PCF_SAMPLES     = 24;
+
+// Blocker олдохгүй үед: full lit (1.0) гэж үзнэ
+// Penumbra тооцооллын тогтвортой байдал
+static const float PCSS_EPSILON = 1e-5f;
 
 // ------------------------------------------
-// MOTION BLUR CONFIG
-// ------------------------------------------
-static const int   MB_SAMPLES      = 12;
-static const float MB_STRENGTH     = 0.85f;
-static const float MB_MAX_PIXELS   = 22.0f;
-
-static const float MB_W_OBJ        = 1.00f;
-static const float MB_W_CAM        = 0.35f;
-
-static const bool  MB_SOFT_KNEE    = true;
-static const float MB_KNEE_PIXELS  = 18.0f;
-
-// ------------------------------------------
-// UV FLIP (хэрвээ texture урвуу байвал 1)
-// ------------------------------------------
-#define UV_FLIP_V 0
-
-// ==========================================
 // HELPERS
-// ==========================================
-
+// ------------------------------------------
 static inline int clampi(int v, int lo, int hi)
 {
     if (v < lo) return lo;
     if (v > hi) return hi;
     return v;
 }
-
 static inline float clampf(float v, float lo, float hi)
 {
     if (v < lo) return lo;
     if (v > hi) return hi;
     return v;
 }
-
-static inline float clamp01(float v) { return (v < 0.0f) ? 0.0f : (v > 1.0f ? 1.0f : v); }
-
-static inline shs::Color lerp_color(const shs::Color& a, const shs::Color& b, float t)
+static inline float clamp01(float v)
 {
-    t = clampf(t, 0.0f, 1.0f);
-    float ia = 1.0f - t;
-    return shs::Color{
-        (uint8_t)(ia * a.r + t * b.r),
-        (uint8_t)(ia * a.g + t * b.g),
-        (uint8_t)(ia * a.b + t * b.b),
-        255
-    };
+    return (v < 0.0f) ? 0.0f : (v > 1.0f ? 1.0f : v);
+}
+static inline glm::vec3 color_to_rgb01(const shs::Color& c)
+{
+    return glm::vec3(float(c.r), float(c.g), float(c.b)) / 255.0f;
+}
+static inline shs::Color rgb01_to_color(const glm::vec3& c01)
+{
+    glm::vec3 c = glm::clamp(c01, 0.0f, 1.0f) * 255.0f;
+    return shs::Color{ (uint8_t)c.x, (uint8_t)c.y, (uint8_t)c.z, 255 };
 }
 
-static inline float luma_from_color(const shs::Color& c)
-{
-    float r = float(c.r) / 255.0f;
-    float g = float(c.g) / 255.0f;
-    float b = float(c.b) / 255.0f;
-    return 0.299f * r + 0.587f * g + 0.114f * b;
-}
-
-static inline shs::Color color_from_rgbaf(float r, float g, float b, float a)
-{
-    r = std::min(255.0f, std::max(0.0f, r));
-    g = std::min(255.0f, std::max(0.0f, g));
-    b = std::min(255.0f, std::max(0.0f, b));
-    a = std::min(255.0f, std::max(0.0f, a));
-    return shs::Color{ (uint8_t)r, (uint8_t)g, (uint8_t)b, (uint8_t)a };
-}
-
-// ==========================================
-// LH Ortho matrix (NDC z: 0..1) - GLM-ээс хамааралгүй 
-// ==========================================
-
+// ------------------------------------------
+// LH Ortho matrix (NDC z: 0..1)
+// ------------------------------------------
 static inline glm::mat4 ortho_lh_zo(float left, float right, float bottom, float top, float znear, float zfar)
 {
-    // LH, z range [0,1]
     glm::mat4 m(1.0f);
     m[0][0] =  2.0f / (right - left);
     m[1][1] =  2.0f / (top - bottom);
@@ -137,10 +158,10 @@ static inline glm::mat4 ortho_lh_zo(float left, float right, float bottom, float
     return m;
 }
 
-// ==========================================
+// ------------------------------------------
 // TEXTURE SAMPLER (nearest)
-// ==========================================
-
+// ------------------------------------------
+#define UV_FLIP_V 0
 static inline shs::Color sample_nearest(const shs::Texture2D &tex, glm::vec2 uv)
 {
     float u = uv.x;
@@ -165,7 +186,6 @@ static inline shs::Color sample_nearest(const shs::Texture2D &tex, glm::vec2 uv)
 // ==========================================
 // SHADOW MAP BUFFER (Depth only)
 // ==========================================
-
 struct ShadowMap
 {
     int w = 0;
@@ -173,11 +193,7 @@ struct ShadowMap
     shs::Buffer<float> depth;  // light NDC z (0..1)
 
     ShadowMap() {}
-
-    ShadowMap(int W, int H)
-    {
-        init(W, H);
-    }
+    ShadowMap(int W, int H) { init(W, H); }
 
     void init(int W, int H)
     {
@@ -207,71 +223,228 @@ struct ShadowMap
 };
 
 // ==========================================
-// MOTION BUFFER (Canvas coords, pixels, +Y up)
+// SHADOW HELPERS
+// гаралтын uv нь shadow-map ийн тохиролцооны дагуу байна (0,0 top-left, y down)
 // ==========================================
-
-struct MotionBuffer
+static inline bool shadow_uvz_from_world(
+    const glm::mat4& light_vp,
+    const glm::vec3& world_pos,
+    glm::vec2& out_uv,
+    float& out_z_ndc)
 {
-    MotionBuffer() : w(0), h(0) {}
-    MotionBuffer(int W, int H) { init(W,H); }
+    glm::vec4 clip = light_vp * glm::vec4(world_pos, 1.0f);
+    if (std::abs(clip.w) < 1e-6f) return false;
 
-    void init(int W, int H)
-    {
-        w = W; h = H;
-        vel.assign((size_t)w * (size_t)h, glm::vec2(0.0f));
-    }
+    glm::vec3 ndc = glm::vec3(clip) / clip.w;
+    out_z_ndc     = ndc.z;
 
-    inline void clear()
-    {
-        std::fill(vel.begin(), vel.end(), glm::vec2(0.0f));
-    }
+    // light frustum-аас гадуур бол shadow хэрэглэхгүй (lit гэж үзнэ)
+    if (out_z_ndc < 0.0f || out_z_ndc > 1.0f) return false;
 
-    inline glm::vec2 get(int x, int y) const
-    {
-        x = clampi(x, 0, w - 1);
-        y = clampi(y, 0, h - 1);
-        return vel[(size_t)y * (size_t)w + (size_t)x];
-    }
+    out_uv.x = ndc.x * 0.5f + 0.5f;
+    out_uv.y = 1.0f - (ndc.y * 0.5f + 0.5f);
 
-    inline void set(int x, int y, const glm::vec2& v)
-    {
-        if (x < 0 || x >= w || y < 0 || y >= h) return;
-        vel[(size_t)y * (size_t)w + (size_t)x] = v;
-    }
+    return true;
+}
 
-    int w, h;
-    std::vector<glm::vec2> vel;
+static inline float shadow_sample_depth_uv(const ShadowMap& sm, glm::vec2 uv)
+{
+    // uv -> nearest depth
+    if (uv.x < 0.0f || uv.x > 1.0f || uv.y < 0.0f || uv.y > 1.0f)
+        return std::numeric_limits<float>::max();
+
+    int x = (int)std::lround(uv.x * float(sm.w - 1));
+    int y = (int)std::lround(uv.y * float(sm.h - 1));
+    return sm.sample(x, y);
+}
+
+// ==========================================
+// Poisson disk offsets (2D) — fixed pattern
+// - CPU дээр sample count бага үед давталтыг нь багасгах зорилготой
+// ==========================================
+static const glm::vec2 POISSON_32[32] =
+{
+    glm::vec2(-0.613392f,  0.617481f),
+    glm::vec2( 0.170019f, -0.040254f),
+    glm::vec2(-0.299417f,  0.791925f),
+    glm::vec2( 0.645680f,  0.493210f),
+    glm::vec2(-0.651784f,  0.717887f),
+    glm::vec2( 0.421003f,  0.027070f),
+    glm::vec2(-0.817194f, -0.271096f),
+    glm::vec2(-0.705374f, -0.668203f),
+    glm::vec2( 0.977050f, -0.108615f),
+    glm::vec2( 0.063326f,  0.142369f),
+    glm::vec2( 0.203528f,  0.214331f),
+    glm::vec2(-0.667531f,  0.326090f),
+    glm::vec2(-0.098422f, -0.295755f),
+    glm::vec2(-0.885922f,  0.215369f),
+    glm::vec2( 0.566637f,  0.605213f),
+    glm::vec2( 0.039766f, -0.396100f),
+    glm::vec2( 0.751946f,  0.453352f),
+    glm::vec2( 0.078707f, -0.715323f),
+    glm::vec2(-0.075838f, -0.529344f),
+    glm::vec2( 0.724479f, -0.580798f),
+    glm::vec2( 0.222999f, -0.215125f),
+    glm::vec2(-0.467574f, -0.405438f),
+    glm::vec2(-0.248268f, -0.814753f),
+    glm::vec2( 0.354411f, -0.887570f),
+    glm::vec2( 0.175817f,  0.382366f),
+    glm::vec2( 0.487472f, -0.063082f),
+    glm::vec2(-0.084078f,  0.898312f),
+    glm::vec2( 0.488876f, -0.783441f),
+    glm::vec2( 0.470016f,  0.217933f),
+    glm::vec2(-0.696890f, -0.549791f),
+    glm::vec2(-0.149693f,  0.605762f),
+    glm::vec2( 0.034211f,  0.979980f)
 };
 
-// ==========================================
-// RT: Color + Depth(view_z) + Motion(full)
-// - depth нь Canvas coords дээр хадгална (y up)
-// ==========================================
-
-struct RT_ColorDepthMotion
+// ------------------------------------------
+// Hash / rotate (per-pixel) — banding багасгах
+// ------------------------------------------
+static inline uint32_t hash_u32(uint32_t x)
 {
-    RT_ColorDepthMotion(int W, int H, float zn, float zf, shs::Color clear_col)
-        : color(W, H, clear_col), depth(W, H, zn, zf), motion(W, H)
+    // mix
+    x ^= x >> 16;
+    x *= 0x7feb352dU;
+    x ^= x >> 15;
+    x *= 0x846ca68bU;
+    x ^= x >> 16;
+    return x;
+}
+static inline float hash01(uint32_t x)
+{
+    return float(hash_u32(x) & 0x00FFFFFFu) / float(0x01000000u);
+}
+static inline glm::vec2 rotate2(const glm::vec2& p, float a)
+{
+    float c = std::cos(a);
+    float s = std::sin(a);
+    return glm::vec2(c * p.x - s * p.y, s * p.x + c * p.y);
+}
+
+// ==========================================
+// PCSS — SOFT SHADOW FACTOR
+// return: 
+//      1.0 = lit
+//      0.0 = full shadow
+// ==========================================
+static inline float pcss_shadow_factor(
+    const ShadowMap& sm,
+    const glm::vec2& uv,
+    float z_receiver,
+    float bias,
+    int px, int py) // per-pixel рандом утгаар дүүргэхэд зориулсан дэлгэцийн пикселийн байршил
+{
+    // UV гадуур бол lit
+    if (uv.x < 0.0f || uv.x > 1.0f || uv.y < 0.0f || uv.y > 1.0f) return 1.0f;
+
+    // Shadow map дээр depth бичигдээгүй хэсэг -> lit
+    float centerDepth = shadow_sample_depth_uv(sm, uv);
+    if (centerDepth == std::numeric_limits<float>::max()) return 1.0f;
+
+    // --------------------------------------
+    // Blocker Search
+    // --------------------------------------
+    // texel space radius -> uv space
+    float texelSizeU = 1.0f / float(sm.w);
+    float texelSizeV = 1.0f / float(sm.h);
+
+    float searchRadiusTex = PCSS_BLOCKER_SEARCH_RADIUS_TEXELS;
+    float searchRadiusU   = searchRadiusTex * texelSizeU;
+    float searchRadiusV   = searchRadiusTex * texelSizeV;
+
+    // per-pixel rotation
+    uint32_t seed = (uint32_t)(px * 1973u ^ py * 9277u ^ 0x9e3779b9u);
+    float ang = hash01(seed) * 6.2831853f;
+
+    float blockerSum = 0.0f;
+    int   blockerCnt = 0;
+
+    // blocker: depth < receiver - bias
+    float zTest = z_receiver - bias;
+
+    for (int i = 0; i < PCSS_BLOCKER_SAMPLES; ++i)
     {
-        clear(clear_col);
+        glm::vec2 o   = POISSON_32[i & 31];
+        o             = rotate2(o, ang);
+
+        glm::vec2 suv = uv + glm::vec2(o.x * searchRadiusU, o.y * searchRadiusV);
+
+        float d = shadow_sample_depth_uv(sm, suv);
+        if (d == std::numeric_limits<float>::max()) continue;
+
+        if (d < zTest)
+        {
+            blockerSum += d;
+            blockerCnt++;
+        }
     }
 
-    inline void clear(shs::Color c)
+    // blocker байхгүй бол shadow байхгүй гэж үзнэ
+    if (blockerCnt <= 0) return 1.0f;
+
+    float avgBlocker = blockerSum / float(blockerCnt);
+
+    // --------------------------------------
+    // Penumbra ойролцоолох
+    // --------------------------------------
+    // Directional light-ийн PCSS-ийн түгээмэл approximation:
+    // penumbra ~ (zR - zB) / zB * lightSize
+    float zB = std::max(PCSS_EPSILON, avgBlocker);
+    float zR = std::max(PCSS_EPSILON, z_receiver);
+
+    float penumbraRatio = (zR - zB) / zB;
+    penumbraRatio = std::max(0.0f, penumbraRatio);
+
+    // UV radius base нь гэрлийн хэмжээний proxy
+    float filterRadiusUvU  = LIGHT_UV_RADIUS_BASE * penumbraRatio;
+    float filterRadiusUvV  = LIGHT_UV_RADIUS_BASE * penumbraRatio;
+
+    // texel clamp (хэт их blur хийгдэхээс хамгаална)
+    float filterRadiusTexU = filterRadiusUvU / texelSizeU;
+    float filterRadiusTexV = filterRadiusUvV / texelSizeV;
+
+    float filterRadiusTex  = 0.5f * (filterRadiusTexU + filterRadiusTexV);
+    filterRadiusTex        = clampf(filterRadiusTex, PCSS_MIN_FILTER_RADIUS_TEXELS, PCSS_MAX_FILTER_RADIUS_TEXELS);
+
+    filterRadiusUvU = filterRadiusTex * texelSizeU;
+    filterRadiusUvV = filterRadiusTex * texelSizeV;
+
+    // --------------------------------------
+    // Variable PCF (final soft filtering)
+    // --------------------------------------
+    float litSum = 0.0f;
+    int   litCnt = 0;
+
+    // дахин өөр seed ашиглаад rotation өөрчилж болно
+    float ang2 = hash01(seed ^ 0xB5297A4Du) * 6.2831853f;
+
+    for (int i = 0; i < PCSS_PCF_SAMPLES; ++i)
     {
-        color.buffer().clear(c);
-        depth.clear();
-        motion.clear();
+        glm::vec2 o = POISSON_32[i & 31];
+        o = rotate2(o, ang2);
+
+        glm::vec2 suv = uv + glm::vec2(o.x * filterRadiusUvU, o.y * filterRadiusUvV);
+
+        float d = shadow_sample_depth_uv(sm, suv);
+        if (d == std::numeric_limits<float>::max()) {
+            // map-д бичигдээгүй хэсгийг lit гэж үзээд тогтвортой болгож болно
+            litSum += 1.0f;
+            litCnt++;
+            continue;
+        }
+
+        litSum += (z_receiver <= d + bias) ? 1.0f : 0.0f;
+        litCnt++;
     }
 
-    shs::Canvas  color;
-    shs::ZBuffer depth;   // view_z (camera convention)
-    MotionBuffer motion;  // v_full (object+camera)
-};
+    if (litCnt <= 0) return 1.0f;
+    return litSum / float(litCnt);
+}
 
 // ==========================================
 // CAMERA + VIEWER
 // ==========================================
-
 class Viewer
 {
 public:
@@ -313,7 +486,6 @@ public:
 // ==========================================
 // GEOMETRY (Assimp) - triangles + normals + uvs
 // ==========================================
-
 class ModelGeometry
 {
 public:
@@ -370,129 +542,8 @@ private:
 };
 
 // ==========================================
-// SCENE OBJECTS
-// ==========================================
-
-class SubaruObject : public shs::AbstractObject3D
-{
-public:
-    SubaruObject(glm::vec3 position, glm::vec3 scale, const shs::Texture2D *albedo)
-    {
-        this->position       = position;
-        this->scale          = scale;
-        this->geometry       = new ModelGeometry("./obj/subaru/SUBARU_1.obj");
-        this->rotation_angle = 0.0f;
-        this->albedo         = albedo;
-        this->has_prev_mvp   = false;
-        this->prev_mvp       = glm::mat4(1.0f);
-    }
-    ~SubaruObject() { delete geometry; }
-
-    glm::mat4 get_world_matrix() override
-    {
-        glm::mat4 t = glm::translate(glm::mat4(1.0f), position);
-        // удаан clockwise (LH-д +Y тэнхлэгээр эргүүлнэ)
-        glm::mat4 r = glm::rotate(glm::mat4(1.0f), glm::radians(rotation_angle), glm::vec3(0.0f, 1.0f, 0.0f));
-        glm::mat4 s = glm::scale(glm::mat4(1.0f), scale);
-        return t * r * s;
-    }
-
-    void update(float dt) override
-    {
-        rotation_angle -= 12.0f * dt; // clockwise
-        if (rotation_angle < -360.0f) rotation_angle += 360.0f;
-    }
-
-    void render() override {}
-
-    ModelGeometry        *geometry;
-    const shs::Texture2D *albedo;
-
-    glm::vec3 position;
-    glm::vec3 scale;
-    float     rotation_angle;
-
-    bool      has_prev_mvp;
-    glm::mat4 prev_mvp;
-};
-
-class MonkeyObject : public shs::AbstractObject3D
-{
-public:
-    MonkeyObject(glm::vec3 base_pos, glm::vec3 scale)
-    {
-        this->geometry = new ModelGeometry("./obj/monkey/monkey.rawobj");
-
-        this->base_position = base_pos;
-        this->position      = base_pos;
-        this->scale         = scale;
-
-        this->time_accum     = 0.0f;
-        this->rotation_angle = 0.0f;
-
-        this->spin_deg_per_sec   = 320.0f;     // эргэлтийн хурд => motion blur харуулах дажгүй
-        this->wobble_hz          = 2.6f;       // савлалтын хурд (Hz)
-        this->wobble_amp_y       = 0.55f;      // дээш/доош савлалт 
-        this->wobble_amp_xz      = 0.35f;      // жижиг дугуй савлалт (XZ)
-        this->wobble_phase_speed = 6.2831853f; // 2*pi (Hz-д ашиглана)
-
-        this->has_prev_mvp = false;
-        this->prev_mvp     = glm::mat4(1.0f);
-    }
-
-    ~MonkeyObject() { delete geometry; }
-
-    glm::mat4 get_world_matrix() override
-    {
-        glm::mat4 t = glm::translate(glm::mat4(1.0f), position);
-        glm::mat4 r = glm::rotate(glm::mat4(1.0f), glm::radians(rotation_angle), glm::vec3(0.0f, 1.0f, 0.0f));
-        glm::mat4 s = glm::scale(glm::mat4(1.0f), scale);
-        return t * r * s;
-    }
-
-    void update(float dt) override
-    {
-        time_accum += dt;
-
-        // y савлалт + xz жижиг дугуй хөдөлгөөн (motion blur-т гоё харагдана)
-        float w = wobble_phase_speed * wobble_hz;
-
-        position    = base_position;
-        position.y += std::sin(time_accum * w) * wobble_amp_y;
-
-        position.x += std::cos(time_accum * w * 1.15f) * wobble_amp_xz;
-        position.z += std::sin(time_accum * w * 0.95f) * wobble_amp_xz;
-
-        rotation_angle += spin_deg_per_sec * dt;
-        if (rotation_angle > 360.0f) rotation_angle -= 360.0f;
-    }
-
-    void render() override {}
-
-    ModelGeometry *geometry;
-
-    glm::vec3 base_position;
-    glm::vec3 position;
-    glm::vec3 scale;
-
-    float time_accum;
-    float rotation_angle;
-
-    float spin_deg_per_sec;
-    float wobble_hz;
-    float wobble_amp_y;
-    float wobble_amp_xz;
-    float wobble_phase_speed;
-
-    bool      has_prev_mvp;
-    glm::mat4 prev_mvp;
-};
-
-
-// ==========================================
 // FLOOR (tessellated grid) - XZ plane at y=0
 // ==========================================
-
 struct FloorPlane
 {
     std::vector<glm::vec3> verts;
@@ -503,9 +554,8 @@ struct FloorPlane
     {
         verts.clear(); norms.clear(); uvs.clear();
 
-        // Tessellation
-        const int GRID_X = 48;   // x direction
-        const int GRID_Z = 48;   // z direction
+        const int GRID_X = 48;
+        const int GRID_Z = 48;
 
         float y  = 0.0f;
         float S  = half_size;
@@ -533,16 +583,12 @@ struct FloorPlane
                 glm::vec3 p11(x1, y, z1);
                 glm::vec3 p01(x0, y, z1);
 
-                // cell бүрт 2 ширхэг гурвалжин 
-                // tri0: p00 p10 p11
-                // tri1: p00 p11 p01
                 verts.push_back(p00); verts.push_back(p10); verts.push_back(p11);
                 verts.push_back(p00); verts.push_back(p11); verts.push_back(p01);
 
                 norms.push_back(n); norms.push_back(n); norms.push_back(n);
                 norms.push_back(n); norms.push_back(n); norms.push_back(n);
 
-                // UV (optional)
                 glm::vec2 uv00(tx0, tz0);
                 glm::vec2 uv10(tx1, tz0);
                 glm::vec2 uv11(tx1, tz1);
@@ -556,44 +602,145 @@ struct FloorPlane
 };
 
 // ==========================================
+// SCENE OBJECTS
+// ==========================================
+class SubaruObject : public shs::AbstractObject3D
+{
+public:
+    SubaruObject(glm::vec3 position, glm::vec3 scale, const shs::Texture2D *albedo)
+    {
+        this->position       = position;
+        this->scale          = scale;
+        this->geometry       = new ModelGeometry("./obj/subaru/SUBARU_1.obj");
+        this->rotation_angle = 0.0f;
+        this->albedo         = albedo;
+    }
+    ~SubaruObject() { delete geometry; }
+
+    glm::mat4 get_world_matrix() override
+    {
+        glm::mat4 t = glm::translate(glm::mat4(1.0f), position);
+        glm::mat4 r = glm::rotate(glm::mat4(1.0f), glm::radians(rotation_angle), glm::vec3(0.0f, 1.0f, 0.0f));
+        glm::mat4 s = glm::scale(glm::mat4(1.0f), scale);
+        return t * r * s;
+    }
+
+    void update(float dt) override
+    {
+        rotation_angle += 12.0f * dt;
+        if (rotation_angle >= 360.0f) rotation_angle -= 360.0f;
+    }
+
+    void render() override {}
+
+    ModelGeometry        *geometry;
+    const shs::Texture2D *albedo;
+
+    glm::vec3 position;
+    glm::vec3 scale;
+    float     rotation_angle;
+};
+
+class MonkeyObject : public shs::AbstractObject3D
+{
+public:
+    MonkeyObject(glm::vec3 base_pos, glm::vec3 scale)
+    {
+        this->geometry           = new ModelGeometry("./obj/monkey/monkey.rawobj");
+
+        this->base_position      = base_pos;
+        this->position           = base_pos;
+        this->scale              = scale;
+
+        this->time_accum         = 0.0f;
+        this->rotation_angle     = 0.0f;
+
+        this->spin_deg_per_sec   = 320.0f;
+        this->wobble_hz          = 2.6f;
+        this->wobble_amp_y       = 0.55f;
+        this->wobble_amp_xz      = 0.35f;
+        this->wobble_phase_speed = 6.2831853f;
+    }
+
+    ~MonkeyObject() { delete geometry; }
+
+    glm::mat4 get_world_matrix() override
+    {
+        glm::mat4 t = glm::translate(glm::mat4(1.0f), position);
+        glm::mat4 r = glm::rotate(glm::mat4(1.0f), glm::radians(rotation_angle), glm::vec3(0.0f, 1.0f, 0.0f));
+        glm::mat4 s = glm::scale(glm::mat4(1.0f), scale);
+        return t * r * s;
+    }
+
+    void update(float dt) override
+    {
+        time_accum     += dt;
+
+        float w         = wobble_phase_speed * wobble_hz;
+
+        position        = base_position;
+        position.y     += std::sin(time_accum * w) * wobble_amp_y;
+
+        position.x     += std::cos(time_accum * w * 1.15f) * wobble_amp_xz;
+        position.z     += std::sin(time_accum * w * 0.95f) * wobble_amp_xz;
+
+        rotation_angle += spin_deg_per_sec * dt;
+        if (rotation_angle > 360.0f) rotation_angle -= 360.0f;
+    }
+
+    void render() override {}
+
+    ModelGeometry *geometry;
+
+    glm::vec3 base_position;
+    glm::vec3 position;
+    glm::vec3 scale;
+
+    float time_accum;
+    float rotation_angle;
+
+    float spin_deg_per_sec;
+    float wobble_hz;
+    float wobble_amp_y;
+    float wobble_amp_xz;
+    float wobble_phase_speed;
+};
+
+// ==========================================
 // UNIFORMS & VARYINGS
 // ==========================================
-
 struct Uniforms
 {
     glm::mat4 mvp;
-    glm::mat4 prev_mvp;
     glm::mat4 model;
     glm::mat4 view;
+    glm::mat4 mv;
+    glm::mat3 normal_mat;
 
     glm::mat4 light_vp;
 
     glm::vec3 light_dir_world;
     glm::vec3 camera_pos;
 
-    // Материал
     shs::Color base_color;
     const shs::Texture2D *albedo = nullptr;
     bool use_texture = false;
 
-    // ShadowMap pointer
     const ShadowMap *shadow = nullptr;
 };
 
 struct VaryingsFull
 {
-    glm::vec4 position;      // curr clip (camera)
-    glm::vec4 prev_position; // prev clip (camera)
+    glm::vec4 position;
     glm::vec3 world_pos;
     glm::vec3 normal;
     glm::vec2 uv;
-    float     view_z;        // camera view_z (+Z forward)
+    float     view_z;
 };
 
 // ==========================================
-// VERTEX SHADER (camera pass)
+// VERTEX SHADER
 // ==========================================
-
 static VaryingsFull vertex_shader_full(
     const glm::vec3& aPos,
     const glm::vec3& aNormal,
@@ -601,153 +748,24 @@ static VaryingsFull vertex_shader_full(
     const Uniforms&  u)
 {
     VaryingsFull out;
-    out.position      = u.mvp * glm::vec4(aPos, 1.0f);
-    out.prev_position = u.prev_mvp * glm::vec4(aPos, 1.0f);
 
-    out.world_pos     = glm::vec3(u.model * glm::vec4(aPos, 1.0f));
-    out.normal        = glm::normalize(glm::mat3(glm::transpose(glm::inverse(u.model))) * aNormal);
+    out.position      = u.mvp * glm::vec4(aPos, 1.0f);
+
+    glm::vec4 world_h = u.model * glm::vec4(aPos, 1.0f);
+    out.world_pos     = glm::vec3(world_h);
+
+    out.normal        = glm::normalize(u.normal_mat * aNormal);
     out.uv            = aUV;
 
-    glm::vec4 view_pos = u.view * u.model * glm::vec4(aPos, 1.0f);
+    glm::vec4 view_pos = u.mv * glm::vec4(aPos, 1.0f);
     out.view_z = view_pos.z;
 
     return out;
 }
 
-
-// ==========================================
-// SHADOW HELPERS
-// output uv in shadow-map convention (0,0 top-left, y down)
-// ==========================================
-
-static inline bool shadow_uvz_from_world(
-    const glm::mat4& light_vp,
-    const glm::vec3& world_pos,
-    glm::vec2& out_uv,
-    float& out_z_ndc)
-{
-    glm::vec4 clip = light_vp * glm::vec4(world_pos, 1.0f);
-    if (std::abs(clip.w) < 1e-6f) return false;
-
-    glm::vec3 ndc = glm::vec3(clip) / clip.w; // x,y in [-1,1], z in [0,1]
-    out_z_ndc = ndc.z;
-
-    if (out_z_ndc < 0.0f || out_z_ndc > 1.0f) return false;
-
-    // ndc -> uv
-    // shadow map -> (0,0) top-left, y down
-    out_uv.x = ndc.x * 0.5f + 0.5f;
-    out_uv.y = 1.0f - (ndc.y * 0.5f + 0.5f);
-
-    return true;
-}
-
-static inline float shadow_compare(
-    const ShadowMap& sm,
-    glm::vec2 uv,
-    float z_ndc,
-    float bias)
-{
-    // uv outside => shadowгүй гэж үзье
-    if (uv.x < 0.0f || uv.x > 1.0f || uv.y < 0.0f || uv.y > 1.0f) return 1.0f;
-
-    int x = (int)std::lround(uv.x * float(sm.w - 1));
-    int y = (int)std::lround(uv.y * float(sm.h - 1));
-
-    float d = sm.sample(x, y);
-    // d == max() (хоосон) бол гэрэлтэй гэж үзнэ
-    if (d == std::numeric_limits<float>::max()) return 1.0f;
-
-    return (z_ndc <= d + bias) ? 1.0f : 0.0f;
-}
-
-static inline float shadow_factor_pcf_2x2(
-    const ShadowMap& sm,
-    glm::vec2 uv,
-    float z_ndc,
-    float bias)
-{
-    if (!SHADOW_USE_PCF) return shadow_compare(sm, uv, z_ndc, bias);
-
-    // 2x2 PCF, хөрш 4 sample
-    float fx = uv.x * float(sm.w - 1);
-    float fy = uv.y * float(sm.h - 1);
-
-    int x0 = clampi((int)std::floor(fx), 0, sm.w - 1);
-    int y0 = clampi((int)std::floor(fy), 0, sm.h - 1);
-    int x1 = clampi(x0 + 1, 0, sm.w - 1);
-    int y1 = clampi(y0 + 1, 0, sm.h - 1);
-
-    float s00 = (z_ndc <= sm.sample(x0,y0) + bias) ? 1.0f : 0.0f;
-    float s10 = (z_ndc <= sm.sample(x1,y0) + bias) ? 1.0f : 0.0f;
-    float s01 = (z_ndc <= sm.sample(x0,y1) + bias) ? 1.0f : 0.0f;
-    float s11 = (z_ndc <= sm.sample(x1,y1) + bias) ? 1.0f : 0.0f;
-
-    // энгийн average
-    return 0.25f * (s00 + s10 + s01 + s11);
-}
-
-// ==========================================
-// FRAGMENT SHADER (Blinn-Phong + Texture + Shadow)
-// ==========================================
-
-static shs::Color fragment_shader_full(const VaryingsFull& in, const Uniforms& u)
-{
-    glm::vec3 N = glm::normalize(in.normal);
-    glm::vec3 L = glm::normalize(-u.light_dir_world);
-    glm::vec3 V = glm::normalize(u.camera_pos - in.world_pos);
-
-    float ambientStrength = 0.18f;
-    glm::vec3 ambient = ambientStrength * glm::vec3(1.0f);
-
-    float diff = glm::max(glm::dot(N, L), 0.0f);
-    glm::vec3 diffuse = diff * glm::vec3(1.0f);
-
-    glm::vec3 H = glm::normalize(L + V);
-    float specularStrength = 0.45f;
-    float shininess = 64.0f;
-    float spec = glm::pow(glm::max(glm::dot(N, H), 0.0f), shininess);
-    glm::vec3 specular = specularStrength * spec * glm::vec3(1.0f);
-
-    glm::vec3 baseColor;
-    if (u.use_texture && u.albedo && u.albedo->valid()) {
-        shs::Color tc = sample_nearest(*u.albedo, in.uv);
-        baseColor = glm::vec3(tc.r, tc.g, tc.b) / 255.0f;
-    } else {
-        baseColor = glm::vec3(u.base_color.r, u.base_color.g, u.base_color.b) / 255.0f;
-    }
-
-    // Shadow factor (1 = lit, 0 = shadow)
-    float shadow = 1.0f;
-    if (u.shadow) {
-        glm::vec2 suv;
-        float sz;
-        if (shadow_uvz_from_world(u.light_vp, in.world_pos, suv, sz)) {
-            // slope-scaled bias (гадаргуу гэрэлтэй хэр зэрэг зөрчилдөхөөс хамааруулна)
-            float slope = 1.0f - glm::clamp(glm::dot(N, L), 0.0f, 1.0f);
-            float bias  = SHADOW_BIAS_BASE + SHADOW_BIAS_SLOPE * slope;
-
-            shadow = shadow_factor_pcf_2x2(*u.shadow, suv, sz, bias);
-        }
-    }
-
-    // shadow үед diffuse+spec багасгана, ambient үлдээнэ
-    glm::vec3 lit = ambient + shadow * (diffuse + specular);
-    glm::vec3 result = lit * baseColor;
-    result = glm::clamp(result, 0.0f, 1.0f);
-
-    return shs::Color{
-        (uint8_t)(result.r * 255),
-        (uint8_t)(result.g * 255),
-        (uint8_t)(result.b * 255),
-        255
-    };
-}
-
 // ==========================================
 // SHADOW PASS VARYINGS (depth only)
 // ==========================================
-
 struct VaryingsShadow
 {
     glm::vec4 position; // light clip
@@ -761,27 +779,17 @@ static inline VaryingsShadow shadow_vertex_shader(const glm::vec3& aPos, const U
 }
 
 // ==========================================
-// SHADOW MAP RASTER (tiled)
-// - light clip -> screen mapping (shadow map space) ашиглана
-// - depth нь ndc z (0..1)
+// SHADOW MAP RASTER
 // ==========================================
-
 static inline glm::vec3 clip_to_shadow_screen(const glm::vec4& clip, int W, int H)
 {
-    glm::vec3 ndc = glm::vec3(clip) / clip.w; // x,y in [-1,1], z in [0,1]
+    glm::vec3 ndc = glm::vec3(clip) / clip.w;
     glm::vec3 s;
     s.x = (ndc.x * 0.5f + 0.5f) * float(W - 1);
-    // shadow map space-г (0,0) top-left гэж үзээд y down ашиглана
     s.y = (1.0f - (ndc.y * 0.5f + 0.5f)) * float(H - 1);
     s.z = ndc.z;
     return s;
 }
-
-// ==========================================
-// SHADOW MAP RASTER (tiled)
-// - light clip -> screen mapping (shadow map space) ашиглана
-// - depth нь ndc z (0..1)
-// ==========================================
 
 static void draw_triangle_tile_shadow(
     ShadowMap& sm,
@@ -829,43 +837,29 @@ static void draw_triangle_tile_shadow(
 }
 
 // ==========================================
-// CAMERA PASS RASTER: Color + Depth(view_z) + Motion(full) + Shadow
-// - raster нь screen coords (y down) дээр ажиллана
-// - depth/motion нь Canvas coords (y up) дээр хадгална
+// CAMERA PASS RASTER: Color + Depth + Soft Shadows
+// (near-plane clipping in clip-space: z >= 0)
 // ==========================================
-
-static inline glm::vec2 clip_to_screen_xy(const glm::vec4& clip, int w, int h)
-{
-    glm::vec3 s = shs::Canvas::clip_to_screen(clip, w, h); // screen (x right, y down)
-    return glm::vec2(s.x, s.y);
-}
-
-
-// ======================================================
-// CAMERA PASS RASTER: Color + Depth(view_z) + Motion(full) + Shadow
-// near-plane clipping in clip-space (z >= 0 plane) + disable sign-cull
-// ======================================================
-
-static void draw_triangle_tile_color_depth_motion_shadow(
-    RT_ColorDepthMotion& rt,
+static void draw_triangle_tile_color_depth_softshadow(
+    shs::Canvas&  color,
+    shs::ZBuffer& depth,
     const std::vector<glm::vec3>& tri_verts,
     const std::vector<glm::vec3>& tri_norms,
     const std::vector<glm::vec2>& tri_uvs,
     std::function<VaryingsFull(const glm::vec3&, const glm::vec3&, const glm::vec2&)> vs,
-    std::function<shs::Color(const VaryingsFull&)> fs,
+    std::function<shs::Color(const VaryingsFull&, int px, int py)> fs,
     glm::ivec2 tile_min, glm::ivec2 tile_max)
 {
-    int W = rt.color.get_width();
-    int H = rt.color.get_height();
+    int W = color.get_width();
+    int H = color.get_height();
 
     auto lerp_vary = [](const VaryingsFull& a, const VaryingsFull& b, float t) -> VaryingsFull {
         VaryingsFull o;
-        o.position      = a.position      + (b.position      - a.position)      * t;
-        o.prev_position = a.prev_position + (b.prev_position - a.prev_position) * t;
-        o.world_pos     = a.world_pos     + (b.world_pos     - a.world_pos)     * t;
-        o.normal        = a.normal        + (b.normal        - a.normal)        * t;
-        o.uv            = a.uv            + (b.uv            - a.uv)            * t;
-        o.view_z        = a.view_z        + (b.view_z        - a.view_z)        * t;
+        o.position  = a.position  + (b.position  - a.position)  * t;
+        o.world_pos = a.world_pos + (b.world_pos - a.world_pos) * t;
+        o.normal    = a.normal    + (b.normal    - a.normal)    * t;
+        o.uv        = a.uv        + (b.uv        - a.uv)        * t;
+        o.view_z    = a.view_z    + (b.view_z    - a.view_z)    * t;
         return o;
     };
 
@@ -878,7 +872,6 @@ static void draw_triangle_tile_color_depth_motion_shadow(
         };
 
         auto intersect = [&](const VaryingsFull& a, const VaryingsFull& b) -> VaryingsFull {
-            // plane: z = 0  => a.z + t*(b.z-a.z) = 0
             float az = a.position.z;
             float bz = b.position.z;
             float denom = (bz - az);
@@ -907,319 +900,148 @@ static void draw_triangle_tile_color_depth_motion_shadow(
         return out;
     };
 
-    // --------------------------------------
-    // Vertex stage (triangle)
-    // --------------------------------------
     VaryingsFull v0 = vs(tri_verts[0], tri_norms[0], tri_uvs[0]);
     VaryingsFull v1 = vs(tri_verts[1], tri_norms[1], tri_uvs[1]);
     VaryingsFull v2 = vs(tri_verts[2], tri_norms[2], tri_uvs[2]);
 
     std::vector<VaryingsFull> poly = { v0, v1, v2 };
-
-    // Near-plane clip (homogeneous z >= 0)
     poly = clip_poly_near_z(poly);
     if (poly.size() < 3) return;
 
-    // Triangulate polygon fan: (0, i, i+1)
     for (int ti = 1; ti + 1 < (int)poly.size(); ++ti)
     {
         VaryingsFull tv[3] = { poly[0], poly[ti], poly[ti + 1] };
 
-        // Convert to screen coords (y down)
+        bool tri_ok = true;
+
         glm::vec3 sc3[3];
         for (int i = 0; i < 3; ++i) {
-            if (tv[i].position.w <= 1e-6f) goto next_tri;
+            if (tv[i].position.w <= 1e-6f) { tri_ok = false; break; }
             sc3[i] = shs::Canvas::clip_to_screen(tv[i].position, W, H);
         }
+        if (!tri_ok) continue;
 
-        {
-            glm::vec2 bboxmin(tile_max.x, tile_max.y);
-            glm::vec2 bboxmax(tile_min.x, tile_min.y);
+        glm::vec2 bboxmin(tile_max.x, tile_max.y);
+        glm::vec2 bboxmax(tile_min.x, tile_min.y);
 
-            std::vector<glm::vec2> v2d = {
-                glm::vec2(sc3[0]),
-                glm::vec2(sc3[1]),
-                glm::vec2(sc3[2])
-            };
+        std::vector<glm::vec2> v2d = { glm::vec2(sc3[0]), glm::vec2(sc3[1]), glm::vec2(sc3[2]) };
+        for (int i = 0; i < 3; i++) {
+            bboxmin = glm::max(glm::vec2(tile_min), glm::min(bboxmin, v2d[i]));
+            bboxmax = glm::min(glm::vec2(tile_max), glm::max(bboxmax, v2d[i]));
+        }
+        if (bboxmin.x > bboxmax.x || bboxmin.y > bboxmax.y) continue;
 
-            for (int i = 0; i < 3; i++) {
-                bboxmin = glm::max(glm::vec2(tile_min), glm::min(bboxmin, v2d[i]));
-                bboxmax = glm::min(glm::vec2(tile_max), glm::max(bboxmax, v2d[i]));
-            }
-            if (bboxmin.x > bboxmax.x || bboxmin.y > bboxmax.y) goto next_tri;
+        float area = (v2d[1].x - v2d[0].x) * (v2d[2].y - v2d[0].y) -
+                     (v2d[1].y - v2d[0].y) * (v2d[2].x - v2d[0].x);
+        if (std::abs(area) < 1e-8f) continue;
 
-            float area = (v2d[1].x - v2d[0].x) * (v2d[2].y - v2d[0].y) -
-                         (v2d[1].y - v2d[0].y) * (v2d[2].x - v2d[0].x);
+        for (int px = (int)bboxmin.x; px <= (int)bboxmax.x; px++) {
+            for (int py = (int)bboxmin.y; py <= (int)bboxmax.y; py++) {
 
-            if (std::abs(area) < 1e-8f) goto next_tri;
+                glm::vec3 bc = shs::Canvas::barycentric_coordinate(glm::vec2(px + 0.5f, py + 0.5f), v2d);
+                if (bc.x < 0 || bc.y < 0 || bc.z < 0) continue;
 
-            for (int px = (int)bboxmin.x; px <= (int)bboxmax.x; px++) {
-                for (int py = (int)bboxmin.y; py <= (int)bboxmax.y; py++) {
+                float vz = bc.x * tv[0].view_z + bc.y * tv[1].view_z + bc.z * tv[2].view_z;
 
-                    glm::vec3 bc = shs::Canvas::barycentric_coordinate(glm::vec2(px + 0.5f, py + 0.5f), v2d);
-                    if (bc.x < 0 || bc.y < 0 || bc.z < 0) continue;
+                int cy = (H - 1) - py;
 
-                    float vz = bc.x * tv[0].view_z + bc.y * tv[1].view_z + bc.z * tv[2].view_z;
+                if (depth.test_and_set_depth(px, cy, vz)) {
 
-                    int cy = (H - 1) - py;
+                    float w0 = tv[0].position.w;
+                    float w1 = tv[1].position.w;
+                    float w2 = tv[2].position.w;
 
-                    if (rt.depth.test_and_set_depth(px, cy, vz)) {
+                    float invw0 = (std::abs(w0) < 1e-6f) ? 0.0f : 1.0f / w0;
+                    float invw1 = (std::abs(w1) < 1e-6f) ? 0.0f : 1.0f / w1;
+                    float invw2 = (std::abs(w2) < 1e-6f) ? 0.0f : 1.0f / w2;
 
-                        float w0 = tv[0].position.w;
-                        float w1 = tv[1].position.w;
-                        float w2 = tv[2].position.w;
+                    float invw_sum = bc.x * invw0 + bc.y * invw1 + bc.z * invw2;
+                    if (invw_sum <= 1e-8f) continue;
 
-                        float invw0 = (std::abs(w0) < 1e-6f) ? 0.0f : 1.0f / w0;
-                        float invw1 = (std::abs(w1) < 1e-6f) ? 0.0f : 1.0f / w1;
-                        float invw2 = (std::abs(w2) < 1e-6f) ? 0.0f : 1.0f / w2;
+                    VaryingsFull in;
+                    in.position = bc.x * tv[0].position + bc.y * tv[1].position + bc.z * tv[2].position;
+                    in.normal   = glm::normalize(bc.x * tv[0].normal + bc.y * tv[1].normal + bc.z * tv[2].normal);
 
-                        float invw_sum = bc.x * invw0 + bc.y * invw1 + bc.z * invw2;
-                        if (invw_sum <= 1e-8f) continue;
+                    glm::vec3 wp_over_w =
+                        bc.x * (tv[0].world_pos * invw0) +
+                        bc.y * (tv[1].world_pos * invw1) +
+                        bc.z * (tv[2].world_pos * invw2);
+                    in.world_pos = wp_over_w / invw_sum;
 
-                        VaryingsFull in;
-                        in.position      = bc.x * tv[0].position      + bc.y * tv[1].position      + bc.z * tv[2].position;
-                        in.prev_position = bc.x * tv[0].prev_position + bc.y * tv[1].prev_position + bc.z * tv[2].prev_position;
+                    glm::vec2 uv_over_w =
+                        bc.x * (tv[0].uv * invw0) +
+                        bc.y * (tv[1].uv * invw1) +
+                        bc.z * (tv[2].uv * invw2);
+                    in.uv = uv_over_w / invw_sum;
 
-                        in.normal = glm::normalize(bc.x * tv[0].normal + bc.y * tv[1].normal + bc.z * tv[2].normal);
+                    in.view_z = vz;
 
-                        glm::vec3 wp_over_w =
-                            bc.x * (tv[0].world_pos * invw0) +
-                            bc.y * (tv[1].world_pos * invw1) +
-                            bc.z * (tv[2].world_pos * invw2);
-                        in.world_pos = wp_over_w / invw_sum;
-
-                        glm::vec2 uv_over_w =
-                            bc.x * (tv[0].uv * invw0) +
-                            bc.y * (tv[1].uv * invw1) +
-                            bc.z * (tv[2].uv * invw2);
-                        in.uv = uv_over_w / invw_sum;
-
-                        in.view_z = vz;
-
-                        glm::vec2 curr_s = clip_to_screen_xy(in.position, W, H);
-                        glm::vec2 prev_s = clip_to_screen_xy(in.prev_position, W, H);
-                        glm::vec2 v_screen = curr_s - prev_s;
-                        glm::vec2 v_canvas = glm::vec2(v_screen.x, -v_screen.y);
-
-                        float len = glm::length(v_canvas);
-                        if (len > MB_MAX_PIXELS && len > 1e-6f) {
-                            v_canvas *= (MB_MAX_PIXELS / len);
-                        }
-                        rt.motion.set(px, cy, v_canvas);
-
-                        rt.color.draw_pixel_screen_space(px, py, fs(in));
-                    }
+                    color.draw_pixel_screen_space(px, py, fs(in, px, py));
                 }
             }
         }
-
-    next_tri:
-        continue;
     }
-}
 
-
-// ==========================================
-// CAMERA-ONLY VELOCITY RECONSTRUCTION (depth + matrices)
-// - depth нь view_z (camera space)
-// ==========================================
-
-static inline float viewz_to_ndcz(float view_z, const glm::mat4& proj)
-{
-    glm::vec4 clip = proj * glm::vec4(0.0f, 0.0f, view_z, 1.0f);
-    if (std::abs(clip.w) < 1e-6f) return 0.0f;
-    return clip.z / clip.w;
-}
-
-static inline glm::vec2 canvas_to_ndc_xy(int x, int y, int W, int H)
-{
-    // Canvas: y up -> screen y down
-    int py_screen = (H - 1) - y;
-
-    float fx = (float(x) + 0.5f) / float(W);
-    float fy = (float(py_screen) + 0.5f) / float(H);
-
-    float ndc_x = fx * 2.0f - 1.0f;
-    float ndc_y = 1.0f - fy * 2.0f;
-    return glm::vec2(ndc_x, ndc_y);
-}
-
-static inline glm::vec2 ndc_to_screen_xy(const glm::vec3& ndc, int W, int H)
-{
-    float sx = (ndc.x * 0.5f + 0.5f) * float(W - 1);
-    float sy = (1.0f - (ndc.y * 0.5f + 0.5f)) * float(H - 1);
-    return glm::vec2(sx, sy);
-}
-
-static inline glm::vec2 compute_camera_velocity_canvas(
-    int x, int y,
-    float view_z,
-    int W, int H,
-    const glm::mat4& curr_viewproj,
-    const glm::mat4& prev_viewproj,
-    const glm::mat4& curr_proj)
-{
-    if (view_z == std::numeric_limits<float>::max()) return glm::vec2(0.0f);
-
-    glm::vec2 ndc_xy = canvas_to_ndc_xy(x, y, W, H);
-    float ndc_z = viewz_to_ndcz(view_z, curr_proj);
-
-    glm::vec4 clip_curr(ndc_xy.x, ndc_xy.y, ndc_z, 1.0f);
-
-    glm::mat4 inv_curr_vp = glm::inverse(curr_viewproj);
-    glm::vec4 world_h = inv_curr_vp * clip_curr;
-    if (std::abs(world_h.w) < 1e-6f) return glm::vec2(0.0f);
-    glm::vec3 world = glm::vec3(world_h) / world_h.w;
-
-    glm::vec4 prev_clip = prev_viewproj * glm::vec4(world, 1.0f);
-    if (std::abs(prev_clip.w) < 1e-6f) return glm::vec2(0.0f);
-    glm::vec3 prev_ndc = glm::vec3(prev_clip) / prev_clip.w;
-
-    int py_screen = (H - 1) - y;
-    glm::vec2 curr_screen{ float(x), float(py_screen) };
-    glm::vec2 prev_screen = ndc_to_screen_xy(prev_ndc, W, H);
-
-    glm::vec2 v_screen = curr_screen - prev_screen;
-    glm::vec2 v_canvas = glm::vec2(v_screen.x, -v_screen.y);
-    return v_canvas;
-}
-
-static inline glm::vec2 apply_soft_knee(glm::vec2 v, float knee, float max_len)
-{
-    float len = glm::length(v);
-    if (len <= 1e-6f) return v;
-    if (len <= knee) return v;
-
-    float t = (len - knee) / std::max(1e-6f, (max_len - knee));
-    float t2 = t / (1.0f + t);
-    float new_len = knee + (max_len - knee) * t2;
-
-    return v * (new_len / len);
+    
 }
 
 // ==========================================
-// COMBINED MOTION BLUR PASS (whole-screen)
+// FRAGMENT SHADER (Direct Blinn-Phong + PCSS Soft Shadow)
 // ==========================================
-
-static void combined_motion_blur_pass(
-    const shs::Canvas& src,
-    const shs::ZBuffer& depth,
-    const MotionBuffer& v_full_buf,
-    shs::Canvas& dst,
-    const glm::mat4& curr_view,
-    const glm::mat4& curr_proj,
-    const glm::mat4& prev_view,
-    const glm::mat4& prev_proj,
-    int samples,
-    float strength,
-    float w_obj,
-    float w_cam,
-    shs::Job::ThreadedPriorityJobSystem* job_system,
-    shs::Job::WaitGroup& wg)
+static shs::Color fragment_shader_softshadow(const VaryingsFull& in, const Uniforms& u, int px, int py)
 {
-    int W = src.get_width();
-    int H = src.get_height();
+    glm::vec3 N = glm::normalize(in.normal);
+    glm::vec3 L = glm::normalize(-u.light_dir_world);
+    glm::vec3 V = glm::normalize(u.camera_pos - in.world_pos);
 
-    glm::mat4 curr_vp = curr_proj * curr_view;
-    glm::mat4 prev_vp = prev_proj * prev_view;
+    // BaseColor
+    glm::vec3 baseColor;
+    if (u.use_texture && u.albedo && u.albedo->valid()) {
+        shs::Color tc = sample_nearest(*u.albedo, in.uv);
+        baseColor = color_to_rgb01(tc);
+    } else {
+        baseColor = color_to_rgb01(u.base_color);
+    }
 
-    int cols = (W + TILE_SIZE_X - 1) / TILE_SIZE_X;
-    int rows = (H + TILE_SIZE_Y - 1) / TILE_SIZE_Y;
+    // Blinn-Phong
+    float ambientStrength = 0.18f;
 
-    wg.reset();
+    float diff = glm::max(glm::dot(N, L), 0.0f);
+    glm::vec3 diffuse = diff * glm::vec3(1.0f);
 
-    for (int ty = 0; ty < rows; ty++) {
-        for (int tx = 0; tx < cols; tx++) {
+    glm::vec3 H = glm::normalize(L + V);
+    float specularStrength = 0.45f;
+    float shininess = 64.0f;
+    float spec = glm::pow(glm::max(glm::dot(N, H), 0.0f), shininess);
+    glm::vec3 specular = specularStrength * spec * glm::vec3(1.0f);
 
-            wg.add(1);
-            job_system->submit({[&, tx, ty]() {
+    // --------------------------------------
+    // PCSS shadow factor (1=lit, 0=shadow)
+    // --------------------------------------
+    float shadow = 1.0f;
+    if (u.shadow) {
+        glm::vec2 suv;
+        float sz;
+        if (shadow_uvz_from_world(u.light_vp, in.world_pos, suv, sz)) {
 
-                int x0 = tx * TILE_SIZE_X;
-                int y0 = ty * TILE_SIZE_Y;
-                int x1 = std::min(x0 + TILE_SIZE_X, W);
-                int y1 = std::min(y0 + TILE_SIZE_Y, H);
+            // slope-scaled bias: N·L бага үед bias нэмэгдэнэ
+            float slope = 1.0f - glm::clamp(glm::dot(N, L), 0.0f, 1.0f);
+            float bias  = SHADOW_BIAS_BASE + SHADOW_BIAS_SLOPE * slope;
 
-                auto sample = [&](int sx, int sy) -> shs::Color {
-                    sx = clampi(sx, 0, W - 1);
-                    sy = clampi(sy, 0, H - 1);
-                    return src.get_color_at(sx, sy);
-                };
-
-                for (int y = y0; y < y1; y++) {
-                    for (int x = x0; x < x1; x++) {
-
-                        float vz = depth.get_depth_at(x, y);
-
-                        glm::vec2 v_cam = compute_camera_velocity_canvas(
-                            x, y, vz, W, H, curr_vp, prev_vp, curr_proj
-                        );
-
-                        glm::vec2 v_full = v_full_buf.get(x, y);
-                        glm::vec2 v_obj_only = v_full - v_cam;
-
-                        glm::vec2 v_total = w_obj * v_obj_only + w_cam * v_cam;
-                        v_total *= strength;
-
-                        if (MB_SOFT_KNEE) {
-                            v_total = apply_soft_knee(v_total, MB_KNEE_PIXELS, MB_MAX_PIXELS);
-                        }
-
-                        float len = glm::length(v_total);
-                        if (len > MB_MAX_PIXELS && len > 1e-6f) {
-                            v_total *= (MB_MAX_PIXELS / len);
-                            len = MB_MAX_PIXELS;
-                        }
-
-                        if (len < 0.001f || samples <= 1) {
-                            dst.draw_pixel(x, y, src.get_color_at(x, y));
-                            continue;
-                        }
-
-                        glm::vec2 dir = v_total / len;
-
-                        float r = 0, g = 0, b = 0;
-                        float wsum = 0.0f;
-
-                        for (int i = 0; i < samples; i++) {
-                            float t = (samples == 1) ? 0.0f : (float(i) / float(samples - 1));
-                            float a = (t - 0.5f) * 2.0f; // -1..+1
-                            glm::vec2 p = glm::vec2(float(x), float(y)) + dir * (a * len);
-
-                            int sx = clampi((int)std::round(p.x), 0, W - 1);
-                            int sy = clampi((int)std::round(p.y), 0, H - 1);
-
-                            float wgt = 1.0f - std::abs(a);
-                            shs::Color c = sample(sx, sy);
-
-                            r += wgt * float(c.r);
-                            g += wgt * float(c.g);
-                            b += wgt * float(c.b);
-                            wsum += wgt;
-                        }
-
-                        if (wsum < 0.0001f) wsum = 1.0f;
-
-                        dst.draw_pixel(x, y, shs::Color{
-                            (uint8_t)clampi((int)(r / wsum), 0, 255),
-                            (uint8_t)clampi((int)(g / wsum), 0, 255),
-                            (uint8_t)clampi((int)(b / wsum), 0, 255),
-                            255
-                        });
-                    }
-                }
-
-                wg.done();
-            }, shs::Job::PRIORITY_HIGH});
+            shadow = pcss_shadow_factor(*u.shadow, suv, sz, bias, px, py);
         }
     }
 
-    wg.wait();
+    glm::vec3 amb    = ambientStrength * baseColor;
+    glm::vec3 direct = shadow * (diffuse * baseColor + specular);
+
+    glm::vec3 result = glm::clamp(amb + direct, 0.0f, 1.0f);
+    return rgb01_to_color(result);
 }
 
 // ==========================================
 // SCENE STATE
 // ==========================================
-
 class DemoScene : public shs::AbstractSceneState
 {
 public:
@@ -1244,11 +1066,10 @@ public:
 
     void process() override {}
 
-    shs::Canvas* canvas;
-    Viewer* viewer;
+    shs::Canvas*  canvas;
+    Viewer*       viewer;
 
-    FloorPlane* floor;
-
+    FloorPlane*   floor;
     SubaruObject* car;
     MonkeyObject* monkey;
 
@@ -1256,36 +1077,23 @@ public:
 };
 
 // ==========================================
-// RENDERER SYSTEM (Shadow + Camera + MotionBlur)
+// RENDERER SYSTEM (Shadow + Camera)
 // ==========================================
-
 class RendererSystem : public shs::AbstractSystem
 {
 public:
     RendererSystem(DemoScene* scene, shs::Job::ThreadedPriorityJobSystem* job_sys)
         : scene(scene), job_system(job_sys)
     {
-        rt = new RT_ColorDepthMotion(
-            CANVAS_WIDTH, CANVAS_HEIGHT,
-            scene->viewer->camera->z_near,
-            scene->viewer->camera->z_far,
-            shs::Color{20,20,25,255}
-        );
-
-        mb_out = new shs::Canvas(CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{20,20,25,255});
-
+        color  = new shs::Canvas(CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{20,20,25,255});
+        depth  = new shs::ZBuffer(CANVAS_WIDTH, CANVAS_HEIGHT, scene->viewer->camera->z_near, scene->viewer->camera->z_far);
         shadow = new ShadowMap(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
-
-        // Камерын history
-        has_prev_cam = false;
-        prev_view = glm::mat4(1.0f);
-        prev_proj = glm::mat4(1.0f);
     }
 
     ~RendererSystem()
     {
-        delete rt;
-        delete mb_out;
+        delete color;
+        delete depth;
         delete shadow;
     }
 
@@ -1293,19 +1101,16 @@ public:
     {
         (void)dt;
 
-        // Матрицууд
         glm::mat4 view = scene->viewer->camera->view_matrix;
         glm::mat4 proj = scene->viewer->camera->projection_matrix;
 
-        // 1) Light VP (Directional, Ortho)
-        //    Light camera-г scene төв дээр чиглүүлж, хангалттай том ortho box авна.
+        // Light VP (Directional, Ortho)
         glm::vec3 center(0.0f, 6.0f, 45.0f);
         glm::vec3 light_dir = LIGHT_DIR_WORLD;
         glm::vec3 light_pos = center - light_dir * 80.0f;
 
         glm::mat4 light_view = glm::lookAtLH(light_pos, center, glm::vec3(0,1,0));
 
-        // Ortho bounds 
         float L = -85.0f, R = 85.0f;
         float B = -55.0f, T = 95.0f;
         float zn = 0.1f, zf = 240.0f;
@@ -1331,13 +1136,13 @@ public:
                 for (int tx = 0; tx < cols; tx++) {
 
                     wg_shadow.add(1);
-                    job_system->submit({[=]() {
+                    job_system->submit({[=, this, light_vp]() {
 
                         glm::ivec2 t_min(tx * TILE_SIZE_X, ty * TILE_SIZE_Y);
                         glm::ivec2 t_max(std::min((tx + 1) * TILE_SIZE_X, W) - 1,
                                          std::min((ty + 1) * TILE_SIZE_Y, H) - 1);
 
-                        // Floor (world)
+                        // Floor
                         {
                             Uniforms u;
                             u.model = glm::mat4(1.0f);
@@ -1362,7 +1167,6 @@ public:
                         // Objects
                         for (shs::AbstractObject3D* obj : scene->scene_objects)
                         {
-                            // Subaru
                             if (auto* car = dynamic_cast<SubaruObject*>(obj)) {
                                 Uniforms u;
                                 u.model = car->get_world_matrix();
@@ -1380,7 +1184,6 @@ public:
                                 }
                             }
 
-                            // Monkey
                             if (auto* mk = dynamic_cast<MonkeyObject*>(obj)) {
                                 Uniforms u;
                                 u.model = mk->get_world_matrix();
@@ -1408,13 +1211,14 @@ public:
         }
 
         // -----------------------
-        // PASS1: Camera render -> RT_ColorDepthMotion (shadow хэрэглэнэ)
+        // PASS1: Camera render
         // -----------------------
-        rt->clear(shs::Color{20,20,25,255});
+        color->buffer().clear(shs::Color{20,20,25,255});
+        depth->clear();
 
         {
-            int W = rt->color.get_width();
-            int H = rt->color.get_height();
+            int W = color->get_width();
+            int H = color->get_height();
 
             int cols = (W + TILE_SIZE_X - 1) / TILE_SIZE_X;
             int rows = (H + TILE_SIZE_Y - 1) / TILE_SIZE_Y;
@@ -1425,7 +1229,7 @@ public:
                 for (int tx = 0; tx < cols; tx++) {
 
                     wg_cam.add(1);
-                    job_system->submit({[=]() {
+                    job_system->submit({[=, this, view, proj, light_vp]() {
 
                         glm::ivec2 t_min(tx * TILE_SIZE_X, ty * TILE_SIZE_Y);
                         glm::ivec2 t_max(std::min((tx + 1) * TILE_SIZE_X, W) - 1,
@@ -1436,12 +1240,15 @@ public:
                             Uniforms u;
                             u.model           = glm::mat4(1.0f);
                             u.view            = view;
-                            u.mvp             = proj * view * u.model;
-                            u.prev_mvp        = u.mvp; // floor нь хөдөлгөөнгүй
+
+                            u.mv              = u.view * u.model;
+                            u.mvp             = proj   * u.mv;
+                            u.normal_mat      = glm::mat3(1.0f);
+
                             u.light_vp        = light_vp;
                             u.light_dir_world = LIGHT_DIR_WORLD;
                             u.camera_pos      = scene->viewer->position;
-                            u.base_color      = shs::Color{ 120, 122, 128, 255 }; // саарал шал
+                            u.base_color      = shs::Color{ 120, 122, 128, 255 };
                             u.albedo          = nullptr;
                             u.use_texture     = false;
                             u.shadow          = shadow;
@@ -1463,14 +1270,15 @@ public:
                                     scene->floor->uvs[i+2]
                                 };
 
-                                draw_triangle_tile_color_depth_motion_shadow(
-                                    *rt,
+                                draw_triangle_tile_color_depth_softshadow(
+                                    *color,
+                                    *depth,
                                     tri_v, tri_n, tri_uv,
                                     [&u](const glm::vec3& p, const glm::vec3& n, const glm::vec2& uv) {
                                         return vertex_shader_full(p, n, uv, u);
                                     },
-                                    [&u](const VaryingsFull& vin) {
-                                        return fragment_shader_full(vin, u);
+                                    [&u](const VaryingsFull& vin, int px, int py) {
+                                        return fragment_shader_softshadow(vin, u, px, py);
                                     },
                                     t_min, t_max
                                 );
@@ -1484,16 +1292,13 @@ public:
                             if (auto* car = dynamic_cast<SubaruObject*>(obj))
                             {
                                 glm::mat4 model = car->get_world_matrix();
-                                glm::mat4 mvp   = proj * view * model;
-
-                                glm::mat4 prev_mvp = mvp;
-                                if (car->has_prev_mvp) prev_mvp = car->prev_mvp;
 
                                 Uniforms u;
                                 u.model           = model;
                                 u.view            = view;
-                                u.mvp             = mvp;
-                                u.prev_mvp        = prev_mvp;
+                                u.mv              = u.view * u.model;
+                                u.mvp             = proj * u.mv;
+                                u.normal_mat      = glm::transpose(glm::inverse(glm::mat3(u.model)));
                                 u.light_vp        = light_vp;
                                 u.light_dir_world = LIGHT_DIR_WORLD;
                                 u.camera_pos      = scene->viewer->position;
@@ -1511,14 +1316,15 @@ public:
                                     std::vector<glm::vec3> tri_n = { n[i], n[i+1], n[i+2] };
                                     std::vector<glm::vec2> tri_t = { t[i], t[i+1], t[i+2] };
 
-                                    draw_triangle_tile_color_depth_motion_shadow(
-                                        *rt,
+                                    draw_triangle_tile_color_depth_softshadow(
+                                        *color,
+                                        *depth,
                                         tri_v, tri_n, tri_t,
                                         [&u](const glm::vec3& p, const glm::vec3& nn, const glm::vec2& uv) {
                                             return vertex_shader_full(p, nn, uv, u);
                                         },
-                                        [&u](const VaryingsFull& vin) {
-                                            return fragment_shader_full(vin, u);
+                                        [&u](const VaryingsFull& vin, int px, int py) {
+                                            return fragment_shader_softshadow(vin, u, px, py);
                                         },
                                         t_min, t_max
                                     );
@@ -1529,16 +1335,13 @@ public:
                             if (auto* mk = dynamic_cast<MonkeyObject*>(obj))
                             {
                                 glm::mat4 model = mk->get_world_matrix();
-                                glm::mat4 mvp   = proj * view * model;
-
-                                glm::mat4 prev_mvp = mvp;
-                                if (mk->has_prev_mvp) prev_mvp = mk->prev_mvp;
 
                                 Uniforms u;
                                 u.model           = model;
                                 u.view            = view;
-                                u.mvp             = mvp;
-                                u.prev_mvp        = prev_mvp;
+                                u.mv              = u.view * u.model;
+                                u.mvp             = proj   * u.mv;
+                                u.normal_mat      = glm::transpose(glm::inverse(glm::mat3(u.model)));
                                 u.light_vp        = light_vp;
                                 u.light_dir_world = LIGHT_DIR_WORLD;
                                 u.camera_pos      = scene->viewer->position;
@@ -1549,21 +1352,22 @@ public:
 
                                 const auto& v = mk->geometry->triangles;
                                 const auto& n = mk->geometry->normals;
-                                // uv байхгүй байж болно
                                 static const glm::vec2 uv0(0.0f);
+
                                 for (size_t i = 0; i < v.size(); i += 3) {
                                     std::vector<glm::vec3> tri_v = { v[i], v[i+1], v[i+2] };
                                     std::vector<glm::vec3> tri_n = { n[i], n[i+1], n[i+2] };
                                     std::vector<glm::vec2> tri_t = { uv0, uv0, uv0 };
 
-                                    draw_triangle_tile_color_depth_motion_shadow(
-                                        *rt,
+                                    draw_triangle_tile_color_depth_softshadow(
+                                        *color,
+                                        *depth,
                                         tri_v, tri_n, tri_t,
                                         [&u](const glm::vec3& p, const glm::vec3& nn, const glm::vec2& uv) {
                                             return vertex_shader_full(p, nn, uv, u);
                                         },
-                                        [&u](const VaryingsFull& vin) {
-                                            return fragment_shader_full(vin, u);
+                                        [&u](const VaryingsFull& vin, int px, int py) {
+                                            return fragment_shader_softshadow(vin, u, px, py);
                                         },
                                         t_min, t_max
                                     );
@@ -1578,88 +1382,26 @@ public:
 
             wg_cam.wait();
         }
-
-        // per-object prev_mvp commit (дараагийн frame-д motion зөв гарах)
-        {
-            glm::mat4 view2 = scene->viewer->camera->view_matrix;
-            glm::mat4 proj2 = scene->viewer->camera->projection_matrix;
-
-            for (shs::AbstractObject3D* obj : scene->scene_objects)
-            {
-                if (auto* car = dynamic_cast<SubaruObject*>(obj)) {
-                    glm::mat4 model = car->get_world_matrix();
-                    car->prev_mvp = proj2 * view2 * model;
-                    car->has_prev_mvp = true;
-                }
-                if (auto* mk = dynamic_cast<MonkeyObject*>(obj)) {
-                    glm::mat4 model = mk->get_world_matrix();
-                    mk->prev_mvp = proj2 * view2 * model;
-                    mk->has_prev_mvp = true;
-                }
-            }
-        }
-
-        // -----------------------
-        // PASS2: Combined Motion Blur (whole-screen post)
-        // -----------------------
-        glm::mat4 curr_view = scene->viewer->camera->view_matrix;
-        glm::mat4 curr_proj = scene->viewer->camera->projection_matrix;
-
-        if (!has_prev_cam) {
-            prev_view = curr_view;
-            prev_proj = curr_proj;
-            has_prev_cam = true;
-        }
-
-        combined_motion_blur_pass(
-            rt->color,
-            rt->depth,
-            rt->motion,
-            *mb_out,
-            curr_view,
-            curr_proj,
-            prev_view,
-            prev_proj,
-            MB_SAMPLES,
-            MB_STRENGTH,
-            MB_W_OBJ,
-            MB_W_CAM,
-            job_system,
-            wg_mb
-        );
-
-        // camera history commit
-        prev_view = curr_view;
-        prev_proj = curr_proj;
     }
 
-    // Эцсийн canvas-д харуулах буфер
-    shs::Canvas& output() { return *mb_out; }
+    shs::Canvas& output() { return *color; }
 
 private:
     DemoScene* scene;
     shs::Job::ThreadedPriorityJobSystem* job_system;
 
-    RT_ColorDepthMotion* rt;
-    shs::Canvas* mb_out;
+    shs::Canvas*  color;
+    shs::ZBuffer* depth;
+    ShadowMap*    shadow;
 
-    ShadowMap* shadow;
-
-    // WaitGroups
     shs::Job::WaitGroup wg_shadow;
     shs::Job::WaitGroup wg_cam;
-    shs::Job::WaitGroup wg_mb;
-
-    // Camera history
-    bool has_prev_cam;
-    glm::mat4 prev_view;
-    glm::mat4 prev_proj;
 };
+
 
 // ==========================================
 // LOGIC SYSTEM
 // ==========================================
-
 class LogicSystem : public shs::AbstractSystem
 {
 public:
@@ -1673,10 +1415,10 @@ private:
     DemoScene* scene;
 };
 
+
 // ==========================================
 // SYSTEM PROCESSOR
 // ==========================================
-
 class SystemProcessor
 {
 public:
@@ -1712,10 +1454,10 @@ public:
     RendererSystem*        renderer_system;
 };
 
+
 // ==========================================
 // MAIN
 // ==========================================
-
 int main(int argc, char* argv[])
 {
     (void)argc; (void)argv;
@@ -1725,7 +1467,7 @@ int main(int argc, char* argv[])
 
     auto* job_system = new shs::Job::ThreadedPriorityJobSystem(THREAD_COUNT);
 
-    SDL_Window* window = nullptr;
+    SDL_Window*   window   = nullptr;
     SDL_Renderer* renderer = nullptr;
     SDL_CreateWindowAndRenderer(WINDOW_WIDTH, WINDOW_HEIGHT, 0, &window, &renderer);
 
@@ -1740,13 +1482,15 @@ int main(int argc, char* argv[])
     // Scene
     Viewer*    viewer    = new Viewer(glm::vec3(0.0f, 10.0f, -42.0f), 55.0f);
     DemoScene* scene     = new DemoScene(screen_canvas, viewer, &car_tex);
-    
+
     SystemProcessor* sys = new SystemProcessor(scene, job_system);
 
     bool exit = false;
     SDL_Event e;
     Uint32 last_tick = SDL_GetTicks();
     bool is_dragging = false;
+    int   frames     = 0;
+    float fps_timer  = 0.0f;
 
     while (!exit)
     {
@@ -1807,6 +1551,19 @@ int main(int argc, char* argv[])
         SDL_RenderClear(renderer);
         SDL_RenderCopy(renderer, screen_texture, NULL, NULL);
         SDL_RenderPresent(renderer);
+
+        frames++;
+        fps_timer += dt;
+        if (fps_timer >= 1.0f) {
+            std::string title =
+                "PCSS Soft Shadows | FPS: " + std::to_string(frames) +
+                " | Threads: " + std::to_string(THREAD_COUNT) +
+                " | ShadowMap: " + std::to_string(SHADOW_MAP_SIZE) +
+                " | Canvas: " + std::to_string(CANVAS_WIDTH) + "x" + std::to_string(CANVAS_HEIGHT);
+            SDL_SetWindowTitle(window, title.c_str());
+            frames = 0;
+            fps_timer = 0.0f;
+        }
     }
 
     delete sys;

@@ -50,6 +50,9 @@ target_link_libraries(HelloCameraAndPerobjectMotionBlur PRIVATE ${SDL2_IMAGE_LIB
 add_executable(HelloShadowMapping hello_shadow_mapping.cpp)
 target_link_libraries(HelloShadowMapping PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)
 
+add_executable(HelloShadowMappingSoft hello_shadow_mapping_soft.cpp)
+target_link_libraries(HelloShadowMappingSoft PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)
+
 add_executable(HelloWater hello_water.cpp)
 target_link_libraries(HelloWater PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm -lassimp)
 
