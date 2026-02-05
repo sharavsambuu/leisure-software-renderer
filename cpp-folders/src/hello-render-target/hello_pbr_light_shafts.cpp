@@ -101,8 +101,6 @@ Screen-space ашиглагдсан шалтгаан
 // 0: Текстур суурьтай тэнгэр буюу skybox
 #define USE_PROCEDURAL_SKY 0
 
-//#define WINDOW_WIDTH      800
-//#define WINDOW_HEIGHT     600
 #define WINDOW_WIDTH      800
 #define WINDOW_HEIGHT     600
 #define CANVAS_WIDTH      800
@@ -118,7 +116,7 @@ Screen-space ашиглагдсан шалтгаан
 // ------------------------------------------
 // SHADOW MAP CONFIG
 // ------------------------------------------
-#define SHADOW_MAP_SIZE   2048
+#define SHADOW_MAP_SIZE   1024 //2048
 
 static const glm::vec3 LIGHT_DIR_WORLD = glm::normalize(glm::vec3(0.4668f, -0.3487f, 0.8127f));
 
@@ -215,27 +213,6 @@ struct LightShaftParams
     bool  shadow_pcf_2x2 = true;
 };
 
-// ==========================================
-// HELPERS
-// ==========================================
-
-// Helpers are now used from shs::Math and shs namespace in shs_renderer.hpp.
-
-// ==========================================
-// LH Ortho matrix (NDC z: 0..1)
-// ==========================================
-
-// ortho_lh_zo is now shs::Math::ortho_lh_zo
-
-// ==========================================
-// TEXTURE SAMPLER (nearest, returns sRGB color)
-// ==========================================
-
-// sample_nearest_srgb is now replaced by shs_renderer standardized sampling if needed.
-
-// ==========================================
-// IBL / SKYBOX HELPERS (Adapted for shs::AbstractSky)
-// ==========================================
 
 // Helper functions for IBL generation
 static inline glm::vec3 face_uv_to_dir(int face, float u, float v)
@@ -272,7 +249,7 @@ static inline glm::vec3 cosine_sample_hemisphere(float u1, float u2)
     return glm::vec3(x, y, z);
 }
 
-// Local structures for IBL storage (using std::vector<vec3>)
+// IBL хадгалах бүтэц (std::vector<vec3>)
 struct CubeMapLinear
 {
     int size = 0; 
@@ -522,20 +499,11 @@ namespace PBR
     }
 }
 
-// ==========================================
-// SHADOW MAP BUFFER (Depth only)
-// ==========================================
-
-// Using standardized shs::ShadowMap, shs::MotionBuffer, shs::RT_ColorDepthVelocity
-using ShadowMap           = shs::ShadowMap;
-using MotionBuffer        = shs::MotionBuffer;
-using RT_ColorDepthMotion = shs::RT_ColorDepthVelocity;
 
 // ==========================================
 // CAMERA + VIEWER
 // ==========================================
 
-// Using standardized shs::Viewer and shs::ModelGeometry
 using Viewer        = shs::Viewer;
 using ModelGeometry = shs::ModelGeometry;
 
@@ -746,12 +714,12 @@ struct Uniforms
 
     MaterialPBR mat;
 
-    const shs::Texture2D *albedo = nullptr;
-    bool use_texture             = false;
+    const shs::Texture2D   *albedo      = nullptr;
+    bool                    use_texture = false;
 
-    const ShadowMap *shadow = nullptr;
-    const shs::AbstractSky *sky = nullptr;
-    const EnvIBL *ibl       = nullptr;
+    const shs::ShadowMap   *shadow      = nullptr;
+    const shs::AbstractSky *sky         = nullptr;
+    const EnvIBL           *ibl         = nullptr;
 
     float ibl_diffuse_intensity   = 0.30f;
     float ibl_specular_intensity  = 0.35f;
@@ -820,7 +788,7 @@ static inline bool shadow_uvz_from_world(
 }
 
 // PCSS-д зориулсан helper
-static inline float shadow_sample_depth_uv(const ShadowMap& sm, glm::vec2 uv)
+static inline float shadow_sample_depth_uv(const shs::ShadowMap& sm, glm::vec2 uv)
 {
     // uv -> nearest depth
     if (uv.x < 0.0f || uv.x > 1.0f || uv.y < 0.0f || uv.y > 1.0f)
@@ -892,7 +860,7 @@ static inline glm::vec2 rotate2(const glm::vec2& p, float a)
 
 // PCSS Soft Shadow Factor
 static inline float pcss_shadow_factor(
-    const ShadowMap& sm,
+    const shs::ShadowMap& sm,
     const glm::vec2& uv,
     float z_receiver,
     float bias,
@@ -1201,7 +1169,7 @@ static inline glm::vec3 clip_to_shadow_screen(const glm::vec4& clip, int W, int 
 }
 
 static void draw_triangle_tile_shadow(
-    ShadowMap& sm,
+    shs::ShadowMap& sm,
     const std::vector<glm::vec3>& tri_verts,
     std::function<VaryingsShadow(const glm::vec3&)> vs,
     glm::ivec2 tile_min, glm::ivec2 tile_max)
@@ -1257,7 +1225,7 @@ static inline glm::vec2 clip_to_screen_xy(const glm::vec4& clip, int w, int h)
 }
 
 static void draw_triangle_tile_color_depth_motion(
-    RT_ColorDepthMotion& rt,
+    shs::RT_ColorDepthMotion& rt,
     const std::vector<glm::vec3>& tri_verts,
     const std::vector<glm::vec3>& tri_norms,
     const std::vector<glm::vec2>& tri_uvs,
@@ -2004,7 +1972,7 @@ public:
     RendererSystem(DemoScene* scene, shs::Job::ThreadedPriorityJobSystem* job_sys)
         : scene(scene), job_system(job_sys)
     {
-        rt = new RT_ColorDepthMotion(
+        rt = new shs::RT_ColorDepthMotion(
             CANVAS_WIDTH, CANVAS_HEIGHT,
             scene->viewer->camera->z_near,
             scene->viewer->camera->z_far,
@@ -2014,7 +1982,7 @@ public:
         shafts_out = new shs::Canvas(CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{20,20,25,255});
         mb_out     = new shs::Canvas(CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{20,20,25,255});
 
-        shadow = new ShadowMap(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
+        shadow     = new shs::ShadowMap(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
 
         shafts_params = LightShaftParams(); // default
         shafts_params.enable        = true;
@@ -2474,11 +2442,11 @@ private:
     DemoScene* scene;
     shs::Job::ThreadedPriorityJobSystem* job_system;
 
-    RT_ColorDepthMotion* rt;
-    shs::Canvas* shafts_out;
-    shs::Canvas* mb_out;
+    shs::RT_ColorDepthMotion* rt;
+    shs::Canvas*              shafts_out;
+    shs::Canvas*              mb_out;
 
-    ShadowMap* shadow;
+    shs::ShadowMap*           shadow;
 
     LightShaftParams shafts_params;
 

@@ -83,7 +83,7 @@ ibl_reflection_strength : тухайн объектын reflection нэмэх/х
 
 // 1: Математик суурьтай тэнгэр
 // 0: Текстур суурьтай тэнгэр буюу skybox
-#define USE_PROCEDURAL_SKY 0
+#define USE_PROCEDURAL_SKY 1
 
 //#define WINDOW_WIDTH      800
 //#define WINDOW_HEIGHT     600
