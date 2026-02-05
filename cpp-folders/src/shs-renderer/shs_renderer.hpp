@@ -942,7 +942,7 @@ namespace shs
     using RenderTarget        = shs::RT_ColorDepth; 
     using RT_ColorDepthMotion = shs::RT_ColorDepthVelocity;
 
-
+    /*
     // SDL_image ашиглан зураг уншиж Texture2D болгох
     // flip_y=true бол SDL (top-left) -> Texture (bottom-left) хөрвүүлэлт хийнэ.
     static inline shs::Texture2D load_texture_sdl_image(const std::string &path, bool flip_y = true)
@@ -982,6 +982,50 @@ namespace shs
         SDL_FreeSurface(converted);
         return tex;
     }
+    */
+    static inline shs::Texture2D load_texture_sdl_image(const std::string& path, bool flip_y = true)
+    {
+        SDL_Surface* loaded = IMG_Load(path.c_str());
+        if (!loaded) {
+            std::cout << "IMG_Load failed: " << path << " | " << IMG_GetError() << std::endl;
+            return shs::Texture2D();
+        }
+
+        // RGBA32-рүү хөрвүүлэх (Little Endian дээр 0xAABBGGRR / санах ойд R,G,B,A)
+        SDL_Surface* converted = SDL_ConvertSurfaceFormat(loaded, SDL_PIXELFORMAT_RGBA32, 0);
+        SDL_FreeSurface(loaded);
+        if (!converted) {
+            std::cout << "SDL_ConvertSurfaceFormat failed: " << path << " | " << SDL_GetError() << std::endl;
+            return shs::Texture2D();
+        }
+
+        int w = converted->w;
+        int h = converted->h;
+
+        shs::Texture2D tex(w, h, shs::Color{ 0,0,0,0 });
+
+        uint8_t* src_pixels = (uint8_t*)converted->pixels;
+        int pitch = converted->pitch;
+
+        for (int y = 0; y < h; ++y) {
+            int ty = flip_y ? (h - 1 - y) : y;
+
+            uint32_t* row = (uint32_t*)(src_pixels + y * pitch);
+            for (int x = 0; x < w; ++x) {
+                uint8_t r, g, b, a;
+                SDL_GetRGBA(row[x], converted->format, &r, &g, &b, &a);
+
+                // renderer/OS оос хамаарч R болон B-ийг солих хэрэг гарч магад
+                // зураг цэнхэр маягтай харагдаад байвал -> {r, g, b, a} ээс {b, g, r, a}-рүү Swap
+                tex.texels.at(x, ty) = shs::Color{ b, g, r, a };
+            }
+        }
+
+        SDL_FreeSurface(converted);
+        return tex;
+    }
+   
+
 
     // Тоон утгыг хязгаарлах (Integer clamp)
     static inline int clamp_i(int v, int lo, int hi) {

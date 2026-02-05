@@ -103,6 +103,7 @@
 
     sudo vcpkg install sdl2
     sudo vcpkg install sdl2-image
+    sudo vcpkg install --recurse sdl2-image[libjpeg-turbo]
     sudo vcpkg install glm
     sudo vcpkg install assimp
 
@@ -127,6 +128,7 @@
     vcpkg install sdl2
     vcpkg install sdl2-image
     vcpkg install sdl2-image:x64-windows-static
+    vcpkg install --recurse sdl2-image[libjpeg-turbo]
     vcpkg install libjpeg-turbo
     vcpkg install glm
     vcpkg install assimp

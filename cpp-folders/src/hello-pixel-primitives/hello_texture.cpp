@@ -43,7 +43,15 @@ int main(int argc, char* argv[])
     SDL_Renderer *renderer = nullptr;
 
     SDL_Init(SDL_INIT_VIDEO);
-    IMG_Init(IMG_INIT_PNG | IMG_INIT_JPG);
+    //IMG_Init(IMG_INIT_PNG | IMG_INIT_JPG);
+    int want = IMG_INIT_PNG | IMG_INIT_JPG;
+    int got = IMG_Init(want);
+    if ((got & want) != want) {
+        std::cout << "IMG_Init missing support. got=" << got
+            << " want=" << want
+            << " err=" << IMG_GetError() << "\n";
+        // If (got & IMG_INIT_JPG)==0 -> your SDL_image has no JPEG support at runtime
+    }
 
     SDL_CreateWindowAndRenderer(WINDOW_WIDTH, WINDOW_HEIGHT, 0, &window, &renderer);
     SDL_RenderSetScale(renderer, 1, 1);
