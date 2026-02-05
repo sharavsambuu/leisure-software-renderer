@@ -1,14 +1,11 @@
 project(Hello3D)
 
-find_package(SDL2 REQUIRED)
-find_package(SDL2_image REQUIRED)
-find_package(glm REQUIRED)
+find_package(SDL2 CONFIG REQUIRED)
+find_package(SDL2_image CONFIG REQUIRED)
+find_package(glm CONFIG REQUIRED)
+find_package(assimp CONFIG REQUIRED)
 
-find_package(Assimp REQUIRED)
-if(ASSIMP_FOUND)
-  include_directories(${ASSIMP_INCLUDE_DIR})
-endif() 
-
+include_directories(${ASSIMP_INCLUDE_DIR})
 include_directories(${SDL2_INCLUDE_DIRS} ${SDL2_IMAGE_INCLUDE_DIR})
 include_directories(${CMAKE_BINARY_DIR})
 include_directories(${stb_SOURCE_DIR}/)
@@ -81,4 +78,4 @@ add_executable(HelloPipelineNormalZbufferDebug hello_pipeline_normal_zbuffer_deb
 target_link_libraries(HelloPipelineNormalZbufferDebug PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm assimp::assimp)
 
 add_executable(HelloPipelineTextureMapping hello_pipeline_texture_mapping.cpp)
-target_link_libraries(HelloPipelineTextureMapping PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm assimp::assimp)
+target_link_libraries(HelloPipelineTextureMapping PRIVATE SDL2::SDL2 SDL2_image::SDL2_image-static glm::glm assimp::assimp)

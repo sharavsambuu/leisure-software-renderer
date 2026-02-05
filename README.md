@@ -92,24 +92,26 @@
           - Poulin-Fournier
 
 
-# Install libraries on ubuntu
+# Install libraries on Ubuntu 24.04
 
-    sudo apt install automake m4 libtool cmake build-essential
-    sudo apt install libssl-dev
-    sudo apt install libsdl2-dev
-    sudo apt install libpng-dev
-    sudo apt install libsdl2-image-dev
-    sudo apt install libglm-dev
-    sudo apt install libassimp-dev
-    sudo ldconfig
+    sudo apt install automake m4 libtool cmake build-essential autoconf autoconf-archive automake libtool-bin python3.12-venv python3.13-venv
 
-    If you are using windows 11, you can use WSL2 with Ubuntu 24.04LTS, and everything is almost same.
+    VCPKG installation on ubuntu 
+    https://lindevs.com/install-vcpkg-on-ubuntu
+
+    export VCPKG_ROOT="/opt/vcpkg"
+
+    sudo vcpkg install sdl2
+    sudo vcpkg install sdl2-image
+    sudo vcpkg install glm
+    sudo vcpkg install assimp
 
     
-    Compilation steps on ubuntu
+  # Compilation steps on ubuntu 24.04
 
     cd cpp-folders && mkdir build && cd build
-    cmake ..
+    export VCPKG_ROOT="/opt/vcpkg"
+    cmake .. -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake
     make -j20
     cd src/hello-pixel-primitives && ./HelloPixel
 
@@ -117,7 +119,7 @@
 # Install libraries on Windows 11
 
     VCPKG related environment variable, system properties -> environment variables -> system variables -> New...
-    change that path according where you installed vcpkg on.
+    change VCPKG path according where you installed.
 
       CMAKE_TOOLCHAIN_FILE = C:\src\misc\vcpkg\scripts\buildsystems\vcpkg.cmake
 
