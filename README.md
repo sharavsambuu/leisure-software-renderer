@@ -126,6 +126,8 @@
 
     vcpkg install sdl2
     vcpkg install sdl2-image
+    vcpkg install sdl2-image:x64-windows-static
+    vcpkg install libjpeg-turbo
     vcpkg install glm
     vcpkg install assimp
 

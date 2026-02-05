@@ -1,4 +1,6 @@
 
+#define SDL_MAIN_HANDLED
+
 #include <iostream>
 #include "shs_renderer.hpp"
 
@@ -21,7 +23,7 @@ void send_batch_jobs(shs::Job::AbstractJobSystem &job_system, int priority)
     }
 }
 
-int main()
+int main(int argc, char* argv[])
 {
     /*
     shs::LocklessPriorityQueue<std::pair<int, int>> test_queue;

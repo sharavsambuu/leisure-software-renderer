@@ -88,6 +88,8 @@ Specular prefilter-ийг base resolution cap хийсэн
 
 */
 
+#define SDL_MAIN_HANDLED
+
 
 #include <string>
 #include <iostream>

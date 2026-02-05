@@ -9,6 +9,7 @@
         Subaru by mednios
         https://free3d.com/3d-model/my-subaru-43836.html
 */
+#define SDL_MAIN_HANDLED
 
 #include <string>
 #include <iostream>

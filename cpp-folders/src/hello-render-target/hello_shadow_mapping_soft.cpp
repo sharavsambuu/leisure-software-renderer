@@ -42,6 +42,8 @@ Soft shadow болгож байгаа шалтгаанууд:
 
 */
 
+#define SDL_MAIN_HANDLED
+
 #include <string>
 #include <iostream>
 #include <vector>
@@ -1134,7 +1136,7 @@ public:
                 for (int tx = 0; tx < cols; tx++) {
 
                     wg_shadow.add(1);
-                    job_system->submit({[=, this, light_vp]() {
+                    job_system->submit({[=, this]() {
 
                         glm::ivec2 t_min(tx * TILE_SIZE_X, ty * TILE_SIZE_Y);
                         glm::ivec2 t_max(std::min((tx + 1) * TILE_SIZE_X, W) - 1,
@@ -1227,7 +1229,7 @@ public:
                 for (int tx = 0; tx < cols; tx++) {
 
                     wg_cam.add(1);
-                    job_system->submit({[=, this, view, proj, light_vp]() {
+                    job_system->submit({[=, this]() {
 
                         glm::ivec2 t_min(tx * TILE_SIZE_X, ty * TILE_SIZE_Y);
                         glm::ivec2 t_max(std::min((tx + 1) * TILE_SIZE_X, W) - 1,

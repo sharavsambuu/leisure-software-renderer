@@ -5,6 +5,12 @@ find_package(SDL2_image CONFIG REQUIRED)
 find_package(glm CONFIG REQUIRED)
 find_package(assimp CONFIG REQUIRED)
 
+if(TARGET SDL2_image::SDL2_image)
+    add_library(SDL2_image::Main ALIAS SDL2_image::SDL2_image)
+else()
+    add_library(SDL2_image::Main ALIAS SDL2_image::SDL2_image-static)
+endif()
+
 include_directories(${ASSIMP_INCLUDE_DIR})
 include_directories(${SDL2_INCLUDE_DIRS} ${SDL2_IMAGE_INCLUDE_DIR})
 include_directories(${CMAKE_BINARY_DIR})
@@ -51,22 +57,22 @@ add_executable(HelloCameraAndPerobjectMotionBlur hello_camera_and_perobject_moti
 target_link_libraries(HelloCameraAndPerobjectMotionBlur PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm assimp::assimp)
 
 add_executable(HelloShadowMapping hello_shadow_mapping.cpp)
-target_link_libraries(HelloShadowMapping PRIVATE SDL2::SDL2 SDL2_image::SDL2_image-static glm::glm assimp::assimp)
+target_link_libraries(HelloShadowMapping PRIVATE SDL2::SDL2 SDL2_image::Main glm::glm assimp::assimp)
 
 add_executable(HelloShadowMappingSoft hello_shadow_mapping_soft.cpp)
-target_link_libraries(HelloShadowMappingSoft PRIVATE SDL2::SDL2 SDL2_image::SDL2_image-static glm::glm assimp::assimp)
+target_link_libraries(HelloShadowMappingSoft PRIVATE SDL2::SDL2 SDL2_image::Main glm::glm assimp::assimp)
 
 add_executable(HelloWater hello_water.cpp)
-target_link_libraries(HelloWater PRIVATE SDL2::SDL2 SDL2_image::SDL2_image-static glm::glm assimp::assimp)
+target_link_libraries(HelloWater PRIVATE SDL2::SDL2 SDL2_image::Main glm::glm assimp::assimp)
 
 
 add_executable(HelloIblSkybox hello_ibl_skybox.cpp)
-target_link_libraries(HelloIblSkybox PRIVATE SDL2::SDL2 SDL2_image::SDL2_image-static glm::glm assimp::assimp)
+target_link_libraries(HelloIblSkybox PRIVATE SDL2::SDL2 SDL2_image::Main glm::glm assimp::assimp)
 
 
 add_executable(HelloIblSkyboxOpt hello_ibl_skybox_optimized.cpp)
 target_compile_features(HelloIblSkyboxOpt PRIVATE cxx_std_20)
-target_link_libraries(HelloIblSkyboxOpt PRIVATE xsimd SDL2::SDL2 SDL2_image::SDL2_image-static glm::glm assimp::assimp)
+target_link_libraries(HelloIblSkyboxOpt PRIVATE xsimd SDL2::SDL2 SDL2_image::Main glm::glm assimp::assimp)
 if (MSVC)
   target_compile_options(HelloIblSkyboxOpt PRIVATE /O2 /fp:fast /arch:AVX2)
 else()
@@ -75,7 +81,7 @@ endif()
 
 add_executable(HelloIblSkyboxXSIMD hello_ibl_skybox_xsimd.cpp)
 target_compile_features(HelloIblSkyboxXSIMD PRIVATE cxx_std_20)
-target_link_libraries(HelloIblSkyboxXSIMD PRIVATE xsimd SDL2::SDL2 SDL2_image::SDL2_image-static glm::glm assimp::assimp)
+target_link_libraries(HelloIblSkyboxXSIMD PRIVATE xsimd SDL2::SDL2 SDL2_image::Main glm::glm assimp::assimp)
 if (MSVC)
   target_compile_options(HelloIblSkyboxXSIMD PRIVATE /O2 /fp:fast /arch:AVX2)
 else()
@@ -85,7 +91,7 @@ endif()
 
 add_executable(HelloPBR hello_pbr.cpp)
 target_compile_features(HelloPBR PRIVATE cxx_std_20)
-target_link_libraries(HelloPBR PRIVATE xsimd SDL2::SDL2 SDL2_image::SDL2_image-static glm::glm assimp::assimp)
+target_link_libraries(HelloPBR PRIVATE xsimd SDL2::SDL2 SDL2_image::Main glm::glm assimp::assimp)
 if (MSVC)
   target_compile_options(HelloPBR PRIVATE /O2 /fp:fast /arch:AVX2)
 else()
@@ -94,7 +100,7 @@ endif()
 
 add_executable(HelloPBRLightShafts hello_pbr_light_shafts.cpp)
 target_compile_features(HelloPBRLightShafts PRIVATE cxx_std_20)
-target_link_libraries(HelloPBRLightShafts PRIVATE xsimd SDL2::SDL2 SDL2_image::SDL2_image-static glm::glm assimp::assimp)
+target_link_libraries(HelloPBRLightShafts PRIVATE xsimd SDL2::SDL2 SDL2_image::Main glm::glm assimp::assimp)
 if (MSVC)
   target_compile_options(HelloPBRLightShafts PRIVATE /O2 /fp:fast /arch:AVX2)
 else()

@@ -5,6 +5,12 @@ find_package(SDL2_image CONFIG REQUIRED)
 find_package(glm CONFIG REQUIRED)
 find_package(assimp CONFIG REQUIRED)
 
+if(TARGET SDL2_image::SDL2_image)
+    add_library(SDL2_image::Main ALIAS SDL2_image::SDL2_image)
+else()
+    add_library(SDL2_image::Main ALIAS SDL2_image::SDL2_image-static)
+endif()
+
 include_directories(${ASSIMP_INCLUDE_DIR})
 include_directories(${SDL2_INCLUDE_DIRS} ${SDL2_IMAGE_INCLUDE_DIR})
 include_directories(${CMAKE_BINARY_DIR})
@@ -43,5 +49,6 @@ target_link_libraries(HelloCirclePoly Threads::Threads ${SDL2_LIBRARIES} glm::gl
 add_executable(HelloWatch hello_watch.cpp)
 target_link_libraries(HelloWatch Threads::Threads ${SDL2_LIBRARIES} glm::glm)
 
+
 add_executable(HelloTexture hello_texture.cpp)
-target_link_libraries(HelloTexture PRIVATE Threads::Threads SDL2::SDL2 SDL2_image::SDL2_image-static)
+target_link_libraries(HelloTexture PRIVATE Threads::Threads SDL2::SDL2 SDL2_image::Main)

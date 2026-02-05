@@ -67,6 +67,8 @@ IBL ARCHITECTURE (програм эхлэхэд нэг удаа precompute):
 
 */
 
+#define SDL_MAIN_HANDLED
+
 #include <string>
 #include <iostream>
 #include <vector>

@@ -58,6 +58,8 @@ ibl_reflection_strength : тухайн объектын reflection нэмэх/х
 
 */
 
+#define SDL_MAIN_HANDLED
+
 #include <string>
 #include <iostream>
 #include <vector>

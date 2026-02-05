@@ -11,7 +11,10 @@
     - 3D          : LH, +Z forward, +Y up, +X right
     - Screen      : y down
     - shs::Canvas : y up (bottom-left)
+
 */
+
+#define SDL_MAIN_HANDLED
 
 #include <string>
 #include <iostream>

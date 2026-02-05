@@ -75,6 +75,8 @@ Screen-space ашиглагдсан шалтгаан
 */
 
 
+#define SDL_MAIN_HANDLED
+
 #include <string>
 #include <iostream>
 #include <vector>

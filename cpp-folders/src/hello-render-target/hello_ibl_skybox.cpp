@@ -14,6 +14,8 @@
     - Shadow mapping + Motion blur
 */
 
+#define SDL_MAIN_HANDLED
+
 #include <string>
 #include <iostream>
 #include <vector>

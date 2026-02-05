@@ -1,3 +1,5 @@
+#define SDL_MAIN_HANDLED
+
 #include <iostream>
 #include <chrono>
 #include "shs_renderer.hpp"
@@ -53,7 +55,7 @@ void run_task_manager(shs::Job::AbstractJobSystem &job_system)
     }, shs::Job::PRIORITY_HIGH});
 }
 
-int main()
+int main(int argc, char* argv[])
 {
 
     shs::Job::AbstractJobSystem *lockless_job_system = new shs::Job::ThreadedLocklessPriorityJobSystem(CONCURRENCY_COUNT);
