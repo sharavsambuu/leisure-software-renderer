@@ -35,7 +35,7 @@ static int randi(std::mt19937 &rng, int a, int b)
     return dist(rng);
 }
 
-int main()
+int main(int argc, char* argv[])
 {
     SDL_Window   *window   = nullptr;
     SDL_Renderer *renderer = nullptr;

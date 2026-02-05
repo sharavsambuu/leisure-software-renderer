@@ -64,7 +64,7 @@ shs::Color fragment_shader(glm::vec2 uniform_uv, float uniform_time)
 };
 
 
-int main()
+int main(int argc, char* argv[])
 {
 
     SDL_Window   *window   = nullptr;

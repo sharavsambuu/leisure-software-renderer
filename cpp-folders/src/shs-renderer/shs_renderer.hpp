@@ -89,15 +89,10 @@
 #include <glm/gtc/constants.hpp>
 #include <glm/gtc/noise.hpp>
 
-#if defined(__linux__) || defined(__unix__) || defined(__APPLE__)
-    #include <assimp/Importer.hpp>
-    #include <assimp/scene.h>
-    #include <assimp/postprocess.h>
-#else
-    #include <Importer.hpp>
-    #include <scene.h>
-    #include <postprocess.h>
-#endif
+#include <assimp/Importer.hpp>
+#include <assimp/scene.h>
+#include <assimp/postprocess.h>
+
 
 namespace shs
 {

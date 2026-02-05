@@ -14,13 +14,6 @@
         - recursively assemble rasterizable small triangle chunks into the list
         - submit them parallel rasterizer job system
     
-    
-    Some mental exercises around potential demos I can produce
-    What's up with OpenCL?
-    Can I use OpenCL where it makes sense?
-    Can I use OpenCL for global illumination demo in the future?
-    Can I use OpenCL for Path Tracing or Ray Tracing demo also in the future?
-    
 
     DONE Fix the coordinate system transformation and convention mess, write a note.
     DONE Implement Thread based job system using lockless priority queue
@@ -99,7 +92,8 @@
           - Poulin-Fournier
 
 
-# Libraries
+# Install libraries on ubuntu
+
     sudo apt install automake m4 libtool cmake build-essential
     sudo apt install libssl-dev
     sudo apt install libsdl2-dev
@@ -109,14 +103,36 @@
     sudo apt install libassimp-dev
     sudo ldconfig
 
-    If you are using windows 10, you can use WSL2 with Ubuntu 24.04LTS, and everything is almost same.
+    If you are using windows 11, you can use WSL2 with Ubuntu 24.04LTS, and everything is almost same.
 
+    
+    Compilation steps on ubuntu
 
-# Compilation steps
     cd cpp-folders && mkdir build && cd build
     cmake ..
     make -j20
     cd src/hello-pixel-primitives && ./HelloPixel
+
+
+# Install libraries on Windows 11
+
+    VCPKG related environment variable, system properties -> environment variables -> system variables -> New...
+    change that path according where you installed vcpkg on.
+
+      CMAKE_TOOLCHAIN_FILE = C:\src\misc\vcpkg\scripts\buildsystems\vcpkg.cmake
+
+
+    vcpkg install sdl2
+    vcpkg install sdl2-image
+    vcpkg install glm
+    vcpkg install assimp
+
+
+    Use CMake-GUI with Visual Studio 17 2022
+    
+
+
+
 
 
 # References

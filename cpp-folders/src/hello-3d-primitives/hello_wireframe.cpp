@@ -8,7 +8,7 @@
  * Rendering 3D object on the 2D surface by line by line.
  */
 
-int main()
+int main(int argc, char* argv[])
 {
 
     std::cout << "Hello Wireframe" << std::endl;

@@ -2327,14 +2327,13 @@ public:
 
 int main(int argc, char* argv[])
 {
-    (void)argc; (void)argv;
-
+    
     if (SDL_Init(SDL_INIT_VIDEO) < 0) return 1;
     IMG_Init(IMG_INIT_PNG | IMG_INIT_JPG);
 
     auto* job_system = new shs::Job::ThreadedPriorityJobSystem(THREAD_COUNT);
 
-    SDL_Window* window = nullptr;
+    SDL_Window*   window   = nullptr;
     SDL_Renderer* renderer = nullptr;
     SDL_CreateWindowAndRenderer(WINDOW_WIDTH, WINDOW_HEIGHT, 0, &window, &renderer);
 

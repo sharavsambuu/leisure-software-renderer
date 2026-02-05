@@ -43,7 +43,7 @@ static void draw_tick(shs::Canvas &canvas, int cx, int cy, double angle_deg, int
     shs::Canvas::draw_line(canvas, x0, y0, x1, y1, p);
 }
 
-int main()
+int main(int argc, char* argv[])
 {
     SDL_Window   *window   = nullptr;
     SDL_Renderer *renderer = nullptr;

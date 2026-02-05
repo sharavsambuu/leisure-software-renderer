@@ -32,7 +32,7 @@ shs::Color fragment_shader(std::array<double, 2> uniform_uv, double uniform_time
 };
 
 
-int main()
+int main(int argc, char* argv[])
 {
 
     SDL_Window   *window   = nullptr;

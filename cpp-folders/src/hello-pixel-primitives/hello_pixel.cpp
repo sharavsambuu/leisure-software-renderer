@@ -16,7 +16,7 @@
 #define CANVAS_HEIGHT     240
 
 
-int main()
+int main(int argc, char* argv[])
 {
 
     SDL_Window   *window   = nullptr;
