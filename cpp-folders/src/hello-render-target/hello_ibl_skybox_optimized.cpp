@@ -554,7 +554,7 @@ public:
     {
         this->position       = position;
         this->scale          = scale;
-        this->geometry       = new shs::ModelGeometry("./obj/subaru/SUBARU_1.obj");
+        this->geometry       = new shs::ModelGeometry("./obj/subaru/SUBARU_1.rawobj");
         this->rotation_angle = 0.0f;
         this->albedo         = albedo;
         this->has_prev_mvp   = false;

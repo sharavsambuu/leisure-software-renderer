@@ -119,11 +119,6 @@ shs::Color blinn_phong_tex_fragment_shader(const shs::Varyings& in, const Unifor
 // SCENE & OBJECT CLASSES
 // ==========================================
 
-// Using standardized shs::Viewer
-using Viewer = shs::Viewer;
-
-// Using standardized shs::ModelGeometry
-using ModelGeometry = shs::ModelGeometry;
 
 class SubaruObject : public shs::AbstractObject3D
 {
@@ -133,7 +128,7 @@ public:
         this->position       = position;
         this->scale          = scale;
         this->color          = color;
-        this->geometry       = new ModelGeometry("./obj/subaru/SUBARU_1.obj");
+        this->geometry       = new shs::ModelGeometry("./obj/subaru/SUBARU_1.rawobj");
         this->rotation_angle = 0.0f;
         this->albedo         = albedo;
     }
@@ -153,7 +148,7 @@ public:
     }
     void render() override {}
 
-    ModelGeometry        *geometry;
+    shs::ModelGeometry   *geometry;
     const shs::Texture2D *albedo;
 
     glm::vec3      scale;
@@ -165,7 +160,7 @@ public:
 class HelloScene : public shs::AbstractSceneState
 {
 public:
-    HelloScene(shs::Canvas *canvas, Viewer *viewer, const shs::Texture2D *albedo)
+    HelloScene(shs::Canvas *canvas, shs::Viewer *viewer, const shs::Texture2D *albedo)
     {
         this->canvas = canvas;
         this->viewer = viewer;
@@ -183,7 +178,7 @@ public:
 
     std::vector<shs::AbstractObject3D *>  scene_objects;
     shs::Canvas                          *canvas;
-    Viewer                               *viewer;
+    shs::Viewer                          *viewer;
     glm::vec3                             light_direction;
 };
 
@@ -452,7 +447,7 @@ int main(int argc, char* argv[])
 
     shs::Texture2D car_tex = shs::load_texture_sdl_image("./obj/subaru/SUBARU1_M.bmp", true);
 
-    Viewer          *viewer      = new Viewer(glm::vec3(0.0f, 5.0f, -35.0f), 50.0f, CANVAS_WIDTH, CANVAS_HEIGHT);
+    shs::Viewer     *viewer      = new shs::Viewer(glm::vec3(0.0f, 5.0f, -35.0f), 50.0f, CANVAS_WIDTH, CANVAS_HEIGHT);
     HelloScene      *hello_scene = new HelloScene(main_canvas, viewer, &car_tex);
     SystemProcessor *sys         = new SystemProcessor(hello_scene, job_system);
 
