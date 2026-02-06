@@ -401,7 +401,7 @@ public:
     {
         this->position       = position;
         this->scale          = scale;
-        this->geometry       = new ModelGeometry("./obj/subaru/SUBARU_1.rawobj");
+        this->geometry       = new ModelGeometry("./assets/obj/subaru/SUBARU_1.rawobj");
         this->rotation_angle = 0.0f;
         this->albedo         = albedo;
         this->has_prev_mvp   = false;
@@ -441,7 +441,7 @@ class MonkeyObject : public shs::AbstractObject3D
 public:
     MonkeyObject(glm::vec3 base_pos, glm::vec3 scale)
     {
-        this->geometry = new ModelGeometry("./obj/monkey/monkey.rawobj");
+        this->geometry = new ModelGeometry("./assets/obj/monkey/monkey.rawobj");
 
         this->base_position = base_pos;
         this->position      = base_pos;
@@ -2344,7 +2344,7 @@ int main(int argc, char* argv[])
     SDL_Surface* screen_surface = screen_canvas->create_sdl_surface();
     SDL_Texture* screen_texture = SDL_CreateTextureFromSurface(renderer, screen_surface);
 
-    shs::Texture2D car_tex = shs::load_texture_sdl_image("./obj/subaru/SUBARU1_M.bmp", true);
+    shs::Texture2D car_tex = shs::load_texture_sdl_image("./assets/obj/subaru/SUBARU1_M.bmp", true);
 
     Viewer*    viewer    = new Viewer(glm::vec3(0.0f, 10.0f, -42.0f), 55.0f);
     DemoScene* scene     = new DemoScene(screen_canvas, viewer, &car_tex);

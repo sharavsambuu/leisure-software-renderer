@@ -91,7 +91,7 @@ public:
     MonkeyObject(glm::vec3 position, glm::vec3 scale) {
         this->position       = position;
         this->scale          = scale;
-        this->geometry       = new ModelGeometry("./obj/monkey/monkey.rawobj");
+        this->geometry       = new ModelGeometry("./assets/obj/monkey/monkey.rawobj");
         this->rotation_angle = 0.0f;
     }
     ~MonkeyObject() { delete geometry; }

@@ -193,12 +193,12 @@ struct CubeMapLDR
 static inline shs::CubeMap load_cubemap_water_scene(const std::string& folder)
 {
     shs::CubeMap cm;
-    cm.face[0] = shs::load_texture_sdl_image(folder + "/right.jpg",  true);
-    cm.face[1] = shs::load_texture_sdl_image(folder + "/left.jpg",   true);
-    cm.face[2] = shs::load_texture_sdl_image(folder + "/top.jpg",    true);
-    cm.face[3] = shs::load_texture_sdl_image(folder + "/bottom.jpg", true);
-    cm.face[4] = shs::load_texture_sdl_image(folder + "/front.jpg",  true);
-    cm.face[5] = shs::load_texture_sdl_image(folder + "/back.jpg",   true);
+    cm.face[0] = shs::load_texture_sdl_image(folder + "/right.png",  true);
+    cm.face[1] = shs::load_texture_sdl_image(folder + "/left.png",   true);
+    cm.face[2] = shs::load_texture_sdl_image(folder + "/top.png",    true);
+    cm.face[3] = shs::load_texture_sdl_image(folder + "/bottom.png", true);
+    cm.face[4] = shs::load_texture_sdl_image(folder + "/front.png",  true);
+    cm.face[5] = shs::load_texture_sdl_image(folder + "/back.png",   true);
     return cm;
 }
 
@@ -600,7 +600,7 @@ public:
     {
         this->position       = position;
         this->scale          = scale;
-        this->geometry       = new ModelGeometry("./obj/subaru/SUBARU_1.rawobj");
+        this->geometry       = new ModelGeometry("./assets/obj/subaru/SUBARU_1.rawobj");
         this->rotation_angle = 0.0f;
         this->albedo         = albedo;
         this->has_prev_mvp   = false;
@@ -640,7 +640,7 @@ class MonkeyObject : public shs::AbstractObject3D
 public:
     MonkeyObject(glm::vec3 base_pos, glm::vec3 scale)
     {
-        this->geometry = new ModelGeometry("./obj/monkey/monkey.rawobj");
+        this->geometry = new ModelGeometry("./assets/obj/monkey/monkey.rawobj");
 
         this->base_position      = base_pos;
         this->position           = base_pos;
@@ -2125,7 +2125,7 @@ int main(int argc, char* argv[])
     SDL_Texture* screen_texture = SDL_CreateTextureFromSurface(renderer, screen_surface);
 
     // Texture load (Subaru albedo)
-    shs::Texture2D car_tex = shs::load_texture_sdl_image("./obj/subaru/SUBARU1_M.bmp", true);
+    shs::Texture2D car_tex = shs::load_texture_sdl_image("./assets/obj/subaru/SUBARU1_M.bmp", true);
 
     // Тэнгэрийн эх үүсвэрийг тохируулах (Skybox эсвэл Procedural)
     shs::AbstractSky* active_sky = nullptr;
@@ -2137,9 +2137,9 @@ int main(int argc, char* argv[])
     std::cout << "STATUS : Using Analytic Procedural Sky" << std::endl;
 #else
     // Текстурт суурилсан тэнгэр (Skybox)
-    ldr_cm = load_cubemap_water_scene("./images/skybox/water_scene");
+    ldr_cm = load_cubemap_water_scene("./assets/images/skybox/water_scene");
     if (!ldr_cm.valid()) {
-        std::cout << "Warning: Skybox cubemap load failed (images/skybox/water_scene/*.jpg)" << std::endl;
+        std::cout << "Warning: Skybox cubemap load failed (assets/images/skybox/water_scene/*.png)" << std::endl;
     } else {
         // Texture Skybox-ийг үүсгэх (Default 1.0f intensity, давхар exposure хийхгүйн тулд)
         active_sky = new shs::CubeMapSky(ldr_cm, 1.0f);

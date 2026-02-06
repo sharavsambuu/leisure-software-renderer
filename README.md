@@ -92,7 +92,7 @@
           - Poulin-Fournier
 
 
-# Install libraries on Ubuntu 24.04
+# On Ubuntu 24.04, MacOS
 
     sudo apt install automake m4 libtool cmake build-essential autoconf autoconf-archive automake libtool-bin python3.12-venv python3.13-venv
 
@@ -106,9 +106,10 @@
     sudo vcpkg install --recurse sdl2-image[libjpeg-turbo]
     sudo vcpkg install glm
     sudo vcpkg install assimp
+    sudo vcpkg install physx:x64-linux
 
     
-  # Compilation steps on ubuntu 24.04
+    Compilation steps on ubuntu 24.04
 
     cd cpp-folders && mkdir build && cd build
     export VCPKG_ROOT="/opt/vcpkg"
@@ -117,7 +118,24 @@
     cd src/hello-pixel-primitives && ./HelloPixel
 
 
-# Install libraries on Windows 11
+
+    On MacOS, it is similar
+    brew install vcpkg
+    git clone https://github.com/microsoft/vcpkg.git "$HOME/vcpkg"
+    export VCPKG_ROOT="$HOME/vcpkg"
+
+    Install similar library packages through vcpkg but without sudo
+
+    cd cpp-folders && mkdir build && cd build
+    export VCPKG_ROOT="$HOME/vcpkg"
+    cmake .. -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake
+    make -j20
+    cd src/hello-pixel-primitives && ./HelloPixel
+
+
+
+
+# On Windows 11
 
     VCPKG related environment variable, system properties -> environment variables -> system variables -> New...
     change VCPKG path according where you installed.
@@ -132,12 +150,11 @@
     vcpkg install libjpeg-turbo
     vcpkg install glm
     vcpkg install assimp
+    vcpkg install physx:x64-windows
 
 
     Use CMake-GUI with Visual Studio 17 2022
     
-
-
 
 
 

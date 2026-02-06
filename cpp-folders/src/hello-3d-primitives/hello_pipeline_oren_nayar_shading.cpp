@@ -110,7 +110,7 @@ using ModelGeometry = shs::ModelGeometry;
 
 class MonkeyObject : public shs::AbstractObject3D {
 public:
-    MonkeyObject(glm::vec3 pos, glm::vec3 scl, shs::Color col) : position(pos), scale(scl), color(col), rotation_angle(-30.0f) { geometry = new ModelGeometry("./obj/monkey/monkey.rawobj"); }
+    MonkeyObject(glm::vec3 pos, glm::vec3 scl, shs::Color col) : position(pos), scale(scl), color(col), rotation_angle(-30.0f) { geometry = new ModelGeometry("./assets/obj/monkey/monkey.rawobj"); }
     ~MonkeyObject() { delete geometry; }
     glm::mat4 get_world_matrix() override {
         return glm::translate(glm::mat4(1.0f), position) * glm::rotate(glm::mat4(1.0f), glm::radians(rotation_angle), glm::vec3(0,1,0)) * glm::scale(glm::mat4(1.0f), scale);

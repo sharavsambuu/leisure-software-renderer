@@ -1017,7 +1017,8 @@ namespace shs
 
                 // renderer/OS оос хамаарч R болон B-ийг солих хэрэг гарч магад
                 // зураг цэнхэр маягтай харагдаад байвал -> {r, g, b, a} ээс {b, g, r, a}-рүү Swap
-                tex.texels.at(x, ty) = shs::Color{ b, g, r, a };
+                //tex.texels.at(x, ty) = shs::Color{ b, g, r, a };
+                tex.texels.at(x, ty) = shs::Color{ r, g, b, a };
             }
         }
 

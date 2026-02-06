@@ -119,50 +119,7 @@ shs::Color depth_fragment_shader(const shs::Varyings& in, const Uniforms& u)
     };
 }
 
-// ==========================================
-// SCENE & OBJECT CLASSES
-// ==========================================
-/*
-class Viewer
-{
-public:
-    Viewer(glm::vec3 position, float speed)
-    {
-        this->position              = position;
-        this->speed                 = speed;
-        this->camera                = new shs::Camera3D();
-        this->camera->position      = this->position;
-        this->camera->width         = float(CANVAS_WIDTH);
-        this->camera->height        = float(CANVAS_HEIGHT);
-        this->camera->field_of_view = 60.0f;
-        this->camera->z_near        = 0.1f;
-        this->camera->z_far         = 1000.0f;
-        
-        this->horizontal_angle = 0.0f;
-        this->vertical_angle   = 0.0f;
-    }
-    ~Viewer() { delete camera; }
 
-    void update()
-    {
-        this->camera->position         = this->position;
-        this->camera->horizontal_angle = this->horizontal_angle;
-        this->camera->vertical_angle   = this->vertical_angle;
-        this->camera->update(); 
-    }
-
-    glm::vec3 get_direction_vector() { return this->camera->direction_vector; }
-    glm::vec3 get_right_vector() { return this->camera->right_vector; }
-
-    shs::Camera3D *camera;
-    glm::vec3      position;
-    float          horizontal_angle;
-    float          vertical_angle;
-    float          speed;
-};
-*/
-
-// Using standardized shs::ModelGeometry
 using ModelGeometry = shs::ModelGeometry;
 
 class MonkeyObject : public shs::AbstractObject3D
@@ -173,7 +130,7 @@ public:
         this->position       = position;
         this->scale          = scale;
         this->color          = color;
-        this->geometry       = new ModelGeometry("./obj/monkey/monkey.rawobj");
+        this->geometry       = new ModelGeometry("./assets/obj/monkey/monkey.rawobj");
         this->rotation_angle = -30.0f; 
     }
     ~MonkeyObject() { delete this->geometry; }
@@ -458,13 +415,13 @@ int main(int argc, char* argv[])
     SDL_Renderer *renderer = nullptr;
     SDL_CreateWindowAndRenderer(WINDOW_WIDTH, WINDOW_HEIGHT, 0, &window, &renderer);
     
-    shs::Canvas *main_canvas = new shs::Canvas(CANVAS_WIDTH, CANVAS_HEIGHT);
+    shs::Canvas *main_canvas     = new shs::Canvas(CANVAS_WIDTH, CANVAS_HEIGHT);
     SDL_Surface *main_sdlsurface = main_canvas->create_sdl_surface();
-    SDL_Texture *screen_texture = SDL_CreateTextureFromSurface(renderer, main_sdlsurface);
+    SDL_Texture *screen_texture  = SDL_CreateTextureFromSurface(renderer, main_sdlsurface);
 
-    shs::Viewer *viewer = new shs::Viewer(glm::vec3(0.0f, 5.0f, -20.0f), 50.0f, CANVAS_WIDTH, CANVAS_HEIGHT);
-    HelloScene *hello_scene = new HelloScene(main_canvas, viewer);
-    SystemProcessor *sys = new SystemProcessor(hello_scene, job_system);
+    shs::Viewer     *viewer      = new shs::Viewer(glm::vec3(0.0f, 5.0f, -20.0f), 50.0f, CANVAS_WIDTH, CANVAS_HEIGHT);
+    HelloScene      *hello_scene = new HelloScene(main_canvas, viewer);
+    SystemProcessor *sys         = new SystemProcessor(hello_scene, job_system);
 
     bool exit = false;
     SDL_Event event_data;

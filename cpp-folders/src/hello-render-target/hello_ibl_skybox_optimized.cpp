@@ -554,7 +554,7 @@ public:
     {
         this->position       = position;
         this->scale          = scale;
-        this->geometry       = new shs::ModelGeometry("./obj/subaru/SUBARU_1.rawobj");
+        this->geometry       = new shs::ModelGeometry("./assets/obj/subaru/SUBARU_1.rawobj");
         this->rotation_angle = 0.0f;
         this->albedo         = albedo;
         this->has_prev_mvp   = false;
@@ -594,7 +594,7 @@ class MonkeyObject : public shs::AbstractObject3D
 public:
     MonkeyObject(glm::vec3 base_pos, glm::vec3 scale)   
     {
-        this->geometry = new shs::ModelGeometry("./obj/monkey/monkey.rawobj");
+        this->geometry = new shs::ModelGeometry("./assets/obj/monkey/monkey.rawobj");
 
         this->base_position      = base_pos;
         this->position           = base_pos;
@@ -2050,20 +2050,20 @@ int main(int argc, char* argv[])
     SDL_Texture* screen_texture = SDL_CreateTextureFromSurface(renderer, screen_surface);
 
     // Texture load (Subaru albedo)
-    shs::Texture2D car_tex = shs::load_texture_sdl_image("./obj/subaru/SUBARU1_M.bmp", true);
+    shs::Texture2D car_tex = shs::load_texture_sdl_image("./assets/obj/subaru/SUBARU1_M.bmp", true);
 
     // Skybox cubemap load (LDR -> CubeMapSky (AbstractSky))
     shs::CubeMap ldr_cm;
-    ldr_cm.face[0] = shs::load_texture_sdl_image("./images/skybox/water_scene/right.jpg",  true);
-    ldr_cm.face[1] = shs::load_texture_sdl_image("./images/skybox/water_scene/left.jpg",   true);
-    ldr_cm.face[2] = shs::load_texture_sdl_image("./images/skybox/water_scene/top.jpg",    true);
-    ldr_cm.face[3] = shs::load_texture_sdl_image("./images/skybox/water_scene/bottom.jpg", true);
-    ldr_cm.face[4] = shs::load_texture_sdl_image("./images/skybox/water_scene/front.jpg",  true);
-    ldr_cm.face[5] = shs::load_texture_sdl_image("./images/skybox/water_scene/back.jpg",   true);
+    ldr_cm.face[0] = shs::load_texture_sdl_image("./assets/images/skybox/water_scene/right.png",  true);
+    ldr_cm.face[1] = shs::load_texture_sdl_image("./assets/images/skybox/water_scene/left.png",   true);
+    ldr_cm.face[2] = shs::load_texture_sdl_image("./assets/images/skybox/water_scene/top.png",    true);
+    ldr_cm.face[3] = shs::load_texture_sdl_image("./assets/images/skybox/water_scene/bottom.png", true);
+    ldr_cm.face[4] = shs::load_texture_sdl_image("./assets/images/skybox/water_scene/front.png",  true);
+    ldr_cm.face[5] = shs::load_texture_sdl_image("./assets/images/skybox/water_scene/back.png",   true);
 
     shs::AbstractSky* active_sky = nullptr;
     if (!ldr_cm.valid()) {
-        std::cout << "Warning: Skybox cubemap load failed (images/skybox/water_scene/*.jpg)" << std::endl;
+        std::cout << "Warning: Skybox cubemap load failed (images/skybox/water_scene/*.png)" << std::endl;
     } else {
         // Use shared CubeMapSky (1.0f intensity for LDR look)
         active_sky = new shs::CubeMapSky(ldr_cm, 1.0f);
@@ -2073,7 +2073,7 @@ int main(int argc, char* argv[])
     // Skybox cubemap load (LDR)
     // CubeMap sky = load_cubemap_water_scene("./images/skybox/water_scene");
     // if (!sky.valid()) {
-    //    std::cout << "Warning: Skybox cubemap load failed (images/skybox/water_scene/*.jpg)" << std::endl;
+    //    std::cout << "Warning: Skybox cubemap load failed (images/skybox/water_scene/*.png)" << std::endl;
     // }
 
     // IBL precompute (програм эхлэхэд нэг удаа)

@@ -288,7 +288,7 @@ public:
         this->position       = position;
         this->scale          = scale;
         this->color          = color;
-        this->geometry       = new ModelGeometry("./obj/monkey/monkey.rawobj");
+        this->geometry       = new ModelGeometry("./assets/obj/monkey/monkey.rawobj");
         this->rotation_angle = 0.0f;
     }
     ~MonkeyObject() { delete this->geometry; }

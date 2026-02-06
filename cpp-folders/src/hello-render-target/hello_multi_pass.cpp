@@ -411,7 +411,7 @@ public:
         this->viewer = viewer;
         this->light_direction = glm::normalize(glm::vec3(-1.0f, -0.4f, 1.0f));
 
-        this->shared_monkey_geometry = new ModelGeometry("./obj/monkey/monkey.rawobj");
+        this->shared_monkey_geometry = new ModelGeometry("./assets/obj/monkey/monkey.rawobj");
 
         int idx = 0;
         for (int gz = 0; gz < GRID_Z; gz++) {

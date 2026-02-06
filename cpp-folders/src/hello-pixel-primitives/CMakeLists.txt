@@ -32,7 +32,9 @@ endif()
 set(CMAKE_CXX_FLAGS_DEBUG "-g")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
-file(COPY images DESTINATION "${CMAKE_CURRENT_BINARY_DIR}")
+
+file(COPY ../assets/images/box_texture.png DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/images/box_texture.png")
+
 
 add_executable(HelloPixel hello_pixel.cpp)
 target_link_libraries(HelloPixel PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES})

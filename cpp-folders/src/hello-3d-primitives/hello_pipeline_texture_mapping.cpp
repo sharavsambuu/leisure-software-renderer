@@ -128,7 +128,7 @@ public:
         this->position       = position;
         this->scale          = scale;
         this->color          = color;
-        this->geometry       = new shs::ModelGeometry("./obj/subaru/SUBARU_1.rawobj");
+        this->geometry       = new shs::ModelGeometry("./assets/obj/subaru/SUBARU_1.rawobj");
         this->rotation_angle = 0.0f;
         this->albedo         = albedo;
     }
@@ -445,7 +445,7 @@ int main(int argc, char* argv[])
     SDL_Surface *main_sdlsurface = main_canvas->create_sdl_surface();
     SDL_Texture *screen_texture  = SDL_CreateTextureFromSurface(renderer, main_sdlsurface);
 
-    shs::Texture2D car_tex = shs::load_texture_sdl_image("./obj/subaru/SUBARU1_M.bmp", true);
+    shs::Texture2D car_tex = shs::load_texture_sdl_image("./assets/obj/subaru/SUBARU1_M.bmp", true);
 
     shs::Viewer     *viewer      = new shs::Viewer(glm::vec3(0.0f, 5.0f, -35.0f), 50.0f, CANVAS_WIDTH, CANVAS_HEIGHT);
     HelloScene      *hello_scene = new HelloScene(main_canvas, viewer, &car_tex);

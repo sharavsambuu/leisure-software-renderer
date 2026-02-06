@@ -60,7 +60,7 @@ int main(int argc, char* argv[])
     SDL_Surface *main_sdlsurface = main_canvas->create_sdl_surface();
     SDL_Texture *screen_texture  = SDL_CreateTextureFromSurface(renderer, main_sdlsurface);
 
-    std::string image_path = "./images/box_texture.jpg";
+    std::string image_path = "./images/box_texture.png";
     shs::Texture2D tex = shs::load_texture_sdl_image(image_path, true);
     if (!tex.valid()) {
         std::cout << "Texture load failed..\n";
