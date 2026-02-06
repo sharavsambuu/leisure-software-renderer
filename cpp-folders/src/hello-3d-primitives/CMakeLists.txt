@@ -55,11 +55,15 @@ add_executable(HelloFlatShadingXSIMD hello_flat_shading_xsimd.cpp)
 target_compile_features(HelloFlatShadingXSIMD PRIVATE cxx_std_20)
 target_link_libraries(HelloFlatShadingXSIMD PRIVATE xsimd ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm assimp::assimp)
 if (MSVC)
-  target_compile_options(HelloFlatShadingXSIMD PRIVATE /O2 /fp:fast /arch:AVX2)
+    target_compile_options(HelloFlatShadingXSIMD PRIVATE /O2 /fp:fast /arch:AVX2)
+elseif(APPLE AND CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
+    # M1/M2/M3 specific flags
+    # -O3 is usually enough as Clang optimizes for NEON automatically on ARM64
+    target_compile_options(HelloFlatShadingXSIMD PRIVATE -O3 -ffast-math)
 else()
-  target_compile_options(HelloFlatShadingXSIMD PRIVATE -O3 -ffast-math -mavx2 -mfma)
+    # Standard Linux/Intel Mac x86_64 flags
+    target_compile_options(HelloFlatShadingXSIMD PRIVATE -O3 -ffast-math -mavx2 -mfma)
 endif()
-
 
 add_executable(HelloPipelineFlatShading hello_pipeline_flat_shading.cpp)
 target_link_libraries(HelloPipelineFlatShading PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm assimp::assimp)
