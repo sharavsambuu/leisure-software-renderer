@@ -1,6 +1,5 @@
 #define SDL_MAIN_HANDLED
 
-#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
@@ -19,46 +18,50 @@
 
 namespace
 {
-constexpr uint32_t WIN_W = 960;
-constexpr uint32_t WIN_H = 640;
+constexpr int kDefaultW = 960;
+constexpr int kDefaultH = 640;
 
 std::vector<char> read_file(const char* path)
 {
     std::ifstream f(path, std::ios::ate | std::ios::binary);
     if (!f.is_open()) throw std::runtime_error(std::string("Failed to open file: ") + path);
     const size_t sz = static_cast<size_t>(f.tellg());
-    if (sz == 0) throw std::runtime_error(std::string("Empty file: ") + path);
-    std::vector<char> out(sz);
+    if (sz == 0) throw std::runtime_error(std::string("Empty shader file: ") + path);
+    std::vector<char> bytes(sz);
     f.seekg(0);
-    f.read(out.data(), static_cast<std::streamsize>(sz));
-    return out;
+    f.read(bytes.data(), static_cast<std::streamsize>(sz));
+    return bytes;
 }
 
-VkShaderModule make_shader_module(VkDevice dev, const std::vector<char>& code)
+VkShaderModule create_shader_module(VkDevice dev, const std::vector<char>& code)
 {
-    if ((code.size() % 4) != 0) throw std::runtime_error("Shader bytecode size not multiple of 4");
+    if ((code.size() % 4) != 0) throw std::runtime_error("SPIR-V size is not multiple of 4");
     VkShaderModuleCreateInfo ci{};
     ci.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
     ci.codeSize = code.size();
     ci.pCode = reinterpret_cast<const uint32_t*>(code.data());
-    VkShaderModule mod = VK_NULL_HANDLE;
-    if (vkCreateShaderModule(dev, &ci, nullptr, &mod) != VK_SUCCESS)
+    VkShaderModule out = VK_NULL_HANDLE;
+    if (vkCreateShaderModule(dev, &ci, nullptr, &out) != VK_SUCCESS)
     {
         throw std::runtime_error("vkCreateShaderModule failed");
     }
-    return mod;
+    return out;
 }
 
-class TriangleApp
+class HelloVulkanTriangleApp
 {
 public:
+    ~HelloVulkanTriangleApp()
+    {
+        cleanup();
+    }
+
     void run()
     {
         init_sdl();
         init_backend();
         create_pipeline();
-        loop();
-        cleanup();
+        main_loop();
     }
 
 private:
@@ -68,24 +71,58 @@ private:
         {
             throw std::runtime_error(std::string("SDL_Init failed: ") + SDL_GetError());
         }
-        win_ = SDL_CreateWindow("HelloVulkanTriangle", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-            static_cast<int>(WIN_W), static_cast<int>(WIN_H), SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
+        sdl_ready_ = true;
+        win_ = SDL_CreateWindow(
+            "HelloVulkanTriangle",
+            SDL_WINDOWPOS_CENTERED,
+            SDL_WINDOWPOS_CENTERED,
+            kDefaultW,
+            kDefaultH,
+            SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE
+        );
         if (!win_) throw std::runtime_error(std::string("SDL_CreateWindow failed: ") + SDL_GetError());
     }
 
     void init_backend()
     {
-        auto backend = shs::create_render_backend("vulkan");
-        keep_.push_back(std::move(backend.backend));
-        for (auto& b : backend.auxiliary_backends) keep_.push_back(std::move(b));
-        if (keep_.empty() || !keep_[0]) throw std::runtime_error("No Vulkan backend created");
+        shs::RenderBackendCreateResult created = shs::create_render_backend(shs::RenderBackendType::Vulkan);
+        if (!created.note.empty())
+        {
+            std::fprintf(stderr, "[shs] %s\n", created.note.c_str());
+        }
+        if (!created.backend)
+        {
+            throw std::runtime_error("Backend factory did not return a backend");
+        }
+        keep_.push_back(std::move(created.backend));
+        for (auto& aux : created.auxiliary_backends)
+        {
+            if (aux) keep_.push_back(std::move(aux));
+        }
+        for (const auto& b : keep_)
+        {
+            ctx_.register_backend(b.get());
+        }
 
-        vk_ = dynamic_cast<shs::VulkanRenderBackend*>(keep_[0].get());
-        if (!vk_) throw std::runtime_error("Vulkan backend type mismatch");
+        if (created.active != shs::RenderBackendType::Vulkan)
+        {
+            throw std::runtime_error("Vulkan backend is not active in this build/configuration.");
+        }
+
+        vk_ = dynamic_cast<shs::VulkanRenderBackend*>(ctx_.backend(shs::RenderBackendType::Vulkan));
+        if (!vk_)
+        {
+            throw std::runtime_error("Factory returned non-Vulkan backend instance for Vulkan request.");
+        }
 
         int dw = 0;
         int dh = 0;
         SDL_Vulkan_GetDrawableSize(win_, &dw, &dh);
+        if (dw <= 0 || dh <= 0)
+        {
+            dw = kDefaultW;
+            dh = kDefaultH;
+        }
 
         shs::VulkanRenderBackend::InitDesc init{};
         init.window = win_;
@@ -93,23 +130,26 @@ private:
         init.height = dh;
         init.enable_validation = true;
         init.app_name = "HelloVulkanTriangle";
-        if (!vk_->init_sdl(init)) throw std::runtime_error("Vulkan backend init failed");
+        if (!vk_->init_sdl(init))
+        {
+            throw std::runtime_error("Vulkan backend init_sdl failed");
+        }
 
         ctx_.set_primary_backend(vk_);
-        std::fprintf(stderr, "[shs] active backend: %s\n", vk_->name());
+        std::fprintf(stderr, "[shs] active backend: %s\n", ctx_.active_backend_name());
     }
 
     void create_pipeline()
     {
         destroy_pipeline();
-        const VkDevice dev = vk_->device();
+        const VkDevice dev = vk_ ? vk_->device() : VK_NULL_HANDLE;
         if (dev == VK_NULL_HANDLE) throw std::runtime_error("Vulkan device not ready");
         if (vk_->render_pass() == VK_NULL_HANDLE) throw std::runtime_error("Vulkan render pass not ready");
 
-        auto vs_code = read_file(SHS_VK_TRIANGLE_VERT_SPV);
-        auto fs_code = read_file(SHS_VK_TRIANGLE_FRAG_SPV);
-        VkShaderModule vs = make_shader_module(dev, vs_code);
-        VkShaderModule fs = make_shader_module(dev, fs_code);
+        const std::vector<char> vs_code = read_file(SHS_VK_TRIANGLE_VERT_SPV);
+        const std::vector<char> fs_code = read_file(SHS_VK_TRIANGLE_FRAG_SPV);
+        VkShaderModule vs = create_shader_module(dev, vs_code);
+        VkShaderModule fs = create_shader_module(dev, fs_code);
 
         VkPipelineShaderStageCreateInfo stages[2]{};
         stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -123,6 +163,7 @@ private:
 
         VkPipelineVertexInputStateCreateInfo vi{};
         vi.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+
         VkPipelineInputAssemblyStateCreateInfo ia{};
         ia.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
         ia.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
@@ -135,8 +176,10 @@ private:
         VkPipelineRasterizationStateCreateInfo rs{};
         rs.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
         rs.polygonMode = VK_POLYGON_MODE_FILL;
-        rs.cullMode = VK_CULL_MODE_BACK_BIT;
-        rs.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+        rs.cullMode = VK_CULL_MODE_NONE;
+        // Viewport is y-flipped (negative height), so set front-face to keep
+        // winding convention aligned with software rasterizer's CCW-in-NDC intent.
+        rs.frontFace = VK_FRONT_FACE_CLOCKWISE;
         rs.lineWidth = 1.0f;
 
         VkPipelineMultisampleStateCreateInfo ms{};
@@ -148,15 +191,20 @@ private:
         ds.depthTestEnable = VK_FALSE;
         ds.depthWriteEnable = VK_FALSE;
 
-        VkPipelineColorBlendAttachmentState cb_att{};
-        cb_att.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+        VkPipelineColorBlendAttachmentState cba{};
+        cba.colorWriteMask =
+            VK_COLOR_COMPONENT_R_BIT |
+            VK_COLOR_COMPONENT_G_BIT |
+            VK_COLOR_COMPONENT_B_BIT |
+            VK_COLOR_COMPONENT_A_BIT;
+        cba.blendEnable = VK_FALSE;
 
         VkPipelineColorBlendStateCreateInfo cb{};
         cb.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
         cb.attachmentCount = 1;
-        cb.pAttachments = &cb_att;
+        cb.pAttachments = &cba;
 
-        VkDynamicState dyn_states[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+        const VkDynamicState dyn_states[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
         VkPipelineDynamicStateCreateInfo dyn{};
         dyn.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
         dyn.dynamicStateCount = 2;
@@ -185,6 +233,7 @@ private:
         gp.pDynamicState = &dyn;
         gp.layout = pipeline_layout_;
         gp.renderPass = vk_->render_pass();
+        gp.subpass = 0;
         if (vkCreateGraphicsPipelines(dev, VK_NULL_HANDLE, 1, &gp, nullptr, &pipeline_) != VK_SUCCESS)
         {
             vkDestroyShaderModule(dev, vs, nullptr);
@@ -193,20 +242,33 @@ private:
         }
         vkDestroyShaderModule(dev, vs, nullptr);
         vkDestroyShaderModule(dev, fs, nullptr);
+
         pipeline_gen_ = vk_->swapchain_generation();
     }
 
     void destroy_pipeline()
     {
         if (!vk_) return;
-        VkDevice dev = vk_->device();
-        if (pipeline_ != VK_NULL_HANDLE) vkDestroyPipeline(dev, pipeline_, nullptr);
-        if (pipeline_layout_ != VK_NULL_HANDLE) vkDestroyPipelineLayout(dev, pipeline_layout_, nullptr);
-        pipeline_ = VK_NULL_HANDLE;
-        pipeline_layout_ = VK_NULL_HANDLE;
+        const VkDevice dev = vk_->device();
+        if (dev == VK_NULL_HANDLE)
+        {
+            pipeline_ = VK_NULL_HANDLE;
+            pipeline_layout_ = VK_NULL_HANDLE;
+            return;
+        }
+        if (pipeline_ != VK_NULL_HANDLE)
+        {
+            vkDestroyPipeline(dev, pipeline_, nullptr);
+            pipeline_ = VK_NULL_HANDLE;
+        }
+        if (pipeline_layout_ != VK_NULL_HANDLE)
+        {
+            vkDestroyPipelineLayout(dev, pipeline_layout_, nullptr);
+            pipeline_layout_ = VK_NULL_HANDLE;
+        }
     }
 
-    void loop()
+    void main_loop()
     {
         bool running = true;
         while (running)
@@ -216,27 +278,41 @@ private:
             {
                 if (e.type == SDL_QUIT) running = false;
                 if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE) running = false;
-                if (e.type == SDL_WINDOWEVENT && e.window.event == SDL_WINDOWEVENT_SIZE_CHANGED)
+                if (e.type == SDL_WINDOWEVENT &&
+                    (e.window.event == SDL_WINDOWEVENT_SIZE_CHANGED || e.window.event == SDL_WINDOWEVENT_RESIZED))
                 {
                     vk_->request_resize(e.window.data1, e.window.data2);
                 }
             }
-            draw();
+            draw_frame();
         }
-        if (vk_ && vk_->device() != VK_NULL_HANDLE) vkDeviceWaitIdle(vk_->device());
+
+        if (vk_ && vk_->device() != VK_NULL_HANDLE)
+        {
+            (void)vkDeviceWaitIdle(vk_->device());
+        }
     }
 
-    void draw()
+    void draw_frame()
     {
+        int dw = 0;
+        int dh = 0;
+        SDL_Vulkan_GetDrawableSize(win_, &dw, &dh);
+        if (dw <= 0 || dh <= 0)
+        {
+            SDL_Delay(16);
+            return;
+        }
+
         shs::RenderBackendFrameInfo frame{};
         frame.frame_index = ctx_.frame_index;
-        frame.width = static_cast<int>(WIN_W);
-        frame.height = static_cast<int>(WIN_H);
+        frame.width = dw;
+        frame.height = dh;
 
         shs::VulkanRenderBackend::FrameInfo fi{};
         if (!vk_->begin_frame(ctx_, frame, fi))
         {
-            SDL_Delay(8);
+            SDL_Delay(4);
             return;
         }
 
@@ -247,7 +323,11 @@ private:
 
         VkCommandBufferBeginInfo bi{};
         bi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        if (vkBeginCommandBuffer(fi.cmd, &bi) != VK_SUCCESS) throw std::runtime_error("vkBeginCommandBuffer failed");
+        bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        if (vkBeginCommandBuffer(fi.cmd, &bi) != VK_SUCCESS)
+        {
+            throw std::runtime_error("vkBeginCommandBuffer failed");
+        }
 
         VkClearValue clear{};
         clear.color = {{0.04f, 0.05f, 0.09f, 1.0f}};
@@ -264,31 +344,56 @@ private:
 
         VkViewport vp{};
         vp.x = 0.0f;
-        vp.y = 0.0f;
+        // Vulkan framebuffer coordinates are top-left based by default.
+        // Use negative viewport height so NDC +Y stays "up" (same convention as software path).
+        vp.y = static_cast<float>(fi.extent.height);
         vp.width = static_cast<float>(fi.extent.width);
-        vp.height = static_cast<float>(fi.extent.height);
+        vp.height = -static_cast<float>(fi.extent.height);
         vp.minDepth = 0.0f;
         vp.maxDepth = 1.0f;
-        VkRect2D scissor{{0, 0}, fi.extent};
+        const VkRect2D scissor{{0, 0}, fi.extent};
         vkCmdSetViewport(fi.cmd, 0, 1, &vp);
         vkCmdSetScissor(fi.cmd, 0, 1, &scissor);
         vkCmdDraw(fi.cmd, 3, 1, 0, 0);
         vkCmdEndRenderPass(fi.cmd);
 
-        if (vkEndCommandBuffer(fi.cmd) != VK_SUCCESS) throw std::runtime_error("vkEndCommandBuffer failed");
+        if (vkEndCommandBuffer(fi.cmd) != VK_SUCCESS)
+        {
+            throw std::runtime_error("vkEndCommandBuffer failed");
+        }
+
         vk_->end_frame(fi);
         ctx_.frame_index++;
     }
 
     void cleanup()
     {
+        if (cleaned_up_) return;
+        cleaned_up_ = true;
+
+        if (vk_ && vk_->device() != VK_NULL_HANDLE)
+        {
+            (void)vkDeviceWaitIdle(vk_->device());
+        }
         destroy_pipeline();
         keep_.clear();
-        if (win_) SDL_DestroyWindow(win_);
-        SDL_Quit();
+        vk_ = nullptr;
+
+        if (win_)
+        {
+            SDL_DestroyWindow(win_);
+            win_ = nullptr;
+        }
+        if (sdl_ready_)
+        {
+            SDL_Quit();
+            sdl_ready_ = false;
+        }
     }
 
 private:
+    bool cleaned_up_ = false;
+    bool sdl_ready_ = false;
     SDL_Window* win_ = nullptr;
     shs::Context ctx_{};
     std::vector<std::unique_ptr<shs::IRenderBackend>> keep_{};
@@ -303,7 +408,7 @@ int main()
 {
     try
     {
-        TriangleApp app{};
+        HelloVulkanTriangleApp app{};
         app.run();
         return 0;
     }

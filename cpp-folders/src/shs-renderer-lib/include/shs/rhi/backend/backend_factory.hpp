@@ -76,10 +76,16 @@ namespace shs
             }
             case RenderBackendType::Vulkan:
             {
+#ifdef SHS_HAS_VULKAN
                 out.backend = std::make_unique<VulkanRenderBackend>();
                 out.auxiliary_backends.push_back(std::make_unique<SoftwareRenderBackend>());
                 out.active = RenderBackendType::Vulkan;
                 out.note = "Vulkan backend selected. Software backend is registered as hybrid fallback for unported passes.";
+#else
+                out.backend = std::make_unique<SoftwareRenderBackend>();
+                out.active = RenderBackendType::Software;
+                out.note = "Vulkan backend requested but this build has no Vulkan support. Software backend selected.";
+#endif
                 return out;
             }
         }

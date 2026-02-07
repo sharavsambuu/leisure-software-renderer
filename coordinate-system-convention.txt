@@ -2,6 +2,9 @@
 
 Model -> World -> View -> Projection -> NDC -> Screen -> shs::Canvas
 
+Handedness and depth convention used by shs-renderer-lib:
+    left-handed (LH)
+    NDC z range is [-1.0, 1.0]
 
 
 Model space 3D coordinate system:
@@ -43,13 +46,13 @@ Clip space aka NDC(Normalized Device Coordinates) space aka homogeneous coordina
 
 
 Screen space 2D coordinate system
-    maps x in NDC[-1, 1] -> [0, SCREEN_WIDTH ]
-    maps y in NDC[-1, 1] -> [0, SCREEN_HEIGHT]
+    maps x in NDC[-1, 1] -> [0, SCREEN_WIDTH]
+    maps y in NDC[-1, 1] -> [SCREEN_HEIGHT, 0]
     origin (0,0) is at top-left corner
     x is from left to the right
     y is from top to the bottom
 
-    Rasterizatin happen in this space
+    Final presentation to SDL window happens in this space.
 
 
 shs::Canvas 2D coordinate system:
@@ -57,8 +60,19 @@ shs::Canvas 2D coordinate system:
     x is left to right
     y is bottom to up
 
+    Rasterization in software path happens in this space.
 
 
 Converting from Screen space to the shs::Canvas space
     x_at_canvas = x_at_screen_space
     y_at_canvas = SCREEN_HEIGHT - y_at_screen
+
+
+Backend rules to keep the same convention:
+    Software backend:
+        NDC +Y maps to canvas +Y directly.
+        During present/upload, rows are vertically flipped to screen(top-left) space.
+
+    Vulkan backend:
+        viewport uses y = framebuffer_height and height = -framebuffer_height
+        so NDC +Y still means "up" visually, matching software convention.

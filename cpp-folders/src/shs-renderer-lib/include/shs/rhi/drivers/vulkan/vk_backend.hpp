@@ -12,6 +12,7 @@
 
 
 #include <algorithm>
+#include <array>
 #include <cstdio>
 #include <cstdint>
 #include <cstring>
@@ -61,31 +62,32 @@ namespace shs
         RenderBackendType type() const override { return RenderBackendType::Vulkan; }
         BackendCapabilities capabilities() const override
         {
-            BackendCapabilities c{};
-            c.queues.graphics_count = 1;
-            c.queues.compute_count = 1;
-            c.queues.transfer_count = 1;
-            c.queues.present_count = 1;
-            c.features.validation_layers = true;
-            c.features.timeline_semaphore = true;
-            c.features.descriptor_indexing = true;
-            c.features.dynamic_rendering = true;
-            c.features.push_constants = true;
-            c.features.multithread_command_recording = true;
-            c.features.async_compute = true;
-            c.limits.max_frames_in_flight = 2;
-            c.limits.max_color_attachments = 8;
-            c.limits.max_descriptor_sets_per_pipeline = 8;
-            c.limits.max_push_constant_bytes = 128;
-            c.supports_present = true;
-            c.supports_offscreen = true;
+            BackendCapabilities c = capabilities_;
+            if (!capabilities_ready_)
+            {
+                c.queues.graphics_count = 1;
+                c.features.validation_layers = false;
+                c.features.push_constants = true;
+                c.features.multithread_command_recording = true;
+                c.limits.max_frames_in_flight = 2;
+                c.limits.max_color_attachments = 1;
+                c.limits.max_descriptor_sets_per_pipeline = 1;
+                c.limits.max_push_constant_bytes = 128;
+                c.supports_offscreen = true;
+            }
+#ifdef SHS_HAS_VULKAN
+            c.features.validation_layers = layer_supported("VK_LAYER_KHRONOS_validation");
+#endif
             return c;
         }
 
         void begin_frame(Context& ctx, const RenderBackendFrameInfo& frame) override
         {
             (void)ctx;
-            (void)frame;
+            if (frame.width > 0 && frame.height > 0)
+            {
+                request_resize(frame.width, frame.height);
+            }
             (void)ensure_initialized();
         }
 
@@ -95,17 +97,30 @@ namespace shs
             (void)frame;
         }
 
+        void on_resize(Context& ctx, int w, int h) override
+        {
+            (void)ctx;
+            request_resize(w, h);
+        }
+
         bool ready() const { return initialized_; }
 
         bool init_sdl(const InitDesc& desc)
         {
 #ifdef SHS_HAS_VULKAN
+            shutdown();
             if (!desc.window) return false;
             window_ = desc.window;
             enable_validation_ = desc.enable_validation;
             requested_width_ = desc.width;
             requested_height_ = desc.height;
             app_name_ = desc.app_name ? desc.app_name : "shs-renderer-lib";
+            layers_.clear();
+            resize_pending_ = false;
+            swapchain_needs_rebuild_ = false;
+            device_lost_ = false;
+            current_frame_ = 0;
+            capabilities_ready_ = false;
             init_attempted_ = false;
             return ensure_initialized();
 #else
@@ -136,6 +151,7 @@ namespace shs
 #ifdef SHS_HAS_VULKAN
             (void)ctx;
             if (!ensure_initialized()) return false;
+            if (device_lost_) return false;
             if (resize_pending_ || swapchain_needs_rebuild_)
             {
                 if (!recreate_swapchain()) return false;
@@ -143,33 +159,67 @@ namespace shs
             if (swapchain_ == VK_NULL_HANDLE) return false;
 
             const uint32_t cur = current_frame_ % kMaxFramesInFlight;
-            vkWaitForFences(device_, 1, &inflight_fences_[cur], VK_TRUE, UINT64_MAX);
+            const VkResult wait_res = vkWaitForFences(device_, 1, &inflight_fences_[cur], VK_TRUE, UINT64_MAX);
+            if (wait_res == VK_ERROR_DEVICE_LOST)
+            {
+                device_lost_ = true;
+                return false;
+            }
+            if (wait_res != VK_SUCCESS) return false;
 
             uint32_t image_index = 0;
             VkResult res = vkAcquireNextImageKHR(device_, swapchain_, UINT64_MAX, image_available_[cur], VK_NULL_HANDLE, &image_index);
-            if (res == VK_ERROR_OUT_OF_DATE_KHR)
+            if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR || res == VK_ERROR_SURFACE_LOST_KHR)
             {
                 swapchain_needs_rebuild_ = true;
                 return false;
             }
-            if (res != VK_SUCCESS && res != VK_SUBOPTIMAL_KHR)
+            if (res == VK_ERROR_DEVICE_LOST)
+            {
+                device_lost_ = true;
+                return false;
+            }
+            if (res != VK_SUCCESS)
             {
                 return false;
             }
 
+            if (image_index >= cmd_bufs_.size() || image_index >= framebuffers_.size())
+            {
+                swapchain_needs_rebuild_ = true;
+                return false;
+            }
             if (images_in_flight_.size() == images_.size() && images_in_flight_[image_index] != VK_NULL_HANDLE)
             {
-                vkWaitForFences(device_, 1, &images_in_flight_[image_index], VK_TRUE, UINT64_MAX);
+                const VkResult wait_img = vkWaitForFences(device_, 1, &images_in_flight_[image_index], VK_TRUE, UINT64_MAX);
+                if (wait_img == VK_ERROR_DEVICE_LOST)
+                {
+                    device_lost_ = true;
+                    return false;
+                }
+                if (wait_img != VK_SUCCESS) return false;
             }
             if (images_in_flight_.size() == images_.size())
             {
                 images_in_flight_[image_index] = inflight_fences_[cur];
             }
 
-            vkResetFences(device_, 1, &inflight_fences_[cur]);
+            const VkResult reset_fence = vkResetFences(device_, 1, &inflight_fences_[cur]);
+            if (reset_fence == VK_ERROR_DEVICE_LOST)
+            {
+                device_lost_ = true;
+                return false;
+            }
+            if (reset_fence != VK_SUCCESS) return false;
 
             VkCommandBuffer cb = cmd_bufs_[image_index];
-            vkResetCommandBuffer(cb, 0);
+            const VkResult reset_cb = vkResetCommandBuffer(cb, 0);
+            if (reset_cb == VK_ERROR_DEVICE_LOST)
+            {
+                device_lost_ = true;
+                return false;
+            }
+            if (reset_cb != VK_SUCCESS) return false;
 
             out.cmd = cb;
             out.framebuffer = framebuffers_[image_index];
@@ -190,6 +240,7 @@ namespace shs
         void end_frame(const FrameInfo& info)
         {
 #ifdef SHS_HAS_VULKAN
+            if (device_lost_) return;
             const uint32_t cur = current_frame_ % kMaxFramesInFlight;
 
             VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
@@ -202,7 +253,13 @@ namespace shs
             si.pCommandBuffers = &info.cmd;
             si.signalSemaphoreCount = 1;
             si.pSignalSemaphores = &render_finished_[cur];
-            vkQueueSubmit(graphics_q_, 1, &si, inflight_fences_[cur]);
+            const VkResult submit_res = vkQueueSubmit(graphics_q_, 1, &si, inflight_fences_[cur]);
+            if (submit_res == VK_ERROR_DEVICE_LOST)
+            {
+                device_lost_ = true;
+                return;
+            }
+            if (submit_res != VK_SUCCESS) return;
 
             VkPresentInfoKHR pi{};
             pi.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -212,9 +269,18 @@ namespace shs
             pi.pSwapchains = &swapchain_;
             pi.pImageIndices = &info.image_index;
             const VkResult pres = vkQueuePresentKHR(present_q_, &pi);
-            if (pres == VK_ERROR_OUT_OF_DATE_KHR || pres == VK_SUBOPTIMAL_KHR)
+            if (pres == VK_ERROR_OUT_OF_DATE_KHR || pres == VK_SUBOPTIMAL_KHR || pres == VK_ERROR_SURFACE_LOST_KHR)
             {
                 swapchain_needs_rebuild_ = true;
+            }
+            else if (pres == VK_ERROR_DEVICE_LOST)
+            {
+                device_lost_ = true;
+                return;
+            }
+            else if (pres != VK_SUCCESS)
+            {
+                return;
             }
             ++current_frame_;
 #else
@@ -297,15 +363,17 @@ namespace shs
             init_attempted_ = true;
             if (!window_) return false;
 
-            if (!create_instance()) return false;
-            if (!SDL_Vulkan_CreateSurface(window_, instance_, &surface_)) return false;
-            if (!pick_physical_device()) return false;
-            if (!create_device_and_queues()) return false;
-            if (!create_swapchain()) return false;
-            if (!create_render_pass()) return false;
-            if (!create_framebuffers()) return false;
-            if (!create_command_pool_and_buffers()) return false;
-            if (!create_sync_objects()) return false;
+            if (!create_instance()) { shutdown(); return false; }
+            if (!SDL_Vulkan_CreateSurface(window_, instance_, &surface_)) { shutdown(); return false; }
+            if (!pick_physical_device()) { shutdown(); return false; }
+            if (!create_device_and_queues()) { shutdown(); return false; }
+            if (!create_swapchain()) { shutdown(); return false; }
+            if (!create_render_pass()) { shutdown(); return false; }
+            if (!create_framebuffers()) { shutdown(); return false; }
+            if (!create_command_pool_and_buffers()) { shutdown(); return false; }
+            if (!create_sync_objects()) { shutdown(); return false; }
+            refresh_capabilities();
+            device_lost_ = false;
             initialized_ = true;
             return true;
         }
@@ -317,15 +385,26 @@ namespace shs
             std::vector<const char*> exts(ext_count);
             if (!SDL_Vulkan_GetInstanceExtensions(window_, &ext_count, exts.data())) return false;
 
+            auto add_instance_ext_if_supported = [&](const char* ext_name) {
+                if (!ext_name) return false;
+                for (const char* existing : exts)
+                {
+                    if (existing && std::strcmp(existing, ext_name) == 0) return true;
+                }
+                if (!extension_supported(ext_name)) return false;
+                exts.push_back(ext_name);
+                return true;
+            };
+
             const char* validation_layer = "VK_LAYER_KHRONOS_validation";
             if (enable_validation_ && layer_supported(validation_layer))
             {
                 layers_.push_back(validation_layer);
             }
 
-            if (enable_validation_ && extension_supported(VK_EXT_DEBUG_UTILS_EXTENSION_NAME))
+            if (enable_validation_)
             {
-                exts.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+                add_instance_ext_if_supported(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
             }
 
             VkApplicationInfo app{};
@@ -341,8 +420,18 @@ namespace shs
             ci.pApplicationInfo = &app;
             ci.enabledLayerCount = static_cast<uint32_t>(layers_.size());
             ci.ppEnabledLayerNames = layers_.empty() ? nullptr : layers_.data();
+            // MoltenVK portability drivers require both extension + enumerate flag.
+            constexpr const char* kPortabilityEnumExt = "VK_KHR_portability_enumeration";
+            if (add_instance_ext_if_supported(kPortabilityEnumExt))
+            {
+#ifdef VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR
+                ci.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+#else
+                ci.flags |= static_cast<VkInstanceCreateFlags>(0x00000001u);
+#endif
+            }
             ci.enabledExtensionCount = static_cast<uint32_t>(exts.size());
-            ci.ppEnabledExtensionNames = exts.data();
+            ci.ppEnabledExtensionNames = exts.empty() ? nullptr : exts.data();
 
             VkDebugUtilsMessengerCreateInfoEXT dbg{};
             if (enable_validation_ && !layers_.empty())
@@ -461,18 +550,94 @@ namespace shs
                 qcis.push_back(qci);
             }
 
-            const char* device_ext = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
+            std::vector<const char*> device_exts{};
+            device_exts.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+            constexpr const char* kPortabilitySubsetExt = "VK_KHR_portability_subset";
+            if (device_extension_supported(gpu_, kPortabilitySubsetExt))
+            {
+                device_exts.push_back(kPortabilitySubsetExt);
+            }
+
             VkDeviceCreateInfo dci{};
             dci.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
             dci.queueCreateInfoCount = static_cast<uint32_t>(qcis.size());
             dci.pQueueCreateInfos = qcis.data();
-            dci.enabledExtensionCount = 1;
-            dci.ppEnabledExtensionNames = &device_ext;
+            dci.enabledExtensionCount = static_cast<uint32_t>(device_exts.size());
+            dci.ppEnabledExtensionNames = device_exts.data();
 
             if (vkCreateDevice(gpu_, &dci, nullptr, &device_) != VK_SUCCESS) return false;
             vkGetDeviceQueue(device_, *qf_.graphics, 0, &graphics_q_);
             vkGetDeviceQueue(device_, *qf_.present, 0, &present_q_);
             return true;
+        }
+
+        void refresh_capabilities()
+        {
+            BackendCapabilities c{};
+            c.limits.max_frames_in_flight = kMaxFramesInFlight;
+            c.supports_offscreen = true;
+            c.supports_present = surface_ != VK_NULL_HANDLE;
+            c.features.validation_layers = layer_supported("VK_LAYER_KHRONOS_validation");
+            c.features.push_constants = true;
+            c.features.multithread_command_recording = true;
+            c.features.timeline_semaphore = false;
+            c.features.descriptor_indexing = false;
+            c.features.dynamic_rendering = false;
+            c.features.async_compute = false;
+            c.limits.max_color_attachments = 1;
+            c.limits.max_descriptor_sets_per_pipeline = 1;
+            c.limits.max_push_constant_bytes = 128;
+
+            if (gpu_ != VK_NULL_HANDLE)
+            {
+                VkPhysicalDeviceProperties props{};
+                vkGetPhysicalDeviceProperties(gpu_, &props);
+                c.limits.max_color_attachments = std::max<uint32_t>(1u, props.limits.maxColorAttachments);
+                c.limits.max_descriptor_sets_per_pipeline = std::max<uint32_t>(1u, props.limits.maxBoundDescriptorSets);
+                c.limits.max_push_constant_bytes = std::max<uint32_t>(1u, props.limits.maxPushConstantsSize);
+                c.limits.min_uniform_buffer_offset_alignment = std::max<uint32_t>(1u, static_cast<uint32_t>(props.limits.minUniformBufferOffsetAlignment));
+
+                uint32_t qcount = 0;
+                vkGetPhysicalDeviceQueueFamilyProperties(gpu_, &qcount, nullptr);
+                std::vector<VkQueueFamilyProperties> qprops(qcount);
+                vkGetPhysicalDeviceQueueFamilyProperties(gpu_, &qcount, qprops.data());
+
+                bool has_dedicated_compute = false;
+                for (uint32_t i = 0; i < qcount; ++i)
+                {
+                    const VkQueueFamilyProperties& qp = qprops[i];
+                    if (qp.queueCount == 0) continue;
+                    if ((qp.queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0)
+                    {
+                        c.queues.graphics_count += qp.queueCount;
+                    }
+                    if ((qp.queueFlags & VK_QUEUE_COMPUTE_BIT) != 0)
+                    {
+                        c.queues.compute_count += qp.queueCount;
+                        if ((qp.queueFlags & VK_QUEUE_GRAPHICS_BIT) == 0)
+                        {
+                            has_dedicated_compute = true;
+                        }
+                    }
+                    if ((qp.queueFlags & VK_QUEUE_TRANSFER_BIT) != 0)
+                    {
+                        c.queues.transfer_count += qp.queueCount;
+                    }
+                    VkBool32 present = VK_FALSE;
+                    if (surface_ != VK_NULL_HANDLE)
+                    {
+                        vkGetPhysicalDeviceSurfaceSupportKHR(gpu_, i, surface_, &present);
+                    }
+                    if (present == VK_TRUE)
+                    {
+                        c.queues.present_count += qp.queueCount;
+                    }
+                }
+                c.features.async_compute = has_dedicated_compute;
+            }
+
+            capabilities_ = c;
+            capabilities_ready_ = true;
         }
 
         VkSurfaceFormatKHR choose_surface_format(const std::vector<VkSurfaceFormatKHR>& formats)
@@ -556,9 +721,15 @@ namespace shs
             swapchain_format_ = sf.format;
 
             uint32_t nimg = 0;
-            vkGetSwapchainImagesKHR(device_, swapchain_, &nimg, nullptr);
+            if (vkGetSwapchainImagesKHR(device_, swapchain_, &nimg, nullptr) != VK_SUCCESS || nimg == 0)
+            {
+                return false;
+            }
             images_.resize(nimg);
-            vkGetSwapchainImagesKHR(device_, swapchain_, &nimg, images_.data());
+            if (vkGetSwapchainImagesKHR(device_, swapchain_, &nimg, images_.data()) != VK_SUCCESS)
+            {
+                return false;
+            }
 
             views_.resize(images_.size());
             for (size_t i = 0; i < images_.size(); ++i)
@@ -698,6 +869,7 @@ namespace shs
             for (auto iv : views_) vkDestroyImageView(device_, iv, nullptr);
             views_.clear();
             images_.clear();
+            images_in_flight_.clear();
             if (swapchain_ != VK_NULL_HANDLE)
             {
                 vkDestroySwapchainKHR(device_, swapchain_, nullptr);
@@ -712,7 +884,13 @@ namespace shs
             int h = 0;
             SDL_Vulkan_GetDrawableSize(window_, &w, &h);
             if (w <= 0 || h <= 0) return false;
-            vkDeviceWaitIdle(device_);
+            const VkResult idle_res = vkDeviceWaitIdle(device_);
+            if (idle_res == VK_ERROR_DEVICE_LOST)
+            {
+                device_lost_ = true;
+                return false;
+            }
+            if (idle_res != VK_SUCCESS) return false;
             destroy_swapchain_objects();
             if (!create_swapchain()) return false;
             if (!create_render_pass()) return false;
@@ -726,7 +904,7 @@ namespace shs
         void shutdown()
         {
             if (!init_attempted_ && !initialized_) return;
-            if (device_ != VK_NULL_HANDLE) vkDeviceWaitIdle(device_);
+            if (device_ != VK_NULL_HANDLE) (void)vkDeviceWaitIdle(device_);
             destroy_swapchain_objects();
             if (cmd_pool_ != VK_NULL_HANDLE)
             {
@@ -763,14 +941,40 @@ namespace shs
                 vkDestroyInstance(instance_, nullptr);
                 instance_ = VK_NULL_HANDLE;
             }
+            qf_ = QueueFamilies{};
+            gpu_ = VK_NULL_HANDLE;
+            graphics_q_ = VK_NULL_HANDLE;
+            present_q_ = VK_NULL_HANDLE;
+            requested_width_ = 0;
+            requested_height_ = 0;
+            window_ = nullptr;
+            layers_.clear();
             initialized_ = false;
             init_attempted_ = false;
+            resize_pending_ = false;
+            swapchain_needs_rebuild_ = false;
+            device_lost_ = false;
+            current_frame_ = 0;
+            swapchain_generation_ = 0;
+            capabilities_ = BackendCapabilities{};
+            capabilities_ready_ = false;
+        }
+#else
+        bool ensure_initialized() { return false; }
+        void shutdown()
+        {
+            initialized_ = false;
+            init_attempted_ = false;
+            capabilities_ = BackendCapabilities{};
+            capabilities_ready_ = false;
         }
 #endif
 
     private:
         bool initialized_ = false;
         bool init_attempted_ = false;
+        BackendCapabilities capabilities_{};
+        bool capabilities_ready_ = false;
 #ifdef SHS_HAS_VULKAN
         static constexpr uint32_t kMaxFramesInFlight = 2;
 
@@ -778,6 +982,7 @@ namespace shs
         bool enable_validation_ = false;
         bool resize_pending_ = false;
         bool swapchain_needs_rebuild_ = false;
+        bool device_lost_ = false;
         int requested_width_ = 0;
         int requested_height_ = 0;
         std::string app_name_ = "shs-renderer-lib";

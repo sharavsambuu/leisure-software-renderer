@@ -92,7 +92,7 @@
           - Poulin-Fournier
 
 
-# On Ubuntu 24.04, MacOS
+# On Ubuntu 24.04
 
     sudo apt install automake m4 libtool cmake build-essential autoconf autoconf-archive automake libtool-bin python3.12-venv python3.13-venv
 
@@ -118,19 +118,45 @@
 
 
 
-    On MacOS, it is similar
+# On MacOS, it is similar
+
+    Vulkan installation
+    https://github.com/MrVideo/ARMMoltenVKGuide
+    https://vulkan-tutorial.com/Development_environment#page_MacOS
+    https://vulkan.lunarg.com/sdk/home#mac
+
+    xcode-select --install
+    source ~/VulkanSDK/<version>/setup-env.sh
+    export VULKAN_SDK=~/VulkanSDK/<version>/macOS
+    export PATH="$VULKAN_SDK/bin:$PATH"
+    vulkaninfo | head
+    glslangValidator --version
+
+    CMake Vulkan detection behavior in this repo
+      - Global and automatic: shs-renderer-lib detects Vulkan + SDL2 Vulkan capability once, demos consume the shared result
+      - Linux/Windows: uses normal find_package(Vulkan) + find_program(glslangValidator)
+      - macOS: tries normal detection first, then falls back to VULKAN_SDK path if needed
+
+
     brew install vcpkg
     git clone https://github.com/microsoft/vcpkg.git "$HOME/vcpkg"
     export VCPKG_ROOT="$HOME/vcpkg"
 
-    Install similar library packages through vcpkg but without sudo
+    Install libs on Apple Silicon
+
+    vcpkg install "sdl2[vulkan]:arm64-osx" --recurse
+    vcpkg install "sdl2-image[libjpeg-turbo]:arm64-osx"
+    vcpkg install "glm:arm64-osx"
+    vcpkg install "assimp:arm64-osx"
+
 
     cd cpp-folders && mkdir build && cd build
     export VCPKG_ROOT="$HOME/vcpkg"
+    export VK_ICD_FILENAMES="$VULKAN_SDK/share/vulkan/icd.d/MoltenVK_icd.json"
+    export VK_LAYER_PATH="$VULKAN_SDK/share/vulkan/explicit_layer.d"
     cmake .. -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake
     make -j20
     cd src/hello-pixel-primitives && ./HelloPixel
-
 
 
 

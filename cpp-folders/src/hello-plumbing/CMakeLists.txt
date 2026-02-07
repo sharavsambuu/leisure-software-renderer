@@ -15,10 +15,38 @@ else()
 endif()
 target_compile_features(HelloPassBasics PRIVATE cxx_std_20)
 
-find_package(Vulkan QUIET)
-find_program(GLSLANG_VALIDATOR NAMES glslangValidator glslangValidator.exe)
+add_executable(HelloSoftwareTriangle hello_software_triangle.cpp)
+target_link_libraries(HelloSoftwareTriangle PRIVATE shs::renderer)
+if(MSVC)
+    target_compile_options(HelloSoftwareTriangle PRIVATE /W4)
+else()
+    target_compile_options(HelloSoftwareTriangle PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(HelloSoftwareTriangle PRIVATE $<$<CONFIG:Release>:-O3>)
+    target_compile_options(HelloSoftwareTriangle PRIVATE $<$<CONFIG:Debug>:-g>)
+endif()
+target_compile_features(HelloSoftwareTriangle PRIVATE cxx_std_20)
 
-if(Vulkan_FOUND AND GLSLANG_VALIDATOR)
+if(APPLE AND DEFINED ENV{VULKAN_SDK})
+    find_program(GLSLANG_VALIDATOR
+        NAMES glslangValidator glslang glslangValidator.exe
+        HINTS "$ENV{VULKAN_SDK}/bin" "$ENV{VULKAN_SDK}/Bin"
+    )
+else()
+    find_program(GLSLANG_VALIDATOR
+        NAMES glslangValidator glslang glslangValidator.exe
+    )
+endif()
+if(GLSLANG_VALIDATOR)
+    message(STATUS "Using glslang compiler: ${GLSLANG_VALIDATOR}")
+endif()
+
+if(SHS_SDL2_HAS_VULKAN)
+    message(STATUS "SDL2 Vulkan support: ON")
+else()
+    message(STATUS "SDL2 Vulkan support: OFF (reinstall SDL2 with Vulkan feature)")
+endif()
+
+if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
     set(VK_TRI_SHADER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/shaders")
     set(VK_TRI_OUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/shaders")
     file(MAKE_DIRECTORY "${VK_TRI_OUT_DIR}")
@@ -44,7 +72,7 @@ if(Vulkan_FOUND AND GLSLANG_VALIDATOR)
 
     add_executable(HelloVulkanTriangle hello_vulkan_triangle.cpp)
     add_dependencies(HelloVulkanTriangle HelloVulkanTriangleShaders)
-    target_link_libraries(HelloVulkanTriangle PRIVATE shs::renderer Vulkan::Vulkan)
+    target_link_libraries(HelloVulkanTriangle PRIVATE shs::renderer)
     target_compile_definitions(HelloVulkanTriangle PRIVATE
         SHS_VK_TRIANGLE_VERT_SPV="${VK_TRI_VERT_SPV}"
         SHS_VK_TRIANGLE_FRAG_SPV="${VK_TRI_FRAG_SPV}"
@@ -58,5 +86,11 @@ if(Vulkan_FOUND AND GLSLANG_VALIDATOR)
     endif()
     target_compile_features(HelloVulkanTriangle PRIVATE cxx_std_20)
 else()
-    message(STATUS "HelloVulkanTriangle skipped (requires Vulkan SDK + glslangValidator)")
+    if(NOT SHS_RENDERER_HAS_VULKAN)
+        message(STATUS "HelloVulkanTriangle skipped (shs::renderer built without Vulkan support)")
+    elseif(NOT GLSLANG_VALIDATOR)
+        message(STATUS "HelloVulkanTriangle skipped (glslangValidator not found)")
+    elseif(NOT SHS_SDL2_HAS_VULKAN)
+        message(STATUS "HelloVulkanTriangle skipped (SDL2 was built without Vulkan support)")
+    endif()
 endif()
