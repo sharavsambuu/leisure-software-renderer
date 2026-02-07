@@ -44,6 +44,8 @@ namespace shs
             RTHandle rt_hdr{};
             RTHandle rt_motion{};
             RTHandle rt_shadow{};
+            // Forward+ зэрэг техникүүд depth prepass-аар depth-ийг урьдчилж бөглөсөн үед ашиглана.
+            bool preserve_existing_depth = false;
         };
 
         void execute(Context& ctx, const Inputs& in)
@@ -84,7 +86,18 @@ namespace shs
                 });
             }
 
-            if (motion && motion->w == hdr->w && motion->h == hdr->h) motion->clear_all();
+            if (motion && motion->w == hdr->w && motion->h == hdr->h)
+            {
+                if (in.preserve_existing_depth)
+                {
+                    motion->color.clear(motion->clear);
+                    motion->motion.clear(Motion2f{});
+                }
+                else
+                {
+                    motion->clear_all();
+                }
+            }
 
             ShaderProgram prog = make_pbr_mr_program();
             if (in.fp->shading_model == ShadingModel::BlinnPhong)

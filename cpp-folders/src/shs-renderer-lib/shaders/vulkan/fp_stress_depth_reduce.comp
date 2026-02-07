@@ -1,0 +1,75 @@
+#version 450
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) uniform CameraUBO
+{
+    mat4 view;
+    mat4 proj;
+    mat4 view_proj;
+    vec4 camera_pos_time;
+    vec4 sun_dir_intensity;
+    uvec4 screen_tile_lightcount; // x: width, y: height, z: tiles_x, w: light_count
+    uvec4 params;                 // x: tiles_y, y: max_per_tile, z: tile_size, w: culling_mode
+    uvec4 culling_params;         // x: cluster_z_slices
+    vec4 depth_params;            // x: near, y: far
+    vec4 exposure_gamma;          // x: exposure, y: gamma
+} ubo;
+
+layout(set = 0, binding = 5, std430) buffer TileDepthRanges
+{
+    vec2 tile_depth_ranges[];
+};
+
+layout(set = 0, binding = 6) uniform sampler2D depth_tex;
+
+float depth01_to_view(float d)
+{
+    float near_z = max(ubo.depth_params.x, 0.001);
+    float far_z = max(ubo.depth_params.y, near_z + 0.01);
+    float denom = max(far_z - d * (far_z - near_z), 1e-5);
+    return (near_z * far_z) / denom;
+}
+
+void main()
+{
+    uint tile_x = gl_GlobalInvocationID.x;
+    uint tile_y = gl_GlobalInvocationID.y;
+
+    uint width = max(ubo.screen_tile_lightcount.x, 1u);
+    uint height = max(ubo.screen_tile_lightcount.y, 1u);
+    uint tiles_x = max(ubo.screen_tile_lightcount.z, 1u);
+    uint tiles_y = max(ubo.params.x, 1u);
+    uint tile_size = max(ubo.params.z, 1u);
+
+    if (tile_x >= tiles_x || tile_y >= tiles_y) return;
+
+    uint tile_id = tile_y * tiles_x + tile_x;
+    ivec2 p0 = ivec2(tile_x * tile_size, tile_y * tile_size);
+    ivec2 p1 = ivec2(min((tile_x + 1u) * tile_size, width), min((tile_y + 1u) * tile_size, height));
+
+    float min_d = 1e30;
+    float max_d = 0.0;
+    bool any = false;
+
+    for (int py = p0.y; py < p1.y; ++py)
+    {
+        for (int px = p0.x; px < p1.x; ++px)
+        {
+            float d = texelFetch(depth_tex, ivec2(px, py), 0).r;
+            if (d >= 0.999999) continue;
+            float v = depth01_to_view(d);
+            min_d = min(min_d, v);
+            max_d = max(max_d, v);
+            any = true;
+        }
+    }
+
+    if (!any)
+    {
+        tile_depth_ranges[tile_id] = vec2(0.0, 0.0);
+        return;
+    }
+
+    tile_depth_ranges[tile_id] = vec2(min_d, max_d);
+}

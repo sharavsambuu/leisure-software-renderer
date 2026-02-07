@@ -23,6 +23,7 @@
 #include "shs/pipeline/frame_graph.hpp"
 #include "shs/pipeline/pass_registry.hpp"
 #include "shs/pipeline/render_pass.hpp"
+#include "shs/pipeline/technique_profile.hpp"
 
 namespace shs
 {
@@ -54,6 +55,39 @@ namespace shs
             if (!pass) return false;
             add_pass_instance(std::move(pass));
             return true;
+        }
+
+        bool configure_for_technique(const PassFactoryRegistry& registry, TechniqueMode mode, std::vector<std::string>* out_missing_ids = nullptr)
+        {
+            const TechniqueProfile profile = make_default_technique_profile(mode);
+            return configure_from_profile(registry, profile, out_missing_ids);
+        }
+
+        bool configure_from_profile(const PassFactoryRegistry& registry, const TechniqueProfile& profile, std::vector<std::string>* out_missing_ids = nullptr)
+        {
+            passes_.clear();
+            graph_dirty_ = true;
+            if (out_missing_ids) out_missing_ids->clear();
+
+            bool ok = true;
+            for (const auto& e : profile.passes)
+            {
+                auto p = registry.create(e.id);
+                if (!p)
+                {
+                    if (e.required) ok = false;
+                    if (out_missing_ids) out_missing_ids->push_back(e.id);
+                    continue;
+                }
+                if (!p->supports_technique_mode(profile.mode))
+                {
+                    if (e.required) ok = false;
+                    if (out_missing_ids) out_missing_ids->push_back(e.id);
+                    continue;
+                }
+                add_pass_instance(std::move(p));
+            }
+            return ok;
         }
 
         IRenderPass* find(const std::string& pass_id)
@@ -156,6 +190,14 @@ namespace shs
             for (IRenderPass* p : order)
             {
                 if (!p || !p->enabled()) continue;
+                if (!p->supports_technique_mode(fp_eval.technique.mode))
+                {
+                    std::ostringstream oss;
+                    oss << "Pass '" << (p->id() ? p->id() : "unnamed")
+                        << "' does not support technique mode '" << technique_mode_name(fp_eval.technique.mode) << "'.";
+                    execution_report_.warnings.push_back(oss.str());
+                    continue;
+                }
                 RenderBackendType run_backend_type = RenderBackendType::Software;
                 IRenderBackend* run_backend = select_backend_for_pass(ctx, *p, run_backend_type);
                 if (!run_backend)
@@ -210,7 +252,7 @@ namespace shs
                     const float ms = std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - t0).count();
                     if (!id) return;
                     if (std::strcmp(id, "shadow_map") == 0) ctx.debug.ms_shadow = ms;
-                    else if (std::strcmp(id, "pbr_forward") == 0) ctx.debug.ms_pbr = ms;
+                    else if (std::strcmp(id, "pbr_forward") == 0 || std::strcmp(id, "pbr_forward_plus") == 0) ctx.debug.ms_pbr = ms;
                     else if (std::strcmp(id, "tonemap") == 0) ctx.debug.ms_tonemap = ms;
                     else if (std::strcmp(id, "light_shafts") == 0) ctx.debug.ms_shafts = ms;
                     else if (std::strcmp(id, "motion_blur") == 0) ctx.debug.ms_motion_blur = ms;

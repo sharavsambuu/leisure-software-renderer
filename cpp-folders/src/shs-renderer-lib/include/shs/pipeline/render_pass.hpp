@@ -20,6 +20,7 @@
 #include "shs/frame/frame_params.hpp"
 #include "shs/gfx/rt_handle.hpp"
 #include "shs/gfx/rt_registry.hpp"
+#include "shs/pipeline/pass_contract.hpp"
 #include "shs/rhi/command/command_desc.hpp"
 #include "shs/scene/scene_types.hpp"
 
@@ -190,6 +191,11 @@ namespace shs
         virtual RenderBackendType preferred_backend() const { return RenderBackendType::Software; }
         virtual RHIQueueClass preferred_queue() const { return RHIQueueClass::Graphics; }
         virtual bool supports_backend(RenderBackendType backend) const { (void)backend; return true; }
+        virtual TechniquePassContract describe_contract() const { return TechniquePassContract{}; }
+        virtual bool supports_technique_mode(TechniqueMode mode) const
+        {
+            return technique_mode_in_mask(describe_contract().supported_modes_mask, mode);
+        }
         virtual bool is_interop_pass() const { return false; }
         virtual PassIODesc describe_io() const { return PassIODesc{}; }
         virtual void on_resize(Context& ctx, RTRegistry& rtr, int w, int h) { (void)ctx; (void)rtr; (void)w; (void)h; }

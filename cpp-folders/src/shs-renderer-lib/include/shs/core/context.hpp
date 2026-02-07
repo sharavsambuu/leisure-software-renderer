@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <array>
 #include <unordered_map>
+#include <vector>
 #include <glm/glm.hpp>
 
 #include "shs/job/job_system.hpp"
@@ -78,6 +79,31 @@ namespace shs
         }
     };
 
+    struct ForwardPlusRuntimeState
+    {
+        bool depth_prepass_valid = false;
+        bool light_culling_valid = false;
+        uint32_t tile_size = 16;
+        uint32_t tile_count_x = 0;
+        uint32_t tile_count_y = 0;
+        uint32_t max_lights_per_tile = 128;
+        uint32_t visible_light_count = 0;
+        // CPU fallback-ын хувьд tile бүрийн гэрлийн тооны мэдээлэл.
+        std::vector<uint32_t> tile_light_counts{};
+
+        void reset()
+        {
+            depth_prepass_valid = false;
+            light_culling_valid = false;
+            tile_size = 16;
+            tile_count_x = 0;
+            tile_count_y = 0;
+            max_lights_per_tile = 128;
+            visible_light_count = 0;
+            tile_light_counts.clear();
+        }
+    };
+
     struct Context
     {
         IJobSystem* job_system = nullptr;
@@ -87,6 +113,7 @@ namespace shs
         RenderDebugStats debug{};
         ShadowRuntimeState shadow{};
         RenderHistoryState history{};
+        ForwardPlusRuntimeState forward_plus{};
         std::array<IRenderBackend*, 3> backends{nullptr, nullptr, nullptr};
         RenderBackendType primary_backend = RenderBackendType::Software;
         VulkanLikeRuntime vk_like{};

@@ -1,0 +1,169 @@
+#version 450
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) uniform CameraUBO
+{
+    mat4 view;
+    mat4 proj;
+    mat4 view_proj;
+    vec4 camera_pos_time;
+    vec4 sun_dir_intensity;
+    uvec4 screen_tile_lightcount; // x: width, y: height, z: tiles_x, w: light_count
+    uvec4 params;                 // x: tiles_y, y: max_per_tile, z: tile_size, w: culling_mode
+    uvec4 culling_params;         // x: cluster_z_slices
+    vec4 depth_params;            // x: near, y: far
+    vec4 exposure_gamma;          // x: exposure, y: gamma
+} ubo;
+
+layout(set = 0, binding = 1, std430) readonly buffer LightPosRadius
+{
+    vec4 pos_radius[];
+} light_pos_radius;
+
+layout(set = 0, binding = 2, std430) readonly buffer LightColorIntensity
+{
+    vec4 color_intensity[];
+} light_color_intensity;
+
+layout(set = 0, binding = 3, std430) buffer TileCounts
+{
+    uint tile_counts[];
+};
+
+layout(set = 0, binding = 4, std430) buffer TileIndices
+{
+    uint tile_indices[];
+};
+
+layout(set = 0, binding = 5, std430) readonly buffer TileDepthRanges
+{
+    vec2 tile_depth_ranges[];
+};
+
+bool project_light_screen(vec3 pos_ws, float radius_ws, uint width, uint height, out vec2 center_px, out float radius_px, out float view_depth)
+{
+    vec4 view4 = ubo.view * vec4(pos_ws, 1.0);
+    view_depth = max(0.05, -view4.z);
+    vec4 clip = ubo.proj * view4;
+    if (clip.w <= 0.0) return false;
+
+    vec2 ndc = clip.xy / clip.w;
+    center_px.x = (ndc.x * 0.5 + 0.5) * float(width);
+    center_px.y = (0.5 - ndc.y * 0.5) * float(height);
+    radius_px = abs(radius_ws * ubo.proj[1][1] * float(height) / view_depth);
+    return true;
+}
+
+void tile_screen_bounds(uint tile_x, uint tile_y, uint tile_size, uint width, uint height, out vec2 tile_min, out vec2 tile_max)
+{
+    tile_min = vec2(float(tile_x * tile_size), float(tile_y * tile_size));
+    tile_max = vec2(
+        float(min((tile_x + 1u) * tile_size, width)),
+        float(min((tile_y + 1u) * tile_size, height))
+    );
+}
+
+void cluster_slice_depth_bounds(uint z_slice, uint z_slices, out float out_near, out float out_far)
+{
+    float near_z = max(ubo.depth_params.x, 0.001);
+    float far_z = max(ubo.depth_params.y, near_z + 0.01);
+    float slice0 = float(z_slice) / float(z_slices);
+    float slice1 = float(z_slice + 1u) / float(z_slices);
+    out_near = near_z * pow(far_z / near_z, slice0);
+    out_far = near_z * pow(far_z / near_z, slice1);
+}
+
+void main()
+{
+    uint tile_x = gl_GlobalInvocationID.x;
+    uint tile_y = gl_GlobalInvocationID.y;
+    uint tile_z = gl_GlobalInvocationID.z;
+
+    uint width = max(ubo.screen_tile_lightcount.x, 1u);
+    uint height = max(ubo.screen_tile_lightcount.y, 1u);
+    uint tiles_x = max(ubo.screen_tile_lightcount.z, 1u);
+    uint light_count = ubo.screen_tile_lightcount.w;
+    uint tiles_y = max(ubo.params.x, 1u);
+    uint max_per_tile = max(ubo.params.y, 1u);
+    uint tile_size = max(ubo.params.z, 1u);
+    uint culling_mode = ubo.params.w;
+    uint z_slices = max(ubo.culling_params.x, 1u);
+
+    if (tile_x >= tiles_x || tile_y >= tiles_y) return;
+    if (culling_mode == 3u && tile_z >= z_slices) return;
+
+    uint list_id = tile_y * tiles_x + tile_x;
+    if (culling_mode == 3u)
+    {
+        list_id = (tile_z * tiles_y + tile_y) * tiles_x + tile_x;
+    }
+    uint base_index = list_id * max_per_tile;
+    tile_counts[list_id] = 0u;
+
+    vec2 tile_min = vec2(0.0);
+    vec2 tile_max = vec2(0.0);
+    tile_screen_bounds(tile_x, tile_y, tile_size, width, height, tile_min, tile_max);
+
+    uint count = 0u;
+    float cluster_near = 0.0;
+    float cluster_far = 0.0;
+    if (culling_mode == 3u)
+    {
+        cluster_slice_depth_bounds(tile_z, z_slices, cluster_near, cluster_far);
+    }
+
+    vec2 tile_depth = vec2(0.0);
+    if (culling_mode == 2u)
+    {
+        uint tile_id = tile_y * tiles_x + tile_x;
+        tile_depth = tile_depth_ranges[tile_id];
+        if (tile_depth.y <= tile_depth.x + 1e-5)
+        {
+            tile_counts[list_id] = 0u;
+            return;
+        }
+    }
+
+    for (uint i = 0u; i < light_count; ++i)
+    {
+        vec4 pr = light_pos_radius.pos_radius[i];
+        vec2 screen = vec2(0.0);
+        float radius_px = 0.0;
+        float view_depth = 0.0;
+        if (!project_light_screen(pr.xyz, pr.w, width, height, screen, radius_px, view_depth)) continue;
+
+        if ((screen.x + radius_px) < tile_min.x) continue;
+        if ((screen.y + radius_px) < tile_min.y) continue;
+        if ((screen.x - radius_px) > tile_max.x) continue;
+        if ((screen.y - radius_px) > tile_max.y) continue;
+
+        if (culling_mode == 2u)
+        {
+            float light_min = view_depth - pr.w;
+            float light_max = view_depth + pr.w;
+            if (light_max < tile_depth.x) continue;
+            if (light_min > tile_depth.y) continue;
+        }
+        else if (culling_mode == 3u)
+        {
+            float light_min = view_depth - pr.w;
+            float light_max = view_depth + pr.w;
+            if (light_max < cluster_near) continue;
+            if (light_min > cluster_far) continue;
+        }
+        else if (culling_mode == 0u)
+        {
+            // No culling mode: fragment shader will run brute-force loop.
+            continue;
+        }
+
+        if (count < max_per_tile)
+        {
+            tile_indices[base_index + count] = i;
+            ++count;
+        }
+    }
+
+    tile_counts[list_id] = count;
+}

@@ -1,6 +1,7 @@
 #define SDL_MAIN_HANDLED
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <fstream>
@@ -33,6 +34,7 @@
 #include <shs/logic/fsm.hpp>
 #include <shs/platform/platform_input.hpp>
 #include <shs/platform/platform_runtime.hpp>
+#include <shs/pipeline/technique_profile.hpp>
 #include <shs/rhi/backend/backend_factory.hpp>
 #include <shs/rhi/drivers/vulkan/vk_backend.hpp>
 #include <shs/resources/loaders/primitive_import.hpp>
@@ -74,6 +76,27 @@ namespace
     };
 
     constexpr ModelForwardAxis SUBARU_VISUAL_FORWARD_AXIS = ModelForwardAxis::PosZ;
+
+    bool profile_has_pass(const shs::TechniqueProfile& profile, const char* pass_id)
+    {
+        for (const auto& p : profile.passes)
+        {
+            if (p.id == pass_id) return true;
+        }
+        return false;
+    }
+
+    const std::array<shs::TechniqueMode, 5>& known_technique_modes()
+    {
+        static const std::array<shs::TechniqueMode, 5> modes = {
+            shs::TechniqueMode::Forward,
+            shs::TechniqueMode::ForwardPlus,
+            shs::TechniqueMode::Deferred,
+            shs::TechniqueMode::TiledDeferred,
+            shs::TechniqueMode::ClusteredForward
+        };
+        return modes;
+    }
 
     class SdlVulkanRuntime
     {
@@ -366,7 +389,7 @@ namespace
             const LightMatrices light = compute_light_matrices(scene);
             const glm::vec2 sun_uv = compute_sun_uv(scene);
 
-            record_shadow_pass(fi.cmd, scene, resources, light);
+            record_shadow_pass(fi.cmd, scene, resources, light, fp.pass.shadow.enable);
             record_scene_pass(fi.cmd, scene, resources, light, fp);
             record_bright_pass(fi.cmd);
             record_shafts_pass(fi.cmd, sun_uv, fp);
@@ -2400,7 +2423,8 @@ namespace
             VkCommandBuffer cmd,
             const shs::Scene& scene,
             const shs::ResourceRegistry& resources,
-            const LightMatrices& light)
+            const LightMatrices& light,
+            bool enable_shadow_casters)
         {
             VkClearValue clear{};
             clear.depthStencil = {1.0f, 0};
@@ -2408,6 +2432,12 @@ namespace
 
             cmd_set_viewport_scissor(cmd, kShadowMapSize, kShadowMapSize, false);
             vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadow_pipeline_);
+
+            if (!enable_shadow_casters)
+            {
+                vkCmdEndRenderPass(cmd);
+                return;
+            }
 
             for (const auto& item : scene.items)
             {
@@ -3346,6 +3376,24 @@ int main()
     fp.pass.motion_blur.min_velocity_px = 0.30f;
     fp.pass.motion_blur.depth_reject = 0.10f;
 
+    shs::TechniqueMode active_technique_mode = shs::TechniqueMode::Forward;
+    size_t technique_cycle_index = 0;
+    bool user_shadow_enabled = fp.pass.shadow.enable;
+    bool user_motion_blur_enabled = fp.pass.motion_blur.enable;
+    auto apply_technique_composition = [&]() {
+        const shs::TechniqueProfile profile = shs::make_default_technique_profile(active_technique_mode);
+        fp.technique.mode = active_technique_mode;
+        fp.technique.depth_prepass = profile_has_pass(profile, "depth_prepass");
+        fp.technique.light_culling = profile_has_pass(profile, "light_culling");
+
+        const bool profile_shadow = profile_has_pass(profile, "shadow_map");
+        const bool profile_motion_blur = profile_has_pass(profile, "motion_blur");
+        fp.pass.shadow.enable = user_shadow_enabled && profile_shadow;
+        fp.pass.motion_blur.enable = user_motion_blur_enabled && profile_motion_blur;
+        fp.pass.motion_vectors.enable = fp.pass.motion_vectors.enable || fp.pass.motion_blur.enable;
+    };
+    apply_technique_composition();
+
     shs::CameraRig cam{};
     cam.pos = glm::vec3(0.0f, 6.0f, -16.0f);
     cam.yaw = glm::radians(90.0f);
@@ -3418,6 +3466,20 @@ int main()
             const int next = (((int)fp.debug_view) + 1) % 4;
             fp.debug_view = (shs::DebugViewMode)next;
         }
+        if (pin.cycle_cull_mode)
+        {
+            switch (fp.cull_mode)
+            {
+                case shs::CullMode::None: fp.cull_mode = shs::CullMode::Back; break;
+                case shs::CullMode::Back: fp.cull_mode = shs::CullMode::Front; break;
+                case shs::CullMode::Front:
+                default: fp.cull_mode = shs::CullMode::None; break;
+            }
+        }
+        if (pin.toggle_front_face)
+        {
+            fp.front_face_ccw = !fp.front_face_ccw;
+        }
         // F4: PBR <-> BlinnPhong солих.
         if (pin.toggle_shading_model)
         {
@@ -3425,10 +3487,22 @@ int main()
                 ? shs::ShadingModel::BlinnPhong
                 : shs::ShadingModel::PBRMetalRough;
         }
+        // B: technique composition цикл.
+        if (pin.toggle_bot)
+        {
+            const auto& modes = known_technique_modes();
+            technique_cycle_index = (technique_cycle_index + 1u) % modes.size();
+            active_technique_mode = modes[technique_cycle_index];
+            apply_technique_composition();
+        }
         // L: light shafts on/off.
         if (pin.toggle_light_shafts) fp.pass.light_shafts.enable = !fp.pass.light_shafts.enable;
         // M: motion blur on/off.
-        if (pin.toggle_motion_blur) fp.pass.motion_blur.enable = !fp.pass.motion_blur.enable;
+        if (pin.toggle_motion_blur)
+        {
+            user_motion_blur_enabled = !user_motion_blur_enabled;
+            apply_technique_composition();
+        }
         // F5: cubemap/procedural sky солих.
         if (pin.toggle_sky_mode)
         {
@@ -3600,16 +3674,20 @@ int main()
             std::string title = "HelloPassBasicsVulkan | FPS: " + std::to_string(fps)
                 + " | backend: " + std::string(ctx.active_backend_name())
                 + " | dbg[F1]: " + std::to_string((int)fp.debug_view)
+                + " | tech[B]: " + std::string(shs::technique_mode_name(active_technique_mode))
                 + " | shade[F4]: " + (fp.shading_model == shs::ShadingModel::PBRMetalRough ? "PBR" : "Blinn")
+                + " | cull[F2]: " + std::to_string((int)fp.cull_mode)
+                + " | front[F3]: " + std::string(fp.front_face_ccw ? "CCW" : "CW")
                 + " | sky[F5]: " + (use_cubemap_sky ? "cubemap" : "procedural")
                 + " | follow[F6]: " + (follow_camera ? "on" : "off")
                 + " | ai: " + std::string(subaru_ai.state_name())
                 + "(" + std::to_string((int)std::lround(subaru_ai.state_progress() * 100.0f)) + "%)"
+                + " | shadow: " + std::string(fp.pass.shadow.enable ? "on" : "off")
                 + " | shafts[L]: " + (fp.pass.light_shafts.enable ? "on" : "off")
                 + " | mblur[M]: " + (fp.pass.motion_blur.enable ? "on" : "off")
                 + " | logic: " + std::to_string((int)std::lround(logic_ms_accum / std::max(1, frames))) + "ms"
                 + " | render: " + std::to_string((int)std::lround(render_ms_accum / std::max(1, frames))) + "ms"
-                + " | path: gpu-draw";
+                + " | path: gpu-draw(composed)";
             runtime.set_title(title);
             frames = 0;
             fps_accum = 0.0f;

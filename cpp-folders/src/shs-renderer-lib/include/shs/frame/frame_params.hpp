@@ -12,6 +12,8 @@
 
 #include <cstdint>
 
+#include "shs/frame/technique_mode.hpp"
+
 namespace shs
 {
     struct TonemapParams
@@ -66,6 +68,20 @@ namespace shs
         bool emulate_parallel_recording = true;
         // Vulkan frame-in-flight дуурайлтын slot тоо.
         uint32_t emulated_frames_in_flight = 2;
+    };
+
+    struct TechniqueParams
+    {
+        // Аль техникийг pipeline сонгохыг заана.
+        TechniqueMode mode = TechniqueMode::Forward;
+        // Pass contract дээрх mode mask шалгах үед ашиглах active mask.
+        uint32_t active_modes_mask = technique_mode_mask_all();
+
+        // Technique-specific knobs (Forward+/Tiled/Clustered-д түгээмэл).
+        bool depth_prepass = true;
+        bool light_culling = false;
+        uint32_t tile_size = 16;
+        uint32_t max_lights_per_tile = 128;
     };
 
     struct PassParamBlocks
@@ -150,6 +166,7 @@ namespace shs
         // Шинэ pass-param API: pass бүр өөрийн block-оор тохиргоо авна.
         PassParamBlocks pass{};
         HybridPipelineParams hybrid{};
+        TechniqueParams technique{};
 
         void sync_legacy_to_blocks()
         {

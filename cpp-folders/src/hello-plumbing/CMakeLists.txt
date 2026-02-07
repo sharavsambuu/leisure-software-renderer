@@ -67,6 +67,10 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
     set(VK_PB_FLARE_FRAG "${VK_DEFAULT_SHADER_DIR}/pb_flare.frag")
     set(VK_PB_COMPOSITE_FRAG "${VK_DEFAULT_SHADER_DIR}/pb_composite.frag")
     set(VK_PB_FXAA_FRAG "${VK_DEFAULT_SHADER_DIR}/pb_fxaa.frag")
+    set(VK_FP_SCENE_VERT "${VK_DEFAULT_SHADER_DIR}/fp_stress_scene.vert")
+    set(VK_FP_SCENE_FRAG "${VK_DEFAULT_SHADER_DIR}/fp_stress_scene.frag")
+    set(VK_FP_LIGHT_CULL_COMP "${VK_DEFAULT_SHADER_DIR}/fp_stress_light_cull.comp")
+    set(VK_FP_DEPTH_REDUCE_COMP "${VK_DEFAULT_SHADER_DIR}/fp_stress_depth_reduce.comp")
 
     set(VK_PB_SHADOW_VERT_SPV "${VK_TRI_OUT_DIR}/pb_shadow.vert.spv")
     set(VK_PB_SCENE_VERT_SPV "${VK_TRI_OUT_DIR}/pb_scene.vert.spv")
@@ -78,6 +82,10 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
     set(VK_PB_FLARE_FRAG_SPV "${VK_TRI_OUT_DIR}/pb_flare.frag.spv")
     set(VK_PB_COMPOSITE_FRAG_SPV "${VK_TRI_OUT_DIR}/pb_composite.frag.spv")
     set(VK_PB_FXAA_FRAG_SPV "${VK_TRI_OUT_DIR}/pb_fxaa.frag.spv")
+    set(VK_FP_SCENE_VERT_SPV "${VK_TRI_OUT_DIR}/fp_stress_scene.vert.spv")
+    set(VK_FP_SCENE_FRAG_SPV "${VK_TRI_OUT_DIR}/fp_stress_scene.frag.spv")
+    set(VK_FP_LIGHT_CULL_COMP_SPV "${VK_TRI_OUT_DIR}/fp_stress_light_cull.comp.spv")
+    set(VK_FP_DEPTH_REDUCE_COMP_SPV "${VK_TRI_OUT_DIR}/fp_stress_depth_reduce.comp.spv")
 
     add_custom_command(
         OUTPUT "${VK_TRI_VERT_SPV}"
@@ -151,6 +159,30 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
         DEPENDS "${VK_PB_FXAA_FRAG}"
         VERBATIM
     )
+    add_custom_command(
+        OUTPUT "${VK_FP_SCENE_VERT_SPV}"
+        COMMAND ${GLSLANG_VALIDATOR} -V "${VK_FP_SCENE_VERT}" -o "${VK_FP_SCENE_VERT_SPV}"
+        DEPENDS "${VK_FP_SCENE_VERT}"
+        VERBATIM
+    )
+    add_custom_command(
+        OUTPUT "${VK_FP_SCENE_FRAG_SPV}"
+        COMMAND ${GLSLANG_VALIDATOR} -V "${VK_FP_SCENE_FRAG}" -o "${VK_FP_SCENE_FRAG_SPV}"
+        DEPENDS "${VK_FP_SCENE_FRAG}"
+        VERBATIM
+    )
+    add_custom_command(
+        OUTPUT "${VK_FP_LIGHT_CULL_COMP_SPV}"
+        COMMAND ${GLSLANG_VALIDATOR} -V "${VK_FP_LIGHT_CULL_COMP}" -o "${VK_FP_LIGHT_CULL_COMP_SPV}"
+        DEPENDS "${VK_FP_LIGHT_CULL_COMP}"
+        VERBATIM
+    )
+    add_custom_command(
+        OUTPUT "${VK_FP_DEPTH_REDUCE_COMP_SPV}"
+        COMMAND ${GLSLANG_VALIDATOR} -V "${VK_FP_DEPTH_REDUCE_COMP}" -o "${VK_FP_DEPTH_REDUCE_COMP_SPV}"
+        DEPENDS "${VK_FP_DEPTH_REDUCE_COMP}"
+        VERBATIM
+    )
     add_custom_target(HelloVulkanTriangleShaders DEPENDS "${VK_TRI_VERT_SPV}" "${VK_TRI_FRAG_SPV}")
     add_custom_target(HelloPassBasicsVulkanShaders
         DEPENDS
@@ -164,6 +196,13 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
             "${VK_PB_FLARE_FRAG_SPV}"
             "${VK_PB_COMPOSITE_FRAG_SPV}"
             "${VK_PB_FXAA_FRAG_SPV}"
+    )
+    add_custom_target(HelloForwardPlusStressVulkanShaders
+        DEPENDS
+            "${VK_FP_SCENE_VERT_SPV}"
+            "${VK_FP_SCENE_FRAG_SPV}"
+            "${VK_FP_LIGHT_CULL_COMP_SPV}"
+            "${VK_FP_DEPTH_REDUCE_COMP_SPV}"
     )
 
     add_executable(HelloVulkanTriangle hello_vulkan_triangle.cpp)
@@ -205,6 +244,24 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
         target_compile_options(HelloPassBasicsVulkan PRIVATE $<$<CONFIG:Debug>:-g>)
     endif()
     target_compile_features(HelloPassBasicsVulkan PRIVATE cxx_std_20)
+
+    add_executable(HelloForwardPlusStressVulkan hello_forward_plus_stress_vulkan.cpp)
+    add_dependencies(HelloForwardPlusStressVulkan HelloForwardPlusStressVulkanShaders)
+    target_link_libraries(HelloForwardPlusStressVulkan PRIVATE shs::renderer)
+    target_compile_definitions(HelloForwardPlusStressVulkan PRIVATE
+        SHS_VK_FP_SCENE_VERT_SPV="${VK_FP_SCENE_VERT_SPV}"
+        SHS_VK_FP_SCENE_FRAG_SPV="${VK_FP_SCENE_FRAG_SPV}"
+        SHS_VK_FP_LIGHT_CULL_COMP_SPV="${VK_FP_LIGHT_CULL_COMP_SPV}"
+        SHS_VK_FP_DEPTH_REDUCE_COMP_SPV="${VK_FP_DEPTH_REDUCE_COMP_SPV}"
+    )
+    if(MSVC)
+        target_compile_options(HelloForwardPlusStressVulkan PRIVATE /W4)
+    else()
+        target_compile_options(HelloForwardPlusStressVulkan PRIVATE -Wall -Wextra -Wpedantic)
+        target_compile_options(HelloForwardPlusStressVulkan PRIVATE $<$<CONFIG:Release>:-O3>)
+        target_compile_options(HelloForwardPlusStressVulkan PRIVATE $<$<CONFIG:Debug>:-g>)
+    endif()
+    target_compile_features(HelloForwardPlusStressVulkan PRIVATE cxx_std_20)
 else()
     if(NOT SHS_RENDERER_HAS_VULKAN)
         message(STATUS "HelloVulkanTriangle skipped (shs::renderer built without Vulkan support)")
@@ -219,5 +276,12 @@ else()
         message(STATUS "HelloPassBasicsVulkan skipped (glslangValidator not found)")
     elseif(NOT SHS_SDL2_HAS_VULKAN)
         message(STATUS "HelloPassBasicsVulkan skipped (SDL2 was built without Vulkan support)")
+    endif()
+    if(NOT SHS_RENDERER_HAS_VULKAN)
+        message(STATUS "HelloForwardPlusStressVulkan skipped (shs::renderer built without Vulkan support)")
+    elseif(NOT GLSLANG_VALIDATOR)
+        message(STATUS "HelloForwardPlusStressVulkan skipped (glslangValidator not found)")
+    elseif(NOT SHS_SDL2_HAS_VULKAN)
+        message(STATUS "HelloForwardPlusStressVulkan skipped (SDL2 was built without Vulkan support)")
     endif()
 endif()
