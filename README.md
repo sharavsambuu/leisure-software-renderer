@@ -106,7 +106,6 @@
     sudo vcpkg install --recurse sdl2-image[libjpeg-turbo]
     sudo vcpkg install glm
     sudo vcpkg install assimp
-    sudo vcpkg install physx:x64-linux
 
     
     Compilation steps on ubuntu 24.04
@@ -150,7 +149,6 @@
     vcpkg install libjpeg-turbo
     vcpkg install glm
     vcpkg install assimp
-    vcpkg install physx:x64-windows
 
 
     Use CMake-GUI with Visual Studio 17 2022
@@ -229,4 +227,3 @@
 
 
       
-

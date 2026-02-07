@@ -16,6 +16,7 @@ find_package(SDL2 CONFIG REQUIRED)
 find_package(SDL2_image CONFIG REQUIRED)
 find_package(glm CONFIG REQUIRED)
 find_package(assimp CONFIG REQUIRED)
+find_package(Vulkan QUIET)
 
 add_library(shs_renderer INTERFACE)
 add_library(shs::renderer ALIAS shs_renderer)
@@ -51,6 +52,11 @@ target_link_libraries(shs_renderer INTERFACE
     glm::glm
     assimp::assimp
 )
+
+if(Vulkan_FOUND)
+    target_compile_definitions(shs_renderer INTERFACE SHS_HAS_VULKAN=1)
+    target_link_libraries(shs_renderer INTERFACE Vulkan::Vulkan)
+endif()
 
 
 # If you need ASSIMP_INCLUDE_DIR for some reason, prefer target includes:
