@@ -115,6 +115,11 @@
     cmake .. -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake
     make -j20
     cd src/hello-pixel-primitives && ./HelloPixel
+    cd ../hello-plumbing && ./HelloPassBasics && ./HelloPassBasicsVulkan
+    # HelloPassBasicsVulkan is shader-based multi-pass Vulkan path:
+    #   soft shadow map + PBR scene + camera/per-object motion blur + light shafts + lens flare + FXAA
+    # Default shaders are in:
+    #   cpp-folders/src/shs-renderer-lib/shaders/vulkan/pb_*.vert|frag
 
 
 
@@ -157,6 +162,11 @@
     cmake .. -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake
     make -j20
     cd src/hello-pixel-primitives && ./HelloPixel
+    cd ../hello-plumbing && ./HelloPassBasics && ./HelloPassBasicsVulkan
+    # HelloPassBasicsVulkan is shader-based multi-pass Vulkan path:
+    #   soft shadow map + PBR scene + camera/per-object motion blur + light shafts + lens flare + FXAA
+    # Default shaders are in:
+    #   cpp-folders/src/shs-renderer-lib/shaders/vulkan/pb_*.vert|frag
 
 
 

@@ -329,16 +329,17 @@ private:
             throw std::runtime_error("vkBeginCommandBuffer failed");
         }
 
-        VkClearValue clear{};
-        clear.color = {{0.04f, 0.05f, 0.09f, 1.0f}};
+        VkClearValue clear_values[2]{};
+        clear_values[0].color = {{0.04f, 0.05f, 0.09f, 1.0f}};
+        clear_values[1].depthStencil = {1.0f, 0};
         VkRenderPassBeginInfo rp{};
         rp.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
         rp.renderPass = fi.render_pass;
         rp.framebuffer = fi.framebuffer;
         rp.renderArea.offset = {0, 0};
         rp.renderArea.extent = fi.extent;
-        rp.clearValueCount = 1;
-        rp.pClearValues = &clear;
+        rp.clearValueCount = vk_->has_depth_attachment() ? 2u : 1u;
+        rp.pClearValues = clear_values;
         vkCmdBeginRenderPass(fi.cmd, &rp, VK_SUBPASS_CONTENTS_INLINE);
         vkCmdBindPipeline(fi.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_);
 
