@@ -1,41 +1,35 @@
 /*
+    SHS РЕНДЕРЕР САН
 
-    shs/passes/pass_context.hpp
-
-    PASS CONTEXT (нэг кадрын нийтлэг төлөв / параметрүүд)
-
-    ЗОРИЛГО:
-    - Pass бүр өөр өөр параметр авдаг байдлыг зогсооно.
-    - Бүх pass-д хэрэгтэй нийтлэг зүйлсийг нэг газар төвлөрүүлнэ.
-    - Demo бүрийн main() нь цэвэрхэн болно: 
-        update(ctx) -> graph.execute(pc).
-
+    ФАЙЛ: pass_context.hpp
+    МОДУЛЬ: passes
+    ЗОРИЛГО: Энэ файл нь shs-renderer-lib-ийн passes модульд хамаарах төрөл/функцийн
+            интерфэйс эсвэл хэрэгжүүлэлтийг тодорхойлно.
 */
+
 
 #pragma once
 
 #include <cstdint>
+#include "shs/core/context.hpp"
+#include "shs/gfx/rt_types.hpp"
 
 namespace shs
 {
-    // ---------------------------------------------
-    // Forward declarations (хүнд include-ээс зайлсхийх)
-    // ---------------------------------------------
-    struct Context;
-
     struct PassContext
     {
         // --- App / Engine context ---
         Context* ctx = nullptr;          // Цонх, input, timing, device гэх мэт (demo-гийн үндсэн context)
+
+        // Нэг кадрын үндсэн render target.
+        DefaultRT* rt = nullptr;
 
         // --- Frame timing ---
         uint64_t frame_index = 0;        // Кадрын дугаар
         float    dt          = 0.0f;     // delta time (сек)
 
         // --- Camera ---
-        // Энд матриц/векторын төрлийг оруулж болно (glm::mat4 гэх мэт),
-        // гэхдээ одоогоор include тэсрэхээс хамгаалж void* хийж байна.
-        // Дараа нь glm-г төв math.hpp дээр нэгтгээд хатуу төрөл болгоно.
+        // Камерын матриц/вектор pointer-ууд.
         const void* view          = nullptr; // (const glm::mat4*)
         const void* proj          = nullptr; // (const glm::mat4*)
         const void* viewproj      = nullptr; // (const glm::mat4*)
@@ -48,7 +42,7 @@ namespace shs
         float exposure = 1.0f;           // Tonemap exposure
         float gamma    = 2.2f;           // Display gamma
 
-        // --- Shared resource hubs (дараагийн header-уудтай холбоно) ---
+        // --- Shared resource hubs ---
         void* resources = nullptr;       // (shs::RendererResources*) - resource_handles.hpp дээр тодорхойлно
         void* scene     = nullptr;       // (shs::SceneData*)         - scene_data.hpp дээр тодорхойлно
 

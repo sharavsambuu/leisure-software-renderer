@@ -1,16 +1,18 @@
 #pragma once
-/*
-    shs-renderer-lib
-    Shadow debug blit (depth -> grayscale)
 
-    ТАЙЛБАР:
-    - Shadow map render болсон эсэхийг шалгах
+/*
+    SHS РЕНДЕРЕР САН
+
+    ФАЙЛ: pass_shadow_debug.hpp
+    МОДУЛЬ: passes
+    ЗОРИЛГО: Энэ файл нь shs-renderer-lib-ийн passes модульд хамаарах төрөл/функцийн
+            интерфэйс эсвэл хэрэгжүүлэлтийг тодорхойлно.
 */
 
 #include <algorithm>
 #include <cstdint>
 
-#include <shs/passes/rt_shadow.hpp>
+#include <shs/gfx/rt_shadow.hpp>
 
 namespace shs {
 
@@ -43,4 +45,3 @@ inline void blit_shadow_depth_to_color(
 }
 
 } // namespace shs
-

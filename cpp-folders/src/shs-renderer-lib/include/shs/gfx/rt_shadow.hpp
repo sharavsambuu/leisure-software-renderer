@@ -1,11 +1,12 @@
 #pragma once
-/*
-    shs-renderer-lib
-    Shadow RT type (depth-only)
 
-    ТАЙЛБАР:
-    - Depth нь float buffer (0..1 эсвэл view-space z г.м) аль ч байж болно
-    - Гол нь жинхэнэ type байх, void* хэрэглэхгүй
+/*
+    SHS РЕНДЕРЕР САН
+
+    ФАЙЛ: rt_shadow.hpp
+    МОДУЛЬ: gfx
+    ЗОРИЛГО: Энэ файл нь shs-renderer-lib-ийн gfx модульд хамаарах төрөл/функцийн
+            интерфэйс эсвэл хэрэгжүүлэлтийг тодорхойлно.
 */
 
 #include <cstdint>
@@ -39,4 +40,3 @@ struct RT_ShadowDepth {
 };
 
 } // namespace shs
-

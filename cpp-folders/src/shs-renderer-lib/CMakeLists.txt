@@ -47,7 +47,7 @@ target_include_directories(shs_renderer INTERFACE
 # Link deps that demos will inherit automatically
 target_link_libraries(shs_renderer INTERFACE
     SDL2::SDL2
-    #SDL2_image::SDL2_main
+    SDL2_image::Main
     glm::glm
     assimp::assimp
 )
@@ -55,4 +55,3 @@ target_link_libraries(shs_renderer INTERFACE
 
 # If you need ASSIMP_INCLUDE_DIR for some reason, prefer target includes:
 # target_include_directories(shs_renderer INTERFACE ${ASSIMP_INCLUDE_DIR})
-

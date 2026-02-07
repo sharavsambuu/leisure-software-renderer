@@ -1,21 +1,18 @@
 /*
+    SHS РЕНДЕРЕР САН
 
-    shs/passes/resource_handles.hpp
-
-    SHARED RESOURCE HANDLES (RT-ууд, env, shadow, temp)
-
-    ЗОРИЛГО:
-    - Pass бүр өөрийн RT төрлүүдийг parameter hell болгож дамжуулахгүй.
-    - Ерөнхий нэршлийн тохиролцоо: frame.hdr, frame.ldr, shadow.depth гэх мэт.
-    - Demo бүр нэг л газар resource-оо үүсгээд, PassContext.resources-аар дамжуулна.
-
+    ФАЙЛ: resource_handles.hpp
+    МОДУЛЬ: gfx
+    ЗОРИЛГО: Энэ файл нь shs-renderer-lib-ийн gfx модульд хамаарах төрөл/функцийн
+            интерфэйс эсвэл хэрэгжүүлэлтийг тодорхойлно.
 */
+
 
 #pragma once
 
 #include <cstdint>
 
-#include "shs/passes/rt_types.hpp"
+#include "shs/gfx/rt_types.hpp"
 
 namespace shs
 {
@@ -25,8 +22,7 @@ namespace shs
     struct RendererResources
     {
         // --- Main frame targets ---
-        // Одоо хэрэглэдэг бодит төрлүүдээрээ тааруулж солино.
-        // rt_types.hpp дотор юу байна, түүнтэй таарах ёстой.
+        // rt_types.hpp дээрх RT төрлүүдийг ашиглана.
 
         // GBuffer / DefaultRT (өнгө + гүн + motion/velocity)
         RT_ColorDepthMotion gbuf;
@@ -38,9 +34,9 @@ namespace shs
         RT_ColorLDR ldr;
 
         // --- Shadow ---
-        RT_Depth shadow_depth;
+        RT_DepthBuffer shadow_depth;
 
-        // --- Post temp buffers ---
+        // --- Post buffers ---
         RT_ColorLDR tmp_a;
         RT_ColorLDR tmp_b;
 
@@ -58,15 +54,12 @@ namespace shs
             zn = znear;
             zf = zfar;
 
-            // Доорх ctor signature-ууд rt_types.hpp-тэй таарах ёстой.
-            // Хэрэв өөр байвал энд л нэг дор засна.
-
             gbuf         = RT_ColorDepthMotion(w, h, zn, zf);
             hdr          = RT_ColorHDR(w, h);
             ldr          = RT_ColorLDR(w, h);
 
             // Shadow map хэмжээ тусдаа байж болно (жишээ нь 2048)
-            shadow_depth = RT_Depth(2048, 2048, zn, zf);
+            shadow_depth = RT_DepthBuffer(2048, 2048, zn, zf);
 
             tmp_a        = RT_ColorLDR(w, h);
             tmp_b        = RT_ColorLDR(w, h);

@@ -1,14 +1,14 @@
-// File: src/shs-renderer-lib/include/shs/gfx/rt_registry.hpp
 #pragma once
+
 /*
-    SHS RENDERER LIB - RT REGISTRY
+    SHS РЕНДЕРЕР САН
 
-    ЗОРИЛГО:
-    - Pipeline дотор "RT allocation"-ыг хожим төвлөрүүлэх суурь
-    - Одоогоор demo талд байгаа бодит RT pointer-уудыг handle -> ptr map болгоно
-
-    - Энд юу ч allocate хийхгүй (түр). Зөвхөн mapping.
+    ФАЙЛ: rt_registry.hpp
+    МОДУЛЬ: gfx
+    ЗОРИЛГО: Энэ файл нь shs-renderer-lib-ийн gfx модульд хамаарах төрөл/функцийн
+            интерфэйс эсвэл хэрэгжүүлэлтийг тодорхойлно.
 */
+
 
 #include <cstdint>
 #include <unordered_map>
@@ -48,4 +48,3 @@ namespace shs
         std::unordered_map<uint32_t, void*> map_;
     };
 }
-

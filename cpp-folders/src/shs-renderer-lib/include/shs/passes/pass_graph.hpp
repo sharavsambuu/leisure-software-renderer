@@ -1,15 +1,12 @@
 /*
+    SHS РЕНДЕРЕР САН
 
-    shs/passes/pass_graph.hpp
-
-    PASS INTERFACE + PASS GRAPH (тушаалын дараалалтай executor)
-
-    ЗОРИЛГО:
-    - common pass.execute интерфэйсийг маш энгийнээр эхлүүлэх.
-    - Одоохондоо dependency solver хэрэггүй: нэмсэн дарааллаар нь ажиллуулна.
-    - Дараа нь хүсвэл name/tag, enable/disable, профайлер нэмнэ.
-
+    ФАЙЛ: pass_graph.hpp
+    МОДУЛЬ: passes
+    ЗОРИЛГО: Энэ файл нь shs-renderer-lib-ийн passes модульд хамаарах төрөл/функцийн
+            интерфэйс эсвэл хэрэгжүүлэлтийг тодорхойлно.
 */
+
 
 #pragma once
 

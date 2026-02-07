@@ -12,7 +12,7 @@ src/shs-renderer-lib/include/shs/core/config.hpp
 
 Render-target / RT types
 
-src/shs-renderer-lib/include/shs/passes/rt_types.hpp
+src/shs-renderer-lib/include/shs/gfx/rt_types.hpp
 	Defines RT_ColorDepthVelocity, RT_ColorDepthMotion (alias), DefaultRT.
 
 

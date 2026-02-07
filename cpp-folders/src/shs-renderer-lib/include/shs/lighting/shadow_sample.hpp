@@ -1,17 +1,17 @@
 #pragma once
-/*
-    shs-renderer-lib
-    Shadow sampling utilities (Directional shadow map)
 
-    ТАЙЛБАР:
-    - Light VP ашиглаад world pos -> shadow UVZ
-    - Bias + (optional) small PCF
-    - Энэ нь header-only, demo бүр ашиглаж болно
+/*
+    SHS РЕНДЕРЕР САН
+
+    ФАЙЛ: shadow_sample.hpp
+    МОДУЛЬ: lighting
+    ЗОРИЛГО: Энэ файл нь shs-renderer-lib-ийн lighting модульд хамаарах төрөл/функцийн
+            интерфэйс эсвэл хэрэгжүүлэлтийг тодорхойлно.
 */
 
 #include <glm/glm.hpp>
 #include <algorithm>
-#include <shs/passes/rt_shadow.hpp>
+#include <shs/gfx/rt_shadow.hpp>
 
 namespace shs {
 
@@ -104,4 +104,3 @@ inline float shadow_visibility_dir(
 }
 
 } // namespace shs
-

@@ -1,12 +1,14 @@
-// File: src/shs-renderer-lib/include/shs/gfx/rt_handle.hpp
 #pragma once
-/*
-    SHS RENDERER LIB - RT HANDLE
 
-    ЗОРИЛГО:
-    - Opaque void* оронд type-safe handle ашиглах (demo бүрийн RT struct өөр байж болно)
-    - Дараа нь static/dynamic lib болгоход ABI-г хялбар байлгана
+/*
+    SHS РЕНДЕРЕР САН
+
+    ФАЙЛ: rt_handle.hpp
+    МОДУЛЬ: gfx
+    ЗОРИЛГО: Энэ файл нь shs-renderer-lib-ийн gfx модульд хамаарах төрөл/функцийн
+            интерфэйс эсвэл хэрэгжүүлэлтийг тодорхойлно.
 */
+
 
 #include <cstdint>
 

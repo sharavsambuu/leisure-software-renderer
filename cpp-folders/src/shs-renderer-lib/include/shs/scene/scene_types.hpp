@@ -1,12 +1,14 @@
-// File: src/shs-renderer-lib/include/shs/scene/scene_types.hpp
 #pragma once
-/*
-    SHS RENDERER LIB - SCENE TYPES
 
-    ЗОРИЛГО:
-    - Pass-уудын хооронд нийтлэг scene өгөгдөл дамжуулах хамгийн жижиг бүтэц
-    - Demo бүр өөрийнхөөрөө scene үүсгэж болно (pipeline нь зөвхөн энэ тохиргоог харна)
+/*
+    SHS РЕНДЕРЕР САН
+
+    ФАЙЛ: scene_types.hpp
+    МОДУЛЬ: scene
+    ЗОРИЛГО: Энэ файл нь shs-renderer-lib-ийн scene модульд хамаарах төрөл/функцийн
+            интерфэйс эсвэл хэрэгжүүлэлтийг тодорхойлно.
 */
+
 
 #include <cstdint>
 #include <vector>
@@ -14,6 +16,9 @@
 
 namespace shs
 {
+    class ISkyModel;
+    class ResourceRegistry;
+
     // ------------------------------------------
     // Хөнгөн handle-ууд (demo бүр өөрийн asset системтэй байж болно)
     // ------------------------------------------
@@ -43,7 +48,7 @@ namespace shs
         float znear = 0.1f;
         float zfar  = 200.0f;
 
-        // Pass-ууд энэ матрицуудыг бэлэн авбал wiring цэвэр болно
+        // Pass-ууд шууд ашиглах камерын матрицууд.
         glm::mat4 view{1.0f};
         glm::mat4 proj{1.0f};
         glm::mat4 viewproj{1.0f};
@@ -89,5 +94,7 @@ namespace shs
 
         // Skybox-т хэрэгтэй handle (demo-д өөрийнхөөрөө ашиглана)
         uint32_t skybox_tex = 0;
+        const ISkyModel* sky = nullptr;
+        const ResourceRegistry* resources = nullptr;
     };
 }

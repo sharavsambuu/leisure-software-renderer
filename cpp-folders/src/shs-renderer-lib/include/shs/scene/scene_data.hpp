@@ -1,15 +1,12 @@
 /*
+    SHS РЕНДЕРЕР САН
 
-    shs/passes/scene_data.hpp
-
-    SCENE DATA (pass-уудын нийтлэг scene input)
-
-    ЗОРИЛГО:
-    - Demo бүр pass бүрт өөр өөр parameter дамжуулахгүй.
-    - Scene-ийн үндсэн өгөгдөл (camera/sun/objects/material refs) нэг газар байна.
-    - Heavy include-ийг багасгахын тулд handle/pointer маягаар холбоно.
-
+    ФАЙЛ: scene_data.hpp
+    МОДУЛЬ: scene
+    ЗОРИЛГО: Энэ файл нь shs-renderer-lib-ийн scene модульд хамаарах төрөл/функцийн
+            интерфэйс эсвэл хэрэгжүүлэлтийг тодорхойлно.
 */
+
 
 #pragma once
 
@@ -17,7 +14,7 @@
 #include <vector>
 
 #include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
+#include "shs/camera/convention.hpp"
 
 namespace shs
 {
@@ -47,12 +44,12 @@ namespace shs
 
         inline void rebuild_view()
         {
-            view = glm::lookAt(pos_ws, pos_ws + fwd_ws, up_ws);
+            view = look_at_lh(pos_ws, pos_ws + fwd_ws, up_ws);
         }
 
         inline void rebuild_proj(float aspect)
         {
-            proj = glm::perspective(fov_y_rad, aspect, znear, zfar);
+            proj = perspective_lh_no(fov_y_rad, aspect, znear, zfar);
         }
 
         inline void rebuild_viewproj()

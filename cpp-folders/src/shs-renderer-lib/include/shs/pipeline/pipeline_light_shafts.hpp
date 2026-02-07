@@ -1,4 +1,12 @@
-// File: src/shs-renderer-lib/include/shs/pipelines/pipeline_light_shafts.hpp
+/*
+    SHS РЕНДЕРЕР САН
+
+    ФАЙЛ: pipeline_light_shafts.hpp
+    МОДУЛЬ: pipeline
+    ЗОРИЛГО: Энэ файл нь shs-renderer-lib-ийн pipeline модульд хамаарах төрөл/функцийн
+            интерфэйс эсвэл хэрэгжүүлэлтийг тодорхойлно.
+*/
+
 // PATCH: replace FrameResources_LightShafts void* with handles + add tonemap pass
 
 #pragma once
@@ -8,11 +16,12 @@
 #include "shs/scene/scene_types.hpp"
 #include "shs/frame/frame_params.hpp"
 
-#include "shs/passes/pass_common.hpp"
+#include "shs/passes/pass_context.hpp"
 
 #include "shs/gfx/rt_handle.hpp"
 #include "shs/gfx/rt_registry.hpp"
 
+#include "shs/passes/pass_shadow_map.hpp"
 #include "shs/passes/pass_pbr_forward.hpp"
 #include "shs/passes/pass_tonemap.hpp"
 #include "shs/passes/pass_light_shafts.hpp"
@@ -81,7 +90,7 @@ namespace shs
                 in_ls.rtr           = rtr_;
                 in_ls.rt_input_ldr  = fr_->rt_ldr;
                 in_ls.rt_output_ldr = fr_->rt_ldr;
-                in_ls.rt_depth_like = fr_->rt_hdr;
+                in_ls.rt_depth_like = fr_->rt_motion;
                 in_ls.rt_shafts_tmp = fr_->rt_shafts;
                 ls_.execute(ctx, in_ls);
             }

@@ -1,7 +1,12 @@
 #pragma once
+
 /*
-    shs-renderer-lib
-    AABB (World Space)
+    SHS РЕНДЕРЕР САН
+
+    ФАЙЛ: aabb.hpp
+    МОДУЛЬ: geometry
+    ЗОРИЛГО: Энэ файл нь shs-renderer-lib-ийн geometry модульд хамаарах төрөл/функцийн
+            интерфэйс эсвэл хэрэгжүүлэлтийг тодорхойлно.
 */
 
 #include <glm/glm.hpp>
@@ -23,4 +28,3 @@ struct AABB {
 };
 
 } // namespace shs
-

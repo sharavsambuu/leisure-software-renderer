@@ -1,21 +1,23 @@
 #pragma once
-/*
-    PBR direct sun + shadow multiplier (Directional)
 
-    ТАЙЛБАР:
-    - Энэ нь зөвхөн "direct sun" хэсгийг shadow visibility-аар үржүүлнэ.
-    - IBL/ambient хэсэгт shadow хийхгүй (дараа нь contact/AO гэх мэт нэмнэ).
+/*
+    SHS РЕНДЕРЕР САН
+
+    ФАЙЛ: pbr_sun_shadow.hpp
+    МОДУЛЬ: lighting
+    ЗОРИЛГО: Энэ файл нь shs-renderer-lib-ийн lighting модульд хамаарах төрөл/функцийн
+            интерфэйс эсвэл хэрэгжүүлэлтийг тодорхойлно.
 */
 
 #include <glm/glm.hpp>
 #include <algorithm>
 
 #include <shs/lighting/shadow_sample.hpp>
-#include <shs/passes/rt_shadow.hpp>
+#include <shs/gfx/rt_shadow.hpp>
 
 namespace shs {
 
-// Minimal PBR helper terms (it's possible to replace later with full BRDF)
+// PBR BRDF-ийн туслах функцууд.
 inline glm::vec3 fresnel_schlick(float cosTheta, const glm::vec3& F0){
     return F0 + (1.0f - F0) * std::pow(std::clamp(1.0f - cosTheta, 0.0f, 1.0f), 5.0f);
 }
@@ -42,7 +44,7 @@ inline glm::vec3 pbr_direct_sun_shadowed(
     const glm::vec3& pos_ws,
     const glm::vec3& N,
     const glm::vec3& V,                 // view dir (from pos to camera) normalized
-    const glm::vec3& sun_dir_ws,        // direction TO sun? choose convention below
+    const glm::vec3& sun_dir_ws,        // direction FROM surface TO sun
     const glm::vec3& sun_radiance,      // linear HDR radiance
     const glm::vec3& albedo,            // linear
     float metal,
@@ -50,10 +52,7 @@ inline glm::vec3 pbr_direct_sun_shadowed(
     const RT_ShadowDepth* shadow_map,   // can be null
     const ShadowParams* shadow_params   // can be null
 ){
-    // Convention:
-    // - sun_dir_ws is direction FROM surface TOWARD sun (pointing to light).
-    // If code stores sun direction as "light travels" direction,
-    // pass (-sun_dir_ws) here.
+    // sun_dir_ws нь гадаргуугаас нар луу чиглэсэн вектор байна.
     const glm::vec3 L = glm::normalize(sun_dir_ws);
 
     const float NdotL = std::max(0.0f, glm::dot(N, L));
@@ -92,4 +91,3 @@ inline glm::vec3 pbr_direct_sun_shadowed(
 }
 
 } // namespace shs
-
