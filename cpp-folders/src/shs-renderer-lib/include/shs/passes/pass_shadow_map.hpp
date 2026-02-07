@@ -23,6 +23,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <unordered_map>
 
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -49,6 +50,7 @@ namespace shs
             ctx.shadow.reset();
             if (!in.scene || !in.fp || !in.rtr) return;
             if (!in.rt_shadow.valid()) return;
+            if (!in.fp->pass.shadow.enable) return;
 
             auto* shadow = static_cast<RT_ShadowDepth*>(in.rtr->get(in.rt_shadow));
             if (!shadow || shadow->w <= 0 || shadow->h <= 0) return;
@@ -81,6 +83,8 @@ namespace shs
             // Shadow camera фрустум таслахгүйн тулд world AABB-г консерватив байдлаар цуглуулна.
             AABB scene_aabb{};
             bool has_any_shadow_caster = false;
+            using BoundsPair = std::pair<glm::vec3, glm::vec3>;
+            static std::unordered_map<const MeshData*, BoundsPair> mesh_bounds_cache{};
             for (const auto& item : in.scene->items)
             {
                 if (!item.visible || !item.casts_shadow) continue;
@@ -90,10 +94,20 @@ namespace shs
                     const glm::mat4 model = make_model(item);
                     glm::vec3 bmin(std::numeric_limits<float>::max());
                     glm::vec3 bmax(std::numeric_limits<float>::lowest());
-                    for (const glm::vec3& p : mesh->positions)
+                    auto it = mesh_bounds_cache.find(mesh);
+                    if (it == mesh_bounds_cache.end())
                     {
-                        bmin = glm::min(bmin, p);
-                        bmax = glm::max(bmax, p);
+                        for (const glm::vec3& p : mesh->positions)
+                        {
+                            bmin = glm::min(bmin, p);
+                            bmax = glm::max(bmax, p);
+                        }
+                        mesh_bounds_cache.emplace(mesh, BoundsPair{bmin, bmax});
+                    }
+                    else
+                    {
+                        bmin = it->second.first;
+                        bmax = it->second.second;
                     }
 
                     const glm::vec3 c[8] = {

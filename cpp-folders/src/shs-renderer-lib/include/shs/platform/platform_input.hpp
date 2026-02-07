@@ -23,6 +23,7 @@ namespace shs
         bool toggle_shading_model = false;
         bool toggle_sky_mode = false;
         bool toggle_follow_camera = false;
+        bool toggle_motion_blur = false;
 
         bool forward = false;
         bool backward = false;

@@ -16,6 +16,12 @@
 
 namespace shs
 {
+    struct Motion2f
+    {
+        float x = 0.0f;
+        float y = 0.0f;
+    };
+
     struct Color
     {
         uint8_t r, g, b, a;
@@ -107,17 +113,19 @@ namespace shs
         Color clear = {0,0,0,255};
         PixelBuffer2D<Color> color;
         PixelBuffer2D<float> depth;
+        PixelBuffer2D<Motion2f> motion;
 
         RT_ColorDepthVelocity() = default;
 
         RT_ColorDepthVelocity(int W, int H, float ZN, float ZF, Color Clear = {0,0,0,255})
-            : w(W), h(H), zn(ZN), zf(ZF), clear(Clear), color(W, H, Clear), depth(W, H, 1.0f)
+            : w(W), h(H), zn(ZN), zf(ZF), clear(Clear), color(W, H, Clear), depth(W, H, 1.0f), motion(W, H, Motion2f{})
         {}
 
         void clear_all()
         {
             color.clear(clear);
             depth.clear(1.0f);
+            motion.clear(Motion2f{});
         }
     };
 

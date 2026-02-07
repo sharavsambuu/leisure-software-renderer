@@ -225,12 +225,28 @@ namespace shs
             const VertexOut v1 = program.vs(read_v(i1), uniforms);
             const VertexOut v2 = program.vs(read_v(i2), uniforms);
 
-            std::vector<detail::RasterVertex> poly = {
-                detail::RasterVertex{v0.clip, v0.varyings, v0.varying_mask, v0.world_pos, v0.normal_ws, v0.uv},
-                detail::RasterVertex{v1.clip, v1.varyings, v1.varying_mask, v1.world_pos, v1.normal_ws, v1.uv},
-                detail::RasterVertex{v2.clip, v2.varyings, v2.varying_mask, v2.world_pos, v2.normal_ws, v2.uv}
+            const detail::RasterVertex rv0{v0.clip, v0.varyings, v0.varying_mask, v0.world_pos, v0.normal_ws, v0.uv};
+            const detail::RasterVertex rv1{v1.clip, v1.varyings, v1.varying_mask, v1.world_pos, v1.normal_ws, v1.uv};
+            const detail::RasterVertex rv2{v2.clip, v2.varyings, v2.varying_mask, v2.world_pos, v2.normal_ws, v2.uv};
+
+            const auto fully_inside_clip = [](const detail::RasterVertex& rv) -> bool
+            {
+                const glm::vec4 c = rv.clip;
+                if (!(c.w > 0.0f)) return false;
+                return
+                    (c.x >= -c.w && c.x <= c.w) &&
+                    (c.y >= -c.w && c.y <= c.w) &&
+                    (c.z >= -c.w && c.z <= c.w);
             };
-            poly = detail::clip_polygon_frustum(poly);
+
+            std::vector<detail::RasterVertex> poly = {
+                rv0, rv1, rv2
+            };
+            // Ихэнх кадарт харагдаж буй трианглууд clip volume дотор байдаг тул clip-ийг алгасна.
+            if (!(fully_inside_clip(rv0) && fully_inside_clip(rv1) && fully_inside_clip(rv2)))
+            {
+                poly = detail::clip_polygon_frustum(poly);
+            }
             if (poly.size() < 3) continue;
 
             // Клип хийсний дараах олон өнцөгтийг fan аргаар гурвалжилна.
@@ -276,6 +292,20 @@ namespace shs
                 const float invw0 = 1.0f / rv0.clip.w;
                 const float invw1 = 1.0f / rv1.clip.w;
                 const float invw2 = 1.0f / rv2.clip.w;
+                const bool write_motion = (target.depth_motion != nullptr) && uniforms.enable_motion_vectors;
+                glm::mat4 curr_to_prev_model{1.0f};
+                if (write_motion)
+                {
+                    const float det_model = glm::determinant(uniforms.model);
+                    if (std::abs(det_model) > 1e-10f)
+                    {
+                        curr_to_prev_model = uniforms.prev_model * glm::inverse(uniforms.model);
+                    }
+                    else
+                    {
+                        curr_to_prev_model = glm::mat4(1.0f);
+                    }
+                }
                 const uint32_t varying_mask = rv0.varying_mask | rv1.varying_mask | rv2.varying_mask;
                 const glm::vec3 wpw0 = rv0.world_pos * invw0;
                 const glm::vec3 wpw1 = rv1.world_pos * invw1;
@@ -354,6 +384,30 @@ namespace shs
                             {
                                 const glm::vec4 uv0 = get_varying(fin, VaryingSemantic::UV0);
                                 fin.uv = glm::vec2(uv0.x, uv0.y);
+                            }
+                            if (write_motion)
+                            {
+                                const glm::vec4 curr_world = glm::vec4(fin.world_pos, 1.0f);
+                                const glm::vec4 prev_world = curr_to_prev_model * curr_world;
+                                const glm::vec4 curr_clip = uniforms.viewproj * curr_world;
+                                const glm::vec4 prev_clip = uniforms.prev_viewproj * prev_world;
+                                if (std::abs(curr_clip.w) > 1e-8f && std::abs(prev_clip.w) > 1e-8f)
+                                {
+                                    const glm::vec2 curr_ndc = glm::vec2(curr_clip) / curr_clip.w;
+                                    const glm::vec2 prev_ndc = glm::vec2(prev_clip) / prev_clip.w;
+                                    glm::vec2 vel = (curr_ndc - prev_ndc) * 0.5f * glm::vec2((float)W, (float)H);
+                                    const float len = glm::length(vel);
+                                    const float max_vel = 96.0f;
+                                    if (len > max_vel && len > 1e-6f)
+                                    {
+                                        vel *= (max_vel / len);
+                                    }
+                                    target.depth_motion->motion.at(x, y) = Motion2f{vel.x, vel.y};
+                                }
+                                else
+                                {
+                                    target.depth_motion->motion.at(x, y) = Motion2f{};
+                                }
                             }
                             fin.depth01 = z01;
                             fin.px = x;

@@ -52,7 +52,7 @@ namespace shs
             if (!inldr || !outldr || inldr->w <= 0 || inldr->h <= 0 || outldr->w <= 0 || outldr->h <= 0) return;
 
             // Light shafts унтраалттай үед input-ийг output руу шууд дамжуулна.
-            if (!in.fp->enable_light_shafts)
+            if (!in.fp->pass.light_shafts.enable)
             {
                 if (inldr == outldr) return;
                 const int w = std::min(inldr->w, outldr->w);
@@ -106,21 +106,35 @@ namespace shs
                 return;
             }
 
+            // Luma-г нэг удаа урьдчилан тооцоолж, ray marching доторх sample хөрвүүлэлтийн зардлыг бууруулна.
+            std::vector<float> luma{};
+            luma.resize((size_t)w * (size_t)h, 0.0f);
+            parallel_for_1d(ctx.job_system, 0, h, 8, [&](int yb, int ye)
+            {
+                for (int y = yb; y < ye; ++y)
+                {
+                    for (int x = 0; x < w; ++x)
+                    {
+                        const Color c = inldr->color.at(x, y);
+                        const float r = (float)c.r / 255.0f;
+                        const float g = (float)c.g / 255.0f;
+                        const float b = (float)c.b / 255.0f;
+                        luma[(size_t)y * (size_t)w + (size_t)x] = 0.2126f * r + 0.7152f * g + 0.0722f * b;
+                    }
+                }
+            });
+
             auto sample_luma = [&](int sx, int sy) -> float
             {
                 sx = std::clamp(sx, 0, w - 1);
                 sy = std::clamp(sy, 0, h - 1);
-                const Color c = inldr->color.at(sx, sy);
-                const float r = (float)c.r / 255.0f;
-                const float g = (float)c.g / 255.0f;
-                const float b = (float)c.b / 255.0f;
-                return 0.2126f * r + 0.7152f * g + 0.0722f * b;
+                return luma[(size_t)sy * (size_t)w + (size_t)sx];
             };
 
-            const int steps = std::max(8, in.fp->shafts_steps);
-            const float density = std::max(0.0f, in.fp->shafts_density);
-            const float weight = std::max(0.0f, in.fp->shafts_weight);
-            const float decay = std::clamp(in.fp->shafts_decay, 0.0f, 1.0f);
+            const int steps = std::max(8, in.fp->pass.light_shafts.steps);
+            const float density = std::max(0.0f, in.fp->pass.light_shafts.density);
+            const float weight = std::max(0.0f, in.fp->pass.light_shafts.weight);
+            const float decay = std::clamp(in.fp->pass.light_shafts.decay, 0.0f, 1.0f);
 
             std::vector<Color> scratch{};
             if (in_place_no_tmp) scratch.resize((size_t)w * (size_t)h);

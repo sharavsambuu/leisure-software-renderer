@@ -78,6 +78,7 @@ namespace shs
         Transform tr{};
         MeshHandle mesh = 0;
         MaterialHandle mat = 0;
+        uint64_t object_id = 0;
 
         bool casts_shadow = true;
         bool visible = true;

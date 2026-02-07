@@ -91,6 +91,8 @@ namespace shs
 
         glm::mat4 model{1.0f};
         glm::mat4 viewproj{1.0f};
+        glm::mat4 prev_model{1.0f};
+        glm::mat4 prev_viewproj{1.0f};
         glm::vec3 light_dir_ws{0.0f, -1.0f, 0.0f};
         glm::vec3 light_color{1.0f, 1.0f, 1.0f};
         float light_intensity = 1.0f;
@@ -109,6 +111,8 @@ namespace shs
         int shadow_pcf_radius = 2;
         float shadow_pcf_step = 1.0f;
         float shadow_strength = 1.0f;
+
+        bool enable_motion_vectors = false;
     };
 
     inline void set_varying(VertexOut& out, VaryingSemantic semantic, const glm::vec4& v)

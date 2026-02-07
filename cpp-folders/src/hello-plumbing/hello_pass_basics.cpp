@@ -1,6 +1,10 @@
 #define SDL_MAIN_HANDLED
 
 #include <chrono>
+#include <cstdio>
+#include <cstdlib>
+#include <cstdint>
+#include <memory>
 #include <random>
 #include <string>
 #include <thread>
@@ -17,9 +21,11 @@
 #include <shs/gfx/rt_shadow.hpp>
 #include <shs/gfx/rt_types.hpp>
 #include <shs/job/thread_pool_job_system.hpp>
+#include <shs/logic/fsm.hpp>
 #include <shs/pipeline/pass_adapters.hpp>
 #include <shs/pipeline/pluggable_pipeline.hpp>
 #include <shs/platform/sdl/sdl_runtime.hpp>
+#include <shs/rhi/backend/backend_factory.hpp>
 #include <shs/resources/loaders/primitive_import.hpp>
 #include <shs/resources/loaders/resource_import.hpp>
 #include <shs/resources/resource_registry.hpp>
@@ -44,9 +50,21 @@ namespace
     constexpr int WINDOW_H = 620;
     constexpr int CANVAS_W = 640;
     constexpr int CANVAS_H = 360;
+    constexpr float PI = 3.14159265f;
+    constexpr float TWO_PI = 6.2831853f;
     constexpr float MOUSE_LOOK_SENS = 0.0025f;
     constexpr float FREE_CAM_BASE_SPEED = 8.0f;
     constexpr float CHASE_ORBIT_SENS = 0.0025f;
+
+    enum class ModelForwardAxis : uint8_t
+    {
+        PosX = 0,
+        NegX = 1,
+        PosZ = 2,
+        NegZ = 3,
+    };
+
+    constexpr ModelForwardAxis SUBARU_VISUAL_FORWARD_AXIS = ModelForwardAxis::PosZ;
 
     // LDR render target-ийг SDL texture-д upload хийх RGBA8 буфер рүү хөрвүүлнэ.
     // Canvas координатын Y дээшээ тул дэлгэц рүү гаргахдаа босоогоор нь эргүүлж авна.
@@ -72,33 +90,108 @@ namespace
     float lerp_angle_rad(float a, float b, float t)
     {
         float d = b - a;
-        while (d > 3.14159265f) d -= 6.2831853f;
-        while (d < -3.14159265f) d += 6.2831853f;
+        while (d > PI) d -= TWO_PI;
+        while (d < -PI) d += TWO_PI;
         return a + d * t;
     }
 
-    // Машиныг plane дээр санамсаргүй цэгүүд рүү зөөлөн эргэж зорчуулах логик систем.
+    float visual_yaw_from_world_forward(const glm::vec3& fwd_ws, ModelForwardAxis axis)
+    {
+        glm::vec2 d{fwd_ws.x, fwd_ws.z};
+        const float len = glm::length(d);
+        if (len <= 1e-6f) return 0.0f;
+        d /= len;
+        switch (axis)
+        {
+            case ModelForwardAxis::PosX: return std::atan2(d.y, d.x);
+            case ModelForwardAxis::NegX: return std::atan2(-d.y, -d.x);
+            case ModelForwardAxis::PosZ: return std::atan2(d.x, d.y);
+            case ModelForwardAxis::NegZ: return std::atan2(-d.x, -d.y);
+        }
+        return 0.0f;
+    }
+
+    glm::vec3 world_forward_from_visual_yaw(float visual_yaw, ModelForwardAxis axis)
+    {
+        switch (axis)
+        {
+            case ModelForwardAxis::PosX: return glm::vec3(std::cos(visual_yaw), 0.0f, std::sin(visual_yaw));
+            case ModelForwardAxis::NegX: return glm::vec3(-std::cos(visual_yaw), 0.0f, -std::sin(visual_yaw));
+            case ModelForwardAxis::PosZ: return glm::vec3(std::sin(visual_yaw), 0.0f, std::cos(visual_yaw));
+            case ModelForwardAxis::NegZ: return glm::vec3(-std::sin(visual_yaw), 0.0f, -std::cos(visual_yaw));
+        }
+        return glm::vec3(1.0f, 0.0f, 0.0f);
+    }
+
+    // Subaru машинд deterministic төлөвт автомат жолоодлого (Cruise/Turn/Recover/Idle) хэрэгжүүлнэ.
     class SubaruCruiseSystem final : public shs::ILogicSystem
     {
     public:
+        enum class DriveState : uint8_t
+        {
+            Cruise = 0,
+            Turn = 1,
+            Recover = 2,
+            Idle = 3,
+        };
+
+        struct FsmContext
+        {
+            SubaruCruiseSystem& self;
+            shs::SceneObject& obj;
+        };
+
         SubaruCruiseSystem(
             std::string object_name,
             float area_half_extent,
             float y_level,
             float cruise_speed = 6.5f,
             float max_turn_rate_rad = 1.9f,
-            float visual_yaw_offset_rad = 3.14159265f
+            ModelForwardAxis visual_forward_axis = ModelForwardAxis::PosX,
+            float visual_yaw_offset_rad = 0.0f,
+            uint32_t seed = 0xC0FFEEu
         )
             : object_name_(std::move(object_name))
             , area_half_extent_(area_half_extent)
             , y_level_(y_level)
             , cruise_speed_(cruise_speed)
             , max_turn_rate_rad_(max_turn_rate_rad)
+            , visual_forward_axis_(visual_forward_axis)
             , visual_yaw_offset_rad_(visual_yaw_offset_rad)
-            , rng_(0xC0FFEEu)
-            , dist_(-area_half_extent_ * 0.92f, area_half_extent_ * 0.92f)
-            , speed_jitter_(0.78f, 1.22f)
-        {}
+            , rng_(seed)
+            , area_dist_(-area_half_extent_ * 0.90f, area_half_extent_ * 0.90f)
+            , unit_dist_(0.0f, 1.0f)
+            , turn_rate_dist_(0.95f, 1.80f)
+            , cruise_yaw_bias_dist_(-0.46f, 0.46f)
+            , speed_jitter_(0.82f, 1.18f)
+        {
+            configure_fsm();
+        }
+
+        const char* state_name() const
+        {
+            switch (current_state())
+            {
+                case DriveState::Cruise: return "Cruise";
+                case DriveState::Turn: return "Turn";
+                case DriveState::Recover: return "Recover";
+                case DriveState::Idle: return "Idle";
+            }
+            return "Unknown";
+        }
+
+        float state_progress() const
+        {
+            if (!fsm_.started()) return 0.0f;
+            if (state_duration_ <= 1e-6f) return 1.0f;
+            return std::clamp(fsm_.state_time() / state_duration_, 0.0f, 1.0f);
+        }
+
+        glm::vec3 heading_ws() const
+        {
+            if (!initialized_) return glm::vec3(1.0f, 0.0f, 0.0f);
+            return glm::normalize(glm::vec3(std::cos(current_yaw_), 0.0f, std::sin(current_yaw_)));
+        }
 
         void tick(shs::LogicSystemContext& ctx) override
         {
@@ -110,63 +203,236 @@ namespace
 
             if (!initialized_)
             {
-                // Эхний tick дээр эхлэх төлөвөө бэлдэнэ.
+                // Эхний чиглэлийг model-ийн yaw-аас coordinate convention дагуу сэргээнэ.
                 obj->tr.pos.y = y_level_;
-                current_yaw_ = obj->tr.rot_euler.y;
-                pick_new_target(obj->tr.pos);
-                current_speed_ = cruise_speed_ * speed_jitter_(rng_);
+                const glm::vec3 seed_fwd = world_forward_from_visual_yaw(
+                    obj->tr.rot_euler.y - visual_yaw_offset_rad_,
+                    visual_forward_axis_
+                );
+                current_yaw_ = std::atan2(seed_fwd.z, seed_fwd.x);
+                current_speed_ = cruise_speed_;
+
+                FsmContext fsm_ctx{*this, *obj};
+                (void)fsm_.start(DriveState::Cruise, fsm_ctx);
                 initialized_ = true;
             }
 
             obj->tr.pos.y = y_level_;
-            if (glm::length(glm::vec2(obj->tr.pos.x - target_.x, obj->tr.pos.z - target_.z)) < 2.8f)
-            {
-                // Ойртсон үед дараагийн зорилтот цэг сонгоно.
-                pick_new_target(obj->tr.pos);
-                current_speed_ = cruise_speed_ * speed_jitter_(rng_);
-            }
 
-            const glm::vec3 to_target_ws = target_ - obj->tr.pos;
-            const glm::vec2 to_target_xz{to_target_ws.x, to_target_ws.z};
-            const float d = glm::length(to_target_xz);
-            if (d > 1e-5f)
-            {
-                // Одоогийн yaw-г зорилтот чиглэл рүү max_turn_rate-аар хязгаарлан эргүүлнэ.
-                const glm::vec2 dir = to_target_xz / d;
-                const float target_yaw = std::atan2(dir.y, dir.x);
-                float dy = target_yaw - current_yaw_;
-                while (dy > 3.14159265f) dy -= 6.2831853f;
-                while (dy < -3.14159265f) dy += 6.2831853f;
-                const float max_step = max_turn_rate_rad_ * dt;
-                dy = std::clamp(dy, -max_step, max_step);
-                current_yaw_ += dy;
-            }
+            desired_yaw_ = current_yaw_;
+            desired_speed_ = cruise_speed_;
+            FsmContext fsm_ctx{*this, *obj};
+            fsm_.tick(fsm_ctx, dt);
+
+            const float edge_ratio = boundary_ratio(obj->tr.pos);
+            apply_boundary_steer(obj->tr.pos, desired_yaw_, desired_speed_);
+
+            float dy = desired_yaw_ - current_yaw_;
+            while (dy > PI) dy -= TWO_PI;
+            while (dy < -PI) dy += TWO_PI;
+            const float max_step = max_turn_rate_rad_ * dt;
+            dy = std::clamp(dy, -max_step, max_step);
+            current_yaw_ += dy;
+
+            const float speed_lerp_t = 1.0f - std::exp(-dt * 6.0f);
+            current_speed_ = glm::mix(current_speed_, desired_speed_, speed_lerp_t);
 
             const glm::vec3 fwd{std::cos(current_yaw_), 0.0f, std::sin(current_yaw_)};
-            float edge = std::max(std::abs(obj->tr.pos.x), std::abs(obj->tr.pos.z));
-            // Ирмэг рүү дөхөх тусам хурдыг бага зэрэг бууруулж хөдөлгөөнийг тогтвортой болгоно.
-            const float edge_ratio = std::clamp((edge - area_half_extent_ * 0.70f) / (area_half_extent_ * 0.30f), 0.0f, 1.0f);
             const float speed_scale = 1.0f - edge_ratio * 0.35f;
             obj->tr.pos += fwd * (current_speed_ * speed_scale * dt);
             obj->tr.pos.x = std::clamp(obj->tr.pos.x, -area_half_extent_, area_half_extent_);
             obj->tr.pos.z = std::clamp(obj->tr.pos.z, -area_half_extent_, area_half_extent_);
             obj->tr.pos.y = y_level_;
-            obj->tr.rot_euler.y = current_yaw_ + visual_yaw_offset_rad_;
+            obj->tr.rot_euler.y = visual_yaw_from_world_forward(fwd, visual_forward_axis_) + visual_yaw_offset_rad_;
         }
 
     private:
-        void pick_new_target(const glm::vec3& current_pos)
+        DriveState current_state() const
         {
-            for (int i = 0; i < 32; ++i)
+            const auto s = fsm_.current_state();
+            return s.has_value() ? *s : DriveState::Cruise;
+        }
+
+        void configure_fsm()
+        {
+            using StateCallbacks = typename shs::StateMachine<DriveState, FsmContext>::StateCallbacks;
+
+            fsm_.add_state(DriveState::Cruise, StateCallbacks{
+                [this](FsmContext& fctx) { on_enter_state(DriveState::Cruise, fctx.obj.tr.pos); },
+                [this](FsmContext&, float dt, float) { update_cruise(dt); },
+                {}
+            });
+            fsm_.add_state(DriveState::Turn, StateCallbacks{
+                [this](FsmContext& fctx) { on_enter_state(DriveState::Turn, fctx.obj.tr.pos); },
+                [this](FsmContext&, float dt, float) { update_turn(dt); },
+                {}
+            });
+            fsm_.add_state(DriveState::Recover, StateCallbacks{
+                [this](FsmContext& fctx) { on_enter_state(DriveState::Recover, fctx.obj.tr.pos); },
+                [this](FsmContext& fctx, float, float) { update_recover(fctx.obj); },
+                {}
+            });
+            fsm_.add_state(DriveState::Idle, StateCallbacks{
+                [this](FsmContext& fctx) { on_enter_state(DriveState::Idle, fctx.obj.tr.pos); },
+                [this](FsmContext&, float, float) { update_idle(); },
+                {}
+            });
+
+            // Нэг төлөвийн хугацаа дуусахад тухайн төлөв дээр урьдчилан тооцсон дараагийн төлөв рүү шилжинэ.
+            fsm_.add_transition(DriveState::Cruise, DriveState::Idle, [this](const FsmContext&, float elapsed) {
+                return elapsed >= state_duration_ && timeout_next_state_ == DriveState::Idle;
+            });
+            fsm_.add_transition(DriveState::Cruise, DriveState::Turn, [this](const FsmContext&, float elapsed) {
+                return elapsed >= state_duration_ && timeout_next_state_ == DriveState::Turn;
+            });
+            fsm_.add_transition(DriveState::Turn, DriveState::Recover, [this](const FsmContext&, float elapsed) {
+                return elapsed >= state_duration_ && timeout_next_state_ == DriveState::Recover;
+            });
+            fsm_.add_transition(DriveState::Recover, DriveState::Idle, [this](const FsmContext&, float elapsed) {
+                return elapsed >= state_duration_ && timeout_next_state_ == DriveState::Idle;
+            });
+            fsm_.add_transition(DriveState::Recover, DriveState::Cruise, [this](const FsmContext&, float elapsed) {
+                return elapsed >= state_duration_ && timeout_next_state_ == DriveState::Cruise;
+            });
+            fsm_.add_transition(DriveState::Idle, DriveState::Cruise, [this](const FsmContext&, float elapsed) {
+                return elapsed >= state_duration_ && timeout_next_state_ == DriveState::Cruise;
+            });
+        }
+
+        float rand01()
+        {
+            return unit_dist_(rng_);
+        }
+
+        float rand_range(float lo, float hi)
+        {
+            return lo + (hi - lo) * rand01();
+        }
+
+        float boundary_ratio(const glm::vec3& p) const
+        {
+            const float edge = std::max(std::abs(p.x), std::abs(p.z));
+            return std::clamp((edge - area_half_extent_ * 0.66f) / (area_half_extent_ * 0.34f), 0.0f, 1.0f);
+        }
+
+        void apply_boundary_steer(const glm::vec3& p, float& desired_yaw, float& desired_speed)
+        {
+            const float edge_ratio = boundary_ratio(p);
+            if (edge_ratio <= 0.0f) return;
+
+            glm::vec2 to_center{-p.x, -p.z};
+            const float len = glm::length(to_center);
+            if (len > 1e-6f)
             {
-                glm::vec3 c{dist_(rng_), y_level_, dist_(rng_)};
-                if (glm::length(glm::vec2(c.x - current_pos.x, c.z - current_pos.z)) > area_half_extent_ * 0.35f)
+                to_center /= len;
+                const float center_yaw = std::atan2(to_center.y, to_center.x);
+                const float steer_w = std::clamp(edge_ratio * (current_state() == DriveState::Recover ? 1.0f : 0.74f), 0.0f, 1.0f);
+                desired_yaw = lerp_angle_rad(desired_yaw, center_yaw, steer_w);
+            }
+            desired_speed *= (1.0f - edge_ratio * 0.28f);
+
+            // Ирмэгт хэт ойртох үед Recover рүү шууд request өгч буцааж төв рүү эргүүлнэ.
+            if (edge_ratio > 0.92f && current_state() != DriveState::Recover)
+            {
+                fsm_.request_transition(DriveState::Recover);
+            }
+        }
+
+        void pick_recover_target(const glm::vec3& current_pos)
+        {
+            for (int i = 0; i < 24; ++i)
+            {
+                const glm::vec3 c{area_dist_(rng_), y_level_, area_dist_(rng_)};
+                if (glm::length(glm::vec2(c.x - current_pos.x, c.z - current_pos.z)) > area_half_extent_ * 0.24f)
                 {
-                    target_ = c;
+                    recover_target_ = c;
                     return;
                 }
             }
-            target_ = glm::vec3(dist_(rng_), y_level_, dist_(rng_));
+            recover_target_ = glm::vec3(area_dist_(rng_), y_level_, area_dist_(rng_));
+        }
+
+        float duration_for_state(DriveState s)
+        {
+            switch (s)
+            {
+                case DriveState::Cruise: return rand_range(2.6f, 5.6f);
+                case DriveState::Turn: return rand_range(0.55f, 1.65f);
+                case DriveState::Recover: return rand_range(1.0f, 2.2f);
+                case DriveState::Idle: return rand_range(0.25f, 0.95f);
+            }
+            return 1.0f;
+        }
+
+        DriveState timeout_next_for_state(DriveState s)
+        {
+            switch (s)
+            {
+                case DriveState::Cruise: return (rand01() < 0.16f) ? DriveState::Idle : DriveState::Turn;
+                case DriveState::Turn: return DriveState::Recover;
+                case DriveState::Recover: return (rand01() < 0.20f) ? DriveState::Idle : DriveState::Cruise;
+                case DriveState::Idle: return DriveState::Cruise;
+            }
+            return DriveState::Cruise;
+        }
+
+        void on_enter_state(DriveState s, const glm::vec3& pos)
+        {
+            state_duration_ = duration_for_state(s);
+            timeout_next_state_ = timeout_next_for_state(s);
+            switch (s)
+            {
+                case DriveState::Cruise:
+                    cruise_turn_rate_ = cruise_yaw_bias_dist_(rng_);
+                    cruise_target_speed_ = cruise_speed_ * speed_jitter_(rng_);
+                    break;
+                case DriveState::Turn:
+                {
+                    const float sign = (rand01() < 0.5f) ? -1.0f : 1.0f;
+                    turn_rate_ = turn_rate_dist_(rng_) * sign;
+                    break;
+                }
+                case DriveState::Recover:
+                    pick_recover_target(pos);
+                    break;
+                case DriveState::Idle:
+                    break;
+            }
+        }
+
+        void update_cruise(float dt)
+        {
+            desired_yaw_ = current_yaw_ + cruise_turn_rate_ * dt;
+            desired_speed_ = cruise_target_speed_;
+        }
+
+        void update_turn(float dt)
+        {
+            desired_yaw_ = current_yaw_ + turn_rate_ * dt;
+            desired_speed_ = cruise_speed_ * 0.76f;
+        }
+
+        void update_recover(const shs::SceneObject& obj)
+        {
+            const glm::vec3 to_goal = recover_target_ - obj.tr.pos;
+            const glm::vec2 to_goal_xz{to_goal.x, to_goal.z};
+            const float len = glm::length(to_goal_xz);
+            if (len > 1e-5f)
+            {
+                const glm::vec2 d = to_goal_xz / len;
+                desired_yaw_ = std::atan2(d.y, d.x);
+            }
+            desired_speed_ = cruise_speed_ * 0.92f;
+            if (len < area_half_extent_ * 0.10f)
+            {
+                fsm_.request_transition(timeout_next_state_);
+            }
+        }
+
+        void update_idle()
+        {
+            desired_yaw_ = current_yaw_;
+            desired_speed_ = 0.0f;
         }
 
         std::string object_name_{};
@@ -174,14 +440,29 @@ namespace
         float y_level_ = 0.0f;
         float cruise_speed_ = 6.5f;
         float max_turn_rate_rad_ = 1.9f;
-        float visual_yaw_offset_rad_ = 3.14159265f;
-        float current_speed_ = 6.5f;
+        ModelForwardAxis visual_forward_axis_ = ModelForwardAxis::PosX;
+        float visual_yaw_offset_rad_ = 0.0f;
+        float current_speed_ = 0.0f;
         float current_yaw_ = 0.0f;
         bool initialized_ = false;
-        glm::vec3 target_{0.0f};
+
+        float state_duration_ = 1.0f;
+        DriveState timeout_next_state_ = DriveState::Cruise;
+        float desired_yaw_ = 0.0f;
+        float desired_speed_ = 0.0f;
+
+        float cruise_turn_rate_ = 0.0f;
+        float cruise_target_speed_ = 6.5f;
+        float turn_rate_ = 0.0f;
+        glm::vec3 recover_target_{0.0f};
+
+        shs::StateMachine<DriveState, FsmContext> fsm_{};
         std::mt19937 rng_{};
-        std::uniform_real_distribution<float> dist_{-12.0f, 12.0f};
-        std::uniform_real_distribution<float> speed_jitter_{0.78f, 1.22f};
+        std::uniform_real_distribution<float> area_dist_{-12.0f, 12.0f};
+        std::uniform_real_distribution<float> unit_dist_{0.0f, 1.0f};
+        std::uniform_real_distribution<float> turn_rate_dist_{0.95f, 1.80f};
+        std::uniform_real_distribution<float> cruise_yaw_bias_dist_{-0.46f, 0.46f};
+        std::uniform_real_distribution<float> speed_jitter_{0.82f, 1.18f};
     };
 
     // Follow mode асаалттай үед камерыг машины араас зөөлөн дагуулах логик систем.
@@ -293,6 +574,26 @@ int main()
     if (!runtime.valid()) return 1;
 
     shs::Context ctx{};
+    const char* backend_env = std::getenv("SHS_RENDER_BACKEND");
+    auto backend_result = shs::create_render_backend(backend_env ? backend_env : "software");
+    std::vector<std::unique_ptr<shs::IRenderBackend>> backend_keepalive{};
+    backend_keepalive.reserve(1 + backend_result.auxiliary_backends.size());
+    backend_keepalive.push_back(std::move(backend_result.backend));
+    for (auto& b : backend_result.auxiliary_backends)
+    {
+        backend_keepalive.push_back(std::move(b));
+    }
+    if (backend_keepalive.empty() || !backend_keepalive[0]) return 1;
+
+    ctx.set_primary_backend(backend_keepalive[0].get());
+    for (size_t i = 1; i < backend_keepalive.size(); ++i)
+    {
+        if (backend_keepalive[i]) ctx.register_backend(backend_keepalive[i].get());
+    }
+    if (!backend_result.note.empty())
+    {
+        std::fprintf(stderr, "[shs] %s\n", backend_result.note.c_str());
+    }
     // Рендерийн parallel хэсгүүдэд ашиглагдах thread pool.
     shs::ThreadPoolJobSystem jobs{std::max(1u, std::thread::hardware_concurrency())};
     ctx.job_system = &jobs;
@@ -303,23 +604,35 @@ int main()
     shs::LogicSystemProcessor logic_systems{};
     shs::RenderSystemProcessor render_systems{};
 
-    shs::RT_ShadowDepth shadow_rt{768, 768};
+    shs::RT_ShadowDepth shadow_rt{512, 512};
     shs::RT_ColorHDR hdr_rt{CANVAS_W, CANVAS_H};
     shs::RT_ColorDepthMotion motion_rt{CANVAS_W, CANVAS_H, 0.1f, 1000.0f};
     shs::RT_ColorLDR ldr_rt{CANVAS_W, CANVAS_H};
     shs::RT_ColorLDR shafts_tmp_rt{CANVAS_W, CANVAS_H};
+    shs::RT_ColorLDR motion_blur_tmp_rt{CANVAS_W, CANVAS_H};
 
     const shs::RT_Shadow rt_shadow_h = rtr.reg<shs::RT_Shadow>(&shadow_rt);
     const shs::RTHandle rt_hdr_h = rtr.reg<shs::RTHandle>(&hdr_rt);
     const shs::RT_Motion rt_motion_h = rtr.reg<shs::RT_Motion>(&motion_rt);
     const shs::RTHandle rt_ldr_h = rtr.reg<shs::RTHandle>(&ldr_rt);
     const shs::RTHandle rt_shafts_tmp_h = rtr.reg<shs::RTHandle>(&shafts_tmp_rt);
+    const shs::RTHandle rt_motion_blur_tmp_h = rtr.reg<shs::RTHandle>(&motion_blur_tmp_rt);
 
     // Render pass дараалал: shadow map -> forward shading -> tonemap.
-    pipeline.add_pass<shs::PassShadowMapAdapter>(rt_shadow_h);
-    pipeline.add_pass<shs::PassPBRForwardAdapter>(rt_hdr_h, rt_motion_h, rt_shadow_h);
-    pipeline.add_pass<shs::PassTonemapAdapter>(rt_hdr_h, rt_ldr_h);
-    pipeline.add_pass<shs::PassLightShaftsAdapter>(rt_ldr_h, rt_motion_h, rt_shafts_tmp_h);
+    const shs::PassFactoryRegistry pass_registry = shs::make_standard_pass_factory_registry(
+        rt_shadow_h,
+        rt_hdr_h,
+        rt_motion_h,
+        rt_ldr_h,
+        rt_shafts_tmp_h,
+        rt_motion_blur_tmp_h
+    );
+    pipeline.add_pass_from_registry(pass_registry, "shadow_map");
+    pipeline.add_pass_from_registry(pass_registry, "pbr_forward");
+    pipeline.add_pass_from_registry(pass_registry, "tonemap");
+    pipeline.add_pass_from_registry(pass_registry, "light_shafts");
+    pipeline.add_pass_from_registry(pass_registry, "motion_blur");
+    pipeline.set_strict_graph_validation(true);
     render_systems.add_system<shs::PipelineRenderSystem>(&pipeline);
 
     shs::Scene scene{};
@@ -336,7 +649,7 @@ int main()
                                 : static_cast<const shs::ISkyModel*>(&procedural_sky);
 
     const float plane_extent = 64.0f;
-    const shs::MeshAssetHandle plane_h = shs::import_plane_primitive(resources, shs::PlaneDesc{plane_extent, plane_extent, 64, 64}, "plane");
+    const shs::MeshAssetHandle plane_h = shs::import_plane_primitive(resources, shs::PlaneDesc{plane_extent, plane_extent, 32, 32}, "plane");
     shs::MeshAssetHandle subaru_h = shs::import_mesh_assimp(resources, "./assets/obj/subaru/SUBARU_1.rawobj", "subaru_mesh");
     const bool subaru_loaded = (subaru_h != 0);
     if (!subaru_loaded) subaru_h = shs::import_box_primitive(resources, shs::BoxDesc{glm::vec3(2.4f, 1.1f, 4.8f), 2, 1, 2}, "subaru_fallback");
@@ -390,20 +703,27 @@ int main()
     shs::FrameParams fp{};
     fp.w = CANVAS_W;
     fp.h = CANVAS_H;
-    fp.exposure = 1.0f;
-    fp.gamma = 2.2f;
-    fp.enable_light_shafts = true;
     fp.debug_view = shs::DebugViewMode::Final;
     fp.cull_mode = shs::CullMode::None;
     fp.shading_model = shs::ShadingModel::PBRMetalRough;
-    fp.enable_shadows = true;
-    fp.shadow_pcf_radius = 1;
-    fp.shadow_pcf_step = 1.0f;
-    fp.shadow_strength = 0.80f;
-    fp.shafts_steps = 28;
-    fp.shafts_density = 0.85f;
-    fp.shafts_weight = 0.30f;
-    fp.shafts_decay = 0.95f;
+    fp.pass.tonemap.exposure = 1.0f;
+    fp.pass.tonemap.gamma = 2.2f;
+    fp.pass.shadow.enable = true;
+    fp.pass.shadow.pcf_radius = 1;
+    fp.pass.shadow.pcf_step = 1.0f;
+    fp.pass.shadow.strength = 0.80f;
+    fp.pass.light_shafts.enable = true;
+    fp.pass.light_shafts.steps = 14;
+    fp.pass.light_shafts.density = 0.85f;
+    fp.pass.light_shafts.weight = 0.26f;
+    fp.pass.light_shafts.decay = 0.95f;
+    fp.pass.motion_vectors.enable = true;
+    fp.pass.motion_blur.enable = true;
+    fp.pass.motion_blur.samples = 12;
+    fp.pass.motion_blur.strength = 0.95f;
+    fp.pass.motion_blur.max_velocity_px = 20.0f;
+    fp.pass.motion_blur.min_velocity_px = 0.30f;
+    fp.pass.motion_blur.depth_reject = 0.10f;
 
     shs::CameraRig cam{};
     cam.pos = glm::vec3(0.0f, 6.0f, -16.0f);
@@ -428,15 +748,22 @@ int main()
     glm::vec3 chase_forward{1.0f, 0.0f, 0.0f};
     glm::vec3 prev_subaru_pos{0.0f};
     bool has_prev_subaru_pos = false;
-    logic_systems.add_system<SubaruCruiseSystem>("subaru", plane_extent * 0.48f, -0.95f, 6.8f, 1.9f, 3.14159265f);
+    auto& subaru_ai = logic_systems.add_system<SubaruCruiseSystem>(
+        "subaru",
+        plane_extent * 0.48f,
+        -0.95f,
+        6.8f,
+        1.9f,
+        SUBARU_VISUAL_FORWARD_AXIS,
+        0.0f
+    );
     logic_systems.add_system<MonkeyWiggleSystem>("monkey", 0.32f, 0.22f, 1.9f);
 
     if (const auto* subaru_init = objects.find("subaru"))
     {
         prev_subaru_pos = subaru_init->tr.pos;
         has_prev_subaru_pos = true;
-        const float logical_yaw = subaru_init->tr.rot_euler.y - 3.14159265f;
-        chase_forward = glm::normalize(glm::vec3(std::cos(logical_yaw), 0.0f, std::sin(logical_yaw)));
+        chase_forward = world_forward_from_visual_yaw(subaru_init->tr.rot_euler.y, SUBARU_VISUAL_FORWARD_AXIS);
     }
 
     bool running = true;
@@ -475,6 +802,10 @@ int main()
                 ? shs::ShadingModel::BlinnPhong
                 : shs::ShadingModel::PBRMetalRough;
         }
+        // L: light shafts on/off.
+        if (pin.toggle_light_shafts) fp.pass.light_shafts.enable = !fp.pass.light_shafts.enable;
+        // M: motion blur on/off.
+        if (pin.toggle_motion_blur) fp.pass.motion_blur.enable = !fp.pass.motion_blur.enable;
         // F5: cubemap/procedural sky солих.
         if (pin.toggle_sky_mode)
         {
@@ -579,9 +910,8 @@ int main()
             }
             else
             {
-                // Машин бараг зогссон үед visual yaw offset (pi)-ийг залруулж fallback чиглэл авна.
-                const float logical_yaw = subaru->tr.rot_euler.y - 3.14159265f;
-                const glm::vec3 fallback_fwd{std::cos(logical_yaw), 0.0f, std::sin(logical_yaw)};
+                // Машин бараг зогссон үед AI-ийн одоогийн heading-ийг fallback чиглэл болгон авна.
+                const glm::vec3 fallback_fwd = subaru_ai.heading_ws();
                 chase_forward = glm::normalize(glm::mix(chase_forward, fallback_fwd, 0.08f));
             }
             prev_subaru_pos = subaru->tr.pos;
@@ -650,13 +980,32 @@ int main()
         if (fps_accum >= 0.25f)
         {
             const int fps = (int)std::lround((float)frames / fps_accum);
+            const auto& graph_rep = pipeline.execution_report();
             std::string title = "HelloPassBasics | FPS: " + std::to_string(fps)
+                + " | backend: " + std::string(ctx.active_backend_name())
                 + " | dbg[F1]: " + std::to_string((int)fp.debug_view)
                 + " | shade[F4]: " + (fp.shading_model == shs::ShadingModel::PBRMetalRough ? "PBR" : "Blinn")
                 + " | sky[F5]: " + (use_cubemap_sky ? "cubemap" : "procedural")
                 + " | follow[F6]: " + (follow_camera ? "on" : "off")
+                + " | ai: " + std::string(subaru_ai.state_name())
+                + "(" + std::to_string((int)std::lround(subaru_ai.state_progress() * 100.0f)) + "%)"
+                + " | shafts[L]: " + (fp.pass.light_shafts.enable ? "on" : "off")
+                + " | mblur[M]: " + (fp.pass.motion_blur.enable ? "on" : "off")
+                + " | graph: " + (graph_rep.valid ? "ok" : "err")
+                + "(w" + std::to_string((unsigned long long)graph_rep.warnings.size())
+                + "/e" + std::to_string((unsigned long long)graph_rep.errors.size()) + ")"
                 + " | logic: " + std::to_string((int)std::lround(logic_ms_accum / std::max(1, frames))) + "ms"
                 + " | render: " + std::to_string((int)std::lround(render_ms_accum / std::max(1, frames))) + "ms"
+                + " | pass(s/p/t/l/m): "
+                + std::to_string((int)std::lround(ctx.debug.ms_shadow)) + "/"
+                + std::to_string((int)std::lround(ctx.debug.ms_pbr)) + "/"
+                + std::to_string((int)std::lround(ctx.debug.ms_tonemap)) + "/"
+                + std::to_string((int)std::lround(ctx.debug.ms_shafts)) + "/"
+                + std::to_string((int)std::lround(ctx.debug.ms_motion_blur)) + "ms"
+                + " | vk-like(sub/task/stall): "
+                + std::to_string((unsigned long long)ctx.debug.vk_like_submissions) + "/"
+                + std::to_string((unsigned long long)ctx.debug.vk_like_tasks) + "/"
+                + std::to_string((unsigned long long)ctx.debug.vk_like_stalls)
                 + " | tri(in/clip/rast): "
                 + std::to_string((unsigned long long)ctx.debug.tri_input) + "/"
                 + std::to_string((unsigned long long)ctx.debug.tri_after_clip) + "/"

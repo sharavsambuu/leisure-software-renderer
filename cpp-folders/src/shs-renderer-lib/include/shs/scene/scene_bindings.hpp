@@ -21,12 +21,14 @@ namespace shs
         MaterialHandle mat,
         const glm::vec3& pos = glm::vec3(0.0f),
         const glm::vec3& scl = glm::vec3(1.0f),
-        const glm::vec3& rot_euler = glm::vec3(0.0f)
+        const glm::vec3& rot_euler = glm::vec3(0.0f),
+        uint64_t object_id = 0
     )
     {
         RenderItem it{};
         it.mesh = mesh;
         it.mat = mat;
+        it.object_id = object_id;
         it.tr.pos = pos;
         it.tr.scl = scl;
         it.tr.rot_euler = rot_euler;
@@ -43,4 +45,3 @@ namespace shs
         it.mesh = mesh;
     }
 }
-

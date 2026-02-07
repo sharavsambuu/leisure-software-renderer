@@ -11,10 +11,14 @@
 
 
 #include <cstdint>
+#include <array>
+#include <unordered_map>
 #include <glm/glm.hpp>
 
 #include "shs/job/job_system.hpp"
 #include "shs/gfx/rt_shadow.hpp"
+#include "shs/rhi/core/backend.hpp"
+#include "shs/rhi/sync/vk_runtime.hpp"
 
 namespace shs
 {
@@ -23,12 +27,28 @@ namespace shs
         uint64_t tri_input = 0;
         uint64_t tri_after_clip = 0;
         uint64_t tri_raster = 0;
+        float ms_shadow = 0.0f;
+        float ms_pbr = 0.0f;
+        float ms_tonemap = 0.0f;
+        float ms_shafts = 0.0f;
+        float ms_motion_blur = 0.0f;
+        uint64_t vk_like_submissions = 0;
+        uint64_t vk_like_tasks = 0;
+        uint64_t vk_like_stalls = 0;
 
         void reset()
         {
             tri_input = 0;
             tri_after_clip = 0;
             tri_raster = 0;
+            ms_shadow = 0.0f;
+            ms_pbr = 0.0f;
+            ms_tonemap = 0.0f;
+            ms_shafts = 0.0f;
+            ms_motion_blur = 0.0f;
+            vk_like_submissions = 0;
+            vk_like_tasks = 0;
+            vk_like_stalls = 0;
         }
     };
 
@@ -46,10 +66,88 @@ namespace shs
         }
     };
 
+    struct RenderHistoryState
+    {
+        std::unordered_map<uint64_t, glm::mat4> prev_model_by_object{};
+        bool has_prev_frame = false;
+
+        void reset()
+        {
+            prev_model_by_object.clear();
+            has_prev_frame = false;
+        }
+    };
+
     struct Context
     {
         IJobSystem* job_system = nullptr;
+        // Backward-compat: анхны single-backend pointer.
+        IRenderBackend* render_backend = nullptr;
+        uint64_t frame_index = 0;
         RenderDebugStats debug{};
         ShadowRuntimeState shadow{};
+        RenderHistoryState history{};
+        std::array<IRenderBackend*, 3> backends{nullptr, nullptr, nullptr};
+        RenderBackendType primary_backend = RenderBackendType::Software;
+        VulkanLikeRuntime vk_like{};
+
+        static constexpr size_t backend_index(RenderBackendType t)
+        {
+            return (size_t)t;
+        }
+
+        void register_backend(IRenderBackend* backend)
+        {
+            if (!backend) return;
+            backends[backend_index(backend->type())] = backend;
+            if (!render_backend)
+            {
+                render_backend = backend;
+                primary_backend = backend->type();
+            }
+        }
+
+        void set_primary_backend(IRenderBackend* backend)
+        {
+            if (!backend) return;
+            register_backend(backend);
+            render_backend = backend;
+            primary_backend = backend->type();
+        }
+
+        void set_primary_backend(RenderBackendType type)
+        {
+            primary_backend = type;
+            if (auto* b = this->backend(type)) render_backend = b;
+        }
+
+        IRenderBackend* backend(RenderBackendType type) const
+        {
+            return backends[backend_index(type)];
+        }
+
+        bool has_backend(RenderBackendType type) const
+        {
+            return backend(type) != nullptr;
+        }
+
+        IRenderBackend* active_backend() const
+        {
+            if (auto* b = backend(primary_backend)) return b;
+            if (render_backend) return render_backend;
+            return backend(RenderBackendType::Software);
+        }
+
+        RenderBackendType active_backend_type() const
+        {
+            const auto* b = active_backend();
+            return b ? b->type() : RenderBackendType::Software;
+        }
+
+        const char* active_backend_name() const
+        {
+            const auto* b = active_backend();
+            return b ? b->name() : render_backend_type_name(RenderBackendType::Software);
+        }
     };
 }

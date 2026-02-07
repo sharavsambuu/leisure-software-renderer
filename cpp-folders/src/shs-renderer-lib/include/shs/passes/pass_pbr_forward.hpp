@@ -24,6 +24,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <unordered_map>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -49,7 +50,9 @@ namespace shs
         {
             if (!in.scene || !in.fp || !in.rtr) return;
             if (!in.rt_hdr.valid()) return;
-            ctx.debug.reset();
+            ctx.debug.tri_input = 0;
+            ctx.debug.tri_after_clip = 0;
+            ctx.debug.tri_raster = 0;
 
             auto* hdr = static_cast<RT_ColorHDR*>(in.rtr->get(in.rt_hdr));
             if (!hdr || hdr->w <= 0 || hdr->h <= 0) return;
@@ -106,8 +109,12 @@ namespace shs
             default: rast_cfg.cull_mode = RasterizerCullMode::Back; break;
             }
 
-            for (const auto& item : in.scene->items)
+            std::unordered_map<uint64_t, glm::mat4> next_prev_model_by_object{};
+            next_prev_model_by_object.reserve(in.scene->items.size() * 2 + 1);
+
+            for (size_t item_index = 0; item_index < in.scene->items.size(); ++item_index)
             {
+                const auto& item = in.scene->items[item_index];
                 if (!item.visible) continue;
                 if (!in.scene->resources) continue;
 
@@ -122,13 +129,30 @@ namespace shs
                 model = glm::rotate(model, item.tr.rot_euler.z, glm::vec3(0.0f, 0.0f, 1.0f));
                 model = glm::scale(model, item.tr.scl);
 
+                uint64_t motion_key = item.object_id;
+                if (motion_key == 0)
+                {
+                    motion_key = ((uint64_t)item.mesh << 32) ^ (uint64_t)item.mat ^ ((uint64_t)item_index + 1u);
+                    if (motion_key == 0) motion_key = 1;
+                }
+                glm::mat4 prev_model = model;
+                const auto it_prev = ctx.history.prev_model_by_object.find(motion_key);
+                if (ctx.history.has_prev_frame && it_prev != ctx.history.prev_model_by_object.end())
+                {
+                    prev_model = it_prev->second;
+                }
+                next_prev_model_by_object[motion_key] = model;
+
                 ShaderUniforms u{};
                 u.model = model;
                 u.viewproj = in.scene->cam.viewproj;
+                u.prev_model = prev_model;
+                u.prev_viewproj = ctx.history.has_prev_frame ? in.scene->cam.prev_viewproj : in.scene->cam.viewproj;
                 u.light_dir_ws = in.scene->sun.dir_ws;
                 u.light_color = in.scene->sun.color;
                 u.light_intensity = in.scene->sun.intensity;
                 u.camera_pos = in.scene->cam.pos;
+                u.enable_motion_vectors = in.fp->pass.motion_vectors.enable;
                 if (mat)
                 {
                     u.base_color = mat->base_color;
@@ -148,15 +172,15 @@ namespace shs
                     u.ao = 1.0f;
                 }
 
-                if (in.fp->enable_shadows && shadow && ctx.shadow.valid)
+                if (in.fp->pass.shadow.enable && shadow && ctx.shadow.valid)
                 {
                     u.shadow_map = shadow;
                     u.light_viewproj = ctx.shadow.light_viewproj;
-                    u.shadow_bias_const = in.fp->shadow_bias_const;
-                    u.shadow_bias_slope = in.fp->shadow_bias_slope;
-                    u.shadow_pcf_radius = in.fp->shadow_pcf_radius;
-                    u.shadow_pcf_step = in.fp->shadow_pcf_step;
-                    u.shadow_strength = in.fp->shadow_strength;
+                    u.shadow_bias_const = in.fp->pass.shadow.bias_const;
+                    u.shadow_bias_slope = in.fp->pass.shadow.bias_slope;
+                    u.shadow_pcf_radius = in.fp->pass.shadow.pcf_radius;
+                    u.shadow_pcf_step = in.fp->pass.shadow.pcf_step;
+                    u.shadow_strength = in.fp->pass.shadow.strength;
                 }
 
                 // Generic uniform slots for future shader permutations.
@@ -173,6 +197,9 @@ namespace shs
                 ctx.debug.tri_after_clip += rs.tri_after_clip;
                 ctx.debug.tri_raster += rs.tri_raster;
             }
+
+            ctx.history.prev_model_by_object.swap(next_prev_model_by_object);
+            ctx.history.has_prev_frame = true;
         }
     };
 }

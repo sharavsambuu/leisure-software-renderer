@@ -12,6 +12,7 @@
 
 #include <string>
 #include <vector>
+#include <cstdint>
 
 #include "shs/scene/scene_bindings.hpp"
 
@@ -26,6 +27,7 @@ namespace shs
         Transform tr{};
         bool visible = true;
         bool casts_shadow = true;
+        uint64_t object_id = 0;
     };
 
     class SceneObjectSet
@@ -33,6 +35,10 @@ namespace shs
     public:
         SceneObject& add(SceneObject obj)
         {
+            if (obj.object_id == 0)
+            {
+                obj.object_id = stable_object_id(obj.name);
+            }
             objects_.push_back(std::move(obj));
             return objects_.back();
         }
@@ -63,6 +69,7 @@ namespace shs
             for (const auto& o : objects_)
             {
                 RenderItem ri = make_render_item(o.mesh, o.material, o.tr.pos, o.tr.scl, o.tr.rot_euler);
+                ri.object_id = o.object_id;
                 ri.visible = o.visible;
                 ri.casts_shadow = o.casts_shadow;
                 scene.items.push_back(ri);
@@ -70,7 +77,19 @@ namespace shs
         }
 
     private:
+        static uint64_t stable_object_id(const std::string& name)
+        {
+            // FNV-1a 64-bit hash for stable cross-frame object keys.
+            uint64_t h = 1469598103934665603ull;
+            for (unsigned char c : name)
+            {
+                h ^= (uint64_t)c;
+                h *= 1099511628211ull;
+            }
+            if (h == 0) h = 1;
+            return h;
+        }
+
         std::vector<SceneObject> objects_{};
     };
 }
-

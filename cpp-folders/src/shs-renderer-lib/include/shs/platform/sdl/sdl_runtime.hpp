@@ -84,6 +84,7 @@ namespace shs
                 if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_F4) out.toggle_shading_model = true;
                 if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_F5) out.toggle_sky_mode = true;
                 if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_F6) out.toggle_follow_camera = true;
+                if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_m) out.toggle_motion_blur = true;
 
                 if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_RIGHT) out.right_mouse_down = true;
                 if (e.type == SDL_MOUSEBUTTONUP && e.button.button == SDL_BUTTON_RIGHT) out.right_mouse_up = true;

@@ -47,8 +47,8 @@ namespace shs
 
             const int w = std::min(hdr->w, ldr->w);
             const int h = std::min(hdr->h, ldr->h);
-            const float exposure = std::max(0.0001f, in.fp->exposure);
-            const float inv_gamma = 1.0f / std::max(0.001f, in.fp->gamma);
+            const float exposure = std::max(0.0001f, in.fp->pass.tonemap.exposure);
+            const float inv_gamma = 1.0f / std::max(0.001f, in.fp->pass.tonemap.gamma);
 
             parallel_for_1d(ctx.job_system, 0, h, 8, [&](int yb, int ye)
             {
