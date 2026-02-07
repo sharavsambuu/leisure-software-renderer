@@ -1,0 +1,65 @@
+Core
+
+src/shs-renderer-lib/include/shs/core/context.hpp
+	Defines shs::Context (concrete, not forward-declared).
+
+src/shs-renderer-lib/include/shs/core/types.hpp
+	Basic shared types: Color, small math aliases, common enums (keep tiny).
+
+src/shs-renderer-lib/include/shs/core/config.hpp
+	Compile-time toggles / constants (optional, but helps keep headers clean).
+
+
+Render-target / RT types
+
+src/shs-renderer-lib/include/shs/passes/rt_types.hpp
+	Defines RT_ColorDepthVelocity, RT_ColorDepthMotion (alias), DefaultRT.
+
+
+Pass plumbing (common interfaces + shared structs)
+
+src/shs-renderer-lib/include/shs/passes/pass_common.hpp
+	Includes context.hpp + rt_types.hpp
+	Defines PassContext (ctx, rt, frame index, dt, etc.).
+
+src/shs-renderer-lib/include/shs/passes/pass_interface.hpp
+	Defines the common pass interface, e.g. struct IPass { virtual void execute(PassContext&) = 0; }
+	(or non-virtual “pass.execute(ctx)” convention ).
+
+src/shs-renderer-lib/include/shs/passes/pass_graph.hpp
+	Simple runner/registry: list of passes, add_pass(), execute_all().
+
+
+Shared resources (optional now, but you will want soon)
+
+src/shs-renderer-lib/include/shs/resources/texture.hpp
+	Texture handle + loading API (SDL_image boundary lives here later).
+
+src/shs-renderer-lib/include/shs/resources/mesh.hpp
+	Mesh/model structs used by multiple demos.
+
+src/shs-renderer-lib/include/shs/resources/material.hpp
+	PBR material parameters shared across passes/demos.
+
+
+Built-in passes (each pass = one header)
+
+src/shs-renderer-lib/include/shs/passes/pass_pbr.hpp
+
+src/shs-renderer-lib/include/shs/passes/pass_shadow_map.hpp
+
+src/shs-renderer-lib/include/shs/passes/pass_light_shafts.hpp
+
+src/shs-renderer-lib/include/shs/passes/pass_motion_blur.hpp
+
+src/shs-renderer-lib/include/shs/passes/pass_dof.hpp
+
+src/shs-renderer-lib/include/shs/passes/pass_tonemap.hpp
+
+src/shs-renderer-lib/include/shs/passes/pass_skybox.hpp
+
+Convenience umbrella include (optional)
+
+src/shs-renderer-lib/include/shs/shs_renderer_lib.hpp
+
+Includes the minimal “public API” headers you want demos to include.

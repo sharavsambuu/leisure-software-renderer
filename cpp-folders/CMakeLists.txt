@@ -63,3 +63,5 @@ else()
     message(STATUS "Skipping 'hello-physics' on macOS due to lack of native vcpkg PhysX support")
 endif()
 
+add_subdirectory("src/shs-renderer-lib")
+add_subdirectory("src/hello-plumbing")
