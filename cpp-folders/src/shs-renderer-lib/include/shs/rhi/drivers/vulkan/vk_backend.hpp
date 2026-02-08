@@ -70,7 +70,7 @@ namespace shs
                 c.features.validation_layers = false;
                 c.features.push_constants = true;
                 c.features.multithread_command_recording = true;
-                c.limits.max_frames_in_flight = 2;
+                c.limits.max_frames_in_flight = 1;
                 c.limits.max_color_attachments = 1;
                 c.limits.max_descriptor_sets_per_pipeline = 1;
                 c.limits.max_push_constant_bytes = 128;
@@ -205,14 +205,6 @@ namespace shs
                 images_in_flight_[image_index] = inflight_fences_[cur];
             }
 
-            const VkResult reset_fence = vkResetFences(device_, 1, &inflight_fences_[cur]);
-            if (reset_fence == VK_ERROR_DEVICE_LOST)
-            {
-                device_lost_ = true;
-                return false;
-            }
-            if (reset_fence != VK_SUCCESS) return false;
-
             VkCommandBuffer cb = cmd_bufs_[image_index];
             const VkResult reset_cb = vkResetCommandBuffer(cb, 0);
             if (reset_cb == VK_ERROR_DEVICE_LOST)
@@ -243,6 +235,16 @@ namespace shs
 #ifdef SHS_HAS_VULKAN
             if (device_lost_) return;
             const uint32_t cur = current_frame_ % kMaxFramesInFlight;
+
+            // Reset only when we are ready to submit; this avoids leaving the
+            // fence unsignaled if frame recording bails out after begin_frame().
+            const VkResult reset_fence = vkResetFences(device_, 1, &inflight_fences_[cur]);
+            if (reset_fence == VK_ERROR_DEVICE_LOST)
+            {
+                device_lost_ = true;
+                return;
+            }
+            if (reset_fence != VK_SUCCESS) return;
 
             VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT;
             VkSubmitInfo si{};
@@ -1141,7 +1143,10 @@ namespace shs
         BackendCapabilities capabilities_{};
         bool capabilities_ready_ = false;
 #ifdef SHS_HAS_VULKAN
-        static constexpr uint32_t kMaxFramesInFlight = 2;
+        // Demos currently update many resources in-place each frame.
+        // Keep one frame in flight to avoid inter-frame write/read hazards
+        // until per-frame resource rings are fully adopted across demos.
+        static constexpr uint32_t kMaxFramesInFlight = 1;
 
         SDL_Window* window_ = nullptr;
         bool enable_validation_ = false;
@@ -1176,9 +1181,9 @@ namespace shs
         VkCommandPool cmd_pool_ = VK_NULL_HANDLE;
         std::vector<VkCommandBuffer> cmd_bufs_{};
         std::vector<VkFence> images_in_flight_{};
-        VkSemaphore image_available_[kMaxFramesInFlight]{VK_NULL_HANDLE, VK_NULL_HANDLE};
-        VkSemaphore render_finished_[kMaxFramesInFlight]{VK_NULL_HANDLE, VK_NULL_HANDLE};
-        VkFence inflight_fences_[kMaxFramesInFlight]{VK_NULL_HANDLE, VK_NULL_HANDLE};
+        VkSemaphore image_available_[kMaxFramesInFlight]{VK_NULL_HANDLE};
+        VkSemaphore render_finished_[kMaxFramesInFlight]{VK_NULL_HANDLE};
+        VkFence inflight_fences_[kMaxFramesInFlight]{VK_NULL_HANDLE};
         uint64_t current_frame_ = 0;
         uint64_t swapchain_generation_ = 0;
 #endif

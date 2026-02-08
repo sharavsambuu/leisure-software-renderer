@@ -22,6 +22,10 @@ layout(push_constant) uniform CompositePush
 vec3 sample_motion_blur(vec2 uv)
 {
     vec2 vel_ndc = texture(u_velocity, uv).xy;
+    if (dot(vel_ndc, vel_ndc) < 1e-8)
+    {
+        return texture(u_scene_hdr, uv).rgb;
+    }
     vec2 vel_uv = vel_ndc * 0.5 * pc.mb_strength;
 
     int samples = max(pc.mb_samples, 1);
@@ -36,7 +40,7 @@ vec3 sample_motion_blur(vec2 uv)
     {
         float t = (float(i) / float(samples - 1)) * 2.0 - 1.0;
         float w = 1.0 - abs(t);
-        vec2 suv = uv + vel_uv * t;
+        vec2 suv = clamp(uv + vel_uv * t, vec2(0.0), vec2(1.0));
         accum += texture(u_scene_hdr, suv).rgb * w;
         wsum += w;
     }
@@ -47,7 +51,11 @@ void main()
 {
     vec3 scene_blur = sample_motion_blur(v_uv);
     vec3 shafts = texture(u_shafts, v_uv).rgb * pc.shafts_strength;
-    vec3 flare = texture(u_flare, v_uv).rgb * pc.flare_strength;
+    vec3 flare = vec3(0.0);
+    if (pc.flare_strength > 1e-4)
+    {
+        flare = texture(u_flare, v_uv).rgb * pc.flare_strength;
+    }
 
     vec3 hdr = max(scene_blur + shafts + flare, vec3(0.0));
 

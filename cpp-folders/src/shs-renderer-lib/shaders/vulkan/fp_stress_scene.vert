@@ -12,6 +12,9 @@ layout(set = 0, binding = 0) uniform CameraUBO
     uvec4 culling_params;         // x: cluster_z_slices
     vec4 depth_params;            // x: near, y: far
     vec4 exposure_gamma;          // x: exposure, y: gamma
+    mat4 sun_shadow_view_proj;
+    vec4 sun_shadow_params;       // x: strength, y: bias_const, z: bias_slope, w: pcf_radius
+    vec4 sun_shadow_filter;       // x: pcf_step, y: enabled
 } ubo;
 
 layout(push_constant) uniform DrawPush

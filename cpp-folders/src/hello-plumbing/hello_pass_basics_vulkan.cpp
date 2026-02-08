@@ -24,6 +24,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include <shs/app/camera_sync.hpp>
+#include <shs/camera/convention.hpp>
 #include <shs/camera/follow_camera.hpp>
 #include <shs/core/context.hpp>
 #include <shs/frame/frame_params.hpp>
@@ -50,17 +51,17 @@
 
 /*
     HelloPassBasics demo
-    - Pass pipeline: shadow -> PBR/Blinn forward -> tonemap
+    - Pass pipeline: shadow -> PBR/Blinn forward -> bright -> shafts -> flare -> tonemap
     - Scene: floor + subaru + monkey
-    - Runtime toggle: debug/shading/sky/follow camera
+    - Runtime toggle: debug/shading/sky/follow camera + pass isolation ladder
 */
 
 namespace
 {
-    constexpr int WINDOW_W = 800;
-    constexpr int WINDOW_H = 620;
-    constexpr int CANVAS_W = 640;
-    constexpr int CANVAS_H = 360;
+    constexpr int WINDOW_W = 1200;
+    constexpr int WINDOW_H = 900;
+    constexpr int CANVAS_W = 1200;
+    constexpr int CANVAS_H = 900;
     constexpr float PI = 3.14159265f;
     constexpr float TWO_PI = 6.2831853f;
     constexpr float MOUSE_LOOK_SENS = 0.0025f;
@@ -76,6 +77,71 @@ namespace
     };
 
     constexpr ModelForwardAxis SUBARU_VISUAL_FORWARD_AXIS = ModelForwardAxis::PosZ;
+
+    enum class PassIsolationStage : uint8_t
+    {
+        Minimal = 0,
+        Shadow = 1,
+        Bright = 2,
+        Shafts = 3,
+        MotionBlur = 4,
+    };
+
+    struct PassExecutionPlan
+    {
+        bool run_shadow = true;
+        bool run_bright = true;
+        bool run_shafts = true;
+        bool run_flare = true;
+        bool enable_motion_blur = true;
+        PassIsolationStage stage = PassIsolationStage::MotionBlur;
+    };
+
+    const char* pass_isolation_stage_name(PassIsolationStage stage)
+    {
+        switch (stage)
+        {
+            case PassIsolationStage::Minimal: return "minimal";
+            case PassIsolationStage::Shadow: return "shadow";
+            case PassIsolationStage::Bright: return "bright";
+            case PassIsolationStage::Shafts: return "shafts";
+            case PassIsolationStage::MotionBlur: return "motion_blur";
+        }
+        return "unknown";
+    }
+
+    PassIsolationStage step_pass_isolation_stage(PassIsolationStage stage, int delta)
+    {
+        constexpr int kMin = static_cast<int>(PassIsolationStage::Minimal);
+        constexpr int kMax = static_cast<int>(PassIsolationStage::MotionBlur);
+        int idx = static_cast<int>(stage) + delta;
+        idx = std::clamp(idx, kMin, kMax);
+        return static_cast<PassIsolationStage>(idx);
+    }
+
+    PassExecutionPlan make_pass_execution_plan(
+        PassIsolationStage stage,
+        bool user_shadow_enabled,
+        bool user_light_shafts_enabled,
+        bool user_motion_blur_enabled,
+        bool profile_shadow_enabled,
+        bool profile_motion_blur_enabled)
+    {
+        const bool allow_shadow = static_cast<int>(stage) >= static_cast<int>(PassIsolationStage::Shadow);
+        const bool allow_bright = static_cast<int>(stage) >= static_cast<int>(PassIsolationStage::Bright);
+        const bool allow_shafts = static_cast<int>(stage) >= static_cast<int>(PassIsolationStage::Shafts);
+        const bool allow_motion_blur = static_cast<int>(stage) >= static_cast<int>(PassIsolationStage::MotionBlur);
+
+        PassExecutionPlan plan{};
+        plan.stage = stage;
+        plan.run_shadow = allow_shadow && user_shadow_enabled && profile_shadow_enabled;
+        plan.run_bright = allow_bright;
+        plan.run_shafts = allow_shafts && user_light_shafts_enabled;
+        // Flare-ийг shafts toggle-той хамт ажиллуулж, bright pass бэлэн үед л гүйцэтгэнэ.
+        plan.run_flare = plan.run_shafts && plan.run_bright;
+        plan.enable_motion_blur = allow_motion_blur && user_motion_blur_enabled && profile_motion_blur_enabled;
+        return plan;
+    }
 
     bool profile_has_pass(const shs::TechniqueProfile& profile, const char* pass_id)
     {
@@ -175,7 +241,10 @@ namespace
                 if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_F4) out.toggle_shading_model = true;
                 if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_F5) out.toggle_sky_mode = true;
                 if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_F6) out.toggle_follow_camera = true;
+                if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_F7) out.toggle_fxaa = true;
                 if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_m) out.toggle_motion_blur = true;
+                if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_LEFTBRACKET) out.step_pass_isolation_prev = true;
+                if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_RIGHTBRACKET) out.step_pass_isolation_next = true;
                 if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_RIGHT) out.right_mouse_down = true;
                 if (e.type == SDL_MOUSEBUTTONUP && e.button.button == SDL_BUTTON_RIGHT) out.right_mouse_up = true;
                 if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) out.left_mouse_down = true;
@@ -291,6 +360,11 @@ namespace
                 vkDestroySampler(dev, sampler_linear_clamp_, nullptr);
                 sampler_linear_clamp_ = VK_NULL_HANDLE;
             }
+            if (sampler_sky_ != VK_NULL_HANDLE)
+            {
+                vkDestroySampler(dev, sampler_sky_, nullptr);
+                sampler_sky_ = VK_NULL_HANDLE;
+            }
             if (sampler_shadow_ != VK_NULL_HANDLE)
             {
                 vkDestroySampler(dev, sampler_shadow_, nullptr);
@@ -345,29 +419,15 @@ namespace
             shs::Context& ctx,
             const shs::Scene& scene,
             const shs::FrameParams& fp,
-            const shs::ResourceRegistry& resources
+            const shs::ResourceRegistry& resources,
+            const PassExecutionPlan& pass_plan,
+            bool enable_fxaa
         )
         {
             if (!vk_ || vk_->device() == VK_NULL_HANDLE) return false;
 
             const VkExtent2D ex = vk_->swapchain_extent();
             if (ex.width == 0 || ex.height == 0) return false;
-
-            if (!ensure_offscreen_resources(ex.width, ex.height)) return false;
-            if (!ensure_pipelines(fp.cull_mode, fp.front_face_ccw)) return false;
-            if (!ensure_white_texture()) return false;
-            if (!ensure_sky_texture(scene)) return false;
-            if (!update_static_descriptor_sets()) return false;
-
-            for (uint32_t i = 0; i < static_cast<uint32_t>(scene.items.size()); ++i)
-            {
-                const auto& item = scene.items[i];
-                if (!item.visible) continue;
-                const shs::MaterialData* mat = resources.get_material((shs::MaterialAssetHandle)item.mat);
-                const shs::TextureAssetHandle base_tex_h = mat ? mat->base_color_tex : 0;
-                VkDescriptorSet preload_set = VK_NULL_HANDLE;
-                if (!ensure_object_descriptor(object_key(item, i), base_tex_h, preload_set, resources)) return false;
-            }
 
             shs::RenderBackendFrameInfo frame{};
             frame.frame_index = ctx.frame_index;
@@ -381,6 +441,56 @@ namespace
                 return false;
             }
 
+            const auto submit_noop_frame = [&]() {
+                VkCommandBufferBeginInfo begin_info{};
+                begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+                begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+                if (vkBeginCommandBuffer(fi.cmd, &begin_info) != VK_SUCCESS) return;
+                if (vkEndCommandBuffer(fi.cmd) != VK_SUCCESS) return;
+                vk_->end_frame(fi);
+                ctx.frame_index++;
+            };
+
+            if (!ensure_offscreen_resources(fi.extent.width, fi.extent.height))
+            {
+                submit_noop_frame();
+                return false;
+            }
+            if (!ensure_pipelines(fp.cull_mode, fp.front_face_ccw))
+            {
+                submit_noop_frame();
+                return false;
+            }
+            if (!ensure_white_texture())
+            {
+                submit_noop_frame();
+                return false;
+            }
+            if (!ensure_sky_texture(scene))
+            {
+                submit_noop_frame();
+                return false;
+            }
+            if (!update_static_descriptor_sets())
+            {
+                submit_noop_frame();
+                return false;
+            }
+
+            for (uint32_t i = 0; i < static_cast<uint32_t>(scene.items.size()); ++i)
+            {
+                const auto& item = scene.items[i];
+                if (!item.visible) continue;
+                const shs::MaterialData* mat = resources.get_material((shs::MaterialAssetHandle)item.mat);
+                const shs::TextureAssetHandle base_tex_h = mat ? mat->base_color_tex : 0;
+                VkDescriptorSet preload_set = VK_NULL_HANDLE;
+                if (!ensure_object_descriptor(object_key(item, i), base_tex_h, preload_set, resources))
+                {
+                    submit_noop_frame();
+                    return false;
+                }
+            }
+
             VkCommandBufferBeginInfo bi{};
             bi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
             bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
@@ -389,13 +499,21 @@ namespace
             const LightMatrices light = compute_light_matrices(scene);
             const glm::vec2 sun_uv = compute_sun_uv(scene);
 
-            record_shadow_pass(fi.cmd, scene, resources, light, fp.pass.shadow.enable);
+            record_shadow_pass(fi.cmd, scene, resources, light, pass_plan.run_shadow);
             record_scene_pass(fi.cmd, scene, resources, light, fp);
-            record_bright_pass(fi.cmd);
-            record_shafts_pass(fi.cmd, sun_uv, fp);
-            record_flare_pass(fi.cmd, sun_uv, fp);
+            if (pass_plan.run_bright) record_bright_pass(fi.cmd);
+            else clear_post_target(fi.cmd, bright_fb_);
+            if (pass_plan.run_shafts) record_shafts_pass(fi.cmd, sun_uv, fp);
+            else clear_post_target(fi.cmd, shafts_fb_);
+            if (pass_plan.run_flare) record_flare_pass(fi.cmd, sun_uv, fp);
+            else clear_post_target(fi.cmd, flare_fb_);
+            barrier_color_write_to_shader_read(fi.cmd, scene_hdr_.image);
+            barrier_color_write_to_shader_read(fi.cmd, velocity_.image);
+            barrier_color_write_to_shader_read(fi.cmd, shafts_.image);
+            barrier_color_write_to_shader_read(fi.cmd, flare_.image);
             record_composite_pass(fi.cmd, fp);
-            record_fxaa_to_swapchain(fi.cmd, fi);
+            barrier_color_write_to_shader_read(fi.cmd, composite_.image);
+            record_fxaa_to_swapchain(fi.cmd, fi, enable_fxaa);
 
             if (vkEndCommandBuffer(fi.cmd) != VK_SUCCESS) return false;
 
@@ -425,6 +543,7 @@ namespace
             glm::vec4 roughness_ao_emissive_hastex{0.6f, 1.0f, 0.0f, 0.0f};
             glm::vec4 camera_pos_sun_intensity{0.0f, 0.0f, 0.0f, 1.0f};
             glm::vec4 sun_dir_ws_pad{0.0f, -1.0f, 0.0f, 0.0f};
+            glm::vec4 shadow_params{1.0f, 0.0008f, 0.0015f, 1.0f}; // x=strength,y=bias_const,z=bias_slope,w=pcf_step
         };
 
         struct ShadowPush
@@ -474,6 +593,8 @@ namespace
         struct FxaaPush
         {
             glm::vec2 inv_size{1.0f, 1.0f};
+            float enable_fxaa = 1.0f;
+            float _pad0 = 0.0f;
         };
 
         struct GpuMesh
@@ -588,7 +709,7 @@ namespace
             if (std::abs(glm::dot(up, -light_dir)) > 0.98f) up = glm::vec3(1.0f, 0.0f, 0.0f);
 
             LightMatrices out{};
-            out.view = glm::lookAt(light_pos, center, up);
+            out.view = shs::look_at_lh(light_pos, center, up);
             // Stabilize shadow projection by snapping light-space center to texel grid.
             const float world_units_per_texel = (2.0f * radius) / static_cast<float>(kShadowMapSize);
             const glm::vec4 center_ls4 = out.view * glm::vec4(center, 1.0f);
@@ -596,7 +717,7 @@ namespace
             const glm::vec2 snapped_ls = glm::round(center_ls / world_units_per_texel) * world_units_per_texel;
             const glm::vec2 delta = snapped_ls - center_ls;
             out.view = glm::translate(glm::mat4(1.0f), glm::vec3(delta.x, delta.y, 0.0f)) * out.view;
-            out.proj = glm::ortho(-radius, radius, -radius, radius, 0.1f, radius * 4.5f);
+            out.proj = shs::ortho_lh_no(-radius, radius, -radius, radius, 0.1f, radius * 4.5f);
 
             glm::mat4 clip(1.0f);
             clip[2][2] = 0.5f;
@@ -608,9 +729,14 @@ namespace
 
         glm::vec2 compute_sun_uv(const shs::Scene& scene) const
         {
-            const glm::vec3 sun_world = scene.cam.pos + (-glm::normalize(scene.sun.dir_ws)) * 1000.0f;
-            const glm::vec4 clip = scene.cam.viewproj * glm::vec4(sun_world, 1.0f);
-            if (std::abs(clip.w) < 1e-6f) return glm::vec2(0.5f, 0.5f);
+            // Use camera-rotation-only transform for directional sun to avoid
+            // translation-induced parallax jitter.
+            const glm::vec3 sun_dir_ws = -glm::normalize(scene.sun.dir_ws);
+            const glm::vec3 sun_dir_vs = glm::mat3(scene.cam.view) * sun_dir_ws;
+            if (sun_dir_vs.z <= 1e-5f) return glm::vec2(-10.0f, -10.0f);
+
+            const glm::vec4 clip = scene.cam.proj * glm::vec4(sun_dir_vs, 1.0f);
+            if (std::abs(clip.w) < 1e-6f || clip.w <= 0.0f) return glm::vec2(-10.0f, -10.0f);
             const glm::vec2 ndc = glm::vec2(clip.x, clip.y) / clip.w;
             return ndc * 0.5f + glm::vec2(0.5f, 0.5f);
         }
@@ -896,6 +1022,39 @@ namespace
             );
         }
 
+        void barrier_color_write_to_shader_read(VkCommandBuffer cmd, VkImage image)
+        {
+            if (cmd == VK_NULL_HANDLE || image == VK_NULL_HANDLE) return;
+
+            VkImageMemoryBarrier b{};
+            b.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            b.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+            b.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            b.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            b.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            b.image = image;
+            b.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            b.subresourceRange.baseMipLevel = 0;
+            b.subresourceRange.levelCount = 1;
+            b.subresourceRange.baseArrayLayer = 0;
+            b.subresourceRange.layerCount = 1;
+
+            vkCmdPipelineBarrier(
+                cmd,
+                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                0,
+                0,
+                nullptr,
+                0,
+                nullptr,
+                1,
+                &b
+            );
+        }
+
         bool allocate_single_descriptor(VkDescriptorSetLayout layout, VkDescriptorSet& out_set)
         {
             out_set = VK_NULL_HANDLE;
@@ -1042,6 +1201,19 @@ namespace
                 if (vkCreateSampler(dev, &ci, nullptr, &sampler_linear_clamp_) != VK_SUCCESS) return false;
             }
 
+            if (sampler_sky_ == VK_NULL_HANDLE)
+            {
+                VkSamplerCreateInfo ci{};
+                ci.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+                ci.magFilter = VK_FILTER_LINEAR;
+                ci.minFilter = VK_FILTER_LINEAR;
+                ci.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+                ci.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+                ci.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+                ci.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+                if (vkCreateSampler(dev, &ci, nullptr, &sampler_sky_) != VK_SUCCESS) return false;
+            }
+
             if (sampler_shadow_ == VK_NULL_HANDLE)
             {
                 VkSamplerCreateInfo ci{};
@@ -1083,7 +1255,7 @@ namespace
             shadow_info.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
 
             VkDescriptorImageInfo sky_info{};
-            sky_info.sampler = sampler_linear_clamp_;
+            sky_info.sampler = (sampler_sky_ != VK_NULL_HANDLE) ? sampler_sky_ : sampler_linear_clamp_;
             sky_info.imageView = (sky_texture_.view != VK_NULL_HANDLE) ? sky_texture_.view : white_texture_.view;
             sky_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
@@ -1342,8 +1514,10 @@ namespace
 
                     glm::vec3 c = scene.sky->sample(dir);
                     c = glm::max(c, glm::vec3(0.0f));
+                    // Sky texture is sampled as linear UNORM in Vulkan.
+                    // Keep values linear in [0,1] (no extra gamma-encoding)
+                    // to avoid over-bright/double-curve sky output.
                     c = c / (glm::vec3(1.0f) + c);
-                    c = glm::pow(c, glm::vec3(1.0f / 2.2f));
                     c = glm::clamp(c, glm::vec3(0.0f), glm::vec3(1.0f));
 
                     const size_t idx = (static_cast<size_t>(y) * static_cast<size_t>(sky_w) + static_cast<size_t>(x)) * 4u;
@@ -2154,7 +2328,8 @@ namespace
             VkShaderStageFlags push_stage,
             uint32_t push_size,
             VkPipelineLayout& out_layout,
-            VkPipeline& out_pipeline)
+            VkPipeline& out_pipeline,
+            uint32_t color_attachment_count = 1)
         {
             std::vector<char> vs_code = read_file(SHS_VK_PB_POST_VERT_SPV);
             std::vector<char> fs_code = read_file(frag_path);
@@ -2213,18 +2388,20 @@ namespace
             ds.depthWriteEnable = VK_FALSE;
             ds.depthCompareOp = VK_COMPARE_OP_ALWAYS;
 
-            VkPipelineColorBlendAttachmentState cba{};
-            cba.colorWriteMask =
+            std::array<VkPipelineColorBlendAttachmentState, 2> cba{};
+            cba[0].colorWriteMask =
                 VK_COLOR_COMPONENT_R_BIT |
                 VK_COLOR_COMPONENT_G_BIT |
                 VK_COLOR_COMPONENT_B_BIT |
                 VK_COLOR_COMPONENT_A_BIT;
-            cba.blendEnable = VK_FALSE;
+            cba[0].blendEnable = VK_FALSE;
+            cba[1].colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT;
+            cba[1].blendEnable = VK_FALSE;
 
             VkPipelineColorBlendStateCreateInfo cb{};
             cb.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-            cb.attachmentCount = 1;
-            cb.pAttachments = &cba;
+            cb.attachmentCount = std::clamp<uint32_t>(color_attachment_count, 1u, 2u);
+            cb.pAttachments = cba.data();
 
             VkDynamicState dyn_states[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
             VkPipelineDynamicStateCreateInfo dyn{};
@@ -2284,7 +2461,8 @@ namespace
                     VK_SHADER_STAGE_FRAGMENT_BIT,
                     sizeof(glm::mat4),
                     sky_pipeline_layout_,
-                    sky_pipeline_)) return false;
+                    sky_pipeline_,
+                    2u)) return false;
 
             if (!create_fullscreen_pipeline(
                     SHS_VK_PB_BRIGHT_FRAG_SPV,
@@ -2484,7 +2662,9 @@ namespace
 
             vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, sky_pipeline_);
             vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, sky_pipeline_layout_, 0, 1, &sky_set_, 0, nullptr);
-            const glm::mat4 inv_vp = glm::inverse(scene.cam.viewproj);
+            glm::mat4 sky_view = scene.cam.view;
+            sky_view[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+            const glm::mat4 inv_vp = glm::inverse(scene.cam.proj * sky_view);
             vkCmdPushConstants(cmd, sky_pipeline_layout_, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(glm::mat4), &inv_vp);
             draw_fullscreen_triangle(cmd);
 
@@ -2494,25 +2674,55 @@ namespace
             uint32_t draw_index = 0;
             for (const auto& item : scene.items)
             {
-                if (!item.visible) { ++draw_index; continue; }
+                const uint64_t key = object_key(item, draw_index);
+                const glm::mat4 model = build_model_matrix(item.tr);
+
+                if (!item.visible)
+                {
+                    prev_models_[key] = model;
+                    ++draw_index;
+                    continue;
+                }
 
                 const shs::MeshData* mesh_data = resources.get_mesh((shs::MeshAssetHandle)item.mesh);
-                if (!mesh_data || mesh_data->positions.empty()) { ++draw_index; continue; }
-                if (!ensure_mesh_uploaded((shs::MeshAssetHandle)item.mesh, *mesh_data)) { ++draw_index; continue; }
+                if (!mesh_data || mesh_data->positions.empty())
+                {
+                    prev_models_[key] = model;
+                    ++draw_index;
+                    continue;
+                }
+                if (!ensure_mesh_uploaded((shs::MeshAssetHandle)item.mesh, *mesh_data))
+                {
+                    prev_models_[key] = model;
+                    ++draw_index;
+                    continue;
+                }
 
                 const auto it_mesh = meshes_.find((shs::MeshAssetHandle)item.mesh);
-                if (it_mesh == meshes_.end()) { ++draw_index; continue; }
+                if (it_mesh == meshes_.end())
+                {
+                    prev_models_[key] = model;
+                    ++draw_index;
+                    continue;
+                }
                 const GpuMesh& gm = it_mesh->second;
-                if (gm.index_count == 0) { ++draw_index; continue; }
+                if (gm.index_count == 0)
+                {
+                    prev_models_[key] = model;
+                    ++draw_index;
+                    continue;
+                }
 
                 const shs::MaterialData* mat = resources.get_material((shs::MaterialAssetHandle)item.mat);
                 const shs::TextureAssetHandle tex_h = mat ? mat->base_color_tex : 0;
 
-                const uint64_t key = object_key(item, draw_index);
                 VkDescriptorSet obj_set = VK_NULL_HANDLE;
-                if (!ensure_object_descriptor(key, tex_h, obj_set, resources)) { ++draw_index; continue; }
-
-                const glm::mat4 model = build_model_matrix(item.tr);
+                if (!ensure_object_descriptor(key, tex_h, obj_set, resources))
+                {
+                    prev_models_[key] = model;
+                    ++draw_index;
+                    continue;
+                }
                 glm::mat4 prev_model = model;
                 const auto it_prev = prev_models_.find(key);
                 if (it_prev != prev_models_.end()) prev_model = it_prev->second;
@@ -2531,9 +2741,19 @@ namespace
                     mat ? mat->emissive_intensity : 0.0f,
                     tex_h != 0 ? 1.0f : 0.0f);
                 ubo.camera_pos_sun_intensity = glm::vec4(scene.cam.pos, scene.sun.intensity);
-                ubo.sun_dir_ws_pad = glm::vec4(scene.sun.dir_ws, 0.0f);
+                ubo.sun_dir_ws_pad = glm::vec4(scene.sun.dir_ws, static_cast<float>(std::max(fp.pass.shadow.pcf_radius, 0)));
+                ubo.shadow_params = glm::vec4(
+                    fp.pass.shadow.enable ? fp.pass.shadow.strength : 0.0f,
+                    fp.pass.shadow.bias_const,
+                    fp.pass.shadow.bias_slope,
+                    fp.pass.shadow.pcf_step);
 
-                if (!update_object_ubo(key, ubo)) { ++draw_index; continue; }
+                if (!update_object_ubo(key, ubo))
+                {
+                    prev_models_[key] = model;
+                    ++draw_index;
+                    continue;
+                }
 
                 VkDeviceSize vb_offset = 0;
                 vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, scene_pipeline_layout_, 0, 1, &obj_set, 0, nullptr);
@@ -2565,6 +2785,14 @@ namespace
             pc.knee = 0.5f;
             vkCmdPushConstants(cmd, bright_pipeline_layout_, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(BrightPush), &pc);
             draw_fullscreen_triangle(cmd);
+            vkCmdEndRenderPass(cmd);
+        }
+
+        void clear_post_target(VkCommandBuffer cmd, VkFramebuffer fb)
+        {
+            VkClearValue clear{};
+            clear.color = {{0.0f, 0.0f, 0.0f, 1.0f}};
+            begin_render_pass(cmd, post_render_pass_, fb, offscreen_w_, offscreen_h_, &clear, 1);
             vkCmdEndRenderPass(cmd);
         }
 
@@ -2604,10 +2832,11 @@ namespace
 
             FlarePush pc{};
             pc.sun_uv = sun_uv;
-            pc.intensity = fp.pass.light_shafts.enable ? 0.55f : 0.0f;
-            pc.halo_intensity = 0.35f;
-            pc.chroma_shift = 0.8f;
-            pc.ghosts = 3;
+            // Sensitive боловч overbloom болохооргүйгээр flare-ийг даруухан барина.
+            pc.intensity = fp.pass.light_shafts.enable ? 0.34f : 0.0f;
+            pc.halo_intensity = 0.18f;
+            pc.chroma_shift = 1.15f;
+            pc.ghosts = 4;
             vkCmdPushConstants(cmd, flare_pipeline_layout_, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(FlarePush), &pc);
             draw_fullscreen_triangle(cmd);
             vkCmdEndRenderPass(cmd);
@@ -2627,7 +2856,7 @@ namespace
             pc.inv_size = glm::vec2(1.0f / float(offscreen_w_), 1.0f / float(offscreen_h_));
             pc.mb_strength = fp.pass.motion_blur.enable ? fp.pass.motion_blur.strength : 0.0f;
             pc.shafts_strength = fp.pass.light_shafts.enable ? 1.0f : 0.0f;
-            pc.flare_strength = fp.pass.light_shafts.enable ? 1.0f : 0.0f;
+            pc.flare_strength = fp.pass.light_shafts.enable ? 0.95f : 0.0f;
             pc.mb_samples = std::max(fp.pass.motion_blur.samples, 1);
             pc.exposure = std::max(0.0001f, fp.pass.tonemap.exposure);
             pc.gamma = std::max(0.001f, fp.pass.tonemap.gamma);
@@ -2636,7 +2865,7 @@ namespace
             vkCmdEndRenderPass(cmd);
         }
 
-        void record_fxaa_to_swapchain(VkCommandBuffer cmd, const shs::VulkanRenderBackend::FrameInfo& fi)
+        void record_fxaa_to_swapchain(VkCommandBuffer cmd, const shs::VulkanRenderBackend::FrameInfo& fi, bool enable_fxaa)
         {
             VkClearValue clear[2]{};
             clear[0].color = {{0.0f, 0.0f, 0.0f, 1.0f}};
@@ -2659,6 +2888,7 @@ namespace
 
             FxaaPush pc{};
             pc.inv_size = glm::vec2(1.0f / float(offscreen_w_), 1.0f / float(offscreen_h_));
+            pc.enable_fxaa = enable_fxaa ? 1.0f : 0.0f;
             vkCmdPushConstants(cmd, fxaa_pipeline_layout_, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(FxaaPush), &pc);
             draw_fullscreen_triangle(cmd);
 
@@ -2679,6 +2909,7 @@ namespace
 
         VkSampler sampler_linear_repeat_ = VK_NULL_HANDLE;
         VkSampler sampler_linear_clamp_ = VK_NULL_HANDLE;
+        VkSampler sampler_sky_ = VK_NULL_HANDLE;
         VkSampler sampler_shadow_ = VK_NULL_HANDLE;
 
         VkDescriptorSet shadow_set_ = VK_NULL_HANDLE;
@@ -3317,7 +3548,7 @@ int main()
         "mat_subaru"
     );
     const shs::MaterialAssetHandle monkey_mat_h = resources.add_material(
-        shs::MaterialData{"mat_monkey_gold", glm::vec3(240.0f / 255.0f, 195.0f / 255.0f, 75.0f / 255.0f), 0.95f, 0.20f, 1.0f},
+        shs::MaterialData{"mat_monkey_gold", glm::vec3(1.000f, 0.766f, 0.336f), 1.00f, 0.14f, 1.0f},
         "mat_monkey_gold"
     );
 
@@ -3379,7 +3610,11 @@ int main()
     shs::TechniqueMode active_technique_mode = shs::TechniqueMode::Forward;
     size_t technique_cycle_index = 0;
     bool user_shadow_enabled = fp.pass.shadow.enable;
+    bool user_light_shafts_enabled = fp.pass.light_shafts.enable;
     bool user_motion_blur_enabled = fp.pass.motion_blur.enable;
+    bool user_fxaa_enabled = true;
+    PassIsolationStage pass_isolation_stage = PassIsolationStage::MotionBlur;
+    PassExecutionPlan pass_plan{};
     auto apply_technique_composition = [&]() {
         const shs::TechniqueProfile profile = shs::make_default_technique_profile(active_technique_mode);
         fp.technique.mode = active_technique_mode;
@@ -3388,8 +3623,17 @@ int main()
 
         const bool profile_shadow = profile_has_pass(profile, "shadow_map");
         const bool profile_motion_blur = profile_has_pass(profile, "motion_blur");
-        fp.pass.shadow.enable = user_shadow_enabled && profile_shadow;
-        fp.pass.motion_blur.enable = user_motion_blur_enabled && profile_motion_blur;
+        pass_plan = make_pass_execution_plan(
+            pass_isolation_stage,
+            user_shadow_enabled,
+            user_light_shafts_enabled,
+            user_motion_blur_enabled,
+            profile_shadow,
+            profile_motion_blur
+        );
+        fp.pass.shadow.enable = pass_plan.run_shadow;
+        fp.pass.light_shafts.enable = pass_plan.run_shafts;
+        fp.pass.motion_blur.enable = pass_plan.enable_motion_blur;
         fp.pass.motion_vectors.enable = fp.pass.motion_vectors.enable || fp.pass.motion_blur.enable;
     };
     apply_technique_composition();
@@ -3495,12 +3739,32 @@ int main()
             active_technique_mode = modes[technique_cycle_index];
             apply_technique_composition();
         }
-        // L: light shafts on/off.
-        if (pin.toggle_light_shafts) fp.pass.light_shafts.enable = !fp.pass.light_shafts.enable;
+        // L: light shafts user preference on/off.
+        if (pin.toggle_light_shafts)
+        {
+            user_light_shafts_enabled = !user_light_shafts_enabled;
+            apply_technique_composition();
+        }
         // M: motion blur on/off.
         if (pin.toggle_motion_blur)
         {
             user_motion_blur_enabled = !user_motion_blur_enabled;
+            apply_technique_composition();
+        }
+        // F7: FXAA final pass on/off (present path isolation).
+        if (pin.toggle_fxaa)
+        {
+            user_fxaa_enabled = !user_fxaa_enabled;
+        }
+        // [ / ]: pass isolation ladder алхам алхмаар буцаах/урагшлуулах.
+        if (pin.step_pass_isolation_prev)
+        {
+            pass_isolation_stage = step_pass_isolation_stage(pass_isolation_stage, -1);
+            apply_technique_composition();
+        }
+        if (pin.step_pass_isolation_next)
+        {
+            pass_isolation_stage = step_pass_isolation_stage(pass_isolation_stage, +1);
             apply_technique_composition();
         }
         // F5: cubemap/procedural sky солих.
@@ -3651,14 +3915,22 @@ int main()
 
         // Logic-оор шинэчлэгдсэн object/camera төлөвийг render scene рүү sync хийнэ.
         objects.sync_to_scene(scene);
-        shs::sync_camera_to_scene(cam, scene, (float)CANVAS_W / (float)CANVAS_H);
+        const VkExtent2D cam_extent = vk_backend->swapchain_extent();
+        if (cam_extent.width > 0 && cam_extent.height > 0)
+        {
+            fp.w = static_cast<int>(cam_extent.width);
+            fp.h = static_cast<int>(cam_extent.height);
+        }
+        const float cam_aspect = (fp.h > 0) ? (static_cast<float>(fp.w) / static_cast<float>(fp.h))
+                                            : ((float)CANVAS_W / (float)CANVAS_H);
+        shs::sync_camera_to_scene(cam, scene, cam_aspect);
         procedural_sky.set_sun_direction(scene.sun.dir_ws);
         scene.sky = use_cubemap_sky ? static_cast<const shs::ISkyModel*>(&cubemap_sky)
                                     : static_cast<const shs::ISkyModel*>(&procedural_sky);
 
         // Vulkan GPU draw (scene meshes -> swapchain).
         const auto t_render0 = std::chrono::steady_clock::now();
-        if (!gpu_renderer.render(ctx, scene, fp, resources))
+        if (!gpu_renderer.render(ctx, scene, fp, resources, pass_plan, user_fxaa_enabled))
         {
             SDL_Delay(2);
         }
@@ -3682,9 +3954,13 @@ int main()
                 + " | follow[F6]: " + (follow_camera ? "on" : "off")
                 + " | ai: " + std::string(subaru_ai.state_name())
                 + "(" + std::to_string((int)std::lround(subaru_ai.state_progress() * 100.0f)) + "%)"
+                + " | isolate[[/]]: " + std::string(pass_isolation_stage_name(pass_plan.stage))
                 + " | shadow: " + std::string(fp.pass.shadow.enable ? "on" : "off")
+                + " | bright: " + std::string(pass_plan.run_bright ? "on" : "off")
                 + " | shafts[L]: " + (fp.pass.light_shafts.enable ? "on" : "off")
+                + " | flare: " + std::string(pass_plan.run_flare ? "on" : "off")
                 + " | mblur[M]: " + (fp.pass.motion_blur.enable ? "on" : "off")
+                + " | fxaa[F7]: " + std::string(user_fxaa_enabled ? "on" : "off")
                 + " | logic: " + std::to_string((int)std::lround(logic_ms_accum / std::max(1, frames))) + "ms"
                 + " | render: " + std::to_string((int)std::lround(render_ms_accum / std::max(1, frames))) + "ms"
                 + " | path: gpu-draw(composed)";

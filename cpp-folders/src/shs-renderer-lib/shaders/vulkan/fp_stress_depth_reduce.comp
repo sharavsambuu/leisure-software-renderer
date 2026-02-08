@@ -14,14 +14,17 @@ layout(set = 0, binding = 0) uniform CameraUBO
     uvec4 culling_params;         // x: cluster_z_slices
     vec4 depth_params;            // x: near, y: far
     vec4 exposure_gamma;          // x: exposure, y: gamma
+    mat4 sun_shadow_view_proj;
+    vec4 sun_shadow_params;
+    vec4 sun_shadow_filter;
 } ubo;
 
-layout(set = 0, binding = 5, std430) buffer TileDepthRanges
+layout(set = 0, binding = 4, std430) buffer TileDepthRanges
 {
     vec2 tile_depth_ranges[];
 };
 
-layout(set = 0, binding = 6) uniform sampler2D depth_tex;
+layout(set = 0, binding = 5) uniform sampler2D depth_tex;
 
 float depth01_to_view(float d)
 {

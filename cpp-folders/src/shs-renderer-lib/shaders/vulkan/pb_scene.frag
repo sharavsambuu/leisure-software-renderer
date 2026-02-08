@@ -12,6 +12,7 @@ layout(set = 0, binding = 1) uniform ObjectUBO
     vec4 roughness_ao_emissive_hastex;
     vec4 camera_pos_sun_intensity;
     vec4 sun_dir_ws_pad;
+    vec4 shadow_params;
 } ubo;
 
 layout(set = 1, binding = 0) uniform sampler2D u_shadow_map;
@@ -63,35 +64,71 @@ vec3 fresnel_schlick(float cosTheta, vec3 F0)
 float soft_shadow(vec3 N, vec3 L)
 {
     vec3 proj = v_shadow_pos.xyz / max(v_shadow_pos.w, 1e-6);
-    proj = proj * 0.5 + 0.5;
+    proj.xy = proj.xy * 0.5 + 0.5;
     if (proj.x <= 0.0 || proj.x >= 1.0 || proj.y <= 0.0 || proj.y >= 1.0 || proj.z <= 0.0 || proj.z >= 1.0)
     {
         return 1.0;
     }
 
     float current_depth = proj.z;
-    float bias = max(0.0008 * (1.0 - dot(N, L)), 0.0002);
+    float ndotl = max(dot(N, L), 0.0);
+    float bias = max(ubo.shadow_params.y + ubo.shadow_params.z * (1.0 - ndotl), 0.00002);
+    float pcf_step = max(ubo.shadow_params.w, 0.5);
+    int pcf_radius = int(clamp(floor(ubo.sun_dir_ws_pad.w + 0.5), 0.0, 6.0));
 
     vec2 texel = 1.0 / vec2(textureSize(u_shadow_map, 0));
-    float base_radius = 1.25;
-    float normal_factor = 1.0 - max(dot(N, L), 0.0);
-    float radius = mix(base_radius, 4.0, normal_factor);
+    if (pcf_radius <= 0)
+    {
+        float d = texture(u_shadow_map, clamp(proj.xy, vec2(1e-4), vec2(1.0 - 1e-4))).r;
+        float vis = (current_depth - bias > d) ? 0.0 : 1.0;
+        return mix(1.0, vis, clamp(ubo.shadow_params.x, 0.0, 1.0));
+    }
 
     float shadow_sum = 0.0;
     float weight_sum = 0.0;
-    for (int y = -2; y <= 2; ++y)
+    for (int y = -pcf_radius; y <= pcf_radius; ++y)
     {
-        for (int x = -2; x <= 2; ++x)
+        for (int x = -pcf_radius; x <= pcf_radius; ++x)
         {
             vec2 o = vec2(float(x), float(y));
             float w = 1.0 / (1.0 + dot(o, o));
-            float pcf_depth = texture(u_shadow_map, proj.xy + o * texel * radius).r;
+            vec2 pcf_uv = clamp(proj.xy + o * texel * pcf_step, vec2(1e-4), vec2(1.0 - 1e-4));
+            float pcf_depth = texture(u_shadow_map, pcf_uv).r;
             shadow_sum += (current_depth - bias > pcf_depth) ? w : 0.0;
             weight_sum += w;
         }
     }
     float shadow = shadow_sum / max(weight_sum, 1e-6);
-    return 1.0 - shadow;
+    float vis = 1.0 - shadow;
+    return mix(1.0, vis, clamp(ubo.shadow_params.x, 0.0, 1.0));
+}
+
+vec3 eval_fake_ibl(vec3 N, vec3 V, vec3 base_color, float metallic, float roughness, float ao)
+{
+    vec3 n = normalize(N);
+    vec3 v = normalize(V);
+    vec3 r = reflect(-v, n);
+
+    vec3 sky_zenith = vec3(0.32, 0.46, 0.72);
+    vec3 sky_horizon = vec3(0.62, 0.66, 0.72);
+    vec3 ground_tint = vec3(0.16, 0.15, 0.14);
+
+    float up_n = clamp(n.y * 0.5 + 0.5, 0.0, 1.0);
+    float up_r = clamp(r.y * 0.5 + 0.5, 0.0, 1.0);
+    vec3 env_n = mix(ground_tint, mix(sky_horizon, sky_zenith, up_n), up_n);
+    vec3 env_r = mix(ground_tint, mix(sky_horizon, sky_zenith, up_r), up_r);
+
+    float m = clamp(metallic, 0.0, 1.0);
+    float rgh = clamp(roughness, 0.0, 1.0);
+    vec3 F0 = mix(vec3(0.04), max(base_color, vec3(0.0)), m);
+    float fres = pow(1.0 - max(0.0, dot(n, v)), 5.0);
+    vec3 F = F0 + (vec3(1.0) - F0) * fres;
+
+    vec3 kd = (vec3(1.0) - F) * (1.0 - m);
+    vec3 diffuse_ibl = kd * base_color * env_n * 0.12;
+    float spec_strength = 0.02 + (1.0 - rgh) * 0.18;
+    vec3 spec_ibl = env_r * F * spec_strength;
+    return (diffuse_ibl + spec_ibl) * clamp(ao, 0.0, 1.0);
 }
 
 void main()
@@ -133,14 +170,24 @@ void main()
     vec3 radiance = sun_color * sun_intensity;
 
     vec3 Lo = (kD * albedo / PI + specular) * radiance * NdotL * shadow;
-    vec3 ambient = 0.03 * albedo * ao;
+    vec3 ambient = eval_fake_ibl(N, V, albedo, metallic, roughness, ao);
     vec3 emissive = albedo * emissive_intensity;
 
     vec3 hdr = max(ambient + Lo + emissive, vec3(0.0));
 
-    vec2 curr_ndc = v_curr_clip.xy / max(v_curr_clip.w, 1e-6);
-    vec2 prev_ndc = v_prev_clip.xy / max(v_prev_clip.w, 1e-6);
+    vec2 velocity = vec2(0.0);
+    if (v_curr_clip.w > 1e-4 && v_prev_clip.w > 1e-4)
+    {
+        vec2 curr_ndc = v_curr_clip.xy / v_curr_clip.w;
+        vec2 prev_ndc = v_prev_clip.xy / v_prev_clip.w;
+        velocity = curr_ndc - prev_ndc;
+        velocity = clamp(velocity, vec2(-1.0), vec2(1.0));
+        if (any(isnan(velocity)) || any(isinf(velocity)))
+        {
+            velocity = vec2(0.0);
+        }
+    }
 
     out_hdr = vec4(hdr, 1.0);
-    out_velocity = curr_ndc - prev_ndc;
+    out_velocity = velocity;
 }

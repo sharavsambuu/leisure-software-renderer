@@ -8,6 +8,8 @@ layout(location = 0) out vec4 out_color;
 layout(push_constant) uniform FxaaPush
 {
     vec2 inv_size;
+    float enable_fxaa;
+    float _pad0;
 } pc;
 
 float luma(vec3 c)
@@ -17,6 +19,12 @@ float luma(vec3 c)
 
 void main()
 {
+    if (pc.enable_fxaa < 0.5)
+    {
+        out_color = vec4(texture(u_input, v_uv).rgb, 1.0);
+        return;
+    }
+
     vec2 px = pc.inv_size;
 
     vec3 rgb_m = texture(u_input, v_uv).rgb;

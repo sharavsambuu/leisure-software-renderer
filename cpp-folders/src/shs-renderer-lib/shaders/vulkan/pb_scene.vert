@@ -10,6 +10,7 @@ layout(set = 0, binding = 1) uniform ObjectUBO
     vec4 roughness_ao_emissive_hastex;
     vec4 camera_pos_sun_intensity;
     vec4 sun_dir_ws_pad;
+    vec4 shadow_params;
 } ubo;
 
 layout(location = 0) in vec3 in_pos;

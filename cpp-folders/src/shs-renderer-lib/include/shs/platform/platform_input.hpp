@@ -24,6 +24,9 @@ namespace shs
         bool toggle_sky_mode = false;
         bool toggle_follow_camera = false;
         bool toggle_motion_blur = false;
+        bool toggle_fxaa = false;
+        bool step_pass_isolation_prev = false;
+        bool step_pass_isolation_next = false;
 
         bool forward = false;
         bool backward = false;

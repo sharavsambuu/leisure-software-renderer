@@ -14,32 +14,47 @@ layout(set = 0, binding = 0) uniform CameraUBO
     uvec4 culling_params;         // x: cluster_z_slices
     vec4 depth_params;            // x: near, y: far
     vec4 exposure_gamma;          // x: exposure, y: gamma
+    mat4 sun_shadow_view_proj;
+    vec4 sun_shadow_params;
+    vec4 sun_shadow_filter;
 } ubo;
 
-layout(set = 0, binding = 1, std430) readonly buffer LightPosRadius
+struct CullingLightGPU
 {
-    vec4 pos_radius[];
-} light_pos_radius;
+    vec4 position_range;
+    vec4 color_intensity;
+    vec4 direction_spot;
+    vec4 axis_spot_outer;
+    vec4 up_shape_x;
+    vec4 shape_attenuation;
+    uvec4 type_shape_flags;
+};
 
-layout(set = 0, binding = 2, std430) readonly buffer LightColorIntensity
+layout(set = 0, binding = 1, std430) readonly buffer LightBuffer
 {
-    vec4 color_intensity[];
-} light_color_intensity;
+    CullingLightGPU lights[];
+} light_buffer;
 
-layout(set = 0, binding = 3, std430) buffer TileCounts
+layout(set = 0, binding = 2, std430) buffer TileCounts
 {
     uint tile_counts[];
 };
 
-layout(set = 0, binding = 4, std430) buffer TileIndices
+layout(set = 0, binding = 3, std430) buffer TileIndices
 {
     uint tile_indices[];
 };
 
-layout(set = 0, binding = 5, std430) readonly buffer TileDepthRanges
+layout(set = 0, binding = 4, std430) readonly buffer TileDepthRanges
 {
     vec2 tile_depth_ranges[];
 };
+
+const uint LIGHT_TYPE_POINT = 1u;
+const uint LIGHT_TYPE_SPOT = 2u;
+const uint LIGHT_TYPE_RECT_AREA = 3u;
+const uint LIGHT_TYPE_TUBE_AREA = 4u;
+const uint LIGHT_FLAG_ENABLED = 1u;
 
 bool project_light_screen(vec3 pos_ws, float radius_ws, uint width, uint height, out vec2 center_px, out float radius_px, out float view_depth)
 {
@@ -127,7 +142,19 @@ void main()
 
     for (uint i = 0u; i < light_count; ++i)
     {
-        vec4 pr = light_pos_radius.pos_radius[i];
+        CullingLightGPU light = light_buffer.lights[i];
+        uint light_type = light.type_shape_flags.x;
+        uint flags = light.type_shape_flags.z;
+        if ((flags & LIGHT_FLAG_ENABLED) == 0u) continue;
+        if (light_type != LIGHT_TYPE_POINT &&
+            light_type != LIGHT_TYPE_SPOT &&
+            light_type != LIGHT_TYPE_RECT_AREA &&
+            light_type != LIGHT_TYPE_TUBE_AREA)
+        {
+            continue;
+        }
+
+        vec4 pr = light.position_range;
         vec2 screen = vec2(0.0);
         float radius_px = 0.0;
         float view_depth = 0.0;

@@ -115,11 +115,15 @@
     cmake .. -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake
     make -j20
     cd src/hello-pixel-primitives && ./HelloPixel
-    cd ../hello-plumbing && ./HelloPassBasics && ./HelloPassBasicsVulkan
+    cd ../hello-plumbing && ./HelloPassBasics && ./HelloPassBasicsVulkan && ./HelloForwardPlusStressVulkan && ./HelloVulkanShadowTechniques
     # HelloPassBasicsVulkan is shader-based multi-pass Vulkan path:
     #   soft shadow map + PBR scene + camera/per-object motion blur + light shafts + lens flare + FXAA
     # Default shaders are in:
     #   cpp-folders/src/shs-renderer-lib/shaders/vulkan/pb_*.vert|frag
+    # HelloForwardPlusStressVulkan / HelloVulkanShadowTechniques:
+    #   Forward+/clustered stress scene with composable light culling + multi-light shadows
+    # Controls:
+    #   F1 record mode toggle, F2 technique cycle, F3 culling mode cycle, F4 clear culling override, F5 shadow toggle
 
 
 
@@ -162,11 +166,16 @@
     cmake .. -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake
     make -j20
     cd src/hello-pixel-primitives && ./HelloPixel
-    cd ../hello-plumbing && ./HelloPassBasics && ./HelloPassBasicsVulkan
+    cd ../hello-plumbing && ./HelloPassBasics && ./HelloPassBasicsVulkan && ./HelloForwardPlusStressVulkan && ./HelloVulkanShadowTechniques
     # HelloPassBasicsVulkan is shader-based multi-pass Vulkan path:
     #   soft shadow map + PBR scene + camera/per-object motion blur + light shafts + lens flare + FXAA
     # Default shaders are in:
     #   cpp-folders/src/shs-renderer-lib/shaders/vulkan/pb_*.vert|frag
+    # Forward+ Vulkan shader set also includes:
+    #   cpp-folders/src/shs-renderer-lib/shaders/vulkan/fp_stress_scene.vert|frag
+    #   cpp-folders/src/shs-renderer-lib/shaders/vulkan/fp_stress_shadow.vert
+    #   cpp-folders/src/shs-renderer-lib/shaders/vulkan/fp_stress_light_cull.comp
+    #   cpp-folders/src/shs-renderer-lib/shaders/vulkan/fp_stress_depth_reduce.comp
 
 
 
