@@ -1,6 +1,8 @@
 
 # Tasks to mess around in the near future
 
+    Some idea, which is dynamic compositional renderer
+        Tunable combinations -> Different Light Volumes + Different Culling Techniques + Different Rendering + Different Passes
     Revive Lockless job system experiments
     Revive priority based job system experiments
     Implement multiple parallel and sequencial job groups and graphs demo
