@@ -191,7 +191,7 @@
       CMAKE_TOOLCHAIN_FILE = C:\src\misc\vcpkg\scripts\buildsystems\vcpkg.cmake
 
 
-    vcpkg install sdl2
+    vcpkg install sdl2[vulkan] --recurse
     vcpkg install sdl2-image
     vcpkg install sdl2-image:x64-windows-static
     vcpkg install --recurse sdl2-image[libjpeg-turbo]
