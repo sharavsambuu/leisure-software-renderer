@@ -3642,7 +3642,9 @@ int main()
         const shs::TechniqueProfile profile = shs::make_default_technique_profile(active_technique_mode);
         fp.technique.mode = active_technique_mode;
         fp.technique.depth_prepass = profile_has_pass(profile, "depth_prepass");
-        fp.technique.light_culling = profile_has_pass(profile, "light_culling");
+        fp.technique.light_culling =
+            profile_has_pass(profile, "light_culling") ||
+            profile_has_pass(profile, "cluster_light_assign");
 
         const bool profile_shadow = profile_has_pass(profile, "shadow_map");
         const bool profile_motion_blur = profile_has_pass(profile, "motion_blur");

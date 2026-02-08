@@ -6,6 +6,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cctype>
 #include <cstring>
 #include <cstdio>
 #include <memory>
@@ -26,7 +27,7 @@
 #include <shs/camera/convention.hpp>
 #include <shs/camera/light_camera.hpp>
 #include <shs/frame/technique_mode.hpp>
-#include <shs/geometry/frustum_culling.hpp>
+#include <shs/geometry/shape_cell_culling.hpp>
 #include <shs/job/thread_pool_job_system.hpp>
 #include <shs/job/wait_group.hpp>
 #include <shs/lighting/light_culling_mode.hpp>
@@ -184,6 +185,22 @@ struct LocalShadowCaster
     float strength = 1.0f;
 };
 
+enum class VulkanCullerBackend : uint8_t
+{
+    GpuCompute = 0,
+    Disabled = 1
+};
+
+const char* vulkan_culler_backend_name(VulkanCullerBackend backend)
+{
+    switch (backend)
+    {
+        case VulkanCullerBackend::GpuCompute: return "gpu";
+        case VulkanCullerBackend::Disabled: return "off";
+    }
+    return "gpu";
+}
+
 bool profile_has_pass(const shs::TechniqueProfile& profile, const char* pass_id)
 {
     for (const auto& p : profile.passes)
@@ -234,6 +251,7 @@ public:
     {
         init_sdl();
         init_backend();
+        configure_vulkan_culler_backend_from_env();
         init_jobs();
         init_scene_data();
         init_gpu_resources();
@@ -522,6 +540,27 @@ private:
         shadow_settings_.budget.max_tube_area = 2u;
 
         apply_technique_mode(shs::TechniqueMode::ForwardPlus);
+    }
+
+    void configure_vulkan_culler_backend_from_env()
+    {
+        const char* env = std::getenv("SHS_VK_CULLER_BACKEND");
+        if (!env || *env == '\0')
+        {
+            vulkan_culler_backend_ = VulkanCullerBackend::GpuCompute;
+            return;
+        }
+
+        std::string v(env);
+        std::transform(v.begin(), v.end(), v.begin(), [](unsigned char c) {
+            return static_cast<char>(std::tolower(c));
+        });
+        if (v == "off" || v == "0" || v == "disabled" || v == "none")
+        {
+            vulkan_culler_backend_ = VulkanCullerBackend::Disabled;
+            return;
+        }
+        vulkan_culler_backend_ = VulkanCullerBackend::GpuCompute;
     }
 
     void init_gpu_resources()
@@ -1636,7 +1675,9 @@ private:
         const shs::TechniqueProfile profile = shs::make_default_technique_profile(mode);
 
         profile_depth_prepass_enabled_ = profile_has_pass(profile, "depth_prepass");
-        enable_light_culling_ = profile_has_pass(profile, "light_culling");
+        enable_light_culling_ =
+            profile_has_pass(profile, "light_culling") ||
+            profile_has_pass(profile, "cluster_light_assign");
 
         shs::LightCullingMode mode_hint = default_culling_mode_for_technique(mode);
         if (!enable_light_culling_)
@@ -1764,25 +1805,66 @@ private:
         cull_debug_max_list_size_ = max_list;
     }
 
-    void update_visibility_from_frustum(const shs::Frustum& frustum)
+    shs::CPUCullerConfig make_cpu_culler_config(bool allow_parallel) const
+    {
+        shs::CPUCullerConfig cfg{};
+        cfg.use_broad_phase = true;
+        cfg.refine_intersections = true;
+        cfg.accept_broad_inside = true;
+        cfg.prefer_xsimd = true;
+        cfg.job_system = (allow_parallel ? jobs_.get() : nullptr);
+        cfg.parallel_min_items = 256;
+        return cfg;
+    }
+
+    void rebuild_instance_cull_shapes()
+    {
+        if (instance_cull_shapes_.size() != instances_.size())
+        {
+            instance_cull_shapes_.resize(instances_.size());
+        }
+        for (size_t i = 0; i < instances_.size(); ++i)
+        {
+            const shs::Sphere ws = shs::transform_sphere(sphere_local_bound_, instance_models_[i]);
+            shs::ShapeVolume shape{};
+            shape.value = ws;
+            shape.stable_id = static_cast<uint32_t>(i);
+            instance_cull_shapes_[i] = shape;
+        }
+    }
+
+    void update_visibility_from_cell(const shs::ConvexCell& cell)
     {
         if (instance_visible_mask_.size() != instances_.size())
         {
             instance_visible_mask_.assign(instances_.size(), 1u);
         }
 
-        uint32_t visible_instances = 0;
-        for (size_t i = 0; i < instances_.size(); ++i)
+        if (instance_cull_shapes_.size() != instances_.size())
         {
-            const shs::Sphere ws = shs::transform_sphere(sphere_local_bound_, instance_models_[i]);
-            const bool visible = shs::intersects_frustum_sphere(frustum, ws);
+            rebuild_instance_cull_shapes();
+        }
+
+        const shs::CPUCullResult instance_cull = shs::cull_shapes_cpu(cell, instance_cull_shapes_, make_cpu_culler_config(true));
+        uint32_t visible_instances = 0;
+        const size_t cull_count = std::min(instance_visible_mask_.size(), instance_cull.classes.size());
+        for (size_t i = 0; i < cull_count; ++i)
+        {
+            const bool visible = shs::cull_class_visible(instance_cull.classes[i], true);
             instance_visible_mask_[i] = visible ? 1u : 0u;
             if (visible) ++visible_instances;
+        }
+        for (size_t i = cull_count; i < instance_visible_mask_.size(); ++i)
+        {
+            instance_visible_mask_[i] = 0u;
         }
         visible_instance_count_ = visible_instances;
 
         const shs::AABB floor_ws = shs::transform_aabb(floor_local_aabb_, floor_model_);
-        floor_visible_ = shs::intersects_frustum_aabb(frustum, floor_ws);
+        shs::ShapeVolume floor_shape{};
+        floor_shape.value = floor_ws;
+        const shs::CullClass floor_class = shs::classify_cpu(floor_shape, cell, make_cpu_culler_config(false));
+        floor_visible_ = shs::cull_class_visible(floor_class, true);
     }
 
     void update_frame_data(float dt, float t, uint32_t w, uint32_t h, uint32_t frame_slot)
@@ -1819,8 +1901,11 @@ private:
             instance_models_[i] = m;
         }
 
-        const shs::Frustum camera_frustum = shs::extract_frustum_planes(camera_ubo_.view_proj);
-        update_visibility_from_frustum(camera_frustum);
+        rebuild_instance_cull_shapes();
+        const shs::ConvexCell camera_cell = shs::extract_frustum_cell(
+            camera_ubo_.view_proj,
+            shs::ConvexCellKind::CameraFrustumPerspective);
+        update_visibility_from_cell(camera_cell);
 
         shs::AABB shadow_scene_aabb = shadow_scene_static_bounds_ready_
             ? shadow_scene_static_aabb_
@@ -1862,6 +1947,7 @@ private:
         uint32_t used_rect_shadow = 0;
         uint32_t used_tube_shadow = 0;
 
+        const shs::CPUCullerConfig light_cull_cfg = make_cpu_culler_config(false);
         const auto light_in_frustum = [&](const shs::Sphere& bounds) -> bool {
             shs::Sphere s = bounds;
             if (culling_mode_ == shs::LightCullingMode::TiledDepthRange)
@@ -1876,7 +1962,10 @@ private:
                 // when culling animated/orbiting lights against the camera frustum.
                 s.radius = std::max(s.radius * 1.08f, s.radius + 0.25f);
             }
-            return shs::intersects_frustum_sphere(camera_frustum, s);
+            shs::ShapeVolume light_shape{};
+            light_shape.value = s;
+            const shs::CullClass light_class = shs::classify_cpu(light_shape, camera_cell, light_cull_cfg);
+            return shs::cull_class_visible(light_class, true);
         };
 
         light_set_.clear_local_lights();
@@ -2243,12 +2332,24 @@ private:
         return p * v;
     }
 
-    void draw_shadow_scene(VkCommandBuffer cmd, const glm::mat4& light_view_proj)
+    void draw_shadow_scene(VkCommandBuffer cmd, const glm::mat4& light_view_proj, shs::ConvexCellKind cell_kind)
     {
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadow_pipeline_);
+        const shs::ConvexCell shadow_cell = shs::extract_frustum_cell(light_view_proj, cell_kind);
+        if (instance_cull_shapes_.size() != instances_.size())
+        {
+            rebuild_instance_cull_shapes();
+        }
+        const shs::CPUCullerConfig shadow_cull_cfg = make_cpu_culler_config(false);
 
         const VkDeviceSize vb_off = 0;
-        if (!floor_indices_.empty() && floor_vertex_buffer_.buffer != VK_NULL_HANDLE)
+        const shs::AABB floor_ws = shs::transform_aabb(floor_local_aabb_, floor_model_);
+        shs::ShapeVolume floor_shape{};
+        floor_shape.value = floor_ws;
+        const bool floor_in_shadow_cell = shs::cull_class_visible(
+            shs::classify_cpu(floor_shape, shadow_cell, shadow_cull_cfg),
+            true);
+        if (floor_in_shadow_cell && !floor_indices_.empty() && floor_vertex_buffer_.buffer != VK_NULL_HANDLE)
         {
             vkCmdBindVertexBuffers(cmd, 0, 1, &floor_vertex_buffer_.buffer, &vb_off);
             vkCmdBindIndexBuffer(cmd, floor_index_buffer_.buffer, 0, VK_INDEX_TYPE_UINT32);
@@ -2259,10 +2360,13 @@ private:
             vkCmdDrawIndexed(cmd, static_cast<uint32_t>(floor_indices_.size()), 1, 0, 0, 0);
         }
 
+        const shs::CPUCullResult shadow_cull = shs::cull_shapes_cpu(shadow_cell, instance_cull_shapes_, shadow_cull_cfg);
         vkCmdBindVertexBuffers(cmd, 0, 1, &vertex_buffer_.buffer, &vb_off);
         vkCmdBindIndexBuffer(cmd, index_buffer_.buffer, 0, VK_INDEX_TYPE_UINT32);
-        for (uint32_t i = 0; i < static_cast<uint32_t>(instances_.size()); ++i)
+        for (size_t idx : shadow_cull.visible_indices)
         {
+            if (idx >= instance_models_.size()) continue;
+            const uint32_t i = static_cast<uint32_t>(idx);
             ShadowPush pc{};
             pc.light_view_proj = light_view_proj;
             pc.model = instance_models_[i];
@@ -2280,7 +2384,7 @@ private:
 
         begin_render_pass_shadow(cmd, sun_shadow_target_, 0u);
         set_viewport_scissor(cmd, sun_shadow_target_.w, sun_shadow_target_.h, true);
-        draw_shadow_scene(cmd, sun_shadow_view_proj_);
+        draw_shadow_scene(cmd, sun_shadow_view_proj_, shs::ConvexCellKind::CascadeFrustum);
         vkCmdEndRenderPass(cmd);
 
         for (const LocalShadowCaster& caster : local_shadow_casters_)
@@ -2294,7 +2398,7 @@ private:
                     const glm::mat4 vp = make_point_shadow_face_view_proj(caster.position_ws, caster.range, face);
                     begin_render_pass_shadow(cmd, local_shadow_target_, layer);
                     set_viewport_scissor(cmd, local_shadow_target_.w, local_shadow_target_.h, true);
-                    draw_shadow_scene(cmd, vp);
+                    draw_shadow_scene(cmd, vp, shs::ConvexCellKind::PointShadowFaceFrustum);
                     vkCmdEndRenderPass(cmd);
                 }
             }
@@ -2304,7 +2408,7 @@ private:
                 const glm::mat4 vp = make_local_shadow_view_proj(caster);
                 begin_render_pass_shadow(cmd, local_shadow_target_, caster.layer_base);
                 set_viewport_scissor(cmd, local_shadow_target_.w, local_shadow_target_.h, true);
-                draw_shadow_scene(cmd, vp);
+                draw_shadow_scene(cmd, vp, shs::ConvexCellKind::SpotShadowFrustum);
                 vkCmdEndRenderPass(cmd);
             }
         }
@@ -2587,6 +2691,32 @@ private:
             nullptr);
     }
 
+    bool gpu_light_culler_enabled() const
+    {
+        return
+            enable_light_culling_ &&
+            vulkan_culler_backend_ == VulkanCullerBackend::GpuCompute &&
+            compute_pipeline_layout_ != VK_NULL_HANDLE &&
+            compute_pipeline_ != VK_NULL_HANDLE &&
+            (culling_mode_ == shs::LightCullingMode::Tiled ||
+             culling_mode_ == shs::LightCullingMode::TiledDepthRange ||
+             culling_mode_ == shs::LightCullingMode::Clustered);
+    }
+
+    void clear_light_grid_cpu_buffers(uint32_t frame_slot)
+    {
+        if (!frame_resources_.valid_slot(frame_slot)) return;
+        FrameResources& fr = frame_resources_.at_slot(frame_slot);
+        if (fr.tile_counts_buffer.mapped && fr.tile_counts_buffer.size > 0)
+        {
+            std::memset(fr.tile_counts_buffer.mapped, 0, static_cast<size_t>(fr.tile_counts_buffer.size));
+        }
+        if (fr.tile_indices_buffer.mapped && fr.tile_indices_buffer.size > 0)
+        {
+            std::memset(fr.tile_indices_buffer.mapped, 0, static_cast<size_t>(fr.tile_indices_buffer.size));
+        }
+    }
+
     void draw_frame(float dt, float t)
     {
         int dw = 0;
@@ -2709,7 +2839,7 @@ private:
             }
         }
 
-        if (enable_light_culling_)
+        if (gpu_light_culler_enabled())
         {
             cmd_memory_barrier(
                 fi.cmd,
@@ -2745,6 +2875,10 @@ private:
                 VK_ACCESS_SHADER_WRITE_BIT,
                 VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
                 VK_ACCESS_SHADER_READ_BIT);
+        }
+        else if (enable_light_culling_)
+        {
+            clear_light_grid_cpu_buffers(frame_slot);
         }
 
         if (enable_scene_pass_)
@@ -2807,6 +2941,7 @@ private:
         const char* mode_name = shs::technique_mode_name(active_technique_);
         const char* cull_name = shs::light_culling_mode_name(culling_mode_);
         const char* cull_src = manual_culling_override_ ? "manual" : "tech";
+        const char* culler_backend = vulkan_culler_backend_name(vulkan_culler_backend_);
         const char* rec_mode = use_multithread_recording_ ? "MT-secondary" : "inline";
         const float switch_in = std::max(0.0f, kTechniqueSwitchPeriodSec - technique_switch_accum_sec_);
         const double avg_refs = (cull_debug_list_count_ > 0)
@@ -2819,11 +2954,12 @@ private:
         std::snprintf(
             title,
             sizeof(title),
-            "%s | mode:%s | cull:%s(%s) | rec:%s | lights:%u/%u[p:%u s:%u r:%u t:%u] | shad:sun:%s spot:%u point:%u | draws:%u/%u | tile:%ux%u | refs:%llu avg:%.1f max:%u nz:%u/%u | switch:%.1fs | %.2f ms",
+            "%s | mode:%s | cull:%s(%s/%s) | rec:%s | lights:%u/%u[p:%u s:%u r:%u t:%u] | shad:sun:%s spot:%u point:%u | draws:%u/%u | tile:%ux%u | refs:%llu avg:%.1f max:%u nz:%u/%u | switch:%.1fs | %.2f ms",
             kAppName,
             mode_name,
             cull_name,
             cull_src,
+            culler_backend,
             rec_mode,
             visible_light_count_,
             active_light_count_,
@@ -2872,6 +3008,12 @@ private:
                     break;
                 case SDLK_F5:
                     shadow_settings_.enable = !shadow_settings_.enable;
+                    break;
+                case SDLK_F6:
+                    vulkan_culler_backend_ =
+                        (vulkan_culler_backend_ == VulkanCullerBackend::GpuCompute)
+                            ? VulkanCullerBackend::Disabled
+                            : VulkanCullerBackend::GpuCompute;
                     break;
                 case SDLK_MINUS:
                 case SDLK_KP_MINUS:
@@ -3051,6 +3193,7 @@ private:
     std::vector<Instance> instances_{};
     std::vector<glm::mat4> instance_models_{};
     std::vector<uint8_t> instance_visible_mask_{};
+    std::vector<shs::ShapeVolume> instance_cull_shapes_{};
     std::vector<LightAnim> light_anim_{};
     shs::LightSet light_set_{};
     std::vector<shs::CullingLightGPU> gpu_lights_{};
@@ -3109,6 +3252,7 @@ private:
     shs::ShadowCompositionSettings shadow_settings_ = shs::make_default_shadow_composition_settings();
     bool manual_culling_override_ = false;
     shs::LightCullingMode manual_culling_mode_ = shs::LightCullingMode::Tiled;
+    VulkanCullerBackend vulkan_culler_backend_ = VulkanCullerBackend::GpuCompute;
     bool profile_depth_prepass_enabled_ = true;
     bool enable_depth_prepass_ = true;
     bool enable_light_culling_ = true;

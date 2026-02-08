@@ -493,7 +493,11 @@ namespace shs
             }
 
             std::unordered_set<PassSemantic, PassSemanticHash> produced_semantics{};
-            const bool light_culling_enabled = fp.technique.light_culling || fp.technique.mode == TechniqueMode::ForwardPlus;
+            const bool light_culling_enabled =
+                fp.technique.light_culling ||
+                fp.technique.mode == TechniqueMode::ForwardPlus ||
+                fp.technique.mode == TechniqueMode::TiledDeferred ||
+                fp.technique.mode == TechniqueMode::ClusteredForward;
 
             for (const IRenderPass* p : order)
             {
@@ -580,7 +584,11 @@ namespace shs
         ) const
         {
             const char* id = pass.id() ? pass.id() : "unnamed";
-            const bool light_culling_enabled = fp.technique.light_culling || fp.technique.mode == TechniqueMode::ForwardPlus;
+            const bool light_culling_enabled =
+                fp.technique.light_culling ||
+                fp.technique.mode == TechniqueMode::ForwardPlus ||
+                fp.technique.mode == TechniqueMode::TiledDeferred ||
+                fp.technique.mode == TechniqueMode::ClusteredForward;
 
             if (contract.requires_depth_prepass && fp.technique.depth_prepass && !ctx.forward_plus.depth_prepass_valid)
             {

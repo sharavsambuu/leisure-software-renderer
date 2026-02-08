@@ -103,6 +103,18 @@ target_link_libraries(shs_renderer PUBLIC
     assimp::assimp
 )
 
+set(SHS_RENDERER_HAS_XSIMD OFF)
+if(TARGET xsimd)
+    set(SHS_RENDERER_HAS_XSIMD ON)
+    target_link_libraries(shs_renderer PUBLIC xsimd)
+    target_compile_definitions(shs_renderer PUBLIC SHS_HAS_XSIMD=1)
+elseif(TARGET xsimd::xsimd)
+    set(SHS_RENDERER_HAS_XSIMD ON)
+    target_link_libraries(shs_renderer PUBLIC xsimd::xsimd)
+    target_compile_definitions(shs_renderer PUBLIC SHS_HAS_XSIMD=1)
+endif()
+set(SHS_RENDERER_HAS_XSIMD "${SHS_RENDERER_HAS_XSIMD}" PARENT_SCOPE)
+
 set(SHS_RENDERER_HAS_VULKAN OFF)
 if(Vulkan_FOUND AND TARGET Vulkan::Vulkan)
     set(SHS_RENDERER_HAS_VULKAN ON)

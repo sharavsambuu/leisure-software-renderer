@@ -19,6 +19,7 @@ namespace shs
     // Canonical render-scene contract used by modern pass/pipeline APIs.
     class ISkyModel;
     class ResourceRegistry;
+    struct LightSet;
 
     // ------------------------------------------
     // Хөнгөн handle-ууд (demo бүр өөрийн asset системтэй байж болно)
@@ -93,6 +94,8 @@ namespace shs
         Camera cam{};
         DirectionalLight sun{};
         std::vector<RenderItem> items{};
+        // Optional local light set (point/spot/area) used by light-culling passes.
+        const LightSet* local_lights = nullptr;
 
         // Skybox-т хэрэгтэй handle (demo-д өөрийнхөөрөө ашиглана)
         uint32_t skybox_tex = 0;
