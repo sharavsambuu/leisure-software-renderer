@@ -11,11 +11,13 @@ layout(set = 0, binding = 1) uniform ObjectUBO
     vec4 base_color_metallic;
     vec4 roughness_ao_emissive_hastex;
     vec4 camera_pos_sun_intensity;
+    vec4 sun_color_pad;
     vec4 sun_dir_ws_pad;
     vec4 shadow_params;
 } ubo;
 
 layout(set = 1, binding = 0) uniform sampler2D u_shadow_map;
+layout(set = 1, binding = 1) uniform sampler2D u_env_sky;
 
 layout(location = 0) in vec3 v_world_pos;
 layout(location = 1) in vec3 v_normal_ws;
@@ -28,6 +30,9 @@ layout(location = 0) out vec4 out_hdr;
 layout(location = 1) out vec2 out_velocity;
 
 const float PI = 3.14159265359;
+const float INV_TWO_PI = 1.0 / (2.0 * PI);
+const float IBL_DIFFUSE_STRENGTH = 0.09;
+const float IBL_SPECULAR_STRENGTH = 0.22;
 
 float distribution_ggx(vec3 N, vec3 H, float roughness)
 {
@@ -59,6 +64,78 @@ float geometry_smith(vec3 N, vec3 V, vec3 L, float roughness)
 vec3 fresnel_schlick(float cosTheta, vec3 F0)
 {
     return F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);
+}
+
+vec3 fresnel_schlick_roughness(float cosTheta, vec3 F0, float roughness)
+{
+    vec3 one_minus_rough = vec3(1.0 - roughness);
+    vec3 f90 = max(one_minus_rough, F0);
+    return F0 + (f90 - F0) * pow(1.0 - cosTheta, 5.0);
+}
+
+vec2 dir_to_latlong_uv(vec3 dir)
+{
+    vec3 n = normalize(dir);
+    float lon = atan(n.z, n.x);
+    float lat = asin(clamp(n.y, -1.0, 1.0));
+    float u = fract(lon * INV_TWO_PI + 0.5);
+    float v = clamp(0.5 - (lat / PI), 0.001, 0.999);
+    return vec2(u, v);
+}
+
+vec3 sample_env(vec3 dir)
+{
+    return texture(u_env_sky, dir_to_latlong_uv(dir)).rgb;
+}
+
+void build_basis(vec3 n, out vec3 t, out vec3 b)
+{
+    vec3 up = (abs(n.y) < 0.999) ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+    t = normalize(cross(up, n));
+    b = cross(n, t);
+}
+
+vec3 sample_env_diffuse_irradiance(vec3 N)
+{
+    vec3 n = normalize(N);
+    vec3 t;
+    vec3 b;
+    build_basis(n, t, b);
+
+    vec3 c0 = sample_env(n);
+    vec3 c1 = sample_env(normalize(n + t * 0.65));
+    vec3 c2 = sample_env(normalize(n - t * 0.65));
+    vec3 c3 = sample_env(normalize(n + b * 0.65));
+    vec3 c4 = sample_env(normalize(n - b * 0.65));
+    return c0 * 0.34 + (c1 + c2 + c3 + c4) * 0.165;
+}
+
+vec3 sample_env_prefilter(vec3 R, float roughness)
+{
+    vec3 r = normalize(R);
+    vec3 t;
+    vec3 b;
+    build_basis(r, t, b);
+
+    float spread = mix(0.02, 0.42, roughness * roughness);
+    float center_w = mix(0.70, 0.28, roughness);
+    float side_w = (1.0 - center_w) * 0.25;
+
+    vec3 c0 = sample_env(r);
+    vec3 c1 = sample_env(normalize(r + t * spread));
+    vec3 c2 = sample_env(normalize(r - t * spread));
+    vec3 c3 = sample_env(normalize(r + b * spread));
+    vec3 c4 = sample_env(normalize(r - b * spread));
+    return c0 * center_w + (c1 + c2 + c3 + c4) * side_w;
+}
+
+vec2 env_brdf_approx(float roughness, float NdotV)
+{
+    vec4 c0 = vec4(-1.0, -0.0275, -0.572, 0.022);
+    vec4 c1 = vec4(1.0, 0.0425, 1.04, -0.04);
+    vec4 r = roughness * c0 + c1;
+    float a004 = min(r.x * r.x, exp2(-9.28 * NdotV)) * r.x + r.y;
+    return vec2(-1.04, 1.04) * a004 + r.zw;
 }
 
 float soft_shadow(vec3 N, vec3 L)
@@ -103,31 +180,27 @@ float soft_shadow(vec3 N, vec3 L)
     return mix(1.0, vis, clamp(ubo.shadow_params.x, 0.0, 1.0));
 }
 
-vec3 eval_fake_ibl(vec3 N, vec3 V, vec3 base_color, float metallic, float roughness, float ao)
+vec3 eval_env_ibl(vec3 N, vec3 V, vec3 base_color, float metallic, float roughness, float ao)
 {
     vec3 n = normalize(N);
     vec3 v = normalize(V);
     vec3 r = reflect(-v, n);
 
-    vec3 sky_zenith = vec3(0.32, 0.46, 0.72);
-    vec3 sky_horizon = vec3(0.62, 0.66, 0.72);
-    vec3 ground_tint = vec3(0.16, 0.15, 0.14);
-
-    float up_n = clamp(n.y * 0.5 + 0.5, 0.0, 1.0);
-    float up_r = clamp(r.y * 0.5 + 0.5, 0.0, 1.0);
-    vec3 env_n = mix(ground_tint, mix(sky_horizon, sky_zenith, up_n), up_n);
-    vec3 env_r = mix(ground_tint, mix(sky_horizon, sky_zenith, up_r), up_r);
-
     float m = clamp(metallic, 0.0, 1.0);
     float rgh = clamp(roughness, 0.0, 1.0);
-    vec3 F0 = mix(vec3(0.04), max(base_color, vec3(0.0)), m);
-    float fres = pow(1.0 - max(0.0, dot(n, v)), 5.0);
-    vec3 F = F0 + (vec3(1.0) - F0) * fres;
+    float NdotV = max(dot(n, v), 0.0);
 
+    vec3 F0 = mix(vec3(0.04), max(base_color, vec3(0.0)), m);
+    vec3 F = fresnel_schlick_roughness(NdotV, F0, rgh);
     vec3 kd = (vec3(1.0) - F) * (1.0 - m);
-    vec3 diffuse_ibl = kd * base_color * env_n * 0.12;
-    float spec_strength = 0.02 + (1.0 - rgh) * 0.18;
-    vec3 spec_ibl = env_r * F * spec_strength;
+
+    vec3 irradiance = sample_env_diffuse_irradiance(n);
+    vec3 diffuse_ibl = kd * base_color * irradiance * IBL_DIFFUSE_STRENGTH;
+
+    vec3 prefiltered = sample_env_prefilter(r, rgh);
+    vec2 env_brdf = env_brdf_approx(rgh, NdotV);
+    vec3 spec_ibl = prefiltered * (F0 * env_brdf.x + env_brdf.y) * IBL_SPECULAR_STRENGTH;
+
     return (diffuse_ibl + spec_ibl) * clamp(ao, 0.0, 1.0);
 }
 
@@ -165,12 +238,12 @@ void main()
 
     float shadow = soft_shadow(N, L);
 
-    vec3 sun_color = vec3(1.0);
+    vec3 sun_color = max(ubo.sun_color_pad.rgb, vec3(0.0));
     float sun_intensity = max(ubo.camera_pos_sun_intensity.w, 0.0);
     vec3 radiance = sun_color * sun_intensity;
 
     vec3 Lo = (kD * albedo / PI + specular) * radiance * NdotL * shadow;
-    vec3 ambient = eval_fake_ibl(N, V, albedo, metallic, roughness, ao);
+    vec3 ambient = eval_env_ibl(N, V, albedo, metallic, roughness, ao);
     vec3 emissive = albedo * emissive_intensity;
 
     vec3 hdr = max(ambient + Lo + emissive, vec3(0.0));

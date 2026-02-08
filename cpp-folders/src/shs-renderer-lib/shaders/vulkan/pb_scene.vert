@@ -9,6 +9,7 @@ layout(set = 0, binding = 1) uniform ObjectUBO
     vec4 base_color_metallic;
     vec4 roughness_ao_emissive_hastex;
     vec4 camera_pos_sun_intensity;
+    vec4 sun_color_pad;
     vec4 sun_dir_ws_pad;
     vec4 shadow_params;
 } ubo;

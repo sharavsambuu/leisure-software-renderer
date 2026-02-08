@@ -58,10 +58,10 @@
 
 namespace
 {
-    constexpr int WINDOW_W = 1200;
-    constexpr int WINDOW_H = 900;
-    constexpr int CANVAS_W = 1200;
-    constexpr int CANVAS_H = 900;
+    constexpr int WINDOW_W = 900;
+    constexpr int WINDOW_H = 600;
+    constexpr int CANVAS_W = 900;
+    constexpr int CANVAS_H = 600;
     constexpr float PI = 3.14159265f;
     constexpr float TWO_PI = 6.2831853f;
     constexpr float MOUSE_LOOK_SENS = 0.0025f;
@@ -542,6 +542,7 @@ namespace
             glm::vec4 base_color_metallic{1.0f, 1.0f, 1.0f, 0.0f};
             glm::vec4 roughness_ao_emissive_hastex{0.6f, 1.0f, 0.0f, 0.0f};
             glm::vec4 camera_pos_sun_intensity{0.0f, 0.0f, 0.0f, 1.0f};
+            glm::vec4 sun_color_pad{1.0f, 0.97f, 0.92f, 0.0f};
             glm::vec4 sun_dir_ws_pad{0.0f, -1.0f, 0.0f, 0.0f};
             glm::vec4 shadow_params{1.0f, 0.0008f, 0.0015f, 1.0f}; // x=strength,y=bias_const,z=bias_slope,w=pcf_step
         };
@@ -1093,16 +1094,22 @@ namespace
 
             if (scene_shadow_layout_ == VK_NULL_HANDLE)
             {
-                VkDescriptorSetLayoutBinding b{};
-                b.binding = 0;
-                b.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-                b.descriptorCount = 1;
-                b.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+                VkDescriptorSetLayoutBinding b[2]{};
+                b[0].binding = 0;
+                b[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                b[0].descriptorCount = 1;
+                b[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+                // PBR scene shader дахь environment-aware IBL sampling-д sky map дамжуулна.
+                b[1].binding = 1;
+                b[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                b[1].descriptorCount = 1;
+                b[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
                 VkDescriptorSetLayoutCreateInfo ci{};
                 ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-                ci.bindingCount = 1;
-                ci.pBindings = &b;
+                ci.bindingCount = 2;
+                ci.pBindings = b;
                 if (vkCreateDescriptorSetLayout(dev, &ci, nullptr, &scene_shadow_layout_) != VK_SUCCESS) return false;
             }
 
@@ -1294,7 +1301,7 @@ namespace
             composite_info.imageView = composite_.view;
             composite_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
-            VkWriteDescriptorSet w[12]{};
+            VkWriteDescriptorSet w[13]{};
             uint32_t n = 0;
 
             w[n].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -1303,6 +1310,14 @@ namespace
             w[n].descriptorCount = 1;
             w[n].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
             w[n].pImageInfo = &shadow_info;
+            ++n;
+
+            w[n].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            w[n].dstSet = shadow_set_;
+            w[n].dstBinding = 1;
+            w[n].descriptorCount = 1;
+            w[n].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            w[n].pImageInfo = &sky_info;
             ++n;
 
             w[n].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -2741,6 +2756,7 @@ namespace
                     mat ? mat->emissive_intensity : 0.0f,
                     tex_h != 0 ? 1.0f : 0.0f);
                 ubo.camera_pos_sun_intensity = glm::vec4(scene.cam.pos, scene.sun.intensity);
+                ubo.sun_color_pad = glm::vec4(scene.sun.color, 0.0f);
                 ubo.sun_dir_ws_pad = glm::vec4(scene.sun.dir_ws, static_cast<float>(std::max(fp.pass.shadow.pcf_radius, 0)));
                 ubo.shadow_params = glm::vec4(
                     fp.pass.shadow.enable ? fp.pass.shadow.strength : 0.0f,
@@ -3518,8 +3534,8 @@ int main()
     shs::Scene scene{};
     scene.resources = &resources;
     scene.sun.dir_ws = glm::normalize(glm::vec3(0.4668f, -0.3487f, 0.8127f));
-    scene.sun.color = glm::vec3(1.0f, 0.97f, 0.92f);
-    scene.sun.intensity = 2.2f;
+    scene.sun.color = glm::vec3(1.00f, 0.96f, 0.90f);
+    scene.sun.intensity = 1.30f;
     // Cubemap default; хэрэв cubemap уншигдахгүй бол procedural sky fallback.
     shs::ProceduralSky procedural_sky{scene.sun.dir_ws};
     const shs::CubemapData sky_cm = shs::load_cubemap_sdl_folder("./assets/images/skybox/water_scene", true);
@@ -3586,7 +3602,7 @@ int main()
     fp.debug_view = shs::DebugViewMode::Final;
     fp.cull_mode = shs::CullMode::None;
     fp.shading_model = shs::ShadingModel::PBRMetalRough;
-    fp.pass.tonemap.exposure = 1.75f;
+    fp.pass.tonemap.exposure = 1.35f;
     fp.pass.tonemap.gamma = 2.2f;
     fp.exposure = fp.pass.tonemap.exposure;
     fp.gamma = fp.pass.tonemap.gamma;
