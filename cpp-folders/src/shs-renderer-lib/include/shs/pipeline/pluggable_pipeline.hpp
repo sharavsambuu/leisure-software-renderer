@@ -16,6 +16,7 @@
 #include <vector>
 #include <array>
 #include <unordered_map>
+#include <unordered_set>
 #include <chrono>
 #include <cstring>
 #include <sstream>
@@ -24,6 +25,7 @@
 #include "shs/pipeline/pass_registry.hpp"
 #include "shs/pipeline/render_pass.hpp"
 #include "shs/pipeline/technique_profile.hpp"
+#include "shs/rhi/sync/vk_runtime.hpp"
 
 namespace shs
 {
@@ -121,6 +123,8 @@ namespace shs
 
         const FrameGraphReport& graph_report() const { return graph_report_; }
         const FrameGraphReport& execution_report() const { return execution_report_; }
+        VulkanLikeRuntime& vulkan_like_runtime() { return vk_like_runtime_; }
+        const VulkanLikeRuntime& vulkan_like_runtime() const { return vk_like_runtime_; }
         void set_strict_graph_validation(bool v) { strict_graph_validation_ = v; }
         void on_scene_reset(Context& ctx, RTRegistry& rtr)
         {
@@ -149,6 +153,9 @@ namespace shs
             ctx.debug.ms_tonemap = 0.0f;
             ctx.debug.ms_shafts = 0.0f;
             ctx.debug.ms_motion_blur = 0.0f;
+            ctx.debug.vk_like_submissions = 0;
+            ctx.debug.vk_like_tasks = 0;
+            ctx.debug.vk_like_stalls = 0;
 
             rebuild_graph_if_needed();
             execution_report_ = graph_report_;
@@ -157,6 +164,8 @@ namespace shs
             if (!graph_ok && strict_graph_validation_) return;
 
             const std::vector<IRenderPass*> order = execution_report_.valid ? frame_graph_.ordered_passes() : linear_enabled_passes();
+            validate_pass_contracts(order, fp_eval, execution_report_);
+            if (!execution_report_.valid && strict_graph_validation_) return;
             dispatch_resize_if_needed(ctx, rtr, fp_eval.w, fp_eval.h);
             const RenderBackendFrameInfo backend_frame{
                 ++ctx.frame_index,
@@ -164,14 +173,15 @@ namespace shs
                 fp_eval.h
             };
             const bool emulate_vk = fp_eval.hybrid.emulate_vulkan_runtime;
+            VulkanLikeRuntime& vk_like = vk_like_runtime_;
             if (emulate_vk)
             {
                 VulkanLikeRuntimeConfig cfg{};
                 cfg.frames_in_flight = fp_eval.hybrid.emulated_frames_in_flight;
                 cfg.allow_parallel_tasks = fp_eval.hybrid.emulate_parallel_recording;
-                ctx.vk_like.configure(cfg);
-                ctx.vk_like.set_job_system(ctx.job_system);
-                ctx.vk_like.begin_frame(backend_frame.frame_index);
+                vk_like.configure(cfg);
+                vk_like.set_job_system(ctx.job_system);
+                vk_like.begin_frame(backend_frame.frame_index);
             }
 
             std::array<uint64_t, 4> queue_timeline_sem{0, 0, 0, 0};
@@ -181,8 +191,8 @@ namespace shs
                 for (size_t qi = 0; qi < queue_timeline_sem.size(); ++qi)
                 {
                     const auto q = (RHIQueueClass)qi;
-                    queue_timeline_sem[qi] = ctx.vk_like.queue_timeline_semaphore(q);
-                    queue_timeline_val[qi] = ctx.vk_like.timeline_value(queue_timeline_sem[qi]);
+                    queue_timeline_sem[qi] = vk_like.queue_timeline_semaphore(q);
+                    queue_timeline_val[qi] = vk_like.timeline_value(queue_timeline_sem[qi]);
                 }
             }
 
@@ -198,6 +208,14 @@ namespace shs
                     execution_report_.warnings.push_back(oss.str());
                     continue;
                 }
+
+                const TechniquePassContract contract = p->describe_contract();
+                if (!runtime_contract_requirements_satisfied(ctx, fp_eval, *p, contract, execution_report_))
+                {
+                    if (strict_graph_validation_) break;
+                    continue;
+                }
+
                 RenderBackendType run_backend_type = RenderBackendType::Software;
                 IRenderBackend* run_backend = select_backend_for_pass(ctx, *p, run_backend_type);
                 if (!run_backend)
@@ -238,7 +256,7 @@ namespace shs
 
                     if (emulate_vk)
                     {
-                        ctx.vk_like.execute_all();
+                        vk_like.execute_all();
                     }
                     if (current_backend) current_backend->end_frame(ctx, backend_frame);
                     run_backend->begin_frame(ctx, backend_frame);
@@ -278,7 +296,7 @@ namespace shs
                         sub.signals.push_back(RHISemaphoreSignalDesc{sem, cur + 1, RHIPipelineStage::Bottom});
                     }
                     queue_timeline_val[qi] = cur + 1;
-                    ctx.vk_like.submit(std::move(sub));
+                    vk_like.submit(std::move(sub));
                 }
                 else
                 {
@@ -289,9 +307,9 @@ namespace shs
 
             if (emulate_vk)
             {
-                ctx.vk_like.execute_all();
-                ctx.vk_like.end_frame();
-                const auto& vks = ctx.vk_like.stats();
+                vk_like.execute_all();
+                vk_like.end_frame();
+                const auto& vks = vk_like.stats();
                 ctx.debug.vk_like_submissions = vks.submissions;
                 ctx.debug.vk_like_tasks = vks.tasks_executed;
                 ctx.debug.vk_like_stalls = vks.stalled_submissions;
@@ -428,6 +446,166 @@ namespace shs
             }
         }
 
+        struct PassSemanticHash
+        {
+            size_t operator()(PassSemantic s) const
+            {
+                return (size_t)s;
+            }
+        };
+
+        bool push_contract_issue(FrameGraphReport& report, const std::string& msg, bool severe) const
+        {
+            if (severe && strict_graph_validation_)
+            {
+                report.valid = false;
+                report.errors.push_back(msg);
+                return false;
+            }
+            report.warnings.push_back(msg);
+            return true;
+        }
+
+        static bool contract_reads_semantic(const PassSemanticRef& ref)
+        {
+            return ref.semantic != PassSemantic::Unknown && contract_access_has_read(ref.access);
+        }
+
+        static bool contract_writes_semantic(const PassSemanticRef& ref)
+        {
+            return ref.semantic != PassSemantic::Unknown && contract_access_has_write(ref.access);
+        }
+
+        static bool technique_mode_enabled_in_active_mask(const FrameParams& fp)
+        {
+            return technique_mode_in_mask(fp.technique.active_modes_mask, fp.technique.mode);
+        }
+
+        void validate_pass_contracts(const std::vector<IRenderPass*>& order, const FrameParams& fp, FrameGraphReport& report) const
+        {
+            const bool mode_allowed = technique_mode_enabled_in_active_mask(fp);
+            if (!mode_allowed)
+            {
+                std::ostringstream oss;
+                oss << "Active technique mask excludes current mode '" << technique_mode_name(fp.technique.mode)
+                    << "' (mask=0x" << std::hex << fp.technique.active_modes_mask << std::dec << ").";
+                (void)push_contract_issue(report, oss.str(), true);
+            }
+
+            std::unordered_set<PassSemantic, PassSemanticHash> produced_semantics{};
+            const bool light_culling_enabled = fp.technique.light_culling || fp.technique.mode == TechniqueMode::ForwardPlus;
+
+            for (const IRenderPass* p : order)
+            {
+                if (!p || !p->enabled()) continue;
+                const char* id = p->id() ? p->id() : "unnamed";
+                const TechniquePassContract contract = p->describe_contract();
+
+                if (!technique_mode_in_mask(contract.supported_modes_mask, fp.technique.mode))
+                {
+                    std::ostringstream oss;
+                    oss << "Pass '" << id << "' contract excludes current mode '" << technique_mode_name(fp.technique.mode) << "'.";
+                    (void)push_contract_issue(report, oss.str(), true);
+                }
+
+                if (contract.requires_depth_prepass && !fp.technique.depth_prepass)
+                {
+                    std::ostringstream oss;
+                    oss << "Pass '" << id << "' requires depth prepass but technique.depth_prepass is disabled.";
+                    (void)push_contract_issue(report, oss.str(), true);
+                }
+
+                if (contract.requires_light_culling && !light_culling_enabled)
+                {
+                    std::ostringstream oss;
+                    oss << "Pass '" << id << "' requires light culling but technique.light_culling is disabled for this mode.";
+                    (void)push_contract_issue(report, oss.str(), true);
+                }
+
+                if (contract.requires_depth_prepass && produced_semantics.find(PassSemantic::Depth) == produced_semantics.end())
+                {
+                    std::ostringstream oss;
+                    oss << "Pass '" << id << "' requires depth prepass semantics but no earlier pass produced '"
+                        << pass_semantic_name(PassSemantic::Depth) << "'.";
+                    (void)push_contract_issue(report, oss.str(), true);
+                }
+
+                if (contract.requires_light_culling)
+                {
+                    const bool has_grid = produced_semantics.find(PassSemantic::LightGrid) != produced_semantics.end();
+                    const bool has_list = produced_semantics.find(PassSemantic::LightIndexList) != produced_semantics.end();
+                    if (!has_grid || !has_list)
+                    {
+                        std::ostringstream oss;
+                        oss << "Pass '" << id << "' requires light-culling semantics (light_grid + light_index_list), but prior producers are missing.";
+                        (void)push_contract_issue(report, oss.str(), true);
+                    }
+                }
+
+                if (contract.prefer_async_compute && p->preferred_queue() != RHIQueueClass::Compute)
+                {
+                    std::ostringstream oss;
+                    oss << "Pass '" << id << "' prefers async compute but preferred queue is not compute.";
+                    (void)push_contract_issue(report, oss.str(), false);
+                }
+
+                for (const PassSemanticRef& sref : contract.semantics)
+                {
+                    if (contract_reads_semantic(sref) && produced_semantics.find(sref.semantic) == produced_semantics.end())
+                    {
+                        std::ostringstream oss;
+                        oss << "Pass '" << id << "' reads semantic '" << pass_semantic_name(sref.semantic)
+                            << "' without an earlier producer in this pipeline.";
+                        if (!sref.alias.empty()) oss << " Alias='" << sref.alias << "'.";
+                        (void)push_contract_issue(report, oss.str(), false);
+                    }
+                }
+
+                for (const PassSemanticRef& sref : contract.semantics)
+                {
+                    if (contract_writes_semantic(sref))
+                    {
+                        produced_semantics.insert(sref.semantic);
+                    }
+                }
+            }
+        }
+
+        bool runtime_contract_requirements_satisfied(
+            const Context& ctx,
+            const FrameParams& fp,
+            const IRenderPass& pass,
+            const TechniquePassContract& contract,
+            FrameGraphReport& report
+        ) const
+        {
+            const char* id = pass.id() ? pass.id() : "unnamed";
+            const bool light_culling_enabled = fp.technique.light_culling || fp.technique.mode == TechniqueMode::ForwardPlus;
+
+            if (contract.requires_depth_prepass && fp.technique.depth_prepass && !ctx.forward_plus.depth_prepass_valid)
+            {
+                std::ostringstream oss;
+                oss << "Pass '" << id << "' requires depth prepass runtime state, but depth_prepass_valid is false.";
+                return push_contract_issue(report, oss.str(), true);
+            }
+
+            if (contract.requires_light_culling && light_culling_enabled && !ctx.forward_plus.light_culling_valid)
+            {
+                std::ostringstream oss;
+                oss << "Pass '" << id << "' requires light-culling runtime state, but light_culling_valid is false.";
+                return push_contract_issue(report, oss.str(), true);
+            }
+
+            if (contract.prefer_async_compute && pass.preferred_queue() != RHIQueueClass::Compute)
+            {
+                std::ostringstream oss;
+                oss << "Pass '" << id << "' prefers async compute but does not target compute queue.";
+                (void)push_contract_issue(report, oss.str(), false);
+            }
+
+            return true;
+        }
+
         void dispatch_resize_if_needed(Context& ctx, RTRegistry& rtr, int w, int h)
         {
             if (w <= 0 || h <= 0) return;
@@ -507,5 +685,6 @@ namespace shs
         int last_w_ = 0;
         int last_h_ = 0;
         bool has_size_ = false;
+        VulkanLikeRuntime vk_like_runtime_{};
     };
 }

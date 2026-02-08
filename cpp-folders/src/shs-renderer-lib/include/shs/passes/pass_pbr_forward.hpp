@@ -10,7 +10,6 @@
 */
 
 
-#include "shs/passes/pass_context.hpp"
 #include "shs/render/rasterizer.hpp"
 #include "shs/resources/resource_registry.hpp"
 #include "shs/scene/scene_types.hpp"

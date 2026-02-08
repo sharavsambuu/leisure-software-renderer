@@ -455,7 +455,8 @@ namespace shs
             TechniquePassContract c{};
             c.role = TechniquePassRole::PostProcess;
             c.supported_modes_mask = technique_mode_mask_all();
-            c.requires_depth_prepass = true;
+            // Light shafts can run without a dedicated depth-prepass; it consumes
+            // the motion/depth-like buffer produced by the forward pass.
             c.semantics = {
                 read_write_semantic(PassSemantic::ColorLDR, ContractDomain::Software, "ldr"),
                 read_semantic(PassSemantic::MotionVectors, ContractDomain::Software, "depth_like")

@@ -84,6 +84,16 @@ namespace shs
         return "unknown";
     }
 
+    inline bool contract_access_has_read(ContractAccess a)
+    {
+        return a == ContractAccess::Read || a == ContractAccess::ReadWrite;
+    }
+
+    inline bool contract_access_has_write(ContractAccess a)
+    {
+        return a == ContractAccess::Write || a == ContractAccess::ReadWrite;
+    }
+
     struct PassSemanticRef
     {
         PassSemantic semantic = PassSemantic::Unknown;

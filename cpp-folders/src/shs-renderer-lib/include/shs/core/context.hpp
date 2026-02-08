@@ -19,7 +19,6 @@
 #include "shs/job/job_system.hpp"
 #include "shs/gfx/rt_shadow.hpp"
 #include "shs/rhi/core/backend.hpp"
-#include "shs/rhi/sync/vk_runtime.hpp"
 
 namespace shs
 {
@@ -116,7 +115,6 @@ namespace shs
         ForwardPlusRuntimeState forward_plus{};
         std::array<IRenderBackend*, 3> backends{nullptr, nullptr, nullptr};
         RenderBackendType primary_backend = RenderBackendType::Software;
-        VulkanLikeRuntime vk_like{};
 
         static constexpr size_t backend_index(RenderBackendType t)
         {

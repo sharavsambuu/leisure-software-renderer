@@ -724,6 +724,10 @@ int main()
     fp.pass.motion_blur.max_velocity_px = 20.0f;
     fp.pass.motion_blur.min_velocity_px = 0.30f;
     fp.pass.motion_blur.depth_reject = 0.10f;
+    fp.technique.mode = shs::TechniqueMode::Forward;
+    fp.technique.active_modes_mask = shs::technique_mode_mask_all();
+    fp.technique.depth_prepass = false;
+    fp.technique.light_culling = false;
 
     shs::CameraRig cam{};
     cam.pos = glm::vec3(0.0f, 6.0f, -16.0f);

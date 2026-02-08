@@ -322,7 +322,13 @@ namespace shs
                 device_lost_ = true;
                 return;
             }
-            if (submit_res != VK_SUCCESS) return;
+            if (submit_res != VK_SUCCESS)
+            {
+                // The fence was reset above and would remain unsignaled on submit failure.
+                // Recover to a signaled fence so the next frame does not block forever.
+                (void)restore_signaled_inflight_fence(cur);
+                return;
+            }
 
             VkPresentInfoKHR pi{};
             pi.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -458,6 +464,37 @@ namespace shs
             std::vector<VkPresentModeKHR> modes{};
         };
 
+        bool restore_signaled_inflight_fence(uint32_t frame_slot)
+        {
+            if (frame_slot >= kMaxFramesInFlight) return false;
+            if (device_ == VK_NULL_HANDLE) return false;
+
+            const VkFence old_fence = inflight_fences_[frame_slot];
+            if (old_fence == VK_NULL_HANDLE) return false;
+
+            for (VkFence& image_fence : images_in_flight_)
+            {
+                if (image_fence == old_fence)
+                {
+                    image_fence = VK_NULL_HANDLE;
+                }
+            }
+
+            vkDestroyFence(device_, old_fence, nullptr);
+            inflight_fences_[frame_slot] = VK_NULL_HANDLE;
+
+            VkFenceCreateInfo fe{};
+            fe.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+            fe.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+            if (vkCreateFence(device_, &fe, nullptr, &inflight_fences_[frame_slot]) != VK_SUCCESS)
+            {
+                device_lost_ = true;
+                return false;
+            }
+
+            return true;
+        }
+
         bool ensure_initialized()
         {
             if (init_attempted_) return initialized_;
@@ -509,13 +546,33 @@ namespace shs
                 add_instance_ext_if_supported(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
             }
 
+            uint32_t requested_api_version = VK_API_VERSION_1_0;
+#ifdef VK_API_VERSION_1_1
+            requested_api_version = VK_API_VERSION_1_1;
+#endif
+
+            uint32_t loader_api_version = VK_API_VERSION_1_0;
+#if defined(VK_VERSION_1_1)
+            auto enumerate_instance_version_fn =
+                reinterpret_cast<PFN_vkEnumerateInstanceVersion>(vkGetInstanceProcAddr(VK_NULL_HANDLE, "vkEnumerateInstanceVersion"));
+            if (enumerate_instance_version_fn != nullptr)
+            {
+                uint32_t reported_loader_version = VK_API_VERSION_1_0;
+                if (enumerate_instance_version_fn(&reported_loader_version) == VK_SUCCESS)
+                {
+                    loader_api_version = reported_loader_version;
+                }
+            }
+#endif
+            const uint32_t negotiated_api_version = std::min(requested_api_version, loader_api_version);
+
             VkApplicationInfo app{};
             app.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
             app.pApplicationName = app_name_.c_str();
             app.applicationVersion = VK_MAKE_VERSION(0, 1, 0);
             app.pEngineName = "shs";
             app.engineVersion = VK_MAKE_VERSION(0, 1, 0);
-            app.apiVersion = VK_API_VERSION_1_1;
+            app.apiVersion = negotiated_api_version;
 
             VkInstanceCreateInfo ci{};
             ci.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
@@ -651,17 +708,7 @@ namespace shs
                 qci.pQueuePriorities = &qprio;
                 qcis.push_back(qci);
             }
-
-            std::vector<const char*> device_exts{};
-            device_exts.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
             constexpr const char* kPortabilitySubsetExt = "VK_KHR_portability_subset";
-            if (device_extension_supported(gpu_, kPortabilitySubsetExt))
-            {
-                device_exts.push_back(kPortabilitySubsetExt);
-            }
-
-            // Optional modern Vulkan extensions: enable when available so higher-level
-            // systems can progressively adopt advanced paths without backend rewrites.
             constexpr const char* kTimelineSemaphoreExt = "VK_KHR_timeline_semaphore";
             constexpr const char* kDescriptorIndexingExt = "VK_EXT_descriptor_indexing";
             constexpr const char* kDynamicRenderingExt = "VK_KHR_dynamic_rendering";
@@ -670,172 +717,220 @@ namespace shs
             constexpr const char* kAccelStructExt = "VK_KHR_acceleration_structure";
             constexpr const char* kDeferredHostOpsExt = "VK_KHR_deferred_host_operations";
 
-            auto append_ext_if_supported = [&](const char* ext_name) {
-                if (!ext_name) return false;
-                if (!device_extension_supported(gpu_, ext_name)) return false;
-                for (const char* e : device_exts)
-                {
-                    if (e && std::strcmp(e, ext_name) == 0) return true;
-                }
-                device_exts.push_back(ext_name);
-                return true;
-            };
+            const bool has_portability_subset = device_extension_supported(gpu_, kPortabilitySubsetExt);
+            const bool has_timeline = device_extension_supported(gpu_, kTimelineSemaphoreExt);
+            const bool has_descriptor_indexing = device_extension_supported(gpu_, kDescriptorIndexingExt);
+            const bool has_dynamic_rendering = device_extension_supported(gpu_, kDynamicRenderingExt);
+            const bool has_synchronization2 = device_extension_supported(gpu_, kSynchronization2Ext);
+            const bool has_ray_query = device_extension_supported(gpu_, kRayQueryExt);
+            const bool has_accel_struct = device_extension_supported(gpu_, kAccelStructExt);
+            const bool has_deferred_host_ops = device_extension_supported(gpu_, kDeferredHostOpsExt);
+            const bool has_ray_bundle = has_ray_query && has_accel_struct && has_deferred_host_ops;
 
-            timeline_semaphore_ext_enabled_ = append_ext_if_supported(kTimelineSemaphoreExt);
-            descriptor_indexing_ext_enabled_ = append_ext_if_supported(kDescriptorIndexingExt);
-            dynamic_rendering_ext_enabled_ = append_ext_if_supported(kDynamicRenderingExt);
-            synchronization2_ext_enabled_ = append_ext_if_supported(kSynchronization2Ext);
-
-            const bool ray_query_ext = device_extension_supported(gpu_, kRayQueryExt);
-            const bool accel_struct_ext = device_extension_supported(gpu_, kAccelStructExt);
-            const bool deferred_host_ops_ext = device_extension_supported(gpu_, kDeferredHostOpsExt);
-            ray_query_ext_enabled_ = ray_query_ext && accel_struct_ext && deferred_host_ops_ext;
-            if (ray_query_ext_enabled_)
-            {
-                (void)append_ext_if_supported(kRayQueryExt);
-                (void)append_ext_if_supported(kAccelStructExt);
-                (void)append_ext_if_supported(kDeferredHostOpsExt);
-            }
-
-            VkPhysicalDeviceFeatures2 features2{};
-            features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-            features2.pNext = nullptr;
-
-#ifdef VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES
-            VkPhysicalDeviceTimelineSemaphoreFeatures timeline_features{};
-            timeline_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES;
-            timeline_features.pNext = nullptr;
-            if (timeline_semaphore_ext_enabled_)
-            {
-                timeline_features.pNext = features2.pNext;
-                features2.pNext = &timeline_features;
-            }
-#endif
-
-#ifdef VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES
-            VkPhysicalDeviceDescriptorIndexingFeatures descriptor_indexing_features{};
-            descriptor_indexing_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
-            descriptor_indexing_features.pNext = nullptr;
-            if (descriptor_indexing_ext_enabled_)
-            {
-                descriptor_indexing_features.pNext = features2.pNext;
-                features2.pNext = &descriptor_indexing_features;
-            }
-#endif
-
-#ifdef VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES
-            VkPhysicalDeviceDynamicRenderingFeatures dynamic_rendering_features{};
-            dynamic_rendering_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES;
-            dynamic_rendering_features.pNext = nullptr;
-            if (dynamic_rendering_ext_enabled_)
-            {
-                dynamic_rendering_features.pNext = features2.pNext;
-                features2.pNext = &dynamic_rendering_features;
-            }
-#endif
-
-#ifdef VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES
-            VkPhysicalDeviceSynchronization2Features synchronization2_features{};
-            synchronization2_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES;
-            synchronization2_features.pNext = nullptr;
-            if (synchronization2_ext_enabled_)
-            {
-                synchronization2_features.pNext = features2.pNext;
-                features2.pNext = &synchronization2_features;
-            }
-#endif
-
-#ifdef VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR
-            VkPhysicalDeviceRayQueryFeaturesKHR ray_query_features{};
-            ray_query_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR;
-            ray_query_features.pNext = nullptr;
-            if (ray_query_ext_enabled_)
-            {
-                ray_query_features.pNext = features2.pNext;
-                features2.pNext = &ray_query_features;
-            }
-#endif
-
-            vkGetPhysicalDeviceFeatures2(gpu_, &features2);
-
+            timeline_semaphore_ext_enabled_ = false;
+            descriptor_indexing_ext_enabled_ = false;
+            dynamic_rendering_ext_enabled_ = false;
+            synchronization2_ext_enabled_ = false;
+            ray_query_ext_enabled_ = false;
             timeline_semaphore_enabled_ = false;
             descriptor_indexing_enabled_ = false;
             dynamic_rendering_enabled_ = false;
             synchronization2_enabled_ = false;
             ray_query_enabled_ = false;
 
-#ifdef VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES
-            if (timeline_semaphore_ext_enabled_ && timeline_features.timelineSemaphore == VK_TRUE)
+            auto try_create_device = [&](bool want_timeline,
+                                         bool want_descriptor_indexing,
+                                         bool want_dynamic_rendering,
+                                         bool want_synchronization2,
+                                         bool want_ray_bundle) -> bool
             {
-                timeline_features.timelineSemaphore = VK_TRUE;
-                timeline_semaphore_enabled_ = true;
-            }
-#else
-            timeline_semaphore_ext_enabled_ = false;
+                std::vector<const char*> device_exts{};
+                device_exts.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+                if (has_portability_subset) device_exts.push_back(kPortabilitySubsetExt);
+
+                auto append_unique_ext = [&](const char* ext_name, bool enabled) -> bool
+                {
+                    if (!enabled || !ext_name) return false;
+                    for (const char* e : device_exts)
+                    {
+                        if (e && std::strcmp(e, ext_name) == 0) return true;
+                    }
+                    device_exts.push_back(ext_name);
+                    return true;
+                };
+
+                const bool use_timeline_ext = append_unique_ext(kTimelineSemaphoreExt, want_timeline && has_timeline);
+                const bool use_descriptor_ext = append_unique_ext(kDescriptorIndexingExt, want_descriptor_indexing && has_descriptor_indexing);
+                const bool use_dynamic_ext = append_unique_ext(kDynamicRenderingExt, want_dynamic_rendering && has_dynamic_rendering);
+                const bool use_sync2_ext = append_unique_ext(kSynchronization2Ext, want_synchronization2 && has_synchronization2);
+
+                bool use_ray_bundle_ext = want_ray_bundle && has_ray_bundle;
+                if (use_ray_bundle_ext)
+                {
+                    use_ray_bundle_ext =
+                        append_unique_ext(kRayQueryExt, true) &&
+                        append_unique_ext(kAccelStructExt, true) &&
+                        append_unique_ext(kDeferredHostOpsExt, true);
+                }
+
+                VkPhysicalDeviceFeatures2 features2{};
+                features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+                features2.pNext = nullptr;
+
+                bool timeline_feature_enabled = false;
+                bool descriptor_feature_enabled = false;
+                bool dynamic_feature_enabled = false;
+                bool sync2_feature_enabled = false;
+                bool ray_feature_enabled = false;
+
+#ifdef VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES
+                VkPhysicalDeviceTimelineSemaphoreFeatures timeline_features{};
+                timeline_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES;
+                if (use_timeline_ext)
+                {
+                    timeline_features.pNext = features2.pNext;
+                    features2.pNext = &timeline_features;
+                }
 #endif
 
 #ifdef VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES
-            if (descriptor_indexing_ext_enabled_)
-            {
-                // Enable a practical baseline for bindless-like descriptor usage.
-                const bool has_runtime_array = descriptor_indexing_features.runtimeDescriptorArray == VK_TRUE;
-                const bool has_partial_bound = descriptor_indexing_features.descriptorBindingPartiallyBound == VK_TRUE;
-                const bool has_update_unused = descriptor_indexing_features.descriptorBindingUpdateUnusedWhilePending == VK_TRUE;
-                const bool has_nonuniform = descriptor_indexing_features.shaderSampledImageArrayNonUniformIndexing == VK_TRUE;
-                const bool has_var_count = descriptor_indexing_features.descriptorBindingVariableDescriptorCount == VK_TRUE;
-
-                descriptor_indexing_features.runtimeDescriptorArray = has_runtime_array ? VK_TRUE : VK_FALSE;
-                descriptor_indexing_features.descriptorBindingPartiallyBound = has_partial_bound ? VK_TRUE : VK_FALSE;
-                descriptor_indexing_features.descriptorBindingUpdateUnusedWhilePending = has_update_unused ? VK_TRUE : VK_FALSE;
-                descriptor_indexing_features.shaderSampledImageArrayNonUniformIndexing = has_nonuniform ? VK_TRUE : VK_FALSE;
-                descriptor_indexing_features.descriptorBindingVariableDescriptorCount = has_var_count ? VK_TRUE : VK_FALSE;
-
-                descriptor_indexing_enabled_ = has_runtime_array && has_partial_bound && has_nonuniform;
-            }
-#else
-            descriptor_indexing_ext_enabled_ = false;
+                VkPhysicalDeviceDescriptorIndexingFeatures descriptor_features{};
+                descriptor_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
+                if (use_descriptor_ext)
+                {
+                    descriptor_features.pNext = features2.pNext;
+                    features2.pNext = &descriptor_features;
+                }
 #endif
 
 #ifdef VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES
-            if (dynamic_rendering_ext_enabled_ && dynamic_rendering_features.dynamicRendering == VK_TRUE)
-            {
-                dynamic_rendering_features.dynamicRendering = VK_TRUE;
-                dynamic_rendering_enabled_ = true;
-            }
-#else
-            dynamic_rendering_ext_enabled_ = false;
+                VkPhysicalDeviceDynamicRenderingFeatures dynamic_features{};
+                dynamic_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES;
+                if (use_dynamic_ext)
+                {
+                    dynamic_features.pNext = features2.pNext;
+                    features2.pNext = &dynamic_features;
+                }
 #endif
 
 #ifdef VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES
-            if (synchronization2_ext_enabled_ && synchronization2_features.synchronization2 == VK_TRUE)
-            {
-                synchronization2_features.synchronization2 = VK_TRUE;
-                synchronization2_enabled_ = true;
-            }
-#else
-            synchronization2_ext_enabled_ = false;
+                VkPhysicalDeviceSynchronization2Features sync2_features{};
+                sync2_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES;
+                if (use_sync2_ext)
+                {
+                    sync2_features.pNext = features2.pNext;
+                    features2.pNext = &sync2_features;
+                }
 #endif
 
 #ifdef VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR
-            if (ray_query_ext_enabled_ && ray_query_features.rayQuery == VK_TRUE)
-            {
-                ray_query_features.rayQuery = VK_TRUE;
-                ray_query_enabled_ = true;
-            }
-#else
-            ray_query_ext_enabled_ = false;
+                VkPhysicalDeviceRayQueryFeaturesKHR ray_query_features{};
+                ray_query_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR;
+                if (use_ray_bundle_ext)
+                {
+                    ray_query_features.pNext = features2.pNext;
+                    features2.pNext = &ray_query_features;
+                }
 #endif
 
-            VkDeviceCreateInfo dci{};
-            dci.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-            dci.queueCreateInfoCount = static_cast<uint32_t>(qcis.size());
-            dci.pQueueCreateInfos = qcis.data();
-            dci.enabledExtensionCount = static_cast<uint32_t>(device_exts.size());
-            dci.ppEnabledExtensionNames = device_exts.data();
-            dci.pNext = &features2;
-            dci.pEnabledFeatures = nullptr;
+                vkGetPhysicalDeviceFeatures2(gpu_, &features2);
 
-            if (vkCreateDevice(gpu_, &dci, nullptr, &device_) != VK_SUCCESS) return false;
+#ifdef VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES
+                if (use_timeline_ext && timeline_features.timelineSemaphore == VK_TRUE)
+                {
+                    timeline_features.timelineSemaphore = VK_TRUE;
+                    timeline_feature_enabled = true;
+                }
+#endif
+
+#ifdef VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES
+                if (use_descriptor_ext)
+                {
+                    const bool has_runtime_array = descriptor_features.runtimeDescriptorArray == VK_TRUE;
+                    const bool has_partial_bound = descriptor_features.descriptorBindingPartiallyBound == VK_TRUE;
+                    const bool has_update_unused = descriptor_features.descriptorBindingUpdateUnusedWhilePending == VK_TRUE;
+                    const bool has_nonuniform = descriptor_features.shaderSampledImageArrayNonUniformIndexing == VK_TRUE;
+                    const bool has_var_count = descriptor_features.descriptorBindingVariableDescriptorCount == VK_TRUE;
+
+                    descriptor_features.runtimeDescriptorArray = has_runtime_array ? VK_TRUE : VK_FALSE;
+                    descriptor_features.descriptorBindingPartiallyBound = has_partial_bound ? VK_TRUE : VK_FALSE;
+                    descriptor_features.descriptorBindingUpdateUnusedWhilePending = has_update_unused ? VK_TRUE : VK_FALSE;
+                    descriptor_features.shaderSampledImageArrayNonUniformIndexing = has_nonuniform ? VK_TRUE : VK_FALSE;
+                    descriptor_features.descriptorBindingVariableDescriptorCount = has_var_count ? VK_TRUE : VK_FALSE;
+
+                    descriptor_feature_enabled = has_runtime_array && has_partial_bound && has_nonuniform;
+                }
+#endif
+
+#ifdef VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES
+                if (use_dynamic_ext && dynamic_features.dynamicRendering == VK_TRUE)
+                {
+                    dynamic_features.dynamicRendering = VK_TRUE;
+                    dynamic_feature_enabled = true;
+                }
+#endif
+
+#ifdef VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES
+                if (use_sync2_ext && sync2_features.synchronization2 == VK_TRUE)
+                {
+                    sync2_features.synchronization2 = VK_TRUE;
+                    sync2_feature_enabled = true;
+                }
+#endif
+
+#ifdef VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR
+                if (use_ray_bundle_ext && ray_query_features.rayQuery == VK_TRUE)
+                {
+                    ray_query_features.rayQuery = VK_TRUE;
+                    ray_feature_enabled = true;
+                }
+#endif
+
+                VkDeviceCreateInfo dci{};
+                dci.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+                dci.queueCreateInfoCount = static_cast<uint32_t>(qcis.size());
+                dci.pQueueCreateInfos = qcis.data();
+                dci.enabledExtensionCount = static_cast<uint32_t>(device_exts.size());
+                dci.ppEnabledExtensionNames = device_exts.data();
+                dci.pNext = &features2;
+                dci.pEnabledFeatures = nullptr;
+
+                VkDevice created_device = VK_NULL_HANDLE;
+                if (vkCreateDevice(gpu_, &dci, nullptr, &created_device) != VK_SUCCESS)
+                {
+                    return false;
+                }
+
+                device_ = created_device;
+                timeline_semaphore_ext_enabled_ = use_timeline_ext;
+                descriptor_indexing_ext_enabled_ = use_descriptor_ext;
+                dynamic_rendering_ext_enabled_ = use_dynamic_ext;
+                synchronization2_ext_enabled_ = use_sync2_ext;
+                ray_query_ext_enabled_ = use_ray_bundle_ext;
+
+                timeline_semaphore_enabled_ = timeline_feature_enabled;
+                descriptor_indexing_enabled_ = descriptor_feature_enabled;
+                dynamic_rendering_enabled_ = dynamic_feature_enabled;
+                synchronization2_enabled_ = sync2_feature_enabled;
+                ray_query_enabled_ = ray_feature_enabled;
+                return true;
+            };
+
+            // Attempt strategy:
+            // 1) all optional bundles
+            // 2) disable complex ray-query bundle
+            // 3) required-only baseline (swapchain + portability subset)
+            if (!try_create_device(true, true, true, true, true))
+            {
+                if (!try_create_device(true, true, true, true, false))
+                {
+                    if (!try_create_device(false, false, false, false, false))
+                    {
+                        return false;
+                    }
+                }
+            }
+
             vkGetDeviceQueue(device_, *qf_.graphics, 0, &graphics_q_);
             vkGetDeviceQueue(device_, *qf_.present, 0, &present_q_);
 
@@ -857,6 +952,7 @@ namespace shs
                 const bool has_barrier2 = (cmd_pipeline_barrier2_fn_ != nullptr) || (cmd_pipeline_barrier2_khr_fn_ != nullptr);
                 if (!has_submit2 || !has_barrier2)
                 {
+                    synchronization2_ext_enabled_ = false;
                     synchronization2_enabled_ = false;
                 }
             }

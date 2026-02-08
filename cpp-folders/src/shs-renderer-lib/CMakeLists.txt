@@ -35,7 +35,15 @@ if(APPLE AND NOT Vulkan_FOUND AND DEFINED ENV{VULKAN_SDK})
     endif()
 endif()
 
-add_library(shs_renderer INTERFACE)
+option(SHS_RENDERER_BUILD_SHARED "Build shs_renderer as a shared library" OFF)
+set(_shs_renderer_lib_type STATIC)
+if(SHS_RENDERER_BUILD_SHARED)
+    set(_shs_renderer_lib_type SHARED)
+endif()
+
+add_library(shs_renderer ${_shs_renderer_lib_type}
+    src/shs_renderer_lib.cpp
+)
 add_library(shs::renderer ALIAS shs_renderer)
 
 set(SHS_SDL2_HAS_VULKAN OFF)
@@ -64,7 +72,7 @@ if(_shs_sdl2_config)
 endif()
 
 # C++ standard for everyone who links this
-target_compile_features(shs_renderer INTERFACE cxx_std_20)
+target_compile_features(shs_renderer PUBLIC cxx_std_20)
 
 # Packages (vcpkg config mode)
 find_package(SDL2 CONFIG REQUIRED)
@@ -80,7 +88,7 @@ find_package(assimp CONFIG REQUIRED)
 # Adjust these to your real layout:
 #   src/shs-renderer/include/...
 #   src/shs-renderer/ (if headers still live here)
-target_include_directories(shs_renderer INTERFACE
+target_include_directories(shs_renderer PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_BINARY_DIR}
@@ -88,7 +96,7 @@ target_include_directories(shs_renderer INTERFACE
 )
 
 # Link deps that demos will inherit automatically
-target_link_libraries(shs_renderer INTERFACE
+target_link_libraries(shs_renderer PUBLIC
     SDL2::SDL2
     SDL2_image::Main
     glm::glm
@@ -98,8 +106,8 @@ target_link_libraries(shs_renderer INTERFACE
 set(SHS_RENDERER_HAS_VULKAN OFF)
 if(Vulkan_FOUND AND TARGET Vulkan::Vulkan)
     set(SHS_RENDERER_HAS_VULKAN ON)
-    target_compile_definitions(shs_renderer INTERFACE SHS_HAS_VULKAN=1)
-    target_link_libraries(shs_renderer INTERFACE Vulkan::Vulkan)
+    target_compile_definitions(shs_renderer PUBLIC SHS_HAS_VULKAN=1)
+    target_link_libraries(shs_renderer PUBLIC Vulkan::Vulkan)
 endif()
 set(SHS_RENDERER_HAS_VULKAN "${SHS_RENDERER_HAS_VULKAN}" PARENT_SCOPE)
 set(SHS_SDL2_HAS_VULKAN "${SHS_SDL2_HAS_VULKAN}" PARENT_SCOPE)

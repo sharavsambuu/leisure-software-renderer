@@ -15,6 +15,8 @@ This document keeps two things together:
 2. Stabilize lib contracts before larger moves.
 - Keep a single `PassContext` definition.
 - Keep `FrameParams`, `Scene`, and pass `Inputs` as the canonical public contracts.
+- Keep `TechniquePassContract` checks enabled in `PluggablePipeline` (mode mask + semantic dependency diagnostics).
+- Keep Vulkan-like runtime emulation ownership inside pipeline orchestration (not in global `Context`).
 
 3. Add a temporary legacy bridge.
 - Map legacy runtime structures to:
@@ -32,20 +34,28 @@ This document keeps two things together:
 
 5. Extract IBL as a shared resource module.
 - Move `CubeMapLinear`, `PrefilteredSpecular`, `EnvIBL`, and precompute helpers into lib resources.
+- Status: landed as `include/shs/resources/ibl.hpp`; both `hello_pbr.cpp` and `hello_pbr_light_shafts.cpp` consume shared types/samplers/precompute helpers.
 
 6. Make `hello_pass_plumbing.cpp` a true pipeline demo.
 - Replace current stub with full setup:
   - scene + frame params
   - RT creation/registration
-  - `PipelineLightShafts::render(...)`
+  - `PluggablePipeline::execute(...)`
+- Status: landed as `HelloPassPlumbing` target in `src/hello-plumbing` (direct pluggable pipeline wiring).
 
 7. Enforce parity gates before cleanup.
 - Visual parity at fixed views.
 - Feature parity (PCSS + PBR + shafts).
 - Build parity (`hello-plumbing` links only `shs::renderer`).
+- Status: deterministic capture gate added (`docs/migration/PHASE7_PARITY_GATES.md` + `scripts/run_phase7_parity_capture.sh`).
 
 8. After parity, split to real static/shared library.
 - Convert INTERFACE-only target to compiled lib target and migrate heavier code to `.cpp`.
+- Status: `shs::renderer` converted to compiled static/shared-capable target (source anchor landed).
+
+9. Retire dead legacy wrappers after parity acceptance.
+- Remove unused legacy compatibility wrappers that are no longer referenced in-tree.
+- Status: removed `passes/pass_graph.hpp` and `pipeline/pipeline_light_shafts.hpp`; `PassContext` legacy-scene binding dropped; `scene/scene_data.hpp` retired (modern `shs::Scene` only).
 
 ---
 
@@ -119,4 +129,3 @@ Use this policy:
 1. Migrate SOTA-covered symbols first (Section B1).
 2. Keep B2 behind compatibility layer until a second representative demo is ported.
 3. Treat B3 as optional/cleanup unless a real consumer appears.
-

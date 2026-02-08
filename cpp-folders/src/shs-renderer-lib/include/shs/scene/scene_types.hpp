@@ -16,6 +16,7 @@
 
 namespace shs
 {
+    // Canonical render-scene contract used by modern pass/pipeline APIs.
     class ISkyModel;
     class ResourceRegistry;
 

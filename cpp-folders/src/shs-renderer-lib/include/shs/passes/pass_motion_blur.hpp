@@ -10,7 +10,6 @@
 */
 
 
-#include "shs/passes/pass_context.hpp"
 #include "shs/frame/frame_params.hpp"
 #include "shs/gfx/rt_handle.hpp"
 #include "shs/gfx/rt_registry.hpp"

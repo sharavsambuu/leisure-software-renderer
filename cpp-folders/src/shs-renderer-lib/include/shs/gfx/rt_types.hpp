@@ -104,6 +104,29 @@ namespace shs
         void clear(float d = 1.0f) { depth.clear(d); }
     };
 
+    struct RT_ColorDepth
+    {
+        int   w     = 0;
+        int   h     = 0;
+        float zn    = 0.1f;
+        float zf    = 1000.0f;
+        Color clear = {0, 0, 0, 255};
+        PixelBuffer2D<Color> color;
+        PixelBuffer2D<float> depth;
+
+        RT_ColorDepth() = default;
+
+        RT_ColorDepth(int W, int H, float ZN, float ZF, Color Clear = {0, 0, 0, 255})
+            : w(W), h(H), zn(ZN), zf(ZF), clear(Clear), color(W, H, Clear), depth(W, H, 1.0f)
+        {}
+
+        void clear_all()
+        {
+            color.clear(clear);
+            depth.clear(1.0f);
+        }
+    };
+
     struct RT_ColorDepthVelocity
     {
         int   w     = 0;

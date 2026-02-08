@@ -12,6 +12,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <vector>
 
 #include "shs/rhi/drivers/vulkan/vk_backend.hpp"
 #include "shs/rhi/drivers/vulkan/vk_memory_utils.hpp"
@@ -42,7 +43,8 @@ namespace shs
             if (frame.extent.width == 0 || frame.extent.height == 0) return false;
             if (backend.swapchain_image(frame.image_index) == VK_NULL_HANDLE) return false;
             if ((backend.swapchain_usage_flags() & VK_IMAGE_USAGE_TRANSFER_DST_BIT) == 0) return false;
-            if ((int)frame.extent.width != width || (int)frame.extent.height != height) return false;
+            if ((uint32_t)width > frame.extent.width || (uint32_t)height > frame.extent.height) return false;
+            if (!ensure_swapchain_state(backend, frame.image_index)) return false;
 
             const size_t bytes = (size_t)width * (size_t)height * 4u;
             if (!ensure_staging(backend, bytes)) return false;
@@ -55,9 +57,12 @@ namespace shs
             }
 
             VkImage swap_img = backend.swapchain_image(frame.image_index);
+            const bool image_initialized = (image_initialized_[frame.image_index] != 0);
+            const bool full_overwrite = (uint32_t)width == frame.extent.width && (uint32_t)height == frame.extent.height;
+
             VkImageMemoryBarrier to_transfer{};
             to_transfer.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-            to_transfer.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            to_transfer.oldLayout = image_initialized ? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR : VK_IMAGE_LAYOUT_UNDEFINED;
             to_transfer.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
             to_transfer.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             to_transfer.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -67,17 +72,42 @@ namespace shs
             to_transfer.subresourceRange.levelCount = 1;
             to_transfer.subresourceRange.baseArrayLayer = 0;
             to_transfer.subresourceRange.layerCount = 1;
-            to_transfer.srcAccessMask = 0;
+            to_transfer.srcAccessMask = image_initialized ? VK_ACCESS_MEMORY_READ_BIT : 0;
             to_transfer.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            const VkPipelineStageFlags to_transfer_src_stage =
+                image_initialized ? VK_PIPELINE_STAGE_ALL_COMMANDS_BIT : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
             vkCmdPipelineBarrier(
                 frame.cmd,
-                VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                to_transfer_src_stage,
                 VK_PIPELINE_STAGE_TRANSFER_BIT,
                 0,
                 0, nullptr,
                 0, nullptr,
                 1, &to_transfer
             );
+
+            if (!image_initialized && !full_overwrite)
+            {
+                VkImageSubresourceRange clear_range{};
+                clear_range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                clear_range.baseMipLevel = 0;
+                clear_range.levelCount = 1;
+                clear_range.baseArrayLayer = 0;
+                clear_range.layerCount = 1;
+                VkClearColorValue clear_color{};
+                clear_color.float32[0] = 0.0f;
+                clear_color.float32[1] = 0.0f;
+                clear_color.float32[2] = 0.0f;
+                clear_color.float32[3] = 1.0f;
+                vkCmdClearColorImage(
+                    frame.cmd,
+                    swap_img,
+                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                    &clear_color,
+                    1,
+                    &clear_range
+                );
+            }
 
             VkBufferImageCopy copy{};
             copy.bufferOffset = 0;
@@ -121,6 +151,7 @@ namespace shs
                 0, nullptr,
                 1, &to_present
             );
+            image_initialized_[frame.image_index] = 1;
             return true;
 #else
             (void)backend;
@@ -154,10 +185,27 @@ namespace shs
             staging_memory_ = 0;
             mapped_device_ = 0;
             staging_bytes_ = 0;
+            tracked_swapchain_generation_ = 0;
+            image_initialized_.clear();
         }
 
     private:
 #ifdef SHS_HAS_VULKAN
+        bool ensure_swapchain_state(const VulkanRenderBackend& backend, uint32_t image_index)
+        {
+            const uint64_t generation = backend.swapchain_generation();
+            if (tracked_swapchain_generation_ != generation)
+            {
+                tracked_swapchain_generation_ = generation;
+                image_initialized_.clear();
+            }
+            if (image_index >= image_initialized_.size())
+            {
+                image_initialized_.resize(image_index + 1u, 0u);
+            }
+            return true;
+        }
+
         bool ensure_staging(VulkanRenderBackend& backend, size_t bytes)
         {
             VkDevice dev = backend.device();
@@ -203,5 +251,7 @@ namespace shs
         uint64_t mapped_device_ = 0;
 #endif
         size_t staging_bytes_ = 0;
+        uint64_t tracked_swapchain_generation_ = 0;
+        std::vector<uint8_t> image_initialized_{};
     };
 }

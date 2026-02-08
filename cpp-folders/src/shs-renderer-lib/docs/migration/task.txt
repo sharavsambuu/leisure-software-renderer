@@ -2,6 +2,10 @@ Core
 
 src/shs-renderer-lib/include/shs/core/context.hpp
 	Defines shs::Context (concrete, not forward-declared).
+	Context should hold shared frame/runtime state only (no pipeline-local Vulkan-like emulation ownership).
+
+src/shs-renderer-lib/src/shs_renderer_lib.cpp
+	Compiled library anchor translation unit (post-INTERFACE packaging step).
 
 src/shs-renderer-lib/include/shs/core/types.hpp
 	Basic shared types: Color, small math aliases, common enums (keep tiny).
@@ -9,26 +13,27 @@ src/shs-renderer-lib/include/shs/core/types.hpp
 src/shs-renderer-lib/include/shs/core/config.hpp
 	Compile-time toggles / constants (optional, but helps keep headers clean).
 
+Scene contracts
+
+src/shs-renderer-lib/include/shs/scene/scene_types.hpp
+	Canonical scene API for modern pipeline/pass code (Scene, Camera, RenderItem).
+
 
 Render-target / RT types
 
 src/shs-renderer-lib/include/shs/gfx/rt_types.hpp
-	Defines RT_ColorDepthVelocity, RT_ColorDepthMotion (alias), DefaultRT.
+	Defines RT_ColorDepth, RT_ColorDepthVelocity, RT_ColorDepthMotion (alias), DefaultRT.
 
 
 Pass plumbing (common interfaces + shared structs)
+	
+src/shs-renderer-lib/include/shs/passes/pass_context.hpp
+	Defines lightweight pass context (ctx, rt, frame index, dt, camera pointers).
+	Legacy scene-data binding removed; bind modern shs::Scene only.
 
-src/shs-renderer-lib/include/shs/passes/pass_common.hpp
-	Includes context.hpp + rt_types.hpp
-	Defines PassContext (ctx, rt, frame index, dt, etc.).
-
-src/shs-renderer-lib/include/shs/passes/pass_interface.hpp
-	Defines the common pass interface, e.g. struct IPass { virtual void execute(PassContext&) = 0; }
-	(or non-virtual “pass.execute(ctx)” convention ).
-
-src/shs-renderer-lib/include/shs/passes/pass_graph.hpp
-	Simple runner/registry: list of passes, add_pass(), execute_all().
-
+src/shs-renderer-lib/include/shs/pipeline/pluggable_pipeline.hpp
+	Canonical pass orchestration with pass contracts + graph validation.
+	
 
 Shared resources (optional now, but you will want soon)
 
@@ -40,6 +45,11 @@ src/shs-renderer-lib/include/shs/resources/mesh.hpp
 
 src/shs-renderer-lib/include/shs/resources/material.hpp
 	PBR material parameters shared across passes/demos.
+
+src/shs-renderer-lib/include/shs/resources/ibl.hpp
+	Shared environment IBL contracts/helpers:
+	- CubeMapLinear, PrefilteredSpecular, EnvIBL
+	- irradiance/prefilter precompute + cubemap/specular sampling.
 
 
 Built-in passes (each pass = one header)

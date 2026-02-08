@@ -168,32 +168,5 @@ namespace shs
         HybridPipelineParams hybrid{};
         TechniqueParams technique{};
 
-        void sync_legacy_to_blocks()
-        {
-            pass.tonemap.exposure = exposure;
-            pass.tonemap.gamma = gamma;
-
-            pass.shadow.enable = enable_shadows;
-            pass.shadow.bias_const = shadow_bias_const;
-            pass.shadow.bias_slope = shadow_bias_slope;
-            pass.shadow.pcf_radius = shadow_pcf_radius;
-            pass.shadow.pcf_step = shadow_pcf_step;
-            pass.shadow.strength = shadow_strength;
-
-            pass.light_shafts.enable = enable_light_shafts;
-            pass.light_shafts.steps = shafts_steps;
-            pass.light_shafts.density = shafts_density;
-            pass.light_shafts.weight = shafts_weight;
-            pass.light_shafts.decay = shafts_decay;
-
-            pass.motion_vectors.enable = enable_motion_vectors;
-
-            pass.motion_blur.enable = enable_motion_blur;
-            pass.motion_blur.samples = motion_blur_samples;
-            pass.motion_blur.strength = motion_blur_strength;
-            pass.motion_blur.max_velocity_px = motion_blur_max_velocity_px;
-            pass.motion_blur.min_velocity_px = motion_blur_min_velocity_px;
-            pass.motion_blur.depth_reject = motion_blur_depth_reject;
-        }
     };
 }
