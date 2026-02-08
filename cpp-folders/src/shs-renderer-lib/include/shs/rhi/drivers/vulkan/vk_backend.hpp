@@ -246,17 +246,77 @@ namespace shs
             }
             if (reset_fence != VK_SUCCESS) return;
 
-            VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT;
-            VkSubmitInfo si{};
-            si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-            si.waitSemaphoreCount = 1;
-            si.pWaitSemaphores = &image_available_[cur];
-            si.pWaitDstStageMask = &wait_stage;
-            si.commandBufferCount = 1;
-            si.pCommandBuffers = &info.cmd;
-            si.signalSemaphoreCount = 1;
-            si.pSignalSemaphores = &render_finished_[cur];
-            const VkResult submit_res = vkQueueSubmit(graphics_q_, 1, &si, inflight_fences_[cur]);
+            VkResult submit_res = VK_ERROR_UNKNOWN;
+#if defined(VK_STRUCTURE_TYPE_SUBMIT_INFO_2) && \
+    defined(VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT) && \
+    defined(VK_PIPELINE_STAGE_2_TRANSFER_BIT) && \
+    defined(VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT)
+            if (supports_synchronization2())
+            {
+                VkSemaphoreSubmitInfo wait_info{};
+                wait_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+                wait_info.semaphore = image_available_[cur];
+                wait_info.value = 0;
+#if defined(VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT)
+                wait_info.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+#else
+                wait_info.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+#endif
+                wait_info.deviceIndex = 0;
+
+                VkCommandBufferSubmitInfo cmd_info{};
+                cmd_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+                cmd_info.commandBuffer = info.cmd;
+                cmd_info.deviceMask = 0;
+
+                VkSemaphoreSubmitInfo signal_info{};
+                signal_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+                signal_info.semaphore = render_finished_[cur];
+                signal_info.value = 0;
+#if defined(VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT)
+                signal_info.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+#else
+                signal_info.stageMask = VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT;
+#endif
+                signal_info.deviceIndex = 0;
+
+                VkSubmitInfo2 si2{};
+                si2.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+                si2.waitSemaphoreInfoCount = 1;
+                si2.pWaitSemaphoreInfos = &wait_info;
+                si2.commandBufferInfoCount = 1;
+                si2.pCommandBufferInfos = &cmd_info;
+                si2.signalSemaphoreInfoCount = 1;
+                si2.pSignalSemaphoreInfos = &signal_info;
+
+                if (queue_submit2_fn_ != nullptr)
+                {
+                    submit_res = queue_submit2_fn_(graphics_q_, 1, &si2, inflight_fences_[cur]);
+                }
+                else if (queue_submit2_khr_fn_ != nullptr)
+                {
+                    submit_res = queue_submit2_khr_fn_(graphics_q_, 1, &si2, inflight_fences_[cur]);
+                }
+                else
+                {
+                    submit_res = VK_ERROR_EXTENSION_NOT_PRESENT;
+                }
+            }
+            else
+#endif
+            {
+                VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+                VkSubmitInfo si{};
+                si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+                si.waitSemaphoreCount = 1;
+                si.pWaitSemaphores = &image_available_[cur];
+                si.pWaitDstStageMask = &wait_stage;
+                si.commandBufferCount = 1;
+                si.pCommandBuffers = &info.cmd;
+                si.signalSemaphoreCount = 1;
+                si.pSignalSemaphores = &render_finished_[cur];
+                submit_res = vkQueueSubmit(graphics_q_, 1, &si, inflight_fences_[cur]);
+            }
             if (submit_res == VK_ERROR_DEVICE_LOST)
             {
                 device_lost_ = true;
@@ -304,6 +364,35 @@ namespace shs
         VkImageUsageFlags swapchain_usage_flags() const { return swapchain_usage_; }
         uint64_t swapchain_generation() const { return swapchain_generation_; }
         bool has_depth_attachment() const { return depth_view_ != VK_NULL_HANDLE; }
+        bool supports_synchronization2() const
+        {
+#if defined(VK_STRUCTURE_TYPE_SUBMIT_INFO_2)
+            const bool has_submit2 = (queue_submit2_fn_ != nullptr) || (queue_submit2_khr_fn_ != nullptr);
+            const bool has_barrier2 = (cmd_pipeline_barrier2_fn_ != nullptr) || (cmd_pipeline_barrier2_khr_fn_ != nullptr);
+            return synchronization2_enabled_ && has_submit2 && has_barrier2;
+#else
+            return false;
+#endif
+        }
+
+#if defined(VK_STRUCTURE_TYPE_SUBMIT_INFO_2) && defined(VK_STRUCTURE_TYPE_DEPENDENCY_INFO)
+        bool cmd_pipeline_barrier2(VkCommandBuffer cmd, const VkDependencyInfo& dependency_info) const
+        {
+            if (cmd == VK_NULL_HANDLE) return false;
+            if (cmd_pipeline_barrier2_fn_ != nullptr)
+            {
+                cmd_pipeline_barrier2_fn_(cmd, &dependency_info);
+                return true;
+            }
+            if (cmd_pipeline_barrier2_khr_fn_ != nullptr)
+            {
+                cmd_pipeline_barrier2_khr_fn_(cmd, &dependency_info);
+                return true;
+            }
+            return false;
+        }
+#endif
+
         VkImage swapchain_image(uint32_t image_index) const
         {
             if (image_index >= images_.size()) return VK_NULL_HANDLE;
@@ -571,16 +660,207 @@ namespace shs
                 device_exts.push_back(kPortabilitySubsetExt);
             }
 
+            // Optional modern Vulkan extensions: enable when available so higher-level
+            // systems can progressively adopt advanced paths without backend rewrites.
+            constexpr const char* kTimelineSemaphoreExt = "VK_KHR_timeline_semaphore";
+            constexpr const char* kDescriptorIndexingExt = "VK_EXT_descriptor_indexing";
+            constexpr const char* kDynamicRenderingExt = "VK_KHR_dynamic_rendering";
+            constexpr const char* kSynchronization2Ext = "VK_KHR_synchronization2";
+            constexpr const char* kRayQueryExt = "VK_KHR_ray_query";
+            constexpr const char* kAccelStructExt = "VK_KHR_acceleration_structure";
+            constexpr const char* kDeferredHostOpsExt = "VK_KHR_deferred_host_operations";
+
+            auto append_ext_if_supported = [&](const char* ext_name) {
+                if (!ext_name) return false;
+                if (!device_extension_supported(gpu_, ext_name)) return false;
+                for (const char* e : device_exts)
+                {
+                    if (e && std::strcmp(e, ext_name) == 0) return true;
+                }
+                device_exts.push_back(ext_name);
+                return true;
+            };
+
+            timeline_semaphore_ext_enabled_ = append_ext_if_supported(kTimelineSemaphoreExt);
+            descriptor_indexing_ext_enabled_ = append_ext_if_supported(kDescriptorIndexingExt);
+            dynamic_rendering_ext_enabled_ = append_ext_if_supported(kDynamicRenderingExt);
+            synchronization2_ext_enabled_ = append_ext_if_supported(kSynchronization2Ext);
+
+            const bool ray_query_ext = device_extension_supported(gpu_, kRayQueryExt);
+            const bool accel_struct_ext = device_extension_supported(gpu_, kAccelStructExt);
+            const bool deferred_host_ops_ext = device_extension_supported(gpu_, kDeferredHostOpsExt);
+            ray_query_ext_enabled_ = ray_query_ext && accel_struct_ext && deferred_host_ops_ext;
+            if (ray_query_ext_enabled_)
+            {
+                (void)append_ext_if_supported(kRayQueryExt);
+                (void)append_ext_if_supported(kAccelStructExt);
+                (void)append_ext_if_supported(kDeferredHostOpsExt);
+            }
+
+            VkPhysicalDeviceFeatures2 features2{};
+            features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+            features2.pNext = nullptr;
+
+#ifdef VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES
+            VkPhysicalDeviceTimelineSemaphoreFeatures timeline_features{};
+            timeline_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES;
+            timeline_features.pNext = nullptr;
+            if (timeline_semaphore_ext_enabled_)
+            {
+                timeline_features.pNext = features2.pNext;
+                features2.pNext = &timeline_features;
+            }
+#endif
+
+#ifdef VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES
+            VkPhysicalDeviceDescriptorIndexingFeatures descriptor_indexing_features{};
+            descriptor_indexing_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
+            descriptor_indexing_features.pNext = nullptr;
+            if (descriptor_indexing_ext_enabled_)
+            {
+                descriptor_indexing_features.pNext = features2.pNext;
+                features2.pNext = &descriptor_indexing_features;
+            }
+#endif
+
+#ifdef VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES
+            VkPhysicalDeviceDynamicRenderingFeatures dynamic_rendering_features{};
+            dynamic_rendering_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES;
+            dynamic_rendering_features.pNext = nullptr;
+            if (dynamic_rendering_ext_enabled_)
+            {
+                dynamic_rendering_features.pNext = features2.pNext;
+                features2.pNext = &dynamic_rendering_features;
+            }
+#endif
+
+#ifdef VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES
+            VkPhysicalDeviceSynchronization2Features synchronization2_features{};
+            synchronization2_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES;
+            synchronization2_features.pNext = nullptr;
+            if (synchronization2_ext_enabled_)
+            {
+                synchronization2_features.pNext = features2.pNext;
+                features2.pNext = &synchronization2_features;
+            }
+#endif
+
+#ifdef VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR
+            VkPhysicalDeviceRayQueryFeaturesKHR ray_query_features{};
+            ray_query_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR;
+            ray_query_features.pNext = nullptr;
+            if (ray_query_ext_enabled_)
+            {
+                ray_query_features.pNext = features2.pNext;
+                features2.pNext = &ray_query_features;
+            }
+#endif
+
+            vkGetPhysicalDeviceFeatures2(gpu_, &features2);
+
+            timeline_semaphore_enabled_ = false;
+            descriptor_indexing_enabled_ = false;
+            dynamic_rendering_enabled_ = false;
+            synchronization2_enabled_ = false;
+            ray_query_enabled_ = false;
+
+#ifdef VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES
+            if (timeline_semaphore_ext_enabled_ && timeline_features.timelineSemaphore == VK_TRUE)
+            {
+                timeline_features.timelineSemaphore = VK_TRUE;
+                timeline_semaphore_enabled_ = true;
+            }
+#else
+            timeline_semaphore_ext_enabled_ = false;
+#endif
+
+#ifdef VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES
+            if (descriptor_indexing_ext_enabled_)
+            {
+                // Enable a practical baseline for bindless-like descriptor usage.
+                const bool has_runtime_array = descriptor_indexing_features.runtimeDescriptorArray == VK_TRUE;
+                const bool has_partial_bound = descriptor_indexing_features.descriptorBindingPartiallyBound == VK_TRUE;
+                const bool has_update_unused = descriptor_indexing_features.descriptorBindingUpdateUnusedWhilePending == VK_TRUE;
+                const bool has_nonuniform = descriptor_indexing_features.shaderSampledImageArrayNonUniformIndexing == VK_TRUE;
+                const bool has_var_count = descriptor_indexing_features.descriptorBindingVariableDescriptorCount == VK_TRUE;
+
+                descriptor_indexing_features.runtimeDescriptorArray = has_runtime_array ? VK_TRUE : VK_FALSE;
+                descriptor_indexing_features.descriptorBindingPartiallyBound = has_partial_bound ? VK_TRUE : VK_FALSE;
+                descriptor_indexing_features.descriptorBindingUpdateUnusedWhilePending = has_update_unused ? VK_TRUE : VK_FALSE;
+                descriptor_indexing_features.shaderSampledImageArrayNonUniformIndexing = has_nonuniform ? VK_TRUE : VK_FALSE;
+                descriptor_indexing_features.descriptorBindingVariableDescriptorCount = has_var_count ? VK_TRUE : VK_FALSE;
+
+                descriptor_indexing_enabled_ = has_runtime_array && has_partial_bound && has_nonuniform;
+            }
+#else
+            descriptor_indexing_ext_enabled_ = false;
+#endif
+
+#ifdef VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES
+            if (dynamic_rendering_ext_enabled_ && dynamic_rendering_features.dynamicRendering == VK_TRUE)
+            {
+                dynamic_rendering_features.dynamicRendering = VK_TRUE;
+                dynamic_rendering_enabled_ = true;
+            }
+#else
+            dynamic_rendering_ext_enabled_ = false;
+#endif
+
+#ifdef VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES
+            if (synchronization2_ext_enabled_ && synchronization2_features.synchronization2 == VK_TRUE)
+            {
+                synchronization2_features.synchronization2 = VK_TRUE;
+                synchronization2_enabled_ = true;
+            }
+#else
+            synchronization2_ext_enabled_ = false;
+#endif
+
+#ifdef VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR
+            if (ray_query_ext_enabled_ && ray_query_features.rayQuery == VK_TRUE)
+            {
+                ray_query_features.rayQuery = VK_TRUE;
+                ray_query_enabled_ = true;
+            }
+#else
+            ray_query_ext_enabled_ = false;
+#endif
+
             VkDeviceCreateInfo dci{};
             dci.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
             dci.queueCreateInfoCount = static_cast<uint32_t>(qcis.size());
             dci.pQueueCreateInfos = qcis.data();
             dci.enabledExtensionCount = static_cast<uint32_t>(device_exts.size());
             dci.ppEnabledExtensionNames = device_exts.data();
+            dci.pNext = &features2;
+            dci.pEnabledFeatures = nullptr;
 
             if (vkCreateDevice(gpu_, &dci, nullptr, &device_) != VK_SUCCESS) return false;
             vkGetDeviceQueue(device_, *qf_.graphics, 0, &graphics_q_);
             vkGetDeviceQueue(device_, *qf_.present, 0, &present_q_);
+
+#if defined(VK_STRUCTURE_TYPE_SUBMIT_INFO_2)
+            queue_submit2_fn_ = nullptr;
+            queue_submit2_khr_fn_ = nullptr;
+            cmd_pipeline_barrier2_fn_ = nullptr;
+            cmd_pipeline_barrier2_khr_fn_ = nullptr;
+#endif
+#if defined(VK_STRUCTURE_TYPE_SUBMIT_INFO_2)
+            if (synchronization2_enabled_)
+            {
+                queue_submit2_fn_ = reinterpret_cast<PFN_vkQueueSubmit2>(vkGetDeviceProcAddr(device_, "vkQueueSubmit2"));
+                queue_submit2_khr_fn_ = reinterpret_cast<PFN_vkQueueSubmit2KHR>(vkGetDeviceProcAddr(device_, "vkQueueSubmit2KHR"));
+                cmd_pipeline_barrier2_fn_ = reinterpret_cast<PFN_vkCmdPipelineBarrier2>(vkGetDeviceProcAddr(device_, "vkCmdPipelineBarrier2"));
+                cmd_pipeline_barrier2_khr_fn_ = reinterpret_cast<PFN_vkCmdPipelineBarrier2KHR>(vkGetDeviceProcAddr(device_, "vkCmdPipelineBarrier2KHR"));
+
+                const bool has_submit2 = (queue_submit2_fn_ != nullptr) || (queue_submit2_khr_fn_ != nullptr);
+                const bool has_barrier2 = (cmd_pipeline_barrier2_fn_ != nullptr) || (cmd_pipeline_barrier2_khr_fn_ != nullptr);
+                if (!has_submit2 || !has_barrier2)
+                {
+                    synchronization2_enabled_ = false;
+                }
+            }
+#endif
             return true;
         }
 
@@ -593,10 +873,11 @@ namespace shs
             c.features.validation_layers = layer_supported("VK_LAYER_KHRONOS_validation");
             c.features.push_constants = true;
             c.features.multithread_command_recording = true;
-            c.features.timeline_semaphore = false;
-            c.features.descriptor_indexing = false;
-            c.features.dynamic_rendering = false;
+            c.features.timeline_semaphore = timeline_semaphore_enabled_;
+            c.features.descriptor_indexing = descriptor_indexing_enabled_;
+            c.features.dynamic_rendering = dynamic_rendering_enabled_;
             c.features.async_compute = false;
+            c.features.ray_query = ray_query_enabled_;
             c.limits.max_color_attachments = 1;
             c.limits.max_descriptor_sets_per_pipeline = 1;
             c.limits.max_push_constant_bytes = 128;
@@ -1123,6 +1404,22 @@ namespace shs
             swapchain_generation_ = 0;
             depth_format_ = VK_FORMAT_UNDEFINED;
             swapchain_usage_ = 0;
+#if defined(VK_STRUCTURE_TYPE_SUBMIT_INFO_2)
+            queue_submit2_fn_ = nullptr;
+            queue_submit2_khr_fn_ = nullptr;
+            cmd_pipeline_barrier2_fn_ = nullptr;
+            cmd_pipeline_barrier2_khr_fn_ = nullptr;
+#endif
+            timeline_semaphore_ext_enabled_ = false;
+            descriptor_indexing_ext_enabled_ = false;
+            dynamic_rendering_ext_enabled_ = false;
+            synchronization2_ext_enabled_ = false;
+            ray_query_ext_enabled_ = false;
+            timeline_semaphore_enabled_ = false;
+            descriptor_indexing_enabled_ = false;
+            dynamic_rendering_enabled_ = false;
+            synchronization2_enabled_ = false;
+            ray_query_enabled_ = false;
             capabilities_ = BackendCapabilities{};
             capabilities_ready_ = false;
         }
@@ -1186,6 +1483,22 @@ namespace shs
         VkFence inflight_fences_[kMaxFramesInFlight]{VK_NULL_HANDLE};
         uint64_t current_frame_ = 0;
         uint64_t swapchain_generation_ = 0;
+        bool timeline_semaphore_ext_enabled_ = false;
+        bool descriptor_indexing_ext_enabled_ = false;
+        bool dynamic_rendering_ext_enabled_ = false;
+        bool synchronization2_ext_enabled_ = false;
+        bool ray_query_ext_enabled_ = false;
+        bool timeline_semaphore_enabled_ = false;
+        bool descriptor_indexing_enabled_ = false;
+        bool dynamic_rendering_enabled_ = false;
+        bool synchronization2_enabled_ = false;
+        bool ray_query_enabled_ = false;
+#if defined(VK_STRUCTURE_TYPE_SUBMIT_INFO_2)
+        PFN_vkQueueSubmit2 queue_submit2_fn_ = nullptr;
+        PFN_vkQueueSubmit2KHR queue_submit2_khr_fn_ = nullptr;
+        PFN_vkCmdPipelineBarrier2 cmd_pipeline_barrier2_fn_ = nullptr;
+        PFN_vkCmdPipelineBarrier2KHR cmd_pipeline_barrier2_khr_fn_ = nullptr;
+#endif
 #endif
     };
 }

@@ -134,7 +134,11 @@ namespace shs
                 scene_aabb.expand(glm::vec3(1.0f));
             }
 
-            light_cam_ = build_dir_light_camera_aabb(in.scene->sun.dir_ws, scene_aabb, 10.0f);
+            light_cam_ = build_dir_light_camera_aabb(
+                in.scene->sun.dir_ws,
+                scene_aabb,
+                10.0f,
+                static_cast<uint32_t>(std::max(shadow->w, 1)));
             // Энэ frame-ийн shadow sampling-д хэрэгтэй runtime төлөвийг context-д хадгална.
             ctx.shadow.map = shadow;
             ctx.shadow.light_viewproj = light_cam_.viewproj;

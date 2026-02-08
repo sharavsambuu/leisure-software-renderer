@@ -512,17 +512,30 @@ void main()
         if (culling_mode == 3u)
         {
             uint z_slices = max(ubo.culling_params.x, 1u);
-            float view_depth = max(0.001, -(ubo.view * vec4(v_world_pos, 1.0)).z);
+            // SHS uses LH view space (+Z forward), so use +view.z for slice mapping.
+            float view_depth = max(0.001, (ubo.view * vec4(v_world_pos, 1.0)).z);
             uint zi = cluster_slice_from_view_depth(view_depth, z_slices);
             list_id = (zi * tiles_y + tile.y) * tiles_x + tile.x;
         }
         uint count = min(tile_counts[list_id], max_per_tile);
         uint base = list_id * max_per_tile;
-        for (uint i = 0u; i < count; ++i)
+        // If tile list saturates, fall back to full light loop to avoid blocky popping
+        // from truncated tile lists in high-density stress scenarios.
+        if (count >= max_per_tile)
         {
-            uint idx = tile_indices[base + i];
-            if (idx >= light_count) continue;
-            color += eval_local_light(idx, N, V, albedo, metallic, roughness);
+            for (uint i = 0u; i < light_count; ++i)
+            {
+                color += eval_local_light(i, N, V, albedo, metallic, roughness);
+            }
+        }
+        else
+        {
+            for (uint i = 0u; i < count; ++i)
+            {
+                uint idx = tile_indices[base + i];
+                if (idx >= light_count) continue;
+                color += eval_local_light(idx, N, V, albedo, metallic, roughness);
+            }
         }
     }
     else
@@ -539,4 +552,3 @@ void main()
     mapped = pow(mapped, vec3(inv_gamma));
     out_color = vec4(mapped, 1.0);
 }
-

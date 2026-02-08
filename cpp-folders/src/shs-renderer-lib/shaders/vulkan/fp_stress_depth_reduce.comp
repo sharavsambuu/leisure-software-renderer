@@ -60,7 +60,8 @@ void main()
         for (int px = p0.x; px < p1.x; ++px)
         {
             float d = texelFetch(depth_tex, ivec2(px, py), 0).r;
-            if (d >= 0.999999) continue;
+            // Skip only untouched clear depth. Far geometry can still be very close to 1.0.
+            if (d >= 1.0) continue;
             float v = depth01_to_view(d);
             min_d = min(min_d, v);
             max_d = max(max_d, v);

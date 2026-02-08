@@ -4,7 +4,6 @@
 #include <array>
 #include <chrono>
 #include <cmath>
-#include <fstream>
 #include <cstdio>
 #include <cstdlib>
 #include <cstdint>
@@ -38,6 +37,9 @@
 #include <shs/pipeline/technique_profile.hpp>
 #include <shs/rhi/backend/backend_factory.hpp>
 #include <shs/rhi/drivers/vulkan/vk_backend.hpp>
+#include <shs/rhi/drivers/vulkan/vk_cmd_utils.hpp>
+#include <shs/rhi/drivers/vulkan/vk_memory_utils.hpp>
+#include <shs/rhi/drivers/vulkan/vk_shader_utils.hpp>
 #include <shs/resources/loaders/primitive_import.hpp>
 #include <shs/resources/loaders/resource_import.hpp>
 #include <shs/resources/resource_registry.hpp>
@@ -642,28 +644,15 @@ namespace
             glm::mat4 viewproj{1.0f};
         };
 
-        static std::vector<char> read_file(const char* path)
+        bool load_shader_module(const char* path, VkShaderModule& out_shader) const
         {
-            std::ifstream f(path, std::ios::ate | std::ios::binary);
-            if (!f.is_open()) return {};
-            const size_t sz = static_cast<size_t>(f.tellg());
-            if (sz == 0) return {};
-            std::vector<char> out(sz);
-            f.seekg(0);
-            f.read(out.data(), static_cast<std::streamsize>(sz));
-            return out;
-        }
-
-        static VkShaderModule create_shader_module(VkDevice dev, const std::vector<char>& code)
-        {
-            if (dev == VK_NULL_HANDLE || code.empty() || (code.size() % 4) != 0) return VK_NULL_HANDLE;
-            VkShaderModuleCreateInfo ci{};
-            ci.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-            ci.codeSize = code.size();
-            ci.pCode = reinterpret_cast<const uint32_t*>(code.data());
-            VkShaderModule sm = VK_NULL_HANDLE;
-            if (vkCreateShaderModule(dev, &ci, nullptr, &sm) != VK_SUCCESS) return VK_NULL_HANDLE;
-            return sm;
+            out_shader = VK_NULL_HANDLE;
+            std::vector<char> code{};
+            if (!shs::vk_try_read_binary_file(path, code))
+            {
+                return false;
+            }
+            return shs::vk_try_create_shader_module(vk_->device(), code, out_shader);
         }
 
         uint64_t object_key(const shs::RenderItem& item, uint32_t draw_index) const
@@ -773,19 +762,6 @@ namespace
             t = Target{};
         }
 
-        uint32_t find_memory_type(uint32_t type_bits, VkMemoryPropertyFlags props) const
-        {
-            VkPhysicalDeviceMemoryProperties mp{};
-            vkGetPhysicalDeviceMemoryProperties(vk_->physical_device(), &mp);
-            for (uint32_t i = 0; i < mp.memoryTypeCount; ++i)
-            {
-                const bool type_ok = (type_bits & (1u << i)) != 0;
-                const bool prop_ok = (mp.memoryTypes[i].propertyFlags & props) == props;
-                if (type_ok && prop_ok) return i;
-            }
-            return UINT32_MAX;
-        }
-
         bool create_buffer(
             VkDeviceSize size,
             VkBufferUsageFlags usage,
@@ -794,44 +770,14 @@ namespace
             VkDeviceMemory& out_memory
         )
         {
-            out_buffer = VK_NULL_HANDLE;
-            out_memory = VK_NULL_HANDLE;
-            VkBufferCreateInfo bci{};
-            bci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-            bci.size = size;
-            bci.usage = usage;
-            bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-            if (vkCreateBuffer(vk_->device(), &bci, nullptr, &out_buffer) != VK_SUCCESS) return false;
-
-            VkMemoryRequirements req{};
-            vkGetBufferMemoryRequirements(vk_->device(), out_buffer, &req);
-            const uint32_t memory_type = find_memory_type(req.memoryTypeBits, props);
-            if (memory_type == UINT32_MAX)
-            {
-                vkDestroyBuffer(vk_->device(), out_buffer, nullptr);
-                out_buffer = VK_NULL_HANDLE;
-                return false;
-            }
-
-            VkMemoryAllocateInfo mai{};
-            mai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-            mai.allocationSize = req.size;
-            mai.memoryTypeIndex = memory_type;
-            if (vkAllocateMemory(vk_->device(), &mai, nullptr, &out_memory) != VK_SUCCESS)
-            {
-                vkDestroyBuffer(vk_->device(), out_buffer, nullptr);
-                out_buffer = VK_NULL_HANDLE;
-                return false;
-            }
-            if (vkBindBufferMemory(vk_->device(), out_buffer, out_memory, 0) != VK_SUCCESS)
-            {
-                vkFreeMemory(vk_->device(), out_memory, nullptr);
-                out_memory = VK_NULL_HANDLE;
-                vkDestroyBuffer(vk_->device(), out_buffer, nullptr);
-                out_buffer = VK_NULL_HANDLE;
-                return false;
-            }
-            return true;
+            return shs::vk_create_buffer(
+                vk_->device(),
+                vk_->physical_device(),
+                size,
+                usage,
+                props,
+                out_buffer,
+                out_memory);
         }
 
         bool create_image(
@@ -864,7 +810,10 @@ namespace
 
             VkMemoryRequirements req{};
             vkGetImageMemoryRequirements(vk_->device(), out.image, &req);
-            const uint32_t mt = find_memory_type(req.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+            const uint32_t mt = shs::vk_find_memory_type(
+                vk_->physical_device(),
+                req.memoryTypeBits,
+                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
             if (mt == UINT32_MAX)
             {
                 vkDestroyImage(vk_->device(), out.image, nullptr);
@@ -1009,6 +958,52 @@ namespace
                 dst_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
             }
 
+#if defined(VK_STRUCTURE_TYPE_DEPENDENCY_INFO) && \
+    defined(VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT) && \
+    defined(VK_PIPELINE_STAGE_2_TRANSFER_BIT) && \
+    defined(VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT)
+            if (vk_ && vk_->supports_synchronization2())
+            {
+                VkImageMemoryBarrier2 b2{};
+                b2.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+                b2.oldLayout = old_layout;
+                b2.newLayout = new_layout;
+                b2.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                b2.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                b2.image = image;
+                b2.subresourceRange = b.subresourceRange;
+
+                if (old_layout == VK_IMAGE_LAYOUT_UNDEFINED && new_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
+                {
+                    b2.srcStageMask = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
+                    b2.srcAccessMask = 0;
+                    b2.dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+                    b2.dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+                }
+                else if (old_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL &&
+                         new_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+                {
+                    b2.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+                    b2.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+                    b2.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+                    b2.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
+                }
+                else
+                {
+                    b2.srcStageMask = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
+                    b2.srcAccessMask = 0;
+                    b2.dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+                    b2.dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+                }
+
+                VkDependencyInfo dep{};
+                dep.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+                dep.imageMemoryBarrierCount = 1;
+                dep.pImageMemoryBarriers = &b2;
+                if (vk_->cmd_pipeline_barrier2(cmd, dep)) return;
+            }
+#endif
+
             vkCmdPipelineBarrier(
                 cmd,
                 src_stage,
@@ -1041,6 +1036,36 @@ namespace
             b.subresourceRange.levelCount = 1;
             b.subresourceRange.baseArrayLayer = 0;
             b.subresourceRange.layerCount = 1;
+
+#if defined(VK_STRUCTURE_TYPE_DEPENDENCY_INFO) && \
+    defined(VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT) && \
+    defined(VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT)
+            if (vk_ && vk_->supports_synchronization2())
+            {
+                VkImageMemoryBarrier2 b2{};
+                b2.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+                b2.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+                b2.srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+                b2.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+                b2.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
+                b2.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                b2.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                b2.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                b2.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                b2.image = image;
+                b2.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                b2.subresourceRange.baseMipLevel = 0;
+                b2.subresourceRange.levelCount = 1;
+                b2.subresourceRange.baseArrayLayer = 0;
+                b2.subresourceRange.layerCount = 1;
+
+                VkDependencyInfo dep{};
+                dep.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+                dep.imageMemoryBarrierCount = 1;
+                dep.pImageMemoryBarriers = &b2;
+                if (vk_->cmd_pipeline_barrier2(cmd, dep)) return;
+            }
+#endif
 
             vkCmdPipelineBarrier(
                 cmd,
@@ -2123,9 +2148,8 @@ namespace
 
         bool create_shadow_pipeline(shs::CullMode cull_mode, bool front_face_ccw)
         {
-            std::vector<char> vs_code = read_file(SHS_VK_PB_SHADOW_VERT_SPV);
-            VkShaderModule vs = create_shader_module(vk_->device(), vs_code);
-            if (vs == VK_NULL_HANDLE) return false;
+            VkShaderModule vs = VK_NULL_HANDLE;
+            if (!load_shader_module(SHS_VK_PB_SHADOW_VERT_SPV, vs)) return false;
 
             if (!create_pipeline_layout(shadow_pipeline_layout_, nullptr, 0, VK_SHADER_STAGE_VERTEX_BIT, sizeof(ShadowPush)))
             {
@@ -2211,14 +2235,12 @@ namespace
 
         bool create_scene_pipeline(shs::CullMode cull_mode, bool front_face_ccw)
         {
-            std::vector<char> vs_code = read_file(SHS_VK_PB_SCENE_VERT_SPV);
-            std::vector<char> fs_code = read_file(SHS_VK_PB_SCENE_FRAG_SPV);
-            VkShaderModule vs = create_shader_module(vk_->device(), vs_code);
-            VkShaderModule fs = create_shader_module(vk_->device(), fs_code);
-            if (vs == VK_NULL_HANDLE || fs == VK_NULL_HANDLE)
+            VkShaderModule vs = VK_NULL_HANDLE;
+            VkShaderModule fs = VK_NULL_HANDLE;
+            if (!load_shader_module(SHS_VK_PB_SCENE_VERT_SPV, vs)) return false;
+            if (!load_shader_module(SHS_VK_PB_SCENE_FRAG_SPV, fs))
             {
-                if (vs != VK_NULL_HANDLE) vkDestroyShaderModule(vk_->device(), vs, nullptr);
-                if (fs != VK_NULL_HANDLE) vkDestroyShaderModule(vk_->device(), fs, nullptr);
+                vkDestroyShaderModule(vk_->device(), vs, nullptr);
                 return false;
             }
 
@@ -2346,14 +2368,12 @@ namespace
             VkPipeline& out_pipeline,
             uint32_t color_attachment_count = 1)
         {
-            std::vector<char> vs_code = read_file(SHS_VK_PB_POST_VERT_SPV);
-            std::vector<char> fs_code = read_file(frag_path);
-            VkShaderModule vs = create_shader_module(vk_->device(), vs_code);
-            VkShaderModule fs = create_shader_module(vk_->device(), fs_code);
-            if (vs == VK_NULL_HANDLE || fs == VK_NULL_HANDLE)
+            VkShaderModule vs = VK_NULL_HANDLE;
+            VkShaderModule fs = VK_NULL_HANDLE;
+            if (!load_shader_module(SHS_VK_PB_POST_VERT_SPV, vs)) return false;
+            if (!load_shader_module(frag_path, fs))
             {
-                if (vs != VK_NULL_HANDLE) vkDestroyShaderModule(vk_->device(), vs, nullptr);
-                if (fs != VK_NULL_HANDLE) vkDestroyShaderModule(vk_->device(), fs, nullptr);
+                vkDestroyShaderModule(vk_->device(), vs, nullptr);
                 return false;
             }
 
@@ -2571,20 +2591,7 @@ namespace
 
         void cmd_set_viewport_scissor(VkCommandBuffer cmd, uint32_t w, uint32_t h, bool flip_y) const
         {
-            VkViewport vp{};
-            vp.x = 0.0f;
-            vp.y = flip_y ? static_cast<float>(h) : 0.0f;
-            vp.width = static_cast<float>(w);
-            vp.height = flip_y ? -static_cast<float>(h) : static_cast<float>(h);
-            vp.minDepth = 0.0f;
-            vp.maxDepth = 1.0f;
-
-            VkRect2D sc{};
-            sc.offset = {0, 0};
-            sc.extent = {w, h};
-
-            vkCmdSetViewport(cmd, 0, 1, &vp);
-            vkCmdSetScissor(cmd, 0, 1, &sc);
+            shs::vk_cmd_set_viewport_scissor(cmd, w, h, flip_y);
         }
 
         void begin_render_pass(

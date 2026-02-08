@@ -11,6 +11,8 @@
 
 
 #include <algorithm>
+#include <cmath>
+#include <cstdint>
 
 #include <glm/glm.hpp>
 
@@ -31,7 +33,8 @@ namespace shs
     inline LightCamera build_dir_light_camera_aabb(
         const glm::vec3& sun_dir_ws_norm,
         const AABB& scene_aabb_ws,
-        float extra_margin = 10.0f
+        float extra_margin = 10.0f,
+        uint32_t shadow_map_resolution = 2048u
     )
     {
         LightCamera lc{};
@@ -65,6 +68,30 @@ namespace shs
         const float m = extra_margin;
         l -= m; r += m; b -= m; t += m;
         n -= m; f += m;
+
+        // Stabilize directional shadows by snapping the ortho XY center
+        // to shadow texel increments in light space.
+        if (shadow_map_resolution > 0u)
+        {
+            const float span_x = std::max(r - l, 1e-5f);
+            const float span_y = std::max(t - b, 1e-5f);
+            const float inv_res = 1.0f / static_cast<float>(shadow_map_resolution);
+            const float texel_x = span_x * inv_res;
+            const float texel_y = span_y * inv_res;
+
+            float cx = 0.5f * (l + r);
+            float cy = 0.5f * (b + t);
+
+            if (texel_x > 1e-6f) cx = std::floor(cx / texel_x + 0.5f) * texel_x;
+            if (texel_y > 1e-6f) cy = std::floor(cy / texel_y + 0.5f) * texel_y;
+
+            const float hx = 0.5f * span_x;
+            const float hy = 0.5f * span_y;
+            l = cx - hx;
+            r = cx + hx;
+            b = cy - hy;
+            t = cy + hy;
+        }
 
         lc.proj = ortho_lh_no(l, r, b, t, n, f);
         lc.viewproj = lc.proj * lc.view;

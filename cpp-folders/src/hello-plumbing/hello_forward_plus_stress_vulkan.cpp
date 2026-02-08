@@ -8,7 +8,6 @@
 #include <cstdint>
 #include <cstring>
 #include <cstdio>
-#include <fstream>
 #include <memory>
 #include <random>
 #include <stdexcept>
@@ -38,6 +37,10 @@
 #include <shs/resources/resource_registry.hpp>
 #include <shs/rhi/backend/backend_factory.hpp>
 #include <shs/rhi/drivers/vulkan/vk_backend.hpp>
+#include <shs/rhi/drivers/vulkan/vk_cmd_utils.hpp>
+#include <shs/rhi/drivers/vulkan/vk_frame_ownership.hpp>
+#include <shs/rhi/drivers/vulkan/vk_memory_utils.hpp>
+#include <shs/rhi/drivers/vulkan/vk_shader_utils.hpp>
 
 namespace
 {
@@ -127,6 +130,17 @@ struct GpuBuffer
     void* mapped = nullptr;
 };
 
+struct FrameResources
+{
+    GpuBuffer camera_buffer{};
+    GpuBuffer light_buffer{};
+    GpuBuffer shadow_light_buffer{};
+    GpuBuffer tile_counts_buffer{};
+    GpuBuffer tile_indices_buffer{};
+    GpuBuffer tile_depth_ranges_buffer{};
+    VkDescriptorSet global_set = VK_NULL_HANDLE;
+};
+
 struct DepthTarget
 {
     VkImage image = VK_NULL_HANDLE;
@@ -169,36 +183,6 @@ struct LocalShadowCaster
     float outer_angle_rad = glm::radians(35.0f);
     float strength = 1.0f;
 };
-
-std::vector<char> read_file(const char* path)
-{
-    std::ifstream f(path, std::ios::ate | std::ios::binary);
-    if (!f.is_open()) throw std::runtime_error(std::string("Failed to open shader file: ") + path);
-    const size_t sz = static_cast<size_t>(f.tellg());
-    if (sz == 0) throw std::runtime_error(std::string("Empty shader file: ") + path);
-    std::vector<char> out(sz);
-    f.seekg(0);
-    f.read(out.data(), static_cast<std::streamsize>(sz));
-    return out;
-}
-
-VkShaderModule create_shader_module(VkDevice dev, const std::vector<char>& code)
-{
-    if (dev == VK_NULL_HANDLE || code.empty() || (code.size() % 4) != 0)
-    {
-        throw std::runtime_error("Invalid SPIR-V blob");
-    }
-    VkShaderModuleCreateInfo ci{};
-    ci.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    ci.codeSize = code.size();
-    ci.pCode = reinterpret_cast<const uint32_t*>(code.data());
-    VkShaderModule sm = VK_NULL_HANDLE;
-    if (vkCreateShaderModule(dev, &ci, nullptr, &sm) != VK_SUCCESS)
-    {
-        throw std::runtime_error("vkCreateShaderModule failed");
-    }
-    return sm;
-}
 
 bool profile_has_pass(const shs::TechniqueProfile& profile, const char* pass_id)
 {
@@ -432,6 +416,20 @@ private:
         visible_instance_count_ = static_cast<uint32_t>(instances_.size());
         floor_visible_ = true;
 
+        // Build a stable world-space caster bounds for sun shadow fitting.
+        // This avoids per-frame shadow frustum jitter from animation/camera culling.
+        shadow_scene_static_aabb_ = shs::transform_aabb(floor_local_aabb_, floor_model_);
+        constexpr float kMaxBobAmplitude = 0.28f;
+        for (const Instance& inst : instances_)
+        {
+            const float r = std::max(0.001f, sphere_local_bound_.radius * inst.scale);
+            const glm::vec3 minv = inst.base_pos + glm::vec3(-r, -r - kMaxBobAmplitude, -r);
+            const glm::vec3 maxv = inst.base_pos + glm::vec3( r,  r + kMaxBobAmplitude,  r);
+            shadow_scene_static_aabb_.expand(minv);
+            shadow_scene_static_aabb_.expand(maxv);
+        }
+        shadow_scene_static_bounds_ready_ = true;
+
         light_anim_.clear();
         light_anim_.reserve(kMaxLights);
         gpu_lights_.resize(kMaxLights);
@@ -575,19 +573,6 @@ private:
         worker_pools_.clear();
     }
 
-    uint32_t find_memory_type(uint32_t type_bits, VkMemoryPropertyFlags required)
-    {
-        VkPhysicalDeviceMemoryProperties mp{};
-        vkGetPhysicalDeviceMemoryProperties(vk_->physical_device(), &mp);
-        for (uint32_t i = 0; i < mp.memoryTypeCount; ++i)
-        {
-            const bool type_ok = (type_bits & (1u << i)) != 0;
-            const bool props_ok = (mp.memoryTypes[i].propertyFlags & required) == required;
-            if (type_ok && props_ok) return i;
-        }
-        throw std::runtime_error("No compatible Vulkan memory type found");
-    }
-
     void create_buffer(
         VkDeviceSize size,
         VkBufferUsageFlags usage,
@@ -596,31 +581,16 @@ private:
         bool map_memory)
     {
         destroy_buffer(out);
-
-        VkBufferCreateInfo bci{};
-        bci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        bci.size = size;
-        bci.usage = usage;
-        bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        if (vkCreateBuffer(vk_->device(), &bci, nullptr, &out.buffer) != VK_SUCCESS)
+        if (!shs::vk_create_buffer(
+                vk_->device(),
+                vk_->physical_device(),
+                size,
+                usage,
+                mem_flags,
+                out.buffer,
+                out.memory))
         {
-            throw std::runtime_error("vkCreateBuffer failed");
-        }
-
-        VkMemoryRequirements req{};
-        vkGetBufferMemoryRequirements(vk_->device(), out.buffer, &req);
-
-        VkMemoryAllocateInfo mai{};
-        mai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        mai.allocationSize = req.size;
-        mai.memoryTypeIndex = find_memory_type(req.memoryTypeBits, mem_flags);
-        if (vkAllocateMemory(vk_->device(), &mai, nullptr, &out.memory) != VK_SUCCESS)
-        {
-            throw std::runtime_error("vkAllocateMemory failed for buffer");
-        }
-        if (vkBindBufferMemory(vk_->device(), out.buffer, out.memory, 0) != VK_SUCCESS)
-        {
-            throw std::runtime_error("vkBindBufferMemory failed");
+            throw std::runtime_error("vk_create_buffer failed");
         }
 
         out.size = size;
@@ -628,6 +598,7 @@ private:
         {
             if (vkMapMemory(vk_->device(), out.memory, 0, size, 0, &out.mapped) != VK_SUCCESS)
             {
+                shs::vk_destroy_buffer(vk_->device(), out.buffer, out.memory);
                 throw std::runtime_error("vkMapMemory failed");
             }
         }
@@ -641,16 +612,7 @@ private:
             vkUnmapMemory(vk_->device(), b.memory);
             b.mapped = nullptr;
         }
-        if (b.buffer != VK_NULL_HANDLE)
-        {
-            vkDestroyBuffer(vk_->device(), b.buffer, nullptr);
-            b.buffer = VK_NULL_HANDLE;
-        }
-        if (b.memory != VK_NULL_HANDLE)
-        {
-            vkFreeMemory(vk_->device(), b.memory, nullptr);
-            b.memory = VK_NULL_HANDLE;
-        }
+        shs::vk_destroy_buffer(vk_->device(), b.buffer, b.memory);
         b.size = 0;
     }
 
@@ -695,27 +657,31 @@ private:
     {
         const VkMemoryPropertyFlags host_flags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 
-        create_buffer(
-            sizeof(CameraUBO),
-            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-            host_flags,
-            camera_buffer_,
-            true);
+        for (FrameResources& fr : frame_resources_)
+        {
+            create_buffer(
+                sizeof(CameraUBO),
+                VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                host_flags,
+                fr.camera_buffer,
+                true);
 
-        create_buffer(
-            static_cast<VkDeviceSize>(kMaxLights) * sizeof(shs::CullingLightGPU),
-            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-            host_flags,
-            light_buffer_,
-            true);
+            create_buffer(
+                static_cast<VkDeviceSize>(kMaxLights) * sizeof(shs::CullingLightGPU),
+                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                host_flags,
+                fr.light_buffer,
+                true);
 
-        create_buffer(
-            static_cast<VkDeviceSize>(kMaxLights) * sizeof(ShadowLightGPU),
-            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-            host_flags,
-            shadow_light_buffer_,
-            true);
-        std::memset(shadow_light_buffer_.mapped, 0, static_cast<size_t>(shadow_light_buffer_.size));
+            create_buffer(
+                static_cast<VkDeviceSize>(kMaxLights) * sizeof(ShadowLightGPU),
+                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                host_flags,
+                fr.shadow_light_buffer,
+                true);
+
+            std::memset(fr.shadow_light_buffer.mapped, 0, static_cast<size_t>(fr.shadow_light_buffer.size));
+        }
     }
 
     VkFormat choose_depth_format() const
@@ -730,18 +696,16 @@ private:
         {
             VkFormatProperties props{};
             vkGetPhysicalDeviceFormatProperties(vk_->physical_device(), fmt, &props);
-            if ((props.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0)
+            const VkFormatFeatureFlags need =
+                VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT |
+                VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT;
+            if ((props.optimalTilingFeatures & need) == need)
             {
                 return fmt;
             }
         }
 
         return VK_FORMAT_D32_SFLOAT;
-    }
-
-    bool has_stencil(VkFormat fmt) const
-    {
-        return fmt == VK_FORMAT_D24_UNORM_S8_UINT || fmt == VK_FORMAT_D32_SFLOAT_S8_UINT;
     }
 
     void destroy_depth_target()
@@ -810,7 +774,14 @@ private:
         VkMemoryAllocateInfo mai{};
         mai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         mai.allocationSize = req.size;
-        mai.memoryTypeIndex = find_memory_type(req.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        mai.memoryTypeIndex = shs::vk_find_memory_type(
+            vk_->physical_device(),
+            req.memoryTypeBits,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        if (mai.memoryTypeIndex == UINT32_MAX)
+        {
+            throw std::runtime_error("No compatible memory type for depth target");
+        }
         if (vkAllocateMemory(vk_->device(), &mai, nullptr, &depth_target_.memory) != VK_SUCCESS)
         {
             throw std::runtime_error("vkAllocateMemory failed for depth target");
@@ -826,7 +797,6 @@ private:
         iv.viewType = VK_IMAGE_VIEW_TYPE_2D;
         iv.format = depth_target_.format;
         iv.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-        if (has_stencil(depth_target_.format)) iv.subresourceRange.aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
         iv.subresourceRange.baseMipLevel = 0;
         iv.subresourceRange.levelCount = 1;
         iv.subresourceRange.baseArrayLayer = 0;
@@ -857,13 +827,13 @@ private:
         VkSubpassDependency deps[2]{};
         deps[0].srcSubpass = VK_SUBPASS_EXTERNAL;
         deps[0].dstSubpass = 0;
-        deps[0].srcStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+        deps[0].srcStageMask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
         deps[0].dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
         deps[0].dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 
         deps[1].srcSubpass = 0;
         deps[1].dstSubpass = VK_SUBPASS_EXTERNAL;
-        deps[1].srcStageMask = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+        deps[1].srcStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
         deps[1].srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
         deps[1].dstStageMask = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
         deps[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
@@ -973,7 +943,14 @@ private:
         VkMemoryAllocateInfo mai{};
         mai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         mai.allocationSize = req.size;
-        mai.memoryTypeIndex = find_memory_type(req.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        mai.memoryTypeIndex = shs::vk_find_memory_type(
+            vk_->physical_device(),
+            req.memoryTypeBits,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        if (mai.memoryTypeIndex == UINT32_MAX)
+        {
+            throw std::runtime_error("No compatible memory type for layered depth target");
+        }
         if (vkAllocateMemory(vk_->device(), &mai, nullptr, &out.memory) != VK_SUCCESS)
         {
             throw std::runtime_error("vkAllocateMemory failed for layered depth target");
@@ -989,7 +966,6 @@ private:
         sv.viewType = sampled_view_type;
         sv.format = out.format;
         sv.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-        if (has_stencil(out.format)) sv.subresourceRange.aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
         sv.subresourceRange.baseMipLevel = 0;
         sv.subresourceRange.levelCount = 1;
         sv.subresourceRange.baseArrayLayer = 0;
@@ -1020,13 +996,13 @@ private:
         VkSubpassDependency deps[2]{};
         deps[0].srcSubpass = VK_SUBPASS_EXTERNAL;
         deps[0].dstSubpass = 0;
-        deps[0].srcStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+        deps[0].srcStageMask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
         deps[0].dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
         deps[0].dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 
         deps[1].srcSubpass = 0;
         deps[1].dstSubpass = VK_SUBPASS_EXTERNAL;
-        deps[1].srcStageMask = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+        deps[1].srcStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
         deps[1].srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
         deps[1].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
         deps[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
@@ -1054,7 +1030,6 @@ private:
             iv.viewType = VK_IMAGE_VIEW_TYPE_2D;
             iv.format = out.format;
             iv.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-            if (has_stencil(out.format)) iv.subresourceRange.aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
             iv.subresourceRange.baseMipLevel = 0;
             iv.subresourceRange.levelCount = 1;
             iv.subresourceRange.baseArrayLayer = i;
@@ -1117,13 +1092,16 @@ private:
         const VkDeviceSize indices_size = counts_size * kMaxLightsPerTile;
         const VkDeviceSize depth_ranges_size = tile_count * sizeof(glm::vec2);
 
-        create_buffer(counts_size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, host_flags, tile_counts_buffer_, true);
-        create_buffer(indices_size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, host_flags, tile_indices_buffer_, true);
-        create_buffer(depth_ranges_size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, host_flags, tile_depth_ranges_buffer_, true);
+        for (FrameResources& fr : frame_resources_)
+        {
+            create_buffer(counts_size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, host_flags, fr.tile_counts_buffer, true);
+            create_buffer(indices_size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, host_flags, fr.tile_indices_buffer, true);
+            create_buffer(depth_ranges_size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, host_flags, fr.tile_depth_ranges_buffer, true);
 
-        std::memset(tile_counts_buffer_.mapped, 0, static_cast<size_t>(counts_size));
-        std::memset(tile_indices_buffer_.mapped, 0, static_cast<size_t>(indices_size));
-        std::memset(tile_depth_ranges_buffer_.mapped, 0, static_cast<size_t>(depth_ranges_size));
+            std::memset(fr.tile_counts_buffer.mapped, 0, static_cast<size_t>(counts_size));
+            std::memset(fr.tile_indices_buffer.mapped, 0, static_cast<size_t>(indices_size));
+            std::memset(fr.tile_depth_ranges_buffer.mapped, 0, static_cast<size_t>(depth_ranges_size));
+        }
     }
 
     void create_descriptor_resources()
@@ -1202,15 +1180,15 @@ private:
         {
             VkDescriptorPoolSize sizes[3]{};
             sizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-            sizes[0].descriptorCount = 8;
+            sizes[0].descriptorCount = kWorkerPoolRingSize;
             sizes[1].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-            sizes[1].descriptorCount = 96;
+            sizes[1].descriptorCount = 5u * kWorkerPoolRingSize;
             sizes[2].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            sizes[2].descriptorCount = 32;
+            sizes[2].descriptorCount = 4u * kWorkerPoolRingSize;
 
             VkDescriptorPoolCreateInfo ci{};
             ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-            ci.maxSets = 4;
+            ci.maxSets = kWorkerPoolRingSize;
             ci.poolSizeCount = 3;
             ci.pPoolSizes = sizes;
             if (vkCreateDescriptorPool(vk_->device(), &ci, nullptr, &descriptor_pool_) != VK_SUCCESS)
@@ -1219,52 +1197,26 @@ private:
             }
         }
 
-        if (global_set_ == VK_NULL_HANDLE)
+        if (frame_resources_.at_slot(0).global_set == VK_NULL_HANDLE)
         {
-            VkDescriptorSetAllocateInfo ai{};
-            ai.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-            ai.descriptorPool = descriptor_pool_;
-            ai.descriptorSetCount = 1;
-            ai.pSetLayouts = &global_set_layout_;
-            if (vkAllocateDescriptorSets(vk_->device(), &ai, &global_set_) != VK_SUCCESS)
+            std::array<VkDescriptorSet, kWorkerPoolRingSize> sets{};
+            if (!shs::vk_allocate_descriptor_set_ring<kWorkerPoolRingSize>(
+                    vk_->device(),
+                    descriptor_pool_,
+                    global_set_layout_,
+                    sets))
             {
                 throw std::runtime_error("vkAllocateDescriptorSets failed");
+            }
+            for (uint32_t i = 0; i < kWorkerPoolRingSize; ++i)
+            {
+                frame_resources_.at_slot(i).global_set = sets[i];
             }
         }
     }
 
-    void update_global_descriptor_set()
+    void update_global_descriptor_sets()
     {
-        VkDescriptorBufferInfo camera_info{};
-        camera_info.buffer = camera_buffer_.buffer;
-        camera_info.offset = 0;
-        camera_info.range = sizeof(CameraUBO);
-
-        VkDescriptorBufferInfo light_info{};
-        light_info.buffer = light_buffer_.buffer;
-        light_info.offset = 0;
-        light_info.range = static_cast<VkDeviceSize>(kMaxLights) * sizeof(shs::CullingLightGPU);
-
-        VkDescriptorBufferInfo tile_counts_info{};
-        tile_counts_info.buffer = tile_counts_buffer_.buffer;
-        tile_counts_info.offset = 0;
-        tile_counts_info.range = tile_counts_buffer_.size;
-
-        VkDescriptorBufferInfo tile_indices_info{};
-        tile_indices_info.buffer = tile_indices_buffer_.buffer;
-        tile_indices_info.offset = 0;
-        tile_indices_info.range = tile_indices_buffer_.size;
-
-        VkDescriptorBufferInfo tile_depth_ranges_info{};
-        tile_depth_ranges_info.buffer = tile_depth_ranges_buffer_.buffer;
-        tile_depth_ranges_info.offset = 0;
-        tile_depth_ranges_info.range = tile_depth_ranges_buffer_.size;
-
-        VkDescriptorBufferInfo shadow_light_info{};
-        shadow_light_info.buffer = shadow_light_buffer_.buffer;
-        shadow_light_info.offset = 0;
-        shadow_light_info.range = static_cast<VkDeviceSize>(kMaxLights) * sizeof(ShadowLightGPU);
-
         VkDescriptorImageInfo depth_info{};
         depth_info.sampler = depth_sampler_;
         depth_info.imageView = depth_target_.view;
@@ -1285,46 +1237,81 @@ private:
         point_shadow_info.imageView = local_shadow_target_.sampled_view;
         point_shadow_info.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
 
-        VkWriteDescriptorSet w[10]{};
-        for (int i = 0; i < 10; ++i)
+        for (FrameResources& fr : frame_resources_)
         {
-            w[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            w[i].dstSet = global_set_;
-            w[i].dstBinding = static_cast<uint32_t>(i);
-            w[i].descriptorCount = 1;
+            if (fr.global_set == VK_NULL_HANDLE) continue;
+
+            VkDescriptorBufferInfo camera_info{};
+            camera_info.buffer = fr.camera_buffer.buffer;
+            camera_info.offset = 0;
+            camera_info.range = sizeof(CameraUBO);
+
+            VkDescriptorBufferInfo light_info{};
+            light_info.buffer = fr.light_buffer.buffer;
+            light_info.offset = 0;
+            light_info.range = static_cast<VkDeviceSize>(kMaxLights) * sizeof(shs::CullingLightGPU);
+
+            VkDescriptorBufferInfo tile_counts_info{};
+            tile_counts_info.buffer = fr.tile_counts_buffer.buffer;
+            tile_counts_info.offset = 0;
+            tile_counts_info.range = fr.tile_counts_buffer.size;
+
+            VkDescriptorBufferInfo tile_indices_info{};
+            tile_indices_info.buffer = fr.tile_indices_buffer.buffer;
+            tile_indices_info.offset = 0;
+            tile_indices_info.range = fr.tile_indices_buffer.size;
+
+            VkDescriptorBufferInfo tile_depth_ranges_info{};
+            tile_depth_ranges_info.buffer = fr.tile_depth_ranges_buffer.buffer;
+            tile_depth_ranges_info.offset = 0;
+            tile_depth_ranges_info.range = fr.tile_depth_ranges_buffer.size;
+
+            VkDescriptorBufferInfo shadow_light_info{};
+            shadow_light_info.buffer = fr.shadow_light_buffer.buffer;
+            shadow_light_info.offset = 0;
+            shadow_light_info.range = static_cast<VkDeviceSize>(kMaxLights) * sizeof(ShadowLightGPU);
+
+            VkWriteDescriptorSet w[10]{};
+            for (int i = 0; i < 10; ++i)
+            {
+                w[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                w[i].dstSet = fr.global_set;
+                w[i].dstBinding = static_cast<uint32_t>(i);
+                w[i].descriptorCount = 1;
+            }
+
+            w[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            w[0].pBufferInfo = &camera_info;
+
+            w[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            w[1].pBufferInfo = &light_info;
+
+            w[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            w[2].pBufferInfo = &tile_counts_info;
+
+            w[3].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            w[3].pBufferInfo = &tile_indices_info;
+
+            w[4].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            w[4].pBufferInfo = &tile_depth_ranges_info;
+
+            w[5].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            w[5].pImageInfo = &depth_info;
+
+            w[6].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            w[6].pImageInfo = &sun_shadow_info;
+
+            w[7].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            w[7].pImageInfo = &local_shadow_info;
+
+            w[8].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            w[8].pImageInfo = &point_shadow_info;
+
+            w[9].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            w[9].pBufferInfo = &shadow_light_info;
+
+            vkUpdateDescriptorSets(vk_->device(), 10, w, 0, nullptr);
         }
-
-        w[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        w[0].pBufferInfo = &camera_info;
-
-        w[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        w[1].pBufferInfo = &light_info;
-
-        w[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        w[2].pBufferInfo = &tile_counts_info;
-
-        w[3].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        w[3].pBufferInfo = &tile_indices_info;
-
-        w[4].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        w[4].pBufferInfo = &tile_depth_ranges_info;
-
-        w[5].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        w[5].pImageInfo = &depth_info;
-
-        w[6].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        w[6].pImageInfo = &sun_shadow_info;
-
-        w[7].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        w[7].pImageInfo = &local_shadow_info;
-
-        w[8].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        w[8].pImageInfo = &point_shadow_info;
-
-        w[9].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        w[9].pBufferInfo = &shadow_light_info;
-
-        vkUpdateDescriptorSets(vk_->device(), 10, w, 0, nullptr);
     }
 
     void destroy_pipelines()
@@ -1367,17 +1354,17 @@ private:
 
         destroy_pipelines();
 
-        const std::vector<char> shadow_vs_code = read_file(SHS_VK_FP_SHADOW_VERT_SPV);
-        const std::vector<char> scene_vs_code = read_file(SHS_VK_FP_SCENE_VERT_SPV);
-        const std::vector<char> scene_fs_code = read_file(SHS_VK_FP_SCENE_FRAG_SPV);
-        const std::vector<char> depth_reduce_cs_code = read_file(SHS_VK_FP_DEPTH_REDUCE_COMP_SPV);
-        const std::vector<char> cull_cs_code = read_file(SHS_VK_FP_LIGHT_CULL_COMP_SPV);
+        const std::vector<char> shadow_vs_code = shs::vk_read_binary_file(SHS_VK_FP_SHADOW_VERT_SPV);
+        const std::vector<char> scene_vs_code = shs::vk_read_binary_file(SHS_VK_FP_SCENE_VERT_SPV);
+        const std::vector<char> scene_fs_code = shs::vk_read_binary_file(SHS_VK_FP_SCENE_FRAG_SPV);
+        const std::vector<char> depth_reduce_cs_code = shs::vk_read_binary_file(SHS_VK_FP_DEPTH_REDUCE_COMP_SPV);
+        const std::vector<char> cull_cs_code = shs::vk_read_binary_file(SHS_VK_FP_LIGHT_CULL_COMP_SPV);
 
-        VkShaderModule shadow_vs = create_shader_module(vk_->device(), shadow_vs_code);
-        VkShaderModule scene_vs = create_shader_module(vk_->device(), scene_vs_code);
-        VkShaderModule scene_fs = create_shader_module(vk_->device(), scene_fs_code);
-        VkShaderModule depth_reduce_cs = create_shader_module(vk_->device(), depth_reduce_cs_code);
-        VkShaderModule cull_cs = create_shader_module(vk_->device(), cull_cs_code);
+        VkShaderModule shadow_vs = shs::vk_create_shader_module(vk_->device(), shadow_vs_code);
+        VkShaderModule scene_vs = shs::vk_create_shader_module(vk_->device(), scene_vs_code);
+        VkShaderModule scene_fs = shs::vk_create_shader_module(vk_->device(), scene_fs_code);
+        VkShaderModule depth_reduce_cs = shs::vk_create_shader_module(vk_->device(), depth_reduce_cs_code);
+        VkShaderModule cull_cs = shs::vk_create_shader_module(vk_->device(), cull_cs_code);
 
         const auto cleanup_modules = [&]() {
             if (shadow_vs != VK_NULL_HANDLE) vkDestroyShaderModule(vk_->device(), shadow_vs, nullptr);
@@ -1630,7 +1617,7 @@ private:
         tile_w_ = (w + kTileSize - 1) / kTileSize;
         tile_h_ = (h + kTileSize - 1) / kTileSize;
         create_or_resize_tile_buffers(tile_w_, tile_h_);
-        update_global_descriptor_set();
+        update_global_descriptor_sets();
         create_pipelines(true);
     }
 
@@ -1648,7 +1635,7 @@ private:
         }
         const shs::TechniqueProfile profile = shs::make_default_technique_profile(mode);
 
-        enable_depth_prepass_ = profile_has_pass(profile, "depth_prepass");
+        profile_depth_prepass_enabled_ = profile_has_pass(profile, "depth_prepass");
         enable_light_culling_ = profile_has_pass(profile, "light_culling");
 
         shs::LightCullingMode mode_hint = default_culling_mode_for_technique(mode);
@@ -1672,6 +1659,7 @@ private:
         enable_scene_pass_ = has_forward_lighting || has_deferred_lighting || profile_has_pass(profile, "gbuffer");
         if (!enable_scene_pass_) enable_scene_pass_ = true;
 
+        refresh_depth_prepass_state();
         use_forward_plus_ = (culling_mode_ != shs::LightCullingMode::None);
         technique_switch_accum_sec_ = 0.0f;
     }
@@ -1710,6 +1698,7 @@ private:
         }
 
         culling_mode_ = enable_light_culling_ ? manual_culling_mode_ : shs::LightCullingMode::None;
+        refresh_depth_prepass_state();
     }
 
     void clear_culling_override_mode()
@@ -1718,11 +1707,29 @@ private:
         culling_mode_ = enable_light_culling_ ?
             default_culling_mode_for_technique(active_technique_) :
             shs::LightCullingMode::None;
+        refresh_depth_prepass_state();
     }
 
-    void update_culling_debug_stats()
+    void refresh_depth_prepass_state()
     {
-        if (!tile_counts_buffer_.mapped || tile_counts_buffer_.size < sizeof(uint32_t) || tile_w_ == 0 || tile_h_ == 0)
+        const bool needs_depth_for_culling =
+            enable_light_culling_ &&
+            culling_mode_ == shs::LightCullingMode::TiledDepthRange;
+        enable_depth_prepass_ = profile_depth_prepass_enabled_ || needs_depth_for_culling;
+    }
+
+    void update_culling_debug_stats(uint32_t frame_slot)
+    {
+        if (!frame_resources_.valid_slot(frame_slot) || tile_w_ == 0 || tile_h_ == 0)
+        {
+            cull_debug_total_refs_ = 0;
+            cull_debug_non_empty_lists_ = 0;
+            cull_debug_list_count_ = 0;
+            cull_debug_max_list_size_ = 0;
+            return;
+        }
+        const GpuBuffer& tile_counts_buffer = frame_resources_.at_slot(frame_slot).tile_counts_buffer;
+        if (!tile_counts_buffer.mapped || tile_counts_buffer.size < sizeof(uint32_t))
         {
             cull_debug_total_refs_ = 0;
             cull_debug_non_empty_lists_ = 0;
@@ -1736,10 +1743,10 @@ private:
         {
             list_count *= kClusterZSlices;
         }
-        const uint32_t capacity = static_cast<uint32_t>(tile_counts_buffer_.size / sizeof(uint32_t));
+        const uint32_t capacity = static_cast<uint32_t>(tile_counts_buffer.size / sizeof(uint32_t));
         list_count = std::min(list_count, capacity);
 
-        const uint32_t* counts = reinterpret_cast<const uint32_t*>(tile_counts_buffer_.mapped);
+        const uint32_t* counts = reinterpret_cast<const uint32_t*>(tile_counts_buffer.mapped);
         uint64_t total_refs = 0;
         uint32_t non_empty = 0;
         uint32_t max_list = 0;
@@ -1778,7 +1785,7 @@ private:
         floor_visible_ = shs::intersects_frustum_aabb(frustum, floor_ws);
     }
 
-    void update_frame_data(float dt, float t, uint32_t w, uint32_t h)
+    void update_frame_data(float dt, float t, uint32_t w, uint32_t h, uint32_t frame_slot)
     {
         (void)dt;
 
@@ -1815,31 +1822,21 @@ private:
         const shs::Frustum camera_frustum = shs::extract_frustum_planes(camera_ubo_.view_proj);
         update_visibility_from_frustum(camera_frustum);
 
-        shs::AABB shadow_scene_aabb{};
-        bool has_shadow_bounds = false;
-        if (floor_visible_)
-        {
-            const shs::AABB floor_ws = shs::transform_aabb(floor_local_aabb_, floor_model_);
-            shadow_scene_aabb.expand(floor_ws.minv);
-            shadow_scene_aabb.expand(floor_ws.maxv);
-            has_shadow_bounds = true;
-        }
-        for (size_t i = 0; i < instance_models_.size(); ++i)
-        {
-            if (i >= instance_visible_mask_.size() || instance_visible_mask_[i] == 0u) continue;
-            const shs::Sphere ws_sphere = shs::transform_sphere(sphere_local_bound_, instance_models_[i]);
-            shadow_scene_aabb.expand(ws_sphere.center - glm::vec3(ws_sphere.radius));
-            shadow_scene_aabb.expand(ws_sphere.center + glm::vec3(ws_sphere.radius));
-            has_shadow_bounds = true;
-        }
-        if (!has_shadow_bounds)
+        shs::AABB shadow_scene_aabb = shadow_scene_static_bounds_ready_
+            ? shadow_scene_static_aabb_
+            : shs::AABB{};
+        if (!shadow_scene_static_bounds_ready_)
         {
             shadow_scene_aabb.expand(glm::vec3(-1.0f));
             shadow_scene_aabb.expand(glm::vec3(1.0f));
         }
 
         const glm::vec3 sun_dir = glm::normalize(glm::vec3(camera_ubo_.sun_dir_intensity));
-        const shs::LightCamera sun_cam = shs::build_dir_light_camera_aabb(sun_dir, shadow_scene_aabb, 14.0f);
+        const shs::LightCamera sun_cam = shs::build_dir_light_camera_aabb(
+            sun_dir,
+            shadow_scene_aabb,
+            14.0f,
+            kSunShadowMapSize);
         sun_shadow_view_proj_ = sun_cam.viewproj;
         camera_ubo_.sun_shadow_view_proj = sun_shadow_view_proj_;
 
@@ -1864,6 +1861,23 @@ private:
         uint32_t used_point_shadow = 0;
         uint32_t used_rect_shadow = 0;
         uint32_t used_tube_shadow = 0;
+
+        const auto light_in_frustum = [&](const shs::Sphere& bounds) -> bool {
+            shs::Sphere s = bounds;
+            if (culling_mode_ == shs::LightCullingMode::TiledDepthRange)
+            {
+                // Keep tiled-depth conservative enough to avoid edge popping,
+                // but still frustum-bound so light distribution matches other modes.
+                s.radius = std::max(s.radius * 1.20f, s.radius + 0.75f);
+            }
+            else
+            {
+                // Slightly conservative light visibility to avoid edge flicker
+                // when culling animated/orbiting lights against the camera frustum.
+                s.radius = std::max(s.radius * 1.08f, s.radius + 0.25f);
+            }
+            return shs::intersects_frustum_sphere(camera_frustum, s);
+        };
 
         light_set_.clear_local_lights();
         const uint32_t lc = std::min<uint32_t>(active_light_count_, static_cast<uint32_t>(light_anim_.size()));
@@ -1894,7 +1908,7 @@ private:
                     l.inner_angle_rad = la.spot_inner_outer.x;
                     l.outer_angle_rad = la.spot_inner_outer.y;
                     const shs::Sphere light_bounds = shs::spot_light_culling_sphere(l);
-                    visible_light = shs::intersects_frustum_sphere(camera_frustum, light_bounds);
+                    visible_light = light_in_frustum(light_bounds);
                     if (!visible_light) break;
                     const uint32_t light_index = visible_light_count;
                     if (shadow_settings_.enable &&
@@ -1950,7 +1964,7 @@ private:
                     l.right_ws = la.rect_right_ws;
                     l.half_extents = glm::vec2(la.shape_params.x, la.shape_params.y);
                     const shs::Sphere light_bounds = shs::rect_area_light_culling_sphere(l);
-                    visible_light = shs::intersects_frustum_sphere(camera_frustum, light_bounds);
+                    visible_light = light_in_frustum(light_bounds);
                     if (!visible_light) break;
                     const uint32_t light_index = visible_light_count;
                     if (shadow_settings_.enable &&
@@ -2009,7 +2023,7 @@ private:
                     l.half_length = la.shape_params.x;
                     l.radius = la.shape_params.y;
                     const shs::Sphere light_bounds = shs::tube_area_light_culling_sphere(l);
-                    visible_light = shs::intersects_frustum_sphere(camera_frustum, light_bounds);
+                    visible_light = light_in_frustum(light_bounds);
                     if (!visible_light) break;
                     const uint32_t light_index = visible_light_count;
                     if (shadow_settings_.enable &&
@@ -2067,7 +2081,7 @@ private:
                     l.common.attenuation_cutoff = la.attenuation_cutoff;
                     l.common.flags = shs::LightFlagsDefault;
                     const shs::Sphere light_bounds = shs::point_light_culling_sphere(l);
-                    visible_light = shs::intersects_frustum_sphere(camera_frustum, light_bounds);
+                    visible_light = light_in_frustum(light_bounds);
                     if (!visible_light) break;
                     const uint32_t light_index = visible_light_count;
                     if (shadow_settings_.enable &&
@@ -2109,13 +2123,18 @@ private:
         }
         visible_light_count_ = visible_light_count;
         camera_ubo_.screen_tile_lightcount.w = visible_light_count_;
-        std::memcpy(camera_buffer_.mapped, &camera_ubo_, sizeof(CameraUBO));
+        if (!frame_resources_.valid_slot(frame_slot))
+        {
+            throw std::runtime_error("Invalid frame slot for dynamic uploads");
+        }
+        FrameResources& fr = frame_resources_.at_slot(frame_slot);
+        std::memcpy(fr.camera_buffer.mapped, &camera_ubo_, sizeof(CameraUBO));
 
         if (visible_light_count_ > 0u)
         {
-            std::memcpy(light_buffer_.mapped, gpu_lights_.data(), static_cast<size_t>(visible_light_count_) * sizeof(shs::CullingLightGPU));
+            std::memcpy(fr.light_buffer.mapped, gpu_lights_.data(), static_cast<size_t>(visible_light_count_) * sizeof(shs::CullingLightGPU));
         }
-        std::memcpy(shadow_light_buffer_.mapped, shadow_lights_gpu_.data(), static_cast<size_t>(kMaxLights) * sizeof(ShadowLightGPU));
+        std::memcpy(fr.shadow_light_buffer.mapped, shadow_lights_gpu_.data(), static_cast<size_t>(kMaxLights) * sizeof(ShadowLightGPU));
 
         point_count_active_ = static_cast<uint32_t>(light_set_.points.size());
         spot_count_active_ = static_cast<uint32_t>(light_set_.spots.size());
@@ -2160,18 +2179,7 @@ private:
 
     void set_viewport_scissor(VkCommandBuffer cmd, uint32_t w, uint32_t h, bool flip_y)
     {
-        VkViewport vp{};
-        vp.x = 0.0f;
-        vp.y = flip_y ? static_cast<float>(h) : 0.0f;
-        vp.width = static_cast<float>(w);
-        vp.height = flip_y ? -static_cast<float>(h) : static_cast<float>(h);
-        vp.minDepth = 0.0f;
-        vp.maxDepth = 1.0f;
-        VkRect2D sc{};
-        sc.offset = {0, 0};
-        sc.extent = {w, h};
-        vkCmdSetViewport(cmd, 0, 1, &vp);
-        vkCmdSetScissor(cmd, 0, 1, &sc);
+        shs::vk_cmd_set_viewport_scissor(cmd, w, h, flip_y);
     }
 
     void begin_render_pass_shadow(
@@ -2240,7 +2248,7 @@ private:
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadow_pipeline_);
 
         const VkDeviceSize vb_off = 0;
-        if (floor_visible_)
+        if (!floor_indices_.empty() && floor_vertex_buffer_.buffer != VK_NULL_HANDLE)
         {
             vkCmdBindVertexBuffers(cmd, 0, 1, &floor_vertex_buffer_.buffer, &vb_off);
             vkCmdBindIndexBuffer(cmd, floor_index_buffer_.buffer, 0, VK_INDEX_TYPE_UINT32);
@@ -2255,7 +2263,6 @@ private:
         vkCmdBindIndexBuffer(cmd, index_buffer_.buffer, 0, VK_INDEX_TYPE_UINT32);
         for (uint32_t i = 0; i < static_cast<uint32_t>(instances_.size()); ++i)
         {
-            if (i >= instance_visible_mask_.size() || instance_visible_mask_[i] == 0u) continue;
             ShadowPush pc{};
             pc.light_view_proj = light_view_proj;
             pc.model = instance_models_[i];
@@ -2359,8 +2366,10 @@ private:
     {
         out = VK_NULL_HANDLE;
         if (start >= end && !draw_floor_here) return true;
-        if (frame_slot >= kWorkerPoolRingSize) return false;
+        if (!frame_resources_.valid_slot(frame_slot)) return false;
         if (worker_idx >= worker_pools_.size()) return false;
+        const VkDescriptorSet global_set = frame_resources_.at_slot(frame_slot).global_set;
+        if (global_set == VK_NULL_HANDLE) return false;
         const VkCommandPool pool = worker_pools_[worker_idx].pools[frame_slot];
         if (pool == VK_NULL_HANDLE) return false;
 
@@ -2388,7 +2397,7 @@ private:
 
         set_viewport_scissor(out, w, h, flip_y);
         vkCmdBindPipeline(out, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
-        vkCmdBindDescriptorSets(out, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &global_set_, 0, nullptr);
+        vkCmdBindDescriptorSets(out, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &global_set, 0, nullptr);
         if (draw_floor_here) draw_floor(out, layout);
         if (start < end) draw_sphere_range(out, layout, start, end);
 
@@ -2454,7 +2463,7 @@ private:
 
     bool reset_worker_pools_for_frame(uint32_t frame_slot)
     {
-        if (frame_slot >= kWorkerPoolRingSize) return false;
+        if (!frame_resources_.valid_slot(frame_slot)) return false;
         if (!use_multithread_recording_ || !jobs_ || worker_pools_.empty() || instances_.empty()) return true;
 
         const uint32_t workers = std::min<uint32_t>(static_cast<uint32_t>(worker_pools_.size()), static_cast<uint32_t>(instances_.size()));
@@ -2469,22 +2478,113 @@ private:
         return true;
     }
 
-    void record_inline_scene(VkCommandBuffer cmd, VkPipeline pipeline, VkPipelineLayout layout, uint32_t w, uint32_t h)
+    void record_inline_scene(VkCommandBuffer cmd, VkPipeline pipeline, VkPipelineLayout layout, uint32_t w, uint32_t h, uint32_t frame_slot)
     {
+        if (!frame_resources_.valid_slot(frame_slot)) throw std::runtime_error("Invalid frame slot for scene recording");
+        const VkDescriptorSet global_set = frame_resources_.at_slot(frame_slot).global_set;
+        if (global_set == VK_NULL_HANDLE) throw std::runtime_error("Scene descriptor set unavailable");
         set_viewport_scissor(cmd, w, h, true);
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &global_set_, 0, nullptr);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &global_set, 0, nullptr);
         draw_floor(cmd, layout);
         draw_sphere_range(cmd, layout, 0, static_cast<uint32_t>(instances_.size()));
     }
 
-    void record_inline_depth(VkCommandBuffer cmd, VkPipeline pipeline, VkPipelineLayout layout, uint32_t w, uint32_t h)
+    void record_inline_depth(VkCommandBuffer cmd, VkPipeline pipeline, VkPipelineLayout layout, uint32_t w, uint32_t h, uint32_t frame_slot)
     {
+        if (!frame_resources_.valid_slot(frame_slot)) throw std::runtime_error("Invalid frame slot for depth recording");
+        const VkDescriptorSet global_set = frame_resources_.at_slot(frame_slot).global_set;
+        if (global_set == VK_NULL_HANDLE) throw std::runtime_error("Depth descriptor set unavailable");
         set_viewport_scissor(cmd, w, h, true);
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &global_set_, 0, nullptr);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &global_set, 0, nullptr);
         draw_floor(cmd, layout);
         draw_sphere_range(cmd, layout, 0, static_cast<uint32_t>(instances_.size()));
+    }
+
+    VkPipelineStageFlags2 stage_flags_to_stage2(VkPipelineStageFlags stages) const
+    {
+        (void)stages;
+        VkPipelineStageFlags2 out = 0;
+#if defined(VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT)
+        if ((stages & VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT) != 0) out |= VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
+#endif
+#if defined(VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT)
+        if ((stages & VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT) != 0) out |= VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT;
+#endif
+#if defined(VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT)
+        if ((stages & VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT) != 0) out |= VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
+#endif
+#if defined(VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT)
+        if ((stages & VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT) != 0) out |= VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+#endif
+#if defined(VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT)
+        if ((stages & VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT) != 0) out |= VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+#endif
+#if defined(VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT)
+        if (out == 0) out = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+#endif
+        return out;
+    }
+
+    VkAccessFlags2 access_flags_to_access2(VkAccessFlags access) const
+    {
+        (void)access;
+        VkAccessFlags2 out = 0;
+#if defined(VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT)
+        if ((access & VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT) != 0) out |= VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+#endif
+#if defined(VK_ACCESS_2_SHADER_READ_BIT)
+        if ((access & VK_ACCESS_SHADER_READ_BIT) != 0) out |= VK_ACCESS_2_SHADER_READ_BIT;
+#endif
+#if defined(VK_ACCESS_2_SHADER_WRITE_BIT)
+        if ((access & VK_ACCESS_SHADER_WRITE_BIT) != 0) out |= VK_ACCESS_2_SHADER_WRITE_BIT;
+#endif
+        return out;
+    }
+
+    void cmd_memory_barrier(
+        VkCommandBuffer cmd,
+        VkPipelineStageFlags src_stage,
+        VkAccessFlags src_access,
+        VkPipelineStageFlags dst_stage,
+        VkAccessFlags dst_access)
+    {
+        if (cmd == VK_NULL_HANDLE) return;
+
+#if defined(VK_STRUCTURE_TYPE_DEPENDENCY_INFO) && defined(VK_STRUCTURE_TYPE_MEMORY_BARRIER_2)
+        if (vk_ && vk_->supports_synchronization2())
+        {
+            VkMemoryBarrier2 b2{};
+            b2.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2;
+            b2.srcStageMask = stage_flags_to_stage2(src_stage);
+            b2.srcAccessMask = access_flags_to_access2(src_access);
+            b2.dstStageMask = stage_flags_to_stage2(dst_stage);
+            b2.dstAccessMask = access_flags_to_access2(dst_access);
+
+            VkDependencyInfo dep{};
+            dep.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+            dep.memoryBarrierCount = 1;
+            dep.pMemoryBarriers = &b2;
+            if (vk_->cmd_pipeline_barrier2(cmd, dep)) return;
+        }
+#endif
+
+        VkMemoryBarrier b{};
+        b.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+        b.srcAccessMask = src_access;
+        b.dstAccessMask = dst_access;
+        vkCmdPipelineBarrier(
+            cmd,
+            src_stage,
+            dst_stage,
+            0,
+            1,
+            &b,
+            0,
+            nullptr,
+            0,
+            nullptr);
     }
 
     void draw_frame(float dt, float t)
@@ -2509,16 +2609,21 @@ private:
             SDL_Delay(2);
             return;
         }
-        const uint32_t frame_slot = static_cast<uint32_t>(frame.frame_index % kWorkerPoolRingSize);
+        const uint32_t frame_slot = shs::vk_frame_slot(frame.frame_index, kWorkerPoolRingSize);
+        const VkDescriptorSet global_set = frame_resources_.at_slot(frame_slot).global_set;
+        if (global_set == VK_NULL_HANDLE)
+        {
+            throw std::runtime_error("Frame descriptor set unavailable");
+        }
 
         ensure_render_targets(fi.extent.width, fi.extent.height);
         if (pipeline_gen_ != vk_->swapchain_generation())
         {
             create_pipelines(true);
         }
-        update_culling_debug_stats();
+        update_culling_debug_stats(frame_slot);
 
-        update_frame_data(dt, t, fi.extent.width, fi.extent.height);
+        update_frame_data(dt, t, fi.extent.width, fi.extent.height, frame_slot);
 
         std::vector<VkCommandBuffer> depth_secondaries{};
         std::vector<VkCommandBuffer> scene_secondaries{};
@@ -2571,21 +2676,12 @@ private:
 
         record_shadow_passes(fi.cmd);
 
-        VkMemoryBarrier shadow_to_sample{};
-        shadow_to_sample.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-        shadow_to_sample.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-        shadow_to_sample.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-        vkCmdPipelineBarrier(
+        cmd_memory_barrier(
             fi.cmd,
-            VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+            VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+            VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
             VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-            0,
-            1,
-            &shadow_to_sample,
-            0,
-            nullptr,
-            0,
-            nullptr);
+            VK_ACCESS_SHADER_READ_BIT);
 
         if (enable_depth_prepass_)
         {
@@ -2608,72 +2704,47 @@ private:
                 rp.clearValueCount = 1;
                 rp.pClearValues = &clear;
                 vkCmdBeginRenderPass(fi.cmd, &rp, VK_SUBPASS_CONTENTS_INLINE);
-                record_inline_depth(fi.cmd, depth_pipeline_, depth_pipeline_layout_, depth_target_.w, depth_target_.h);
+                record_inline_depth(fi.cmd, depth_pipeline_, depth_pipeline_layout_, depth_target_.w, depth_target_.h, frame_slot);
                 vkCmdEndRenderPass(fi.cmd);
             }
         }
 
         if (enable_light_culling_)
         {
-            VkMemoryBarrier pre{};
-            pre.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-            pre.srcAccessMask = enable_depth_prepass_ ? VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT : 0u;
-            pre.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-            vkCmdPipelineBarrier(
+            cmd_memory_barrier(
                 fi.cmd,
-                enable_depth_prepass_ ? VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                enable_depth_prepass_
+                    ? (VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT)
+                    : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                enable_depth_prepass_ ? VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT : 0u,
                 VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                0,
-                1,
-                &pre,
-                0,
-                nullptr,
-                0,
-                nullptr);
+                VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
 
             if (culling_mode_ == shs::LightCullingMode::TiledDepthRange)
             {
                 vkCmdBindPipeline(fi.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, depth_reduce_pipeline_);
-                vkCmdBindDescriptorSets(fi.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, compute_pipeline_layout_, 0, 1, &global_set_, 0, nullptr);
+                vkCmdBindDescriptorSets(fi.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, compute_pipeline_layout_, 0, 1, &global_set, 0, nullptr);
                 vkCmdDispatch(fi.cmd, tile_w_, tile_h_, 1);
 
-                VkMemoryBarrier reduce_to_cull{};
-                reduce_to_cull.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-                reduce_to_cull.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-                reduce_to_cull.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-                vkCmdPipelineBarrier(
+                cmd_memory_barrier(
                     fi.cmd,
                     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                    VK_ACCESS_SHADER_WRITE_BIT,
                     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                    0,
-                    1,
-                    &reduce_to_cull,
-                    0,
-                    nullptr,
-                    0,
-                    nullptr);
+                    VK_ACCESS_SHADER_READ_BIT);
             }
 
             vkCmdBindPipeline(fi.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, compute_pipeline_);
-            vkCmdBindDescriptorSets(fi.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, compute_pipeline_layout_, 0, 1, &global_set_, 0, nullptr);
+            vkCmdBindDescriptorSets(fi.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, compute_pipeline_layout_, 0, 1, &global_set, 0, nullptr);
             const uint32_t dispatch_z = (culling_mode_ == shs::LightCullingMode::Clustered) ? kClusterZSlices : 1u;
             vkCmdDispatch(fi.cmd, tile_w_, tile_h_, dispatch_z);
 
-            VkMemoryBarrier post{};
-            post.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-            post.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-            post.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-            vkCmdPipelineBarrier(
+            cmd_memory_barrier(
                 fi.cmd,
                 VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                VK_ACCESS_SHADER_WRITE_BIT,
                 VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-                0,
-                1,
-                &post,
-                0,
-                nullptr,
-                0,
-                nullptr);
+                VK_ACCESS_SHADER_READ_BIT);
         }
 
         if (enable_scene_pass_)
@@ -2700,7 +2771,7 @@ private:
                 rp.pClearValues = clear;
 
                 vkCmdBeginRenderPass(fi.cmd, &rp, VK_SUBPASS_CONTENTS_INLINE);
-                record_inline_scene(fi.cmd, scene_pipeline_, scene_pipeline_layout_, fi.extent.width, fi.extent.height);
+                record_inline_scene(fi.cmd, scene_pipeline_, scene_pipeline_layout_, fi.extent.width, fi.extent.height, frame_slot);
                 vkCmdEndRenderPass(fi.cmd);
             }
         }
@@ -2886,12 +2957,16 @@ private:
         destroy_layered_depth_target(sun_shadow_target_);
         destroy_layered_depth_target(local_shadow_target_);
 
-        destroy_buffer(tile_depth_ranges_buffer_);
-        destroy_buffer(tile_indices_buffer_);
-        destroy_buffer(tile_counts_buffer_);
-        destroy_buffer(shadow_light_buffer_);
-        destroy_buffer(light_buffer_);
-        destroy_buffer(camera_buffer_);
+        for (FrameResources& fr : frame_resources_)
+        {
+            destroy_buffer(fr.tile_depth_ranges_buffer);
+            destroy_buffer(fr.tile_indices_buffer);
+            destroy_buffer(fr.tile_counts_buffer);
+            destroy_buffer(fr.shadow_light_buffer);
+            destroy_buffer(fr.light_buffer);
+            destroy_buffer(fr.camera_buffer);
+            fr.global_set = VK_NULL_HANDLE;
+        }
         destroy_buffer(floor_index_buffer_);
         destroy_buffer(floor_vertex_buffer_);
         destroy_buffer(index_buffer_);
@@ -2985,6 +3060,8 @@ private:
     shs::AABB sphere_local_aabb_{};
     shs::Sphere sphere_local_bound_{};
     shs::AABB floor_local_aabb_{};
+    shs::AABB shadow_scene_static_aabb_{};
+    bool shadow_scene_static_bounds_ready_ = false;
     glm::mat4 floor_model_{1.0f};
     glm::vec4 floor_material_color_{1.0f};
     glm::vec4 floor_material_params_{0.0f, 0.72f, 1.0f, 0.0f};
@@ -2993,12 +3070,7 @@ private:
     GpuBuffer index_buffer_{};
     GpuBuffer floor_vertex_buffer_{};
     GpuBuffer floor_index_buffer_{};
-    GpuBuffer camera_buffer_{};
-    GpuBuffer light_buffer_{};
-    GpuBuffer shadow_light_buffer_{};
-    GpuBuffer tile_counts_buffer_{};
-    GpuBuffer tile_indices_buffer_{};
-    GpuBuffer tile_depth_ranges_buffer_{};
+    shs::VkFrameRing<FrameResources, kWorkerPoolRingSize> frame_resources_{};
 
     CameraUBO camera_ubo_{};
     DepthTarget depth_target_{};
@@ -3007,7 +3079,6 @@ private:
 
     VkDescriptorSetLayout global_set_layout_ = VK_NULL_HANDLE;
     VkDescriptorPool descriptor_pool_ = VK_NULL_HANDLE;
-    VkDescriptorSet global_set_ = VK_NULL_HANDLE;
     VkSampler depth_sampler_ = VK_NULL_HANDLE;
 
     VkPipelineLayout shadow_pipeline_layout_ = VK_NULL_HANDLE;
@@ -3038,6 +3109,7 @@ private:
     shs::ShadowCompositionSettings shadow_settings_ = shs::make_default_shadow_composition_settings();
     bool manual_culling_override_ = false;
     shs::LightCullingMode manual_culling_mode_ = shs::LightCullingMode::Tiled;
+    bool profile_depth_prepass_enabled_ = true;
     bool enable_depth_prepass_ = true;
     bool enable_light_culling_ = true;
     bool enable_scene_pass_ = true;
@@ -3048,7 +3120,7 @@ private:
     shs::TechniqueMode active_technique_ = shs::TechniqueMode::ForwardPlus;
     size_t technique_cycle_index_ = 1;
     float technique_switch_accum_sec_ = 0.0f;
-    bool use_multithread_recording_ = true;
+    bool use_multithread_recording_ = false;
     float time_sec_ = 0.0f;
 };
 }

@@ -2,7 +2,6 @@
 
 #include <cstdint>
 #include <cstdio>
-#include <fstream>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -15,38 +14,13 @@
 #include <shs/core/context.hpp>
 #include <shs/rhi/backend/backend_factory.hpp>
 #include <shs/rhi/drivers/vulkan/vk_backend.hpp>
+#include <shs/rhi/drivers/vulkan/vk_cmd_utils.hpp>
+#include <shs/rhi/drivers/vulkan/vk_shader_utils.hpp>
 
 namespace
 {
 constexpr int kDefaultW = 960;
 constexpr int kDefaultH = 640;
-
-std::vector<char> read_file(const char* path)
-{
-    std::ifstream f(path, std::ios::ate | std::ios::binary);
-    if (!f.is_open()) throw std::runtime_error(std::string("Failed to open file: ") + path);
-    const size_t sz = static_cast<size_t>(f.tellg());
-    if (sz == 0) throw std::runtime_error(std::string("Empty shader file: ") + path);
-    std::vector<char> bytes(sz);
-    f.seekg(0);
-    f.read(bytes.data(), static_cast<std::streamsize>(sz));
-    return bytes;
-}
-
-VkShaderModule create_shader_module(VkDevice dev, const std::vector<char>& code)
-{
-    if ((code.size() % 4) != 0) throw std::runtime_error("SPIR-V size is not multiple of 4");
-    VkShaderModuleCreateInfo ci{};
-    ci.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    ci.codeSize = code.size();
-    ci.pCode = reinterpret_cast<const uint32_t*>(code.data());
-    VkShaderModule out = VK_NULL_HANDLE;
-    if (vkCreateShaderModule(dev, &ci, nullptr, &out) != VK_SUCCESS)
-    {
-        throw std::runtime_error("vkCreateShaderModule failed");
-    }
-    return out;
-}
 
 class HelloVulkanTriangleApp
 {
@@ -146,10 +120,10 @@ private:
         if (dev == VK_NULL_HANDLE) throw std::runtime_error("Vulkan device not ready");
         if (vk_->render_pass() == VK_NULL_HANDLE) throw std::runtime_error("Vulkan render pass not ready");
 
-        const std::vector<char> vs_code = read_file(SHS_VK_TRIANGLE_VERT_SPV);
-        const std::vector<char> fs_code = read_file(SHS_VK_TRIANGLE_FRAG_SPV);
-        VkShaderModule vs = create_shader_module(dev, vs_code);
-        VkShaderModule fs = create_shader_module(dev, fs_code);
+        const std::vector<char> vs_code = shs::vk_read_binary_file(SHS_VK_TRIANGLE_VERT_SPV);
+        const std::vector<char> fs_code = shs::vk_read_binary_file(SHS_VK_TRIANGLE_FRAG_SPV);
+        VkShaderModule vs = shs::vk_create_shader_module(dev, vs_code);
+        VkShaderModule fs = shs::vk_create_shader_module(dev, fs_code);
 
         VkPipelineShaderStageCreateInfo stages[2]{};
         stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -343,18 +317,8 @@ private:
         vkCmdBeginRenderPass(fi.cmd, &rp, VK_SUBPASS_CONTENTS_INLINE);
         vkCmdBindPipeline(fi.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_);
 
-        VkViewport vp{};
-        vp.x = 0.0f;
-        // Vulkan framebuffer coordinates are top-left based by default.
-        // Use negative viewport height so NDC +Y stays "up" (same convention as software path).
-        vp.y = static_cast<float>(fi.extent.height);
-        vp.width = static_cast<float>(fi.extent.width);
-        vp.height = -static_cast<float>(fi.extent.height);
-        vp.minDepth = 0.0f;
-        vp.maxDepth = 1.0f;
-        const VkRect2D scissor{{0, 0}, fi.extent};
-        vkCmdSetViewport(fi.cmd, 0, 1, &vp);
-        vkCmdSetScissor(fi.cmd, 0, 1, &scissor);
+        // Use negative viewport height so NDC +Y stays up like the software path.
+        shs::vk_cmd_set_viewport_scissor(fi.cmd, fi.extent.width, fi.extent.height, true);
         vkCmdDraw(fi.cmd, 3, 1, 0, 0);
         vkCmdEndRenderPass(fi.cmd);
 

@@ -14,6 +14,7 @@
 #include <cstring>
 
 #include "shs/rhi/drivers/vulkan/vk_backend.hpp"
+#include "shs/rhi/drivers/vulkan/vk_memory_utils.hpp"
 
 namespace shs
 {
@@ -114,7 +115,7 @@ namespace shs
             vkCmdPipelineBarrier(
                 frame.cmd,
                 VK_PIPELINE_STAGE_TRANSFER_BIT,
-                VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
                 0,
                 0, nullptr,
                 0, nullptr,
@@ -157,19 +158,6 @@ namespace shs
 
     private:
 #ifdef SHS_HAS_VULKAN
-        static uint32_t find_memory_type(VkPhysicalDevice gpu, uint32_t type_bits, VkMemoryPropertyFlags props)
-        {
-            VkPhysicalDeviceMemoryProperties mp{};
-            vkGetPhysicalDeviceMemoryProperties(gpu, &mp);
-            for (uint32_t i = 0; i < mp.memoryTypeCount; ++i)
-            {
-                const bool matches_type = (type_bits & (1u << i)) != 0;
-                const bool matches_props = (mp.memoryTypes[i].propertyFlags & props) == props;
-                if (matches_type && matches_props) return i;
-            }
-            return UINT32_MAX;
-        }
-
         bool ensure_staging(VulkanRenderBackend& backend, size_t bytes)
         {
             VkDevice dev = backend.device();
@@ -183,25 +171,22 @@ namespace shs
 
             shutdown();
 
-            VkBufferCreateInfo bci{};
-            bci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-            bci.size = bytes;
-            bci.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-            bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-            if (vkCreateBuffer(dev, &bci, nullptr, &staging_buffer_) != VK_SUCCESS) return false;
-
-            VkMemoryRequirements req{};
-            vkGetBufferMemoryRequirements(dev, staging_buffer_, &req);
-            const uint32_t memory_type = find_memory_type(gpu, req.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-            if (memory_type == UINT32_MAX) return false;
-
-            VkMemoryAllocateInfo mai{};
-            mai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-            mai.allocationSize = req.size;
-            mai.memoryTypeIndex = memory_type;
-            if (vkAllocateMemory(dev, &mai, nullptr, &staging_memory_) != VK_SUCCESS) return false;
-            if (vkBindBufferMemory(dev, staging_buffer_, staging_memory_, 0) != VK_SUCCESS) return false;
-            if (vkMapMemory(dev, staging_memory_, 0, bytes, 0, &mapped_ptr_) != VK_SUCCESS) return false;
+            if (!vk_create_buffer(
+                    dev,
+                    gpu,
+                    static_cast<VkDeviceSize>(bytes),
+                    VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                    staging_buffer_,
+                    staging_memory_))
+            {
+                return false;
+            }
+            if (vkMapMemory(dev, staging_memory_, 0, bytes, 0, &mapped_ptr_) != VK_SUCCESS)
+            {
+                shutdown();
+                return false;
+            }
 
             mapped_device_ = dev;
             staging_bytes_ = bytes;
