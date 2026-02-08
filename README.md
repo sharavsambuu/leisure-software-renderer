@@ -96,12 +96,24 @@
 
     sudo apt install automake m4 libtool cmake build-essential autoconf autoconf-archive automake libtool-bin python3.12-venv python3.13-venv
 
+    Download Lunarg Vulkan SDK first
+
+    mv ~/Downloads/vulkansdk-linux-x86_64-1.4.341.1.tar.xz ~/vulkan
+    cd ~/vulkan && tar -xvf vulkansdk-linux-x86_64-1.4.341.1.tar.xz
+    
+    vim ~/.bashrc
+      add at bottom
+      ```
+      source ~/vulkan/1.4.341.1/setup-env.sh
+      ```
+
+
     VCPKG installation on ubuntu 
     https://lindevs.com/install-vcpkg-on-ubuntu
 
     export VCPKG_ROOT="/opt/vcpkg"
 
-    sudo vcpkg install sdl2
+    sudo vcpkg install sdl2[vulkan] --recurse
     sudo vcpkg install sdl2-image
     sudo vcpkg install --recurse sdl2-image[libjpeg-turbo]
     sudo vcpkg install glm
@@ -115,15 +127,7 @@
     cmake .. -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake
     make -j20
     cd src/hello-pixel-primitives && ./HelloPixel
-    cd ../hello-plumbing && ./HelloPassBasics && ./HelloPassBasicsVulkan && ./HelloForwardPlusStressVulkan && ./HelloVulkanShadowTechniques
-    # HelloPassBasicsVulkan is shader-based multi-pass Vulkan path:
-    #   soft shadow map + PBR scene + camera/per-object motion blur + light shafts + lens flare + FXAA
-    # Default shaders are in:
-    #   cpp-folders/src/shs-renderer-lib/shaders/vulkan/pb_*.vert|frag
-    # HelloForwardPlusStressVulkan / HelloVulkanShadowTechniques:
-    #   Forward+/clustered stress scene with composable light culling + multi-light shadows
-    # Controls:
-    #   F1 record mode toggle, F2 technique cycle, F3 culling mode cycle, F4 clear culling override, F5 shadow toggle
+    
 
 
 
