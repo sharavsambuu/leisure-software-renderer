@@ -1,4 +1,4 @@
-project(HelloPlumbing LANGUAGES CXX)
+project(ExpPlumbing LANGUAGES CXX)
 
 
 file(COPY ../assets DESTINATION "${CMAKE_CURRENT_BINARY_DIR}")

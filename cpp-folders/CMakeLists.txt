@@ -50,13 +50,13 @@ FetchContent_MakeAvailable(xsimd)
 
 message(STATUS "Adding sub folders...")
 
-add_subdirectory("src/shs-renderer")
+add_subdirectory("src/hello-shs-renderer")
 add_subdirectory("src/hello-pixel-primitives")
 add_subdirectory("src/hello-shaders")
 add_subdirectory("src/hello-parallelization")
 add_subdirectory("src/hello-3d-primitives")
 add_subdirectory("src/hello-render-target")
-add_subdirectory("src/other-exps")
+add_subdirectory("src/hello-other-exps")
 
 add_subdirectory("src/shs-renderer-lib")
-add_subdirectory("src/hello-plumbing")
+add_subdirectory("src/exp-plumbing")

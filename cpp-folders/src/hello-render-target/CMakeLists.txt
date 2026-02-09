@@ -17,8 +17,8 @@ include_directories(${CMAKE_BINARY_DIR})
 include_directories(${stb_SOURCE_DIR}/)
 #include_directories(${entt_SOURCE_DIR}/src/)
 
-include_directories(${SHSRenderer_SOURCE_DIR}/)
-include_directories(${CMAKE_SOURCE_DIR}/src/shs-renderer-lib/include)
+include_directories(${HelloSHSRenderer_SOURCE_DIR}/)
+#include_directories(${CMAKE_SOURCE_DIR}/src/shs-renderer-lib/include)
 
 set(CMAKE_CXX_STANDARD 20)
 if(NOT CMAKE_BUILD_TYPE)
@@ -85,47 +85,39 @@ else()
     target_compile_options(HelloIblSkyboxOpt PRIVATE -O3 -ffast-math -mavx2 -mfma)
 endif()
 
-add_executable(HelloIblSkyboxXSIMD hello_ibl_skybox_xsimd.cpp)
-target_compile_features(HelloIblSkyboxXSIMD PRIVATE cxx_std_20)
-target_link_libraries(HelloIblSkyboxXSIMD PRIVATE xsimd SDL2::SDL2 SDL2_image::Main glm::glm assimp::assimp)
-if (MSVC)
-    target_compile_options(HelloIblSkyboxXSIMD PRIVATE /O2 /fp:fast /arch:AVX2)
-elseif(APPLE AND CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
-    # M1/M2/M3 specific flags
-    # -O3 is usually enough as Clang optimizes for NEON automatically on ARM64
-    target_compile_options(HelloIblSkyboxXSIMD PRIVATE -O3 -ffast-math)
-else()
-    # Standard Linux/Intel Mac x86_64 flags
-    target_compile_options(HelloIblSkyboxXSIMD PRIVATE -O3 -ffast-math -mavx2 -mfma)
-endif()
+
+#add_executable(HelloIblSkyboxXSIMD hello_ibl_skybox_xsimd.cpp)
+#target_compile_features(HelloIblSkyboxXSIMD PRIVATE cxx_std_20)
+#target_link_libraries(HelloIblSkyboxXSIMD PRIVATE xsimd SDL2::SDL2 SDL2_image::Main glm::glm assimp::assimp)
+#if (MSVC)
+#    target_compile_options(HelloIblSkyboxXSIMD PRIVATE /O2 /fp:fast /arch:AVX2)
+#elseif(APPLE AND CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
+#    target_compile_options(HelloIblSkyboxXSIMD PRIVATE -O3 -ffast-math)
+#else()
+#    target_compile_options(HelloIblSkyboxXSIMD PRIVATE -O3 -ffast-math -mavx2 -mfma)
+#endif()
 
 
-add_executable(HelloPBR hello_pbr.cpp)
-target_compile_features(HelloPBR PRIVATE cxx_std_20)
-target_link_libraries(HelloPBR PRIVATE xsimd SDL2::SDL2 SDL2_image::Main glm::glm assimp::assimp)
-if (MSVC)
-    target_compile_options(HelloPBR PRIVATE /O2 /fp:fast /arch:AVX2)
-elseif(APPLE AND CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
-    # M1/M2/M3 specific flags
-    # -O3 is usually enough as Clang optimizes for NEON automatically on ARM64
-    target_compile_options(HelloPBR PRIVATE -O3 -ffast-math)
-else()
-    # Standard Linux/Intel Mac x86_64 flags
-    target_compile_options(HelloPBR PRIVATE -O3 -ffast-math -mavx2 -mfma)
-endif()
+#add_executable(HelloPBR hello_pbr.cpp)
+#target_compile_features(HelloPBR PRIVATE cxx_std_20)
+#target_link_libraries(HelloPBR PRIVATE xsimd SDL2::SDL2 SDL2_image::Main glm::glm assimp::assimp)
+#if (MSVC)
+#    target_compile_options(HelloPBR PRIVATE /O2 /fp:fast /arch:AVX2)
+#elseif(APPLE AND CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
+#    target_compile_options(HelloPBR PRIVATE -O3 -ffast-math)
+#else()
+#    target_compile_options(HelloPBR PRIVATE -O3 -ffast-math -mavx2 -mfma)
+#endif()
 
 
-add_executable(HelloPBRLightShafts hello_pbr_light_shafts.cpp)
-target_compile_features(HelloPBRLightShafts PRIVATE cxx_std_20)
-target_link_libraries(HelloPBRLightShafts PRIVATE xsimd SDL2::SDL2 SDL2_image::Main glm::glm assimp::assimp)
-if (MSVC)
-    target_compile_options(HelloPBRLightShafts PRIVATE /O2 /fp:fast /arch:AVX2)
-elseif(APPLE AND CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
-    # M1/M2/M3 specific flags
-    # -O3 is usually enough as Clang optimizes for NEON automatically on ARM64
-    target_compile_options(HelloPBRLightShafts PRIVATE -O3 -ffast-math)
-else()
-    # Standard Linux/Intel Mac x86_64 flags
-    target_compile_options(HelloPBRLightShafts PRIVATE -O3 -ffast-math -mavx2 -mfma)
-endif()
+#add_executable(HelloPBRLightShafts hello_pbr_light_shafts.cpp)
+#target_compile_features(HelloPBRLightShafts PRIVATE cxx_std_20)
+#target_link_libraries(HelloPBRLightShafts PRIVATE xsimd SDL2::SDL2 SDL2_image::Main glm::glm assimp::assimp)
+#if (MSVC)
+#    target_compile_options(HelloPBRLightShafts PRIVATE /O2 /fp:fast /arch:AVX2)
+#elseif(APPLE AND CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
+#    target_compile_options(HelloPBRLightShafts PRIVATE -O3 -ffast-math)
+#else()
+#    target_compile_options(HelloPBRLightShafts PRIVATE -O3 -ffast-math -mavx2 -mfma)
+#endif()
 

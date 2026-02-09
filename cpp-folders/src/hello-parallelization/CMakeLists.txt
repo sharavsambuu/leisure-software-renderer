@@ -10,7 +10,7 @@ include_directories(${ASSIMP_INCLUDE_DIR})
 include_directories(${SDL2_INCLUDE_DIRS} ${SDL2_IMAGE_INCLUDE_DIR})
 include_directories(${CMAKE_BINARY_DIR})
 include_directories(${stb_SOURCE_DIR}/)
-include_directories(${SHSRenderer_SOURCE_DIR}/)
+include_directories(${HelloSHSRenderer_SOURCE_DIR}/)
 
 #include_directories(${Boost_INCLUDE_DIR})
 #link_directories(${Boost_LIBRARY_DIR})
