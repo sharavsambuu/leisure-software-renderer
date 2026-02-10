@@ -14,6 +14,10 @@
       Frustum Culling + Occlusion Culling
     Prevents to duplicate same abstractions on different parts
 
+    Once the dynamic compositional lightening renderer solved, maybe try to estimate
+    multi bounce global illuminations through many preplaced virtual point lights
+
+
     Revive Lockless job system experiments
     Revive priority based job system experiments
     Implement multiple parallel and sequencial job groups and graphs demo
