@@ -1,8 +1,19 @@
 
 # Tasks to mess around in the near future
 
-    Some idea, which is dynamic compositional renderer
-        Tunable combinations -> Different Light Volumes + Different Culling Techniques + Different Rendering + Different Passes
+    Dynamic compositional and configurable renderer path combinations
+      Tunable combinations -> 
+        Different Light Volumes      + 
+        Different Culling Techniques + 
+        Different Rendering          + 
+        Different Passes
+
+    Use Jolt Physics and primitive shape volume definitions for
+      Physics
+      Light Culling
+      Frustum Culling + Occlusion Culling
+    Prevents to duplicate same abstractions on different parts
+
     Revive Lockless job system experiments
     Revive priority based job system experiments
     Implement multiple parallel and sequencial job groups and graphs demo
@@ -15,19 +26,6 @@
     Try to parallelize rasterization by subdividing large triangles based on certain threshold
         - recursively assemble rasterizable small triangle chunks into the list
         - submit them parallel rasterizer job system
-    
-
-    DONE Fix the coordinate system transformation and convention mess, write a note.
-    DONE Implement Thread based job system using lockless priority queue
-    DONE Realtime looper using SDL2
-    DONE Realtime canvas renderer on SDL2 window
-    DONE Map vertext coordinates
-      - Map vertices from local obj space coordinates to scene space coordinates
-      - Map vertices from scene space coordinates to camera space coordinates
-      - Map vertices from camera space coordinates to the homogenous space coordinates
-    DONE Add a few more OBJ in the scene
-    DONE Rotate and Translate 3D model
-    DONE Rotate and Translate camera, drive through scene
     
 
 
@@ -120,6 +118,7 @@
     sudo vcpkg install --recurse sdl2-image[libjpeg-turbo]
     sudo vcpkg install glm
     sudo vcpkg install assimp
+    sudo vcpkg install joltphysics
 
     
     Compilation steps on ubuntu 24.04
@@ -163,6 +162,7 @@
     vcpkg install "sdl2-image[libjpeg-turbo]:arm64-osx"
     vcpkg install "glm:arm64-osx"
     vcpkg install "assimp:arm64-osx"
+    vcpkg install "joltphysics:arm64-osx"
 
 
     cd cpp-folders && mkdir build && cd build
@@ -200,6 +200,7 @@
     vcpkg install libjpeg-turbo
     vcpkg install glm
     vcpkg install assimp
+    vcpkg install joltphysics
 
 
     Use CMake-GUI with Visual Studio 17 2022
