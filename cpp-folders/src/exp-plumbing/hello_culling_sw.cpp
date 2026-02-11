@@ -21,10 +21,10 @@
 
 using namespace shs;
 
-const int WINDOW_W = 1024;
-const int WINDOW_H = 768;
-const int CANVAS_W = 640;
-const int CANVAS_H = 480;
+const int WINDOW_W = 1200;
+const int WINDOW_H = 900;
+const int CANVAS_W = 1200;
+const int CANVAS_H = 900;
 
 struct ShapeInstance {
     SceneShape shape;

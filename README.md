@@ -1,6 +1,8 @@
 
 # Tasks to mess around in the near future
 
+    Switch world space coordinate system convention to X is RIGHT, Y is FORWARD, Z is UP
+
     Dynamic compositional and configurable renderer path combinations
       Tunable combinations -> 
         Different Light Volumes      + 
@@ -265,6 +267,7 @@
 <p><img width="1200" height="900" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/physics-based-rendering-monkey.png"></p>
 <p><img width="1200" height="900" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/physics-based-rendering-light-shafts.png"></p>
 <p><img width="1200" height="900" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/physics-based-rendering-light-shafts-1.png"></p>
+<p><img width="1200" height="900" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/debug-draw-based-jolt-shape.png"></p>
 
 
 
