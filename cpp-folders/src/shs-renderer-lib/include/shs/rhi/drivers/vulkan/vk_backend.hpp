@@ -106,7 +106,7 @@ namespace shs
 
         bool ready() const { return initialized_; }
 
-        bool init_sdl(const InitDesc& desc)
+        bool init(const InitDesc& desc)
         {
 #ifdef SHS_HAS_VULKAN
             shutdown();
@@ -403,6 +403,14 @@ namespace shs
         {
             if (image_index >= images_.size()) return VK_NULL_HANDLE;
             return images_[image_index];
+        }
+
+        void wait_idle() const
+        {
+            if (device_ != VK_NULL_HANDLE)
+            {
+                vkDeviceWaitIdle(device_);
+            }
         }
 #endif
 

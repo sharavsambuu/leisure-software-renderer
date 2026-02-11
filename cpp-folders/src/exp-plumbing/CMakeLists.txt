@@ -333,3 +333,38 @@ else()
         message(STATUS "HelloVulkanShadowTechniques skipped (SDL2 was built without Vulkan support)")
     endif()
 endif()
+
+# -----------------------------------------------------------------------------
+#  Jolt Integration Demo
+# -----------------------------------------------------------------------------
+if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
+    add_executable(hello_jolt_integration hello_jolt_integration.cpp)
+    add_dependencies(hello_jolt_integration HelloForwardPlusStressVulkanShaders)
+    target_link_libraries(hello_jolt_integration PRIVATE shs::renderer)
+    set_target_properties(hello_jolt_integration PROPERTIES FOLDER "Demos")
+    target_compile_definitions(hello_jolt_integration PRIVATE
+        SHS_VK_FP_SCENE_VERT_SPV="${VK_FP_SCENE_VERT_SPV}"
+        SHS_VK_FP_SCENE_FRAG_SPV="${VK_FP_SCENE_FRAG_SPV}"
+        SHS_VK_FP_SHADOW_VERT_SPV="${VK_FP_SHADOW_VERT_SPV}"
+        SHS_VK_FP_LIGHT_CULL_COMP_SPV="${VK_FP_LIGHT_CULL_COMP_SPV}"
+        SHS_VK_FP_DEPTH_REDUCE_COMP_SPV="${VK_FP_DEPTH_REDUCE_COMP_SPV}"
+    )
+
+    add_executable(hello_culling_vk hello_culling_vk.cpp)
+    add_dependencies(hello_culling_vk HelloForwardPlusStressVulkanShaders)
+    target_link_libraries(hello_culling_vk PRIVATE shs::renderer)
+    set_target_properties(hello_culling_vk PROPERTIES FOLDER "Demos")
+    target_compile_definitions(hello_culling_vk PRIVATE
+        SHS_VK_FP_SCENE_VERT_SPV="${VK_FP_SCENE_VERT_SPV}"
+        SHS_VK_FP_SCENE_FRAG_SPV="${VK_FP_SCENE_FRAG_SPV}"
+        SHS_VK_FP_SHADOW_VERT_SPV="${VK_FP_SHADOW_VERT_SPV}"
+        SHS_VK_FP_LIGHT_CULL_COMP_SPV="${VK_FP_LIGHT_CULL_COMP_SPV}"
+        SHS_VK_FP_DEPTH_REDUCE_COMP_SPV="${VK_FP_DEPTH_REDUCE_COMP_SPV}"
+    )
+endif()
+
+# Software culling demo (always available)
+add_executable(hello_culling_sw hello_culling_sw.cpp)
+target_link_libraries(hello_culling_sw PRIVATE shs::renderer)
+set_target_properties(hello_culling_sw PROPERTIES FOLDER "Demos")
+target_compile_features(hello_culling_sw PRIVATE cxx_std_20)

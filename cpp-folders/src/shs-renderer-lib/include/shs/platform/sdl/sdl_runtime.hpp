@@ -118,6 +118,8 @@ namespace shs
             if (window_) SDL_SetWindowTitle(window_, title.c_str());
         }
 
+        SDL_Window* window() const { return window_; }
+
         void upload_rgba8(const uint8_t* src, int width, int height, int src_pitch_bytes) override
         {
             if (!texture_ || !src) return;

@@ -14,6 +14,7 @@
 #include <cmath>
 #include <cstdint>
 #include <vector>
+#include <variant>
 
 #include <glm/glm.hpp>
 
@@ -107,11 +108,23 @@ namespace shs
         float radius = 0.5f;
     };
 
-    struct ConvexHull
+    struct ConeFrustum
+    {
+        glm::vec3 apex{0.0f};
+        glm::vec3 axis{0.0f, -1.0f, 0.0f}; // apex -> base
+        float near_distance = 0.0f;
+        float far_distance = 1.0f;
+        float near_radius = 0.0f;
+        float far_radius = 0.5f;
+    };
+
+    struct ConvexPolyhedron
     {
         std::vector<glm::vec3> vertices{};
         std::vector<Plane> planes{};
     };
+
+
 
     struct Rect2
     {
@@ -171,6 +184,70 @@ namespace shs
         for (const glm::vec3& c : corners)
         {
             out.expand(glm::vec3(model * glm::vec4(c, 1.0f)));
+        }
+        return out;
+    }
+    inline bool intersect_three_planes(
+        const Plane& p0,
+        const Plane& p1,
+        const Plane& p2,
+        glm::vec3& out_point,
+        float eps = 1e-8f)
+    {
+        const glm::vec3 c01 = glm::cross(p1.normal, p2.normal);
+        const float det = glm::dot(p0.normal, c01);
+        if (std::abs(det) <= eps) return false;
+
+        out_point =
+            (-p0.d * c01 - p1.d * glm::cross(p2.normal, p0.normal) - p2.d * glm::cross(p0.normal, p1.normal)) / det;
+        return std::isfinite(out_point.x) && std::isfinite(out_point.y) && std::isfinite(out_point.z);
+    }
+
+    inline bool point_inside_planes(
+        const glm::vec3& p,
+        const std::vector<Plane>& planes,
+        float eps = 1e-5f)
+    {
+        for (const Plane& plane : planes)
+        {
+            if (plane.signed_distance(p) < -eps) return false;
+        }
+        return true;
+    }
+
+    inline void append_unique_vertex(
+        std::vector<glm::vec3>& out_vertices,
+        const glm::vec3& v,
+        float eps = 1e-5f)
+    {
+        const float eps2 = eps * eps;
+        for (const glm::vec3& existing : out_vertices)
+        {
+            const glm::vec3 delta = existing - v;
+            if (glm::dot(delta, delta) <= eps2) return;
+        }
+        out_vertices.push_back(v);
+    }
+
+    inline std::vector<glm::vec3> convex_vertices_from_planes(
+        const std::vector<Plane>& planes,
+        float eps = 1e-5f)
+    {
+        std::vector<glm::vec3> out{};
+        if (planes.size() < 4) return out;
+
+        for (size_t i = 0; i < planes.size(); ++i)
+        {
+            for (size_t j = i + 1; j < planes.size(); ++j)
+            {
+                for (size_t k = j + 1; k < planes.size(); ++k)
+                {
+                    glm::vec3 p{};
+                    if (!intersect_three_planes(planes[i], planes[j], planes[k], p)) continue;
+                    if (!point_inside_planes(p, planes, eps)) continue;
+                    append_unique_vertex(out, p, eps * 2.0f);
+                }
+            }
         }
         return out;
     }

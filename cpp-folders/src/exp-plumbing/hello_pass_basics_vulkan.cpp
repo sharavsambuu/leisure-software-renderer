@@ -223,7 +223,7 @@ namespace
             init.height = dh;
             init.enable_validation = true;
             init.app_name = app_name ? app_name : "HelloPassBasicsVulkan";
-            return vk_->init_sdl(init);
+            return vk_->init(init);
         }
 
         bool pump_input(shs::PlatformInputState& out)

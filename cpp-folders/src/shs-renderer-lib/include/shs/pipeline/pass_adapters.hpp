@@ -14,9 +14,11 @@
 #include <cmath>
 #include <vector>
 
+#include <variant>
+
 #include <glm/gtc/matrix_transform.hpp>
 
-#include "shs/geometry/shape_cell_culling.hpp"
+#include "shs/geometry/jolt_culling.hpp"
 #include "shs/gfx/rt_handle.hpp"
 #include "shs/lighting/light_set.hpp"
 #include "shs/passes/pass_light_shafts.hpp"
@@ -78,7 +80,7 @@ namespace shs
             return glm::vec3(hp) / hp.w;
         }
 
-        inline ConvexCell make_screen_tile_convex_cell(
+        inline CullingCell make_screen_tile_culling_cell(
             const glm::mat4& view_proj,
             int viewport_w,
             int viewport_h,
@@ -86,8 +88,8 @@ namespace shs
             uint32_t tile_x,
             uint32_t tile_y)
         {
-            ConvexCell cell{};
-            cell.kind = ConvexCellKind::ScreenTileCell;
+            CullingCell cell{};
+            cell.kind = CullingCellKind::ScreenTileCell;
             cell.user_data = glm::uvec4(tile_x, tile_y, 0u, 0u);
             if (viewport_w <= 0 || viewport_h <= 0 || tile_size == 0u) return cell;
 
@@ -114,23 +116,104 @@ namespace shs
             const glm::vec3 ftr = world_from_ndc(inv_view_proj, glm::vec3(nx1, ny_top, 1.0f));
             const glm::vec3 inside = (nbl + nbr + ntl + ntr + fbl + fbr + ftl + ftr) * (1.0f / 8.0f);
 
-            convex_cell_add_plane(cell, make_oriented_plane_from_points(nbl, nbr, ntr, inside)); // near
-            convex_cell_add_plane(cell, make_oriented_plane_from_points(fbr, fbl, ftl, inside)); // far
-            convex_cell_add_plane(cell, make_oriented_plane_from_points(nbl, ntl, ftl, inside)); // left
-            convex_cell_add_plane(cell, make_oriented_plane_from_points(ntr, nbr, fbr, inside)); // right
-            convex_cell_add_plane(cell, make_oriented_plane_from_points(nbr, nbl, fbl, inside)); // bottom
-            convex_cell_add_plane(cell, make_oriented_plane_from_points(ntl, ntr, ftr, inside)); // top
+            culling_cell_add_plane(cell, make_oriented_plane_from_points(nbl, nbr, ntr, inside)); // near
+            culling_cell_add_plane(cell, make_oriented_plane_from_points(fbr, fbl, ftl, inside)); // far
+            culling_cell_add_plane(cell, make_oriented_plane_from_points(nbl, ntl, ftl, inside)); // left
+            culling_cell_add_plane(cell, make_oriented_plane_from_points(ntr, nbr, fbr, inside)); // right
+            culling_cell_add_plane(cell, make_oriented_plane_from_points(nbr, nbl, fbl, inside)); // bottom
+            culling_cell_add_plane(cell, make_oriented_plane_from_points(ntl, ntr, ftr, inside)); // top
             return cell;
         }
 
+        struct LightCullShape
+        {
+            std::variant<Sphere, ConeFrustum, OBB, Capsule> value;
+            uint32_t stable_id;
+
+            JPH::ShapeRefC jolt_shape() const { return nullptr; }
+            JPH::Mat44 world_transform() const { return JPH::Mat44::sIdentity(); }
+
+            Sphere bounding_sphere() const
+            {
+                return std::visit([](const auto& s) -> Sphere {
+                    using T = std::decay_t<decltype(s)>;
+                    if constexpr (std::is_same_v<T, Sphere>) return s;
+                    if constexpr (std::is_same_v<T, ConeFrustum>) {
+                        Sphere sphere{};
+                        sphere.center = s.apex + s.axis * (s.near_distance + (s.far_distance - s.near_distance) * 0.5f);
+                        sphere.radius = (s.far_distance - s.near_distance) * 0.5f + s.far_radius;
+                        return sphere;
+                    }
+                    if constexpr (std::is_same_v<T, OBB>) {
+                        Sphere sphere{};
+                        sphere.center = s.center;
+                        sphere.radius = glm::length(s.half_extents);
+                        return sphere;
+                    }
+                    if constexpr (std::is_same_v<T, Capsule>) {
+                        Sphere sphere{};
+                        sphere.center = (s.a + s.b) * 0.5f;
+                        sphere.radius = glm::length(s.a - s.b) * 0.5f + s.radius;
+                        return sphere;
+                    }
+                    return Sphere{};
+                }, value);
+            }
+
+            AABB world_aabb() const
+            {
+                return std::visit([](const auto& s) -> AABB {
+                    using T = std::decay_t<decltype(s)>;
+                    if constexpr (std::is_same_v<T, Sphere>) {
+                        return AABB{s.center - glm::vec3(s.radius), s.center + glm::vec3(s.radius)};
+                    }
+                    if constexpr (std::is_same_v<T, ConeFrustum>) {
+                        AABB box{};
+                        box.expand(s.apex); // approx
+                        const glm::vec3 base = s.apex + s.axis * s.far_distance;
+                        box.expand(base + glm::vec3(s.far_radius));
+                        box.expand(base - glm::vec3(s.far_radius));
+                        return box;
+                    }
+                    if constexpr (std::is_same_v<T, OBB>) {
+                        AABB box{};
+                        const glm::vec3 corners[8] = {
+                            s.center + s.axis_x * s.half_extents.x + s.axis_y * s.half_extents.y + s.axis_z * s.half_extents.z,
+                            s.center + s.axis_x * s.half_extents.x + s.axis_y * s.half_extents.y - s.axis_z * s.half_extents.z,
+                            s.center + s.axis_x * s.half_extents.x - s.axis_y * s.half_extents.y + s.axis_z * s.half_extents.z,
+                            s.center + s.axis_x * s.half_extents.x - s.axis_y * s.half_extents.y - s.axis_z * s.half_extents.z,
+                            s.center - s.axis_x * s.half_extents.x + s.axis_y * s.half_extents.y + s.axis_z * s.half_extents.z,
+                            s.center - s.axis_x * s.half_extents.x + s.axis_y * s.half_extents.y - s.axis_z * s.half_extents.z,
+                            s.center - s.axis_x * s.half_extents.x - s.axis_y * s.half_extents.y + s.axis_z * s.half_extents.z,
+                            s.center - s.axis_x * s.half_extents.x - s.axis_y * s.half_extents.y - s.axis_z * s.half_extents.z,
+                        };
+                        for (const auto& c : corners) box.expand(c);
+                        return box;
+                    }
+                    if constexpr (std::is_same_v<T, Capsule>) {
+                        AABB box{};
+                        box.expand(s.a + glm::vec3(s.radius));
+                        box.expand(s.a - glm::vec3(s.radius));
+                        box.expand(s.b + glm::vec3(s.radius));
+                        box.expand(s.b - glm::vec3(s.radius));
+                        return box;
+                    }
+                    return AABB{};
+                }, value);
+            }
+        };
+
+        // Static assert to ensure LightCullShape satisfies FastCullable
+        static_assert(FastCullable<LightCullShape>);
+
         inline void append_local_light_shapes_from_set(
             const LightSet& set,
-            std::vector<ShapeVolume>& out_shapes)
+            std::vector<LightCullShape>& out_shapes)
         {
             out_shapes.reserve(out_shapes.size() + set.local_light_count());
             for (const PointLight& l : set.points)
             {
-                ShapeVolume s{};
+                LightCullShape s{};
                 s.value = point_light_culling_sphere(l);
                 s.stable_id = static_cast<uint32_t>(out_shapes.size());
                 out_shapes.push_back(s);
@@ -147,21 +230,21 @@ namespace shs
                 cone.near_radius = 0.0f;
                 cone.far_radius = std::tan(outer) * range;
 
-                ShapeVolume s{};
+                LightCullShape s{};
                 s.value = cone;
                 s.stable_id = static_cast<uint32_t>(out_shapes.size());
                 out_shapes.push_back(s);
             }
             for (const RectAreaLight& l : set.rect_areas)
             {
-                ShapeVolume s{};
+                LightCullShape s{};
                 s.value = rect_area_light_culling_obb(l);
                 s.stable_id = static_cast<uint32_t>(out_shapes.size());
                 out_shapes.push_back(s);
             }
             for (const TubeAreaLight& l : set.tube_areas)
             {
-                ShapeVolume s{};
+                LightCullShape s{};
                 s.value = tube_area_light_culling_capsule(l);
                 s.stable_id = static_cast<uint32_t>(out_shapes.size());
                 out_shapes.push_back(s);
@@ -210,10 +293,9 @@ namespace shs
             const uint32_t total_tiles = tile_x * tile_y;
             const uint32_t max_per_tile = std::max<uint32_t>(1u, fp.technique.max_lights_per_tile);
 
-            // Directional light нь tile бүрийг бүрэн хамарна (enabled үед).
             const uint32_t directional_light_count = (scene.sun.intensity > 0.0f) ? 1u : 0u;
 
-            std::vector<ShapeVolume> local_light_shapes{};
+            std::vector<LightCullShape> local_light_shapes{};
             if (scene.local_lights)
             {
                 append_local_light_shapes_from_set(*scene.local_lights, local_light_shapes);
@@ -221,21 +303,16 @@ namespace shs
 
             if (!local_light_shapes.empty())
             {
-                const ConvexCell camera_cell = extract_frustum_cell(
+                const CullingCell camera_cell = extract_frustum_cell(
                     scene.cam.viewproj,
-                    ConvexCellKind::CameraFrustumPerspective);
-                CPUCullerConfig camera_cfg{};
-                camera_cfg.use_broad_phase = true;
-                camera_cfg.refine_intersections = true;
-                camera_cfg.accept_broad_inside = true;
-                camera_cfg.prefer_xsimd = true;
-                camera_cfg.job_system = ctx.job_system;
-                camera_cfg.parallel_min_items = 256;
-
-                const CPUCullResult camera_cull = cull_shapes_cpu(camera_cell, local_light_shapes, camera_cfg);
+                    CullingCellKind::CameraFrustumPerspective);
+                
+                // Broad phase camera cull
+                const CullResult camera_cull = cull_vs_cell(std::span<const LightCullShape>{local_light_shapes}, camera_cell);
+                
                 if (camera_cull.visible_indices.size() != local_light_shapes.size())
                 {
-                    std::vector<ShapeVolume> visible_shapes{};
+                    std::vector<LightCullShape> visible_shapes{};
                     visible_shapes.reserve(camera_cull.visible_indices.size());
                     for (size_t idx : camera_cull.visible_indices)
                     {
@@ -255,19 +332,14 @@ namespace shs
 
             if (!local_light_shapes.empty())
             {
-                CPUCullerConfig tile_cfg{};
-                tile_cfg.use_broad_phase = true;
-                tile_cfg.refine_intersections = true;
-                tile_cfg.accept_broad_inside = true;
-                tile_cfg.prefer_xsimd = true;
-                tile_cfg.job_system = nullptr;
+                const CullTolerance tile_cull_tol{}; // Use defaults or customize if needed
 
                 for (uint32_t ty = 0; ty < tile_y; ++ty)
                 {
                     for (uint32_t tx = 0; tx < tile_x; ++tx)
                     {
                         const uint32_t tile_index = ty * tile_x + tx;
-                        const ConvexCell tile_cell = make_screen_tile_convex_cell(
+                        const CullingCell tile_cell = make_screen_tile_culling_cell(
                             scene.cam.viewproj,
                             w,
                             h,
@@ -276,10 +348,10 @@ namespace shs
                             ty);
 
                         uint32_t local_visible = 0;
-                        for (const ShapeVolume& shape : local_light_shapes)
+                        for (const LightCullShape& shape : local_light_shapes)
                         {
-                            const CullClass c = classify_cpu(shape, tile_cell, tile_cfg);
-                            if (!cull_class_visible(c, true)) continue;
+                            const CullClass c = classify_vs_cell(shape, tile_cell, tile_cull_tol);
+                            if (!cull_class_is_visible(c, true)) continue;
                             ++local_visible;
                             if (directional_light_count + local_visible >= max_per_tile) break;
                         }

@@ -1,5 +1,29 @@
 
-
+# IDE and Tools
 .vscode/
+.idea/
+.cursor/
+.windsurf/
 
+# AI Tools (Antigravity, Gemini, etc.)
+.gemini/
+.antigravity/
+.agent/
+
+# Build and Dependencies
 build/
+bin/
+obj/
+
+# Temporary Cleanup Scripts
+cleanup_*.py
+cleanup_*.sh
+cleanup_*.bat
+clean_*.sh
+clean_*.py
+clean_*.bat
+
+build_demos.bat
+build.sh
+run_make_target.sh
+run_verify.sh

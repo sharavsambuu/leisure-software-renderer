@@ -27,10 +27,12 @@
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
 #include <Jolt/Physics/Collision/Shape/CylinderShape.h>
-#include <Jolt/Physics/Collision/Shape/TaperedCapsuleShape.h>
+#include <Jolt/Physics/Collision/Shape/MeshShape.h>
 #include <Jolt/Physics/Collision/Shape/ConvexHullShape.h>
+#include <Jolt/Physics/Collision/Shape/TaperedCapsuleShape.h>
 
 #include "shs/geometry/jolt_adapter.hpp"
+#include "shs/resources/mesh.hpp"
 
 // Forward declare light types to avoid circular dependency.
 namespace shs { struct SpotLight; struct RectAreaLight; struct TubeAreaLight; }
@@ -169,6 +171,54 @@ namespace shs::jolt
         return make_capsule(
             std::max(half_length, 0.001f),
             std::max(radius, 0.001f));
+    }
+
+
+    // =========================================================================
+    //  Mesh-to-Jolt factories
+    // =========================================================================
+
+    /**
+     * @brief Create a JPH::MeshShape from SHS MeshData.
+     * Use this for complex visible geometry like the Blender monkey.
+     */
+    inline JPH::ShapeRefC make_mesh_shape(const MeshData& mesh)
+    {
+        if (mesh.empty()) return make_sphere(0.1f);
+
+        JPH::TriangleList triangles{};
+        triangles.reserve(mesh.indices.size() / 3);
+
+        for (size_t i = 0; i < mesh.indices.size(); i += 3)
+        {
+            const glm::vec3& v0 = mesh.positions[mesh.indices[i + 0]];
+            const glm::vec3& v1 = mesh.positions[mesh.indices[i + 1]];
+            const glm::vec3& v2 = mesh.positions[mesh.indices[i + 2]];
+
+            // Convert to Jolt RH (negate Z).
+            triangles.push_back(JPH::Triangle(
+                JPH::Float3(v0.x, v0.y, -v0.z),
+                JPH::Float3(v1.x, v1.y, -v1.z),
+                JPH::Float3(v2.x, v2.y, -v2.z)
+            ));
+        }
+
+        JPH::MeshShapeSettings settings(triangles);
+        auto result = settings.Create();
+        if (result.HasError())
+        {
+            return make_sphere(0.5f);
+        }
+        return result.Get();
+    }
+
+    /**
+     * @brief Create a JPH::ConvexHullShape from SHS MeshData vertices.
+     * Use this for collision proxies or culling volumes of complex objects.
+     */
+    inline JPH::ShapeRefC make_convex_hull_from_mesh(const MeshData& mesh)
+    {
+        return make_convex_hull(mesh.positions);
     }
 }
 

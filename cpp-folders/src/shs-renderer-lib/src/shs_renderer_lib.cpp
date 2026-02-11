@@ -6,8 +6,8 @@
     ЗОРИЛГО: Compiled library target anchor translation unit.
 */
 
-#include "shs/geometry/shape_cell_culling.hpp"
-#include "shs/rhi/drivers/vulkan/vk_shape_cell_culler.hpp"
+// #include "shs/geometry/shape_cell_culling.hpp"
+// #include "shs/rhi/drivers/vulkan/vk_shape_cell_culler.hpp"
 
 namespace shs
 {

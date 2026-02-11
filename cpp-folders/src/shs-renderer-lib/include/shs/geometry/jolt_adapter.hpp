@@ -47,12 +47,12 @@ namespace shs::jolt
     //  Position / Direction conversion  (Z-negate)
     // =========================================================================
 
-    inline constexpr JPH::Vec3 to_jph(const glm::vec3& v) noexcept
+    inline JPH::Vec3 to_jph(const glm::vec3& v) noexcept
     {
         return JPH::Vec3(v.x, v.y, -v.z);
     }
 
-    inline constexpr glm::vec3 to_glm(const JPH::Vec3& v) noexcept
+    inline glm::vec3 to_glm(const JPH::Vec3& v) noexcept
     {
         return glm::vec3(v.GetX(), v.GetY(), -v.GetZ());
     }
@@ -62,12 +62,12 @@ namespace shs::jolt
     //  Quaternion conversion  (negate X,Y = Z-flip conjugation)
     // =========================================================================
 
-    inline constexpr JPH::Quat to_jph(const glm::quat& q) noexcept
+    inline JPH::Quat to_jph(const glm::quat& q) noexcept
     {
         return JPH::Quat(-q.x, -q.y, q.z, q.w);
     }
 
-    inline constexpr glm::quat to_glm(const JPH::Quat& q) noexcept
+    inline glm::quat to_glm(const JPH::Quat& q) noexcept
     {
         return glm::quat(q.GetW(), -q.GetX(), -q.GetY(), q.GetZ());
     }

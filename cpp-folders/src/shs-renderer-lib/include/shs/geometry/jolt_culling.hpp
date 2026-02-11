@@ -30,6 +30,7 @@
 #include <Jolt/Physics/Collision/Shape/Shape.h>
 
 #include "shs/geometry/aabb.hpp"
+#include "shs/geometry/frustum_culling.hpp"
 #include "shs/geometry/volumes.hpp"
 #include "shs/geometry/jolt_adapter.hpp"
 #include "shs/geometry/jolt_shape_traits.hpp"
@@ -94,21 +95,19 @@ namespace shs
         return out;
     }
 
+    inline CullingCell extract_frustum_cell(
+        const glm::mat4& view_proj,
+        CullingCellKind kind = CullingCellKind::CameraFrustumPerspective)
+    {
+        const Frustum frustum = extract_frustum_planes(view_proj);
+        return make_culling_cell_from_frustum(frustum, kind);
+    }
+
 
     // =========================================================================
     //  CullClass — tri-state classification
     // =========================================================================
 
-    // We keep the existing CullClass enum (defined in culling_query.hpp)
-    // and the CullTolerance struct. Since we include them transitively
-    // through the old headers, we re-declare them here for new code
-    // that only includes jolt_culling.hpp.
-
-    // Forward reference: these are defined in culling_query.hpp.
-    // If you only include jolt_culling.hpp without the old header,
-    // define them here:
-    #ifndef SHS_CULL_CLASS_DEFINED
-    #define SHS_CULL_CLASS_DEFINED
     enum class CullClass : uint8_t
     {
         Outside = 0,
@@ -121,7 +120,6 @@ namespace shs
         float outside_epsilon = 1e-5f;
         float inside_epsilon = 1e-5f;
     };
-    #endif
 
 
     // =========================================================================

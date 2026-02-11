@@ -153,6 +153,7 @@ namespace shs
     };
     static_assert(sizeof(CullingLightGPU) % 16 == 0, "CullingLightGPU must stay std430-aligned");
 
+    // Note: These helpers provide geometry bounds for GPU packing and broad-phase culling.
     inline Sphere point_light_culling_sphere(const PointLight& point)
     {
         return Sphere{
@@ -216,6 +217,7 @@ namespace shs
             std::max(glm::length(c.b - c.a) * 0.5f + c.radius, 0.0f)
         };
     }
+
 
     inline CullingLightGPU make_point_culling_light(const PointLight& point)
     {

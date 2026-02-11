@@ -104,7 +104,7 @@ private:
         init.height = dh;
         init.enable_validation = true;
         init.app_name = "HelloVulkanTriangle";
-        if (!vk_->init_sdl(init))
+        if (!vk_->init(init))
         {
             throw std::runtime_error("Vulkan backend init_sdl failed");
         }
