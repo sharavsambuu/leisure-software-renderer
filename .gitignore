@@ -27,3 +27,4 @@ build_demos.bat
 build.sh
 run_make_target.sh
 run_verify.sh
+build_sw_demo.bat

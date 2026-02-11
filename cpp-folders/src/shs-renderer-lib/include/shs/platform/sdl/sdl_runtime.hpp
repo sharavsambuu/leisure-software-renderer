@@ -86,16 +86,16 @@ namespace shs
                 if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_F6) out.toggle_follow_camera = true;
                 if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_m) out.toggle_motion_blur = true;
 
-                if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_RIGHT) out.right_mouse_down = true;
-                if (e.type == SDL_MOUSEBUTTONUP && e.button.button == SDL_BUTTON_RIGHT) out.right_mouse_up = true;
-                if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) out.left_mouse_down = true;
-                if (e.type == SDL_MOUSEBUTTONUP && e.button.button == SDL_BUTTON_LEFT) out.left_mouse_up = true;
                 if (e.type == SDL_MOUSEMOTION)
                 {
                     out.mouse_dx += (float)e.motion.xrel;
                     out.mouse_dy += (float)e.motion.yrel;
                 }
             }
+
+            uint32_t ms = SDL_GetMouseState(nullptr, nullptr);
+            out.right_mouse_down = (ms & SDL_BUTTON(SDL_BUTTON_RIGHT)) != 0;
+            out.left_mouse_down = (ms & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
 
             const uint8_t* ks = SDL_GetKeyboardState(nullptr);
             out.forward = ks[SDL_SCANCODE_W] != 0;

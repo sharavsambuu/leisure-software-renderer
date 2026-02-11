@@ -68,7 +68,12 @@ namespace shs
 
         // Jolt's triangle extraction context.
         JPH::Shape::GetTrianglesContext context;
-        shape.GetTrianglesStart(context, shape_bounds, JPH::Vec3::sZero(), JPH::Quat::sIdentity(), JPH::Vec3::sReplicate(1.0f));
+        shape.GetTrianglesStart(
+            context,
+            shape_bounds,
+            transform.GetTranslation(),
+            transform.GetQuaternion(),
+            JPH::Vec3::sReplicate(1.0f));
 
         // Extract triangles in batches.
         constexpr int k_batch_size = 256;
