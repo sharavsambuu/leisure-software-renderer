@@ -67,10 +67,14 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
     set(VK_TRI_FRAG "${VK_TRI_SHADER_DIR}/vulkan_triangle.frag")
     set(VK_CULLING_VERT "${VK_TRI_SHADER_DIR}/culling_vk.vert")
     set(VK_CULLING_FRAG "${VK_TRI_SHADER_DIR}/culling_vk.frag")
+    set(VK_SOFT_SHADOW_CULLING_VERT "${VK_TRI_SHADER_DIR}/soft_shadow_culling_vk.vert")
+    set(VK_SOFT_SHADOW_CULLING_FRAG "${VK_TRI_SHADER_DIR}/soft_shadow_culling_vk.frag")
     set(VK_TRI_VERT_SPV "${VK_TRI_OUT_DIR}/vulkan_triangle.vert.spv")
     set(VK_TRI_FRAG_SPV "${VK_TRI_OUT_DIR}/vulkan_triangle.frag.spv")
     set(VK_CULLING_VERT_SPV "${VK_TRI_OUT_DIR}/culling_vk.vert.spv")
     set(VK_CULLING_FRAG_SPV "${VK_TRI_OUT_DIR}/culling_vk.frag.spv")
+    set(VK_SOFT_SHADOW_CULLING_VERT_SPV "${VK_TRI_OUT_DIR}/soft_shadow_culling_vk.vert.spv")
+    set(VK_SOFT_SHADOW_CULLING_FRAG_SPV "${VK_TRI_OUT_DIR}/soft_shadow_culling_vk.frag.spv")
 
     set(VK_PB_SHADOW_VERT "${VK_DEFAULT_SHADER_DIR}/pb_shadow.vert")
     set(VK_PB_SCENE_VERT "${VK_DEFAULT_SHADER_DIR}/pb_scene.vert")
@@ -126,6 +130,18 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
         OUTPUT "${VK_CULLING_FRAG_SPV}"
         COMMAND ${GLSLANG_VALIDATOR} -V "${VK_CULLING_FRAG}" -o "${VK_CULLING_FRAG_SPV}"
         DEPENDS "${VK_CULLING_FRAG}"
+        VERBATIM
+    )
+    add_custom_command(
+        OUTPUT "${VK_SOFT_SHADOW_CULLING_VERT_SPV}"
+        COMMAND ${GLSLANG_VALIDATOR} -V "${VK_SOFT_SHADOW_CULLING_VERT}" -o "${VK_SOFT_SHADOW_CULLING_VERT_SPV}"
+        DEPENDS "${VK_SOFT_SHADOW_CULLING_VERT}"
+        VERBATIM
+    )
+    add_custom_command(
+        OUTPUT "${VK_SOFT_SHADOW_CULLING_FRAG_SPV}"
+        COMMAND ${GLSLANG_VALIDATOR} -V "${VK_SOFT_SHADOW_CULLING_FRAG}" -o "${VK_SOFT_SHADOW_CULLING_FRAG_SPV}"
+        DEPENDS "${VK_SOFT_SHADOW_CULLING_FRAG}"
         VERBATIM
     )
     add_custom_command(
@@ -220,6 +236,14 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
     )
     add_custom_target(HelloVulkanTriangleShaders DEPENDS "${VK_TRI_VERT_SPV}" "${VK_TRI_FRAG_SPV}")
     add_custom_target(HelloCullingVkShaders DEPENDS "${VK_CULLING_VERT_SPV}" "${VK_CULLING_FRAG_SPV}")
+    add_custom_target(HelloSoftShadowCullingVkShaders
+        DEPENDS
+            "${VK_CULLING_VERT_SPV}"
+            "${VK_CULLING_FRAG_SPV}"
+            "${VK_SOFT_SHADOW_CULLING_VERT_SPV}"
+            "${VK_SOFT_SHADOW_CULLING_FRAG_SPV}"
+            "${VK_PB_SHADOW_VERT_SPV}"
+    )
     add_custom_target(HelloPassBasicsVulkanShaders
         DEPENDS
             "${VK_PB_SHADOW_VERT_SPV}"
@@ -384,6 +408,18 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
         SHS_VK_CULLING_VERT_SPV="${VK_CULLING_VERT_SPV}"
         SHS_VK_CULLING_FRAG_SPV="${VK_CULLING_FRAG_SPV}"
     )
+
+    add_executable(hello_soft_shadow_culling_vk hello_soft_shadow_culling_vk.cpp)
+    add_dependencies(hello_soft_shadow_culling_vk HelloSoftShadowCullingVkShaders)
+    target_link_libraries(hello_soft_shadow_culling_vk PRIVATE shs::renderer)
+    set_target_properties(hello_soft_shadow_culling_vk PROPERTIES FOLDER "Demos")
+    target_compile_definitions(hello_soft_shadow_culling_vk PRIVATE
+        SHS_VK_CULLING_VERT_SPV="${VK_CULLING_VERT_SPV}"
+        SHS_VK_CULLING_FRAG_SPV="${VK_CULLING_FRAG_SPV}"
+        SHS_VK_SOFT_SHADOW_CULLING_VERT_SPV="${VK_SOFT_SHADOW_CULLING_VERT_SPV}"
+        SHS_VK_SOFT_SHADOW_CULLING_FRAG_SPV="${VK_SOFT_SHADOW_CULLING_FRAG_SPV}"
+        SHS_VK_PB_SHADOW_VERT_SPV="${VK_PB_SHADOW_VERT_SPV}"
+    )
 endif()
 
 # Software culling demo (always available)
@@ -396,3 +432,8 @@ add_executable(hello_occlusion_culling_sw hello_occlusion_culling_sw.cpp)
 target_link_libraries(hello_occlusion_culling_sw PRIVATE shs::renderer)
 set_target_properties(hello_occlusion_culling_sw PROPERTIES FOLDER "Demos")
 target_compile_features(hello_occlusion_culling_sw PRIVATE cxx_std_20)
+
+add_executable(hello_soft_shadow_culling_sw hello_soft_shadow_culling_sw.cpp)
+target_link_libraries(hello_soft_shadow_culling_sw PRIVATE shs::renderer)
+set_target_properties(hello_soft_shadow_culling_sw PROPERTIES FOLDER "Demos")
+target_compile_features(hello_soft_shadow_culling_sw PRIVATE cxx_std_20)

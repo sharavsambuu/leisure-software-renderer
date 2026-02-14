@@ -19,6 +19,7 @@
 #include <shs/geometry/culling_software.hpp>
 #include <shs/geometry/jolt_debug_draw.hpp>
 #include <shs/geometry/scene_shape.hpp>
+#include <shs/scene/scene_culling.hpp>
 #include <shs/core/context.hpp>
 #include <shs/gfx/rt_types.hpp>
 #include <shs/camera/camera_math.hpp>
@@ -409,6 +410,21 @@ int main() {
         mesh_library.push_back(debug_mesh_from_aabb(unit));
     }
 
+    SceneElementSet cull_scene;
+    cull_scene.reserve(instances.size());
+    for (size_t i = 0; i < instances.size(); ++i)
+    {
+        SceneElement elem{};
+        elem.geometry = instances[i].shape;
+        elem.user_index = static_cast<uint32_t>(i);
+        elem.visible = instances[i].visible;
+        elem.frustum_visible = instances[i].frustum_visible;
+        elem.occluded = instances[i].occluded;
+        elem.casts_shadow = true;
+        cull_scene.add(std::move(elem));
+    }
+    SceneCullingContext cull_ctx{};
+
     FreeCamera camera;
     bool show_aabb_debug = false;
     bool render_lit_surfaces = false;
@@ -446,53 +462,32 @@ int main() {
             inst.occluded = false;
         }
 
+        auto cull_elems = cull_scene.elements();
+        for (size_t i = 0; i < instances.size(); ++i)
+        {
+            cull_elems[i].geometry = instances[i].shape;
+            cull_elems[i].visible = true;
+            cull_elems[i].frustum_visible = true;
+            cull_elems[i].occluded = false;
+        }
+
         glm::mat4 view = camera.get_view_matrix();
         glm::mat4 proj = perspective_lh_no(glm::radians(60.0f), (float)CANVAS_W / CANVAS_H, 0.1f, 1000.0f);
         glm::mat4 vp = proj * view;
 
         const Frustum frustum = extract_frustum_planes(vp);
-        const CullingResultEx frustum_result = run_frustum_culling(
-            std::span<const ShapeInstance>(instances.data(), instances.size()),
-            frustum,
-            [](const ShapeInstance& inst) -> const SceneShape& { return inst.shape; });
-
-        for (size_t i = 0; i < instances.size(); ++i)
-        {
-            const bool visible =
-                (i < frustum_result.frustum_classes.size()) &&
-                cull_class_is_visible(
-                    frustum_result.frustum_classes[i],
-                    frustum_result.request.include_intersecting);
-            instances[i].frustum_visible = visible;
-        }
-
-        const std::vector<uint32_t>& frustum_indices = frustum_result.frustum_visible_indices;
-        const uint32_t frustum_visible_count = frustum_result.stats.visible_count;
-
-        std::vector<uint32_t> visible_indices{};
-        visible_indices.reserve(frustum_indices.size());
-        CullingStats stats = culling_sw::run_software_occlusion_pass(
-            std::span<ShapeInstance>(instances.data(), instances.size()),
-            std::span<const uint32_t>(frustum_indices.data(), frustum_indices.size()),
+        cull_ctx.run_frustum(cull_scene, frustum);
+        cull_ctx.run_software_occlusion(
+            cull_scene,
             enable_occlusion,
             std::span<float>(occlusion_depth.data(), occlusion_depth.size()),
             OCC_W,
             OCC_H,
             view,
             vp,
-            [](const ShapeInstance& inst) -> AABB {
-                return inst.shape.world_aabb();
-            },
-            [](const ShapeInstance& inst, const glm::mat4& view_mtx) -> float {
-                return culling_sw::view_depth_of_aabb_center(inst.shape.world_aabb(), view_mtx);
-            },
-            [](ShapeInstance& inst, bool occluded) {
-                inst.occluded = occluded;
-            },
-            [](ShapeInstance& inst, bool visible) {
-                inst.visible = visible;
-            },
-            [&](const ShapeInstance& inst, uint32_t, std::span<float> depth_span) {
+            [&](const SceneElement& elem, uint32_t, std::span<float> depth_span) {
+                if (elem.user_index >= instances.size()) return;
+                const ShapeInstance& inst = instances[elem.user_index];
                 if (inst.mesh_index >= mesh_library.size()) return;
                 culling_sw::rasterize_mesh_depth_transformed(
                     depth_span,
@@ -501,15 +496,25 @@ int main() {
                     mesh_library[inst.mesh_index],
                     inst.model,
                     vp);
-            },
-            visible_indices);
-        stats.frustum_visible_count = frustum_visible_count;
-        normalize_culling_stats(stats);
+            });
+
+        for (size_t i = 0; i < instances.size(); ++i)
+        {
+            instances[i].visible = cull_elems[i].visible;
+            instances[i].frustum_visible = cull_elems[i].frustum_visible;
+            instances[i].occluded = cull_elems[i].occluded;
+        }
+
+        const CullingStats& stats = cull_ctx.stats();
+        const std::vector<uint32_t>& visible_scene_indices = cull_ctx.visible_indices();
 
         ldr_rt.clear({12, 13, 18, 255});
         std::fill(depth_buffer.begin(), depth_buffer.end(), 1.0f);
 
-        for (uint32_t idx : visible_indices) {
+        for (uint32_t scene_idx : visible_scene_indices) {
+            if (scene_idx >= cull_scene.size()) continue;
+            const uint32_t idx = cull_scene[scene_idx].user_index;
+            if (idx >= instances.size()) continue;
             const auto& inst = instances[idx];
             if (inst.mesh_index >= mesh_library.size()) continue;
             const DebugMesh& shape_mesh = mesh_library[inst.mesh_index];
