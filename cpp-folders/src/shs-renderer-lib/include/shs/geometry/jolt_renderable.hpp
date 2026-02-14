@@ -15,6 +15,7 @@
 #include <string>
 
 #include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 #include <Jolt/Jolt.h>
 #include <Jolt/Math/Mat44.h>
@@ -53,17 +54,42 @@ namespace shs
             RenderItem ri{};
             ri.mesh = visual_mesh;
             ri.mat = material;
-            
-            const JPH::Vec3 pos = geometry.transform.GetTranslation();
-            const JPH::Quat rot_q = geometry.transform.GetRotation().GetQuaternion();
-            const JPH::Vec3 rot = rot_q.GetEulerAngles();
-            
-            const glm::vec3 pos_shs = jolt::to_glm(pos);
-            const glm::vec3 rot_shs = glm::vec3(rot.GetX(), rot.GetY(), -rot.GetZ());
-            
-            ri.tr.pos = pos_shs;
-            ri.tr.rot_euler = rot_shs;
-            ri.tr.scl = glm::vec3(1.0f);
+
+            const glm::mat4 m_shs = jolt::to_glm(geometry.transform);
+            ri.tr.pos = glm::vec3(m_shs[3]);
+
+            glm::vec3 axis_x = glm::vec3(m_shs[0]);
+            glm::vec3 axis_y = glm::vec3(m_shs[1]);
+            glm::vec3 axis_z = glm::vec3(m_shs[2]);
+
+            glm::vec3 scale{
+                glm::length(axis_x),
+                glm::length(axis_y),
+                glm::length(axis_z)
+            };
+
+            if (scale.x <= 1e-6f) scale.x = 1.0f;
+            if (scale.y <= 1e-6f) scale.y = 1.0f;
+            if (scale.z <= 1e-6f) scale.z = 1.0f;
+
+            axis_x /= scale.x;
+            axis_y /= scale.y;
+            axis_z /= scale.z;
+
+            glm::mat3 rot_m{};
+            rot_m[0] = axis_x;
+            rot_m[1] = axis_y;
+            rot_m[2] = axis_z;
+            if (glm::determinant(rot_m) < 0.0f)
+            {
+                // Keep a proper rotation matrix and preserve a signed scale component.
+                scale.z = -scale.z;
+                rot_m[2] = -rot_m[2];
+            }
+
+            const glm::quat rot_q = glm::normalize(glm::quat_cast(rot_m));
+            ri.tr.rot_euler = glm::eulerAngles(rot_q);
+            ri.tr.scl = scale;
             
             ri.object_id = object_id();
             ri.visible = visible;

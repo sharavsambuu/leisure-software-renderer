@@ -26,6 +26,9 @@ struct CullingLightGPU
     vec4 up_shape_x;
     vec4 shape_attenuation;
     uvec4 type_shape_flags;
+    vec4 cull_sphere;
+    vec4 cull_aabb_min;
+    vec4 cull_aabb_max;
 };
 
 struct ShadowLightGPU

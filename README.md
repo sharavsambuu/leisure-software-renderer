@@ -1,19 +1,17 @@
 
 # Tasks to mess around in the near future
 
-    Switch world space coordinate system convention to X is RIGHT, Y is FORWARD, Z is UP
-
     Dynamic compositional and configurable renderer path combinations
       Tunable combinations -> 
-        Different Light Volumes      + 
-        Different Culling Techniques + 
-        Different Rendering          + 
+        Different Light Volumes      x 
+        Different Culling Techniques x 
+        Different Rendering          x 
         Different Passes
 
     Use Jolt Physics and primitive shape volume definitions for
-      Physics
-      Light Culling
-      Frustum Culling + Occlusion Culling
+      - Physics
+      - Light Culling
+      - Frustum Culling + Occlusion Culling
     Prevents to duplicate same abstractions on different parts
 
     Once the dynamic compositional lightening renderer solved, maybe try to estimate
@@ -80,6 +78,12 @@
       - Maybe if my kung-fu skill good enough, might implement deferred rendering
       - Transparency
       - Python port using PyGame or PySDL2
+
+
+# Current Notes
+
+    Light culling integration status and known issue tracking:
+      - docs/light-culling-status-and-known-issues.md
     
     Cool things would be nice to try out
       - Lens Flare

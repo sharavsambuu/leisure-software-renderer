@@ -75,29 +75,46 @@ namespace shs
         return glm::vec3(clip) / clip.w;
     }
 
+    // SHS camera convention here is LH + NO (NDC z in [-1, 1]).
+    inline float ndc_from_depth01_lh_no(float depth01) noexcept
+    {
+        const float d = std::clamp(depth01, 0.0f, 1.0f);
+        return d * 2.0f - 1.0f;
+    }
+
+    inline float ndc_from_view_depth_lh_no(float view_depth, float z_near, float z_far) noexcept
+    {
+        const float n = std::max(z_near, 1e-4f);
+        const float f = std::max(z_far, n + 1e-3f);
+        const float z = std::clamp(view_depth, n, f);
+        const float denom = std::max(f - n, 1e-6f);
+        // perspectiveLH_NO mapping: ndc_z = (f+n)/(f-n) - (2fn)/((f-n)z_view)
+        return ((f + n) / denom) - ((2.0f * f * n) / (denom * z));
+    }
+
     inline CullingCell make_screen_tile_cell(
         uint32_t tile_x, uint32_t tile_y,
-        uint32_t tiles_x, uint32_t tiles_y,
         uint32_t tile_size,
         uint32_t viewport_w, uint32_t viewport_h,
         const glm::mat4& inv_view_proj,
-        float z_near_ndc = -1.0f,
-        float z_far_ndc = 1.0f) noexcept
+        float tile_near_ndc = -1.0f,
+        float tile_far_ndc = 1.0f) noexcept
     {
         const float x0 = static_cast<float>(tile_x * tile_size) / static_cast<float>(viewport_w) * 2.0f - 1.0f;
         const float x1 = static_cast<float>(std::min((tile_x + 1) * tile_size, viewport_w)) / static_cast<float>(viewport_w) * 2.0f - 1.0f;
-        const float y0 = static_cast<float>(tile_y * tile_size) / static_cast<float>(viewport_h) * 2.0f - 1.0f;
-        const float y1 = static_cast<float>(std::min((tile_y + 1) * tile_size, viewport_h)) / static_cast<float>(viewport_h) * 2.0f - 1.0f;
+        // Tile coordinates are top-origin in screen space.
+        const float y_top = 1.0f - static_cast<float>(tile_y * tile_size) / static_cast<float>(viewport_h) * 2.0f;
+        const float y_bottom = 1.0f - static_cast<float>(std::min((tile_y + 1) * tile_size, viewport_h)) / static_cast<float>(viewport_h) * 2.0f;
 
         // 8 corners of the tile frustum in world space.
-        const glm::vec3 nbl = unproject_ndc({x0, y0, z_near_ndc}, inv_view_proj);
-        const glm::vec3 nbr = unproject_ndc({x1, y0, z_near_ndc}, inv_view_proj);
-        const glm::vec3 ntl = unproject_ndc({x0, y1, z_near_ndc}, inv_view_proj);
-        const glm::vec3 ntr = unproject_ndc({x1, y1, z_near_ndc}, inv_view_proj);
-        const glm::vec3 fbl = unproject_ndc({x0, y0, z_far_ndc}, inv_view_proj);
-        const glm::vec3 fbr = unproject_ndc({x1, y0, z_far_ndc}, inv_view_proj);
-        const glm::vec3 ftl = unproject_ndc({x0, y1, z_far_ndc}, inv_view_proj);
-        const glm::vec3 ftr = unproject_ndc({x1, y1, z_far_ndc}, inv_view_proj);
+        const glm::vec3 nbl = unproject_ndc({x0, y_bottom, tile_near_ndc}, inv_view_proj);
+        const glm::vec3 nbr = unproject_ndc({x1, y_bottom, tile_near_ndc}, inv_view_proj);
+        const glm::vec3 ntl = unproject_ndc({x0, y_top, tile_near_ndc}, inv_view_proj);
+        const glm::vec3 ntr = unproject_ndc({x1, y_top, tile_near_ndc}, inv_view_proj);
+        const glm::vec3 fbl = unproject_ndc({x0, y_bottom, tile_far_ndc}, inv_view_proj);
+        const glm::vec3 fbr = unproject_ndc({x1, y_bottom, tile_far_ndc}, inv_view_proj);
+        const glm::vec3 ftl = unproject_ndc({x0, y_top, tile_far_ndc}, inv_view_proj);
+        const glm::vec3 ftr = unproject_ndc({x1, y_top, tile_far_ndc}, inv_view_proj);
 
         const glm::vec3 inside = (nbl + ntr + fbl + ftr) * 0.25f;
 
@@ -132,20 +149,12 @@ namespace shs
 
         const glm::mat4 inv_vp = glm::inverse(view_proj);
 
-        // Pre-compute bounding spheres for all lights.
-        std::vector<Sphere> spheres{};
-        spheres.reserve(light_shapes.size());
-        for (const SceneShape& ls : light_shapes)
-        {
-            spheres.push_back(ls.bounding_sphere());
-        }
-
         // First: frustum cull all lights against the full camera frustum.
         const Frustum camera_frustum = extract_frustum_planes(view_proj);
         std::vector<bool> frustum_visible(light_shapes.size(), false);
         for (size_t li = 0; li < light_shapes.size(); ++li)
         {
-            if (classify_sphere_vs_frustum(spheres[li], camera_frustum) != CullClass::Outside)
+            if (classify_vs_frustum(light_shapes[li], camera_frustum) != CullClass::Outside)
             {
                 frustum_visible[li] = true;
             }
@@ -156,7 +165,7 @@ namespace shs
             for (uint32_t tx = 0; tx < result.tiles_x; ++tx)
             {
                 const CullingCell cell = make_screen_tile_cell(
-                    tx, ty, result.tiles_x, result.tiles_y,
+                    tx, ty,
                     tile_size, viewport_w, viewport_h, inv_vp);
 
                 const uint32_t tile_index = ty * result.tiles_x + tx;
@@ -166,7 +175,7 @@ namespace shs
                 {
                     if (!frustum_visible[li]) continue;
 
-                    const CullClass c = classify_sphere_vs_cell(spheres[li], cell);
+                    const CullClass c = classify_vs_cell(light_shapes[li], cell);
                     if (c != CullClass::Outside)
                     {
                         tile_list.push_back(li);
@@ -183,14 +192,15 @@ namespace shs
     //  Uses per-tile min/max depth to create tighter tile cells.
     // =========================================================================
 
-    inline TiledLightCullingResult cull_lights_tiled_depth_range(
+    // Depth-range culling with per-tile depth in [0,1] (depth buffer domain).
+    inline TiledLightCullingResult cull_lights_tiled_depth01_range(
         std::span<const SceneShape> light_shapes,
         const glm::mat4& view_proj,
         uint32_t viewport_w,
         uint32_t viewport_h,
         uint32_t tile_size,
-        std::span<const float> tile_min_depths,
-        std::span<const float> tile_max_depths)
+        std::span<const float> tile_min_depth01,
+        std::span<const float> tile_max_depth01)
     {
         TiledLightCullingResult result{};
         result.tiles_x = (viewport_w + tile_size - 1) / tile_size;
@@ -202,18 +212,11 @@ namespace shs
 
         const glm::mat4 inv_vp = glm::inverse(view_proj);
 
-        std::vector<Sphere> spheres{};
-        spheres.reserve(light_shapes.size());
-        for (const SceneShape& ls : light_shapes)
-        {
-            spheres.push_back(ls.bounding_sphere());
-        }
-
         const Frustum camera_frustum = extract_frustum_planes(view_proj);
         std::vector<bool> frustum_visible(light_shapes.size(), false);
         for (size_t li = 0; li < light_shapes.size(); ++li)
         {
-            if (classify_sphere_vs_frustum(spheres[li], camera_frustum) != CullClass::Outside)
+            if (classify_vs_frustum(light_shapes[li], camera_frustum) != CullClass::Outside)
             {
                 frustum_visible[li] = true;
             }
@@ -226,24 +229,24 @@ namespace shs
                 const uint32_t tile_index = ty * result.tiles_x + tx;
 
                 // Use per-tile depth range if available.
-                float z_near_ndc = -1.0f;
-                float z_far_ndc = 1.0f;
-                if (tile_index < tile_min_depths.size())
-                    z_near_ndc = tile_min_depths[tile_index] * 2.0f - 1.0f;
-                if (tile_index < tile_max_depths.size())
-                    z_far_ndc = tile_max_depths[tile_index] * 2.0f - 1.0f;
+                float tile_near_ndc = -1.0f;
+                float tile_far_ndc = 1.0f;
+                if (tile_index < tile_min_depth01.size())
+                    tile_near_ndc = ndc_from_depth01_lh_no(tile_min_depth01[tile_index]);
+                if (tile_index < tile_max_depth01.size())
+                    tile_far_ndc = ndc_from_depth01_lh_no(tile_max_depth01[tile_index]);
 
                 const CullingCell cell = make_screen_tile_cell(
-                    tx, ty, result.tiles_x, result.tiles_y,
+                    tx, ty,
                     tile_size, viewport_w, viewport_h, inv_vp,
-                    z_near_ndc, z_far_ndc);
+                    tile_near_ndc, tile_far_ndc);
 
                 auto& tile_list = result.tile_light_lists[tile_index];
                 for (uint32_t li = 0; li < static_cast<uint32_t>(light_shapes.size()); ++li)
                 {
                     if (!frustum_visible[li]) continue;
 
-                    const CullClass c = classify_sphere_vs_cell(spheres[li], cell);
+                    const CullClass c = classify_vs_cell(light_shapes[li], cell);
                     if (c != CullClass::Outside)
                     {
                         tile_list.push_back(li);
@@ -252,6 +255,92 @@ namespace shs
             }
         }
         return result;
+    }
+
+    // Depth-range culling with per-tile linear view-space depth (+Z forward).
+    inline TiledLightCullingResult cull_lights_tiled_view_depth_range(
+        std::span<const SceneShape> light_shapes,
+        const glm::mat4& view_proj,
+        uint32_t viewport_w,
+        uint32_t viewport_h,
+        uint32_t tile_size,
+        std::span<const float> tile_min_view_depth,
+        std::span<const float> tile_max_view_depth,
+        float z_near,
+        float z_far)
+    {
+        TiledLightCullingResult result{};
+        result.tiles_x = (viewport_w + tile_size - 1) / tile_size;
+        result.tiles_y = (viewport_h + tile_size - 1) / tile_size;
+        const uint32_t total_tiles = result.tiles_x * result.tiles_y;
+        result.tile_light_lists.resize(total_tiles);
+
+        if (light_shapes.empty()) return result;
+
+        const glm::mat4 inv_vp = glm::inverse(view_proj);
+
+        const Frustum camera_frustum = extract_frustum_planes(view_proj);
+        std::vector<bool> frustum_visible(light_shapes.size(), false);
+        for (size_t li = 0; li < light_shapes.size(); ++li)
+        {
+            if (classify_vs_frustum(light_shapes[li], camera_frustum) != CullClass::Outside)
+            {
+                frustum_visible[li] = true;
+            }
+        }
+
+        for (uint32_t ty = 0; ty < result.tiles_y; ++ty)
+        {
+            for (uint32_t tx = 0; tx < result.tiles_x; ++tx)
+            {
+                const uint32_t tile_index = ty * result.tiles_x + tx;
+
+                float tile_near_ndc = -1.0f;
+                float tile_far_ndc = 1.0f;
+                if (tile_index < tile_min_view_depth.size())
+                    tile_near_ndc = ndc_from_view_depth_lh_no(tile_min_view_depth[tile_index], z_near, z_far);
+                if (tile_index < tile_max_view_depth.size())
+                    tile_far_ndc = ndc_from_view_depth_lh_no(tile_max_view_depth[tile_index], z_near, z_far);
+
+                const CullingCell cell = make_screen_tile_cell(
+                    tx, ty,
+                    tile_size, viewport_w, viewport_h, inv_vp,
+                    tile_near_ndc, tile_far_ndc);
+
+                auto& tile_list = result.tile_light_lists[tile_index];
+                for (uint32_t li = 0; li < static_cast<uint32_t>(light_shapes.size()); ++li)
+                {
+                    if (!frustum_visible[li]) continue;
+
+                    const CullClass c = classify_vs_cell(light_shapes[li], cell);
+                    if (c != CullClass::Outside)
+                    {
+                        tile_list.push_back(li);
+                    }
+                }
+            }
+        }
+        return result;
+    }
+
+    // Backward-compatible alias. Kept for existing call sites that pass depth01.
+    inline TiledLightCullingResult cull_lights_tiled_depth_range(
+        std::span<const SceneShape> light_shapes,
+        const glm::mat4& view_proj,
+        uint32_t viewport_w,
+        uint32_t viewport_h,
+        uint32_t tile_size,
+        std::span<const float> tile_min_depths,
+        std::span<const float> tile_max_depths)
+    {
+        return cull_lights_tiled_depth01_range(
+            light_shapes,
+            view_proj,
+            viewport_w,
+            viewport_h,
+            tile_size,
+            tile_min_depths,
+            tile_max_depths);
     }
 
 
@@ -290,44 +379,36 @@ namespace shs
 
         const glm::mat4 inv_vp = glm::inverse(view_proj);
 
-        std::vector<Sphere> spheres{};
-        spheres.reserve(light_shapes.size());
-        for (const SceneShape& ls : light_shapes)
-        {
-            spheres.push_back(ls.bounding_sphere());
-        }
-
         const Frustum camera_frustum = extract_frustum_planes(view_proj);
         std::vector<bool> frustum_visible(light_shapes.size(), false);
         for (size_t li = 0; li < light_shapes.size(); ++li)
         {
-            if (classify_sphere_vs_frustum(spheres[li], camera_frustum) != CullClass::Outside)
+            if (classify_vs_frustum(light_shapes[li], camera_frustum) != CullClass::Outside)
             {
                 frustum_visible[li] = true;
             }
         }
 
-        // Exponential depth slicing: slice_z(k) = z_near * (z_far/z_near)^(k/depth_slices).
-        // Convert to NDC: ndc_z = 2 * ((z - z_near) / (z_far - z_near)) - 1  for LH.
+        // Exponential depth slicing in linear view space (+Z forward).
+        // Convert slice boundaries to LH_NO NDC via exact perspective mapping.
         const float log_ratio = std::log(z_far / z_near);
-        const float z_range = z_far - z_near;
 
         for (uint32_t cz = 0; cz < depth_slices; ++cz)
         {
             const float slice_near = z_near * std::exp(log_ratio * static_cast<float>(cz) / static_cast<float>(depth_slices));
             const float slice_far = z_near * std::exp(log_ratio * static_cast<float>(cz + 1) / static_cast<float>(depth_slices));
 
-            const float ndc_near = 2.0f * ((slice_near - z_near) / z_range) - 1.0f;
-            const float ndc_far = 2.0f * ((slice_far - z_near) / z_range) - 1.0f;
+            const float tile_near_ndc = ndc_from_view_depth_lh_no(slice_near, z_near, z_far);
+            const float tile_far_ndc = ndc_from_view_depth_lh_no(slice_far, z_near, z_far);
 
             for (uint32_t ty = 0; ty < result.clusters_y; ++ty)
             {
                 for (uint32_t tx = 0; tx < result.clusters_x; ++tx)
                 {
                     const CullingCell cell = make_screen_tile_cell(
-                        tx, ty, result.clusters_x, result.clusters_y,
+                        tx, ty,
                         tile_size, viewport_w, viewport_h, inv_vp,
-                        ndc_near, ndc_far);
+                        tile_near_ndc, tile_far_ndc);
 
                     const uint32_t cluster_index =
                         cz * (result.clusters_x * result.clusters_y) +
@@ -338,7 +419,7 @@ namespace shs
                     {
                         if (!frustum_visible[li]) continue;
 
-                        const CullClass c = classify_sphere_vs_cell(spheres[li], cell);
+                        const CullClass c = classify_vs_cell(light_shapes[li], cell);
                         if (c != CullClass::Outside)
                         {
                             cluster_list.push_back(li);

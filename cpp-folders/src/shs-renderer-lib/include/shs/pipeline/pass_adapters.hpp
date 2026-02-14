@@ -14,11 +14,11 @@
 #include <cmath>
 #include <vector>
 
-#include <variant>
-
 #include <glm/gtc/matrix_transform.hpp>
 
 #include "shs/geometry/jolt_culling.hpp"
+#include "shs/geometry/jolt_adapter.hpp"
+#include "shs/geometry/jolt_shapes.hpp"
 #include "shs/gfx/rt_handle.hpp"
 #include "shs/lighting/light_set.hpp"
 #include "shs/passes/pass_light_shafts.hpp"
@@ -125,129 +125,93 @@ namespace shs
             return cell;
         }
 
-        struct LightCullShape
+        inline glm::mat4 make_basis_transform(
+            const glm::vec3& position,
+            const glm::vec3& axis_x,
+            const glm::vec3& axis_y,
+            const glm::vec3& axis_z)
         {
-            std::variant<Sphere, ConeFrustum, OBB, Capsule> value;
-            uint32_t stable_id;
+            glm::mat4 m(1.0f);
+            m[0] = glm::vec4(axis_x, 0.0f);
+            m[1] = glm::vec4(axis_y, 0.0f);
+            m[2] = glm::vec4(axis_z, 0.0f);
+            m[3] = glm::vec4(position, 1.0f);
+            return m;
+        }
 
-            JPH::ShapeRefC jolt_shape() const { return nullptr; }
-            JPH::Mat44 world_transform() const { return JPH::Mat44::sIdentity(); }
+        inline void make_basis_from_forward(
+            const glm::vec3& forward,
+            glm::vec3& axis_x,
+            glm::vec3& axis_y,
+            glm::vec3& axis_z)
+        {
+            axis_z = normalize_or(forward, glm::vec3(0.0f, 0.0f, 1.0f));
+            const glm::vec3 up_hint = (std::abs(axis_z.y) > 0.98f) ? glm::vec3(1.0f, 0.0f, 0.0f) : glm::vec3(0.0f, 1.0f, 0.0f);
+            axis_x = normalize_or(glm::cross(up_hint, axis_z), glm::vec3(1.0f, 0.0f, 0.0f));
+            axis_y = normalize_or(glm::cross(axis_z, axis_x), glm::vec3(0.0f, 1.0f, 0.0f));
+        }
 
-            Sphere bounding_sphere() const
-            {
-                return std::visit([](const auto& s) -> Sphere {
-                    using T = std::decay_t<decltype(s)>;
-                    if constexpr (std::is_same_v<T, Sphere>) return s;
-                    if constexpr (std::is_same_v<T, ConeFrustum>) {
-                        Sphere sphere{};
-                        sphere.center = s.apex + s.axis * (s.near_distance + (s.far_distance - s.near_distance) * 0.5f);
-                        sphere.radius = (s.far_distance - s.near_distance) * 0.5f + s.far_radius;
-                        return sphere;
-                    }
-                    if constexpr (std::is_same_v<T, OBB>) {
-                        Sphere sphere{};
-                        sphere.center = s.center;
-                        sphere.radius = glm::length(s.half_extents);
-                        return sphere;
-                    }
-                    if constexpr (std::is_same_v<T, Capsule>) {
-                        Sphere sphere{};
-                        sphere.center = (s.a + s.b) * 0.5f;
-                        sphere.radius = glm::length(s.a - s.b) * 0.5f + s.radius;
-                        return sphere;
-                    }
-                    return Sphere{};
-                }, value);
-            }
-
-            AABB world_aabb() const
-            {
-                return std::visit([](const auto& s) -> AABB {
-                    using T = std::decay_t<decltype(s)>;
-                    if constexpr (std::is_same_v<T, Sphere>) {
-                        return AABB{s.center - glm::vec3(s.radius), s.center + glm::vec3(s.radius)};
-                    }
-                    if constexpr (std::is_same_v<T, ConeFrustum>) {
-                        AABB box{};
-                        box.expand(s.apex); // approx
-                        const glm::vec3 base = s.apex + s.axis * s.far_distance;
-                        box.expand(base + glm::vec3(s.far_radius));
-                        box.expand(base - glm::vec3(s.far_radius));
-                        return box;
-                    }
-                    if constexpr (std::is_same_v<T, OBB>) {
-                        AABB box{};
-                        const glm::vec3 corners[8] = {
-                            s.center + s.axis_x * s.half_extents.x + s.axis_y * s.half_extents.y + s.axis_z * s.half_extents.z,
-                            s.center + s.axis_x * s.half_extents.x + s.axis_y * s.half_extents.y - s.axis_z * s.half_extents.z,
-                            s.center + s.axis_x * s.half_extents.x - s.axis_y * s.half_extents.y + s.axis_z * s.half_extents.z,
-                            s.center + s.axis_x * s.half_extents.x - s.axis_y * s.half_extents.y - s.axis_z * s.half_extents.z,
-                            s.center - s.axis_x * s.half_extents.x + s.axis_y * s.half_extents.y + s.axis_z * s.half_extents.z,
-                            s.center - s.axis_x * s.half_extents.x + s.axis_y * s.half_extents.y - s.axis_z * s.half_extents.z,
-                            s.center - s.axis_x * s.half_extents.x - s.axis_y * s.half_extents.y + s.axis_z * s.half_extents.z,
-                            s.center - s.axis_x * s.half_extents.x - s.axis_y * s.half_extents.y - s.axis_z * s.half_extents.z,
-                        };
-                        for (const auto& c : corners) box.expand(c);
-                        return box;
-                    }
-                    if constexpr (std::is_same_v<T, Capsule>) {
-                        AABB box{};
-                        box.expand(s.a + glm::vec3(s.radius));
-                        box.expand(s.a - glm::vec3(s.radius));
-                        box.expand(s.b + glm::vec3(s.radius));
-                        box.expand(s.b - glm::vec3(s.radius));
-                        return box;
-                    }
-                    return AABB{};
-                }, value);
-            }
-        };
-
-        // Static assert to ensure LightCullShape satisfies FastCullable
-        static_assert(FastCullable<LightCullShape>);
+        inline void make_basis_from_axis_y(
+            const glm::vec3& axis_y_in,
+            glm::vec3& axis_x,
+            glm::vec3& axis_y,
+            glm::vec3& axis_z)
+        {
+            axis_y = normalize_or(axis_y_in, glm::vec3(0.0f, 1.0f, 0.0f));
+            const glm::vec3 ref = (std::abs(axis_y.y) > 0.98f) ? glm::vec3(0.0f, 0.0f, 1.0f) : glm::vec3(0.0f, 1.0f, 0.0f);
+            axis_x = normalize_or(glm::cross(ref, axis_y), glm::vec3(1.0f, 0.0f, 0.0f));
+            axis_z = normalize_or(glm::cross(axis_x, axis_y), glm::vec3(0.0f, 0.0f, 1.0f));
+        }
 
         inline void append_local_light_shapes_from_set(
             const LightSet& set,
-            std::vector<LightCullShape>& out_shapes)
+            std::vector<SceneShape>& out_shapes)
         {
             out_shapes.reserve(out_shapes.size() + set.local_light_count());
+
+            const auto push_shape = [&](JPH::ShapeRefC shape, const glm::mat4& model) {
+                SceneShape s{};
+                s.shape = std::move(shape);
+                s.transform = jolt::to_jph(model);
+                s.stable_id = static_cast<uint32_t>(out_shapes.size());
+                out_shapes.push_back(std::move(s));
+            };
+
             for (const PointLight& l : set.points)
             {
-                LightCullShape s{};
-                s.value = point_light_culling_sphere(l);
-                s.stable_id = static_cast<uint32_t>(out_shapes.size());
-                out_shapes.push_back(s);
+                const glm::mat4 model = glm::translate(glm::mat4(1.0f), l.common.position_ws);
+                push_shape(jolt::make_point_light_volume(l.common.range), model);
             }
+
             for (const SpotLight& l : set.spots)
             {
-                const float range = std::max(l.common.range, 0.0f);
-                const float outer = std::clamp(l.outer_angle_rad, 0.0f, glm::radians(89.0f));
-                ConeFrustum cone{};
-                cone.apex = l.common.position_ws;
-                cone.axis = normalize_or(l.direction_ws, glm::vec3(0.0f, -1.0f, 0.0f));
-                cone.near_distance = 0.0f;
-                cone.far_distance = range;
-                cone.near_radius = 0.0f;
-                cone.far_radius = std::tan(outer) * range;
-
-                LightCullShape s{};
-                s.value = cone;
-                s.stable_id = static_cast<uint32_t>(out_shapes.size());
-                out_shapes.push_back(s);
+                glm::vec3 axis_x{};
+                glm::vec3 axis_y{};
+                glm::vec3 axis_z{};
+                make_basis_from_forward(l.direction_ws, axis_x, axis_y, axis_z);
+                const glm::mat4 model = make_basis_transform(l.common.position_ws, axis_x, axis_y, axis_z);
+                push_shape(jolt::make_spot_light_volume(l.common.range, l.outer_angle_rad), model);
             }
+
             for (const RectAreaLight& l : set.rect_areas)
             {
-                LightCullShape s{};
-                s.value = rect_area_light_culling_obb(l);
-                s.stable_id = static_cast<uint32_t>(out_shapes.size());
-                out_shapes.push_back(s);
+                const glm::vec3 dir = normalize_or(l.direction_ws, glm::vec3(0.0f, -1.0f, 0.0f));
+                glm::vec3 axis_x = l.right_ws - dir * glm::dot(l.right_ws, dir);
+                axis_x = normalize_or(axis_x, glm::vec3(1.0f, 0.0f, 0.0f));
+                const glm::vec3 axis_y = normalize_or(glm::cross(dir, axis_x), glm::vec3(0.0f, 1.0f, 0.0f));
+                const glm::vec3 axis_z = -dir;
+                const glm::mat4 model = make_basis_transform(l.common.position_ws, axis_x, axis_y, axis_z);
+                push_shape(jolt::make_rect_area_light_volume(l.half_extents, l.common.range), model);
             }
+
             for (const TubeAreaLight& l : set.tube_areas)
             {
-                LightCullShape s{};
-                s.value = tube_area_light_culling_capsule(l);
-                s.stable_id = static_cast<uint32_t>(out_shapes.size());
-                out_shapes.push_back(s);
+                glm::vec3 axis_x{};
+                glm::vec3 axis_y{};
+                glm::vec3 axis_z{};
+                make_basis_from_axis_y(l.axis_ws, axis_x, axis_y, axis_z);
+                const glm::mat4 model = make_basis_transform(l.common.position_ws, axis_x, axis_y, axis_z);
+                push_shape(jolt::make_tube_area_light_volume(l.half_length, l.radius), model);
             }
         }
 
@@ -295,7 +259,7 @@ namespace shs
 
             const uint32_t directional_light_count = (scene.sun.intensity > 0.0f) ? 1u : 0u;
 
-            std::vector<LightCullShape> local_light_shapes{};
+            std::vector<SceneShape> local_light_shapes{};
             if (scene.local_lights)
             {
                 append_local_light_shapes_from_set(*scene.local_lights, local_light_shapes);
@@ -308,11 +272,11 @@ namespace shs
                     CullingCellKind::CameraFrustumPerspective);
                 
                 // Broad phase camera cull
-                const CullResult camera_cull = cull_vs_cell(std::span<const LightCullShape>{local_light_shapes}, camera_cell);
+                const CullResult camera_cull = cull_vs_cell(std::span<const SceneShape>{local_light_shapes}, camera_cell);
                 
                 if (camera_cull.visible_indices.size() != local_light_shapes.size())
                 {
-                    std::vector<LightCullShape> visible_shapes{};
+                    std::vector<SceneShape> visible_shapes{};
                     visible_shapes.reserve(camera_cull.visible_indices.size());
                     for (size_t idx : camera_cull.visible_indices)
                     {
@@ -348,7 +312,7 @@ namespace shs
                             ty);
 
                         uint32_t local_visible = 0;
-                        for (const LightCullShape& shape : local_light_shapes)
+                        for (const SceneShape& shape : local_light_shapes)
                         {
                             const CullClass c = classify_vs_cell(shape, tile_cell, tile_cull_tol);
                             if (!cull_class_is_visible(c, true)) continue;

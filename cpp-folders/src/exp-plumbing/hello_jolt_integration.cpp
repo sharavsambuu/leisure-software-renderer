@@ -104,7 +104,7 @@ namespace
             JoltRenderable sphere{};
             sphere.name = "Sphere";
             sphere.geometry.shape = jolt::make_sphere(0.5f);
-            sphere.geometry.transform = JPH::Mat44::sTranslation(JPH::Vec3(-2.0f, 0.0f, 0.0f));
+            sphere.geometry.transform = jolt::to_jph(glm::translate(glm::mat4(1.0f), glm::vec3(-2.0f, 0.0f, 0.0f)));
             sphere.material = h_red;
             sphere.visual_mesh = resources.add_mesh(make_sphere({0.5f, 18, 12}));
             renderables.push_back(sphere);
@@ -113,7 +113,7 @@ namespace
             JoltRenderable box{};
             box.name = "Box";
             box.geometry.shape = jolt::make_box(glm::vec3(0.5f));
-            box.geometry.transform = JPH::Mat44::sTranslation(JPH::Vec3(2.0f, 0.0f, 0.0f));
+            box.geometry.transform = jolt::to_jph(glm::translate(glm::mat4(1.0f), glm::vec3(2.0f, 0.0f, 0.0f)));
             box.material = h_blue;
             box.visual_mesh = resources.add_mesh(make_box({glm::vec3(1.0f)}));
             renderables.push_back(box);
@@ -153,8 +153,10 @@ namespace
         void update()
         {
             // Culling using Jolt
-            glm::mat4 view = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -10.0f));
-            glm::mat4 proj = glm::perspective(glm::radians(60.0f), (float)kWidth / kHeight, 0.1f, 1000.0f);
+            const glm::vec3 eye(0.0f, 0.0f, -10.0f);
+            const glm::vec3 target(0.0f, 0.0f, 0.0f);
+            glm::mat4 view = look_at_lh(eye, target, glm::vec3(0.0f, 1.0f, 0.0f));
+            glm::mat4 proj = perspective_lh_no(glm::radians(60.0f), (float)kWidth / kHeight, 0.1f, 1000.0f);
             
             CullingCell camera_cell = extract_frustum_cell(proj * view);
 

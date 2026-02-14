@@ -26,10 +26,13 @@ layout(set = 0, binding = 4, std430) buffer TileDepthRanges
 
 layout(set = 0, binding = 5) uniform sampler2D depth_tex;
 
-float depth01_to_view(float d)
+// Reconstruct linear view-space z (+Z forward) from depth buffer value in [0,1]
+// for SHS LH_NO projection convention.
+float depth01_to_view_lh_no(float depth01)
 {
     float near_z = max(ubo.depth_params.x, 0.001);
     float far_z = max(ubo.depth_params.y, near_z + 0.01);
+    float d = clamp(depth01, 0.0, 1.0);
     float denom = max(far_z - d * (far_z - near_z), 1e-5);
     return (near_z * far_z) / denom;
 }
@@ -51,8 +54,8 @@ void main()
     ivec2 p0 = ivec2(tile_x * tile_size, tile_y * tile_size);
     ivec2 p1 = ivec2(min((tile_x + 1u) * tile_size, width), min((tile_y + 1u) * tile_size, height));
 
-    float min_d = 1e30;
-    float max_d = 0.0;
+    float min_view_z = 1e30;
+    float max_view_z = 0.0;
     bool any = false;
 
     for (int py = p0.y; py < p1.y; ++py)
@@ -62,9 +65,9 @@ void main()
             float d = texelFetch(depth_tex, ivec2(px, py), 0).r;
             // Skip only untouched clear depth. Far geometry can still be very close to 1.0.
             if (d >= 1.0) continue;
-            float v = depth01_to_view(d);
-            min_d = min(min_d, v);
-            max_d = max(max_d, v);
+            float view_z = depth01_to_view_lh_no(d);
+            min_view_z = min(min_view_z, view_z);
+            max_view_z = max(max_view_z, view_z);
             any = true;
         }
     }
@@ -75,5 +78,5 @@ void main()
         return;
     }
 
-    tile_depth_ranges[tile_id] = vec2(min_d, max_d);
+    tile_depth_ranges[tile_id] = vec2(min_view_z, max_view_z);
 }

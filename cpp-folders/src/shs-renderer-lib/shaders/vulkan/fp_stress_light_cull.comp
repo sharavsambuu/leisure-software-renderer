@@ -28,6 +28,9 @@ struct CullingLightGPU
     vec4 up_shape_x;
     vec4 shape_attenuation;
     uvec4 type_shape_flags;
+    vec4 cull_sphere;
+    vec4 cull_aabb_min;
+    vec4 cull_aabb_max;
 };
 
 layout(set = 0, binding = 1, std430) readonly buffer LightBuffer
@@ -45,16 +48,30 @@ layout(set = 0, binding = 3, std430) buffer TileIndices
     uint tile_indices[];
 };
 
+// Per-tile linear view-space depth range (+Z forward), produced by depth reduce.
 layout(set = 0, binding = 4, std430) readonly buffer TileDepthRanges
 {
     vec2 tile_depth_ranges[];
 };
 
-const uint LIGHT_TYPE_POINT = 1u;
-const uint LIGHT_TYPE_SPOT = 2u;
-const uint LIGHT_TYPE_RECT_AREA = 3u;
-const uint LIGHT_TYPE_TUBE_AREA = 4u;
 const uint LIGHT_FLAG_ENABLED = 1u;
+
+vec4 resolve_cull_sphere(CullingLightGPU light)
+{
+    vec4 s = light.cull_sphere;
+    if (s.w > 0.0) return s;
+
+    vec3 bmin = light.cull_aabb_min.xyz;
+    vec3 bmax = light.cull_aabb_max.xyz;
+    vec3 ext = max((bmax - bmin) * 0.5, vec3(0.0));
+    float r = length(ext);
+    if (r > 0.0)
+    {
+        return vec4((bmin + bmax) * 0.5, r);
+    }
+
+    return vec4(light.position_range.xyz, max(light.position_range.w, 0.0));
+}
 
 bool project_light_screen(vec3 pos_ws, float radius_ws, uint width, uint height, out vec2 center_px, out float radius_px, out float view_depth)
 {
@@ -66,32 +83,13 @@ bool project_light_screen(vec3 pos_ws, float radius_ws, uint width, uint height,
     // SHS uses LH view space (+Z forward), so front-facing depth is +view4.z.
     view_depth = max(near_z, view4.z);
     vec4 clip = ubo.proj * view4;
-    if (clip.w <= 1e-6 || view4.z <= near_z)
+    // Near-plane intersections are numerically unstable in screen-space bounds
+    // (especially for large radii and clipped spheres). Use a conservative
+    // fallback for tiled modes to avoid false negatives / light popping.
+    if (clip.w <= 1e-6 || (view4.z - radius_ws) <= near_z)
     {
-        // Near-plane crossing is numerically unstable in projected screen-space.
-        // Use a conservative approximation so non-clustered modes do not pop lights.
-        if (ubo.params.w == 3u)
-        {
-            center_px = vec2(float(width) * 0.5, float(height) * 0.5);
-            radius_px = float(max(width, height));
-            return true;
-        }
-
-        float safe_depth = max(view4.z, near_z + 1e-3);
-        vec4 clip_safe = ubo.proj * vec4(view4.xy, safe_depth, 1.0);
-        if (abs(clip_safe.w) <= 1e-6)
-        {
-            center_px = vec2(float(width) * 0.5, float(height) * 0.5);
-            radius_px = float(max(width, height));
-            view_depth = safe_depth;
-            return true;
-        }
-        vec2 ndc_safe = clip_safe.xy / clip_safe.w;
-        center_px.x = (ndc_safe.x * 0.5 + 0.5) * float(width);
-        center_px.y = (0.5 - ndc_safe.y * 0.5) * float(height);
-        view_depth = safe_depth;
-        radius_px = abs(radius_ws * ubo.proj[1][1] * float(height) / max(view_depth, near_z + 1e-3));
-        radius_px = max(radius_px * 1.35, 2.0);
+        center_px = vec2(float(width) * 0.5, float(height) * 0.5);
+        radius_px = float(max(width, height));
         return true;
     }
 
@@ -160,49 +158,41 @@ void main()
         cluster_slice_depth_bounds(tile_z, z_slices, cluster_near, cluster_far);
     }
 
-    vec2 tile_depth = vec2(0.0);
+    vec2 tile_view_depth_range = vec2(0.0);
     if (culling_mode == 2u)
     {
         float near_z = max(ubo.depth_params.x, 0.001);
         float far_z = max(ubo.depth_params.y, near_z + 0.01);
         uint tile_id = tile_y * tiles_x + tile_x;
-        tile_depth = tile_depth_ranges[tile_id];
+        tile_view_depth_range = tile_depth_ranges[tile_id];
         // (0,0) is the explicit "no depth samples" sentinel from depth reduction.
-        if (tile_depth.x <= 0.0 && tile_depth.y <= 0.0)
+        if (tile_view_depth_range.x <= 0.0 && tile_view_depth_range.y <= 0.0)
         {
             // Fall back to full camera depth span for uncovered/invalid tiles so
             // lighting remains stable instead of blinking off by tile.
-            tile_depth = vec2(near_z, far_z);
+            tile_view_depth_range = vec2(near_z, far_z);
         }
-        tile_depth.x = clamp(tile_depth.x, near_z, far_z);
-        tile_depth.y = clamp(tile_depth.y, near_z, far_z);
-        float depth_expand = max(0.05, tile_depth.y * 0.0015);
-        tile_depth.x = clamp(tile_depth.x - depth_expand, near_z, far_z);
-        tile_depth.y = clamp(tile_depth.y + depth_expand, near_z, far_z);
+        tile_view_depth_range.x = clamp(tile_view_depth_range.x, near_z, far_z);
+        tile_view_depth_range.y = clamp(tile_view_depth_range.y, near_z, far_z);
+        float depth_expand = max(0.05, tile_view_depth_range.y * 0.0015);
+        tile_view_depth_range.x = clamp(tile_view_depth_range.x - depth_expand, near_z, far_z);
+        tile_view_depth_range.y = clamp(tile_view_depth_range.y + depth_expand, near_z, far_z);
         // Flat tiles are valid (min == max). Expand slightly to avoid zero-width depth intervals.
-        if (tile_depth.y < tile_depth.x) tile_depth.y = tile_depth.x;
-        tile_depth.y = min(far_z, max(tile_depth.y, tile_depth.x + max(0.02, tile_depth.x * 0.0005)));
+        if (tile_view_depth_range.y < tile_view_depth_range.x) tile_view_depth_range.y = tile_view_depth_range.x;
+        tile_view_depth_range.y = min(far_z, max(tile_view_depth_range.y, tile_view_depth_range.x + max(0.02, tile_view_depth_range.x * 0.0005)));
     }
 
     for (uint i = 0u; i < light_count; ++i)
     {
         CullingLightGPU light = light_buffer.lights[i];
-        uint light_type = light.type_shape_flags.x;
         uint flags = light.type_shape_flags.z;
         if ((flags & LIGHT_FLAG_ENABLED) == 0u) continue;
-        if (light_type != LIGHT_TYPE_POINT &&
-            light_type != LIGHT_TYPE_SPOT &&
-            light_type != LIGHT_TYPE_RECT_AREA &&
-            light_type != LIGHT_TYPE_TUBE_AREA)
-        {
-            continue;
-        }
 
-        vec4 pr = light.position_range;
+        vec4 cull_sphere = resolve_cull_sphere(light);
         vec2 screen = vec2(0.0);
         float radius_px = 0.0;
         float view_depth = 0.0;
-        if (!project_light_screen(pr.xyz, pr.w, width, height, screen, radius_px, view_depth)) continue;
+        if (!project_light_screen(cull_sphere.xyz, cull_sphere.w, width, height, screen, radius_px, view_depth)) continue;
 
         const float screen_pad_px = 3.0;
         if ((screen.x + radius_px + screen_pad_px) < tile_min.x) continue;
@@ -212,17 +202,17 @@ void main()
 
         if (culling_mode == 2u)
         {
-            const float depth_pad = max(0.1, max(pr.w * 0.04, view_depth * 0.002));
-            float light_min = view_depth - pr.w - depth_pad;
-            float light_max = view_depth + pr.w + depth_pad;
-            if (light_max < tile_depth.x) continue;
-            if (light_min > tile_depth.y) continue;
+            const float depth_pad = max(0.1, max(cull_sphere.w * 0.04, view_depth * 0.002));
+            float light_min = view_depth - cull_sphere.w - depth_pad;
+            float light_max = view_depth + cull_sphere.w + depth_pad;
+            if (light_max < tile_view_depth_range.x) continue;
+            if (light_min > tile_view_depth_range.y) continue;
         }
         else if (culling_mode == 3u)
         {
-            const float depth_pad = max(0.05, pr.w * 0.02);
-            float light_min = view_depth - pr.w - depth_pad;
-            float light_max = view_depth + pr.w + depth_pad;
+            const float depth_pad = max(0.05, cull_sphere.w * 0.02);
+            float light_min = view_depth - cull_sphere.w - depth_pad;
+            float light_max = view_depth + cull_sphere.w + depth_pad;
             if (light_max < cluster_near) continue;
             if (light_min > cluster_far) continue;
         }

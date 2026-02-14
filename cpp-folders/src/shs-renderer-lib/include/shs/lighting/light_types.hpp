@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <concepts>
 #include <cstdint>
 
 #include <glm/glm.hpp>
@@ -36,7 +37,13 @@ namespace shs
         Sphere = 1,
         Cone = 2,
         OrientedBox = 3,
-        Capsule = 4
+        Capsule = 4,
+        Cylinder = 5,
+        TaperedCapsule = 6,
+        ConvexHull = 7,
+        Mesh = 8,
+        Compound = 9,
+        GenericJoltBounds = 10
     };
 
     enum class LightAttenuationModel : uint32_t
@@ -150,8 +157,94 @@ namespace shs
         glm::vec4 shape_attenuation{0.0f, 1.0f, 0.05f, 0.0f};
         // x: LightType, y: LightCullingShape, z: flags, w: LightAttenuationModel
         glm::uvec4 type_shape_flags{0u};
+        // xyz: generic culling sphere center ws, w: radius
+        glm::vec4 cull_sphere{0.0f};
+        // xyz: world-space AABB min (generic culling proxy)
+        glm::vec4 cull_aabb_min{0.0f};
+        // xyz: world-space AABB max (generic culling proxy)
+        glm::vec4 cull_aabb_max{0.0f};
     };
     static_assert(sizeof(CullingLightGPU) % 16 == 0, "CullingLightGPU must stay std430-aligned");
+
+    inline AABB aabb_from_sphere(const Sphere& s)
+    {
+        const float r = std::max(s.radius, 0.0f);
+        const glm::vec3 ext(r);
+        AABB out{};
+        out.minv = s.center - ext;
+        out.maxv = s.center + ext;
+        return out;
+    }
+
+    inline AABB aabb_from_obb(const OBB& obb)
+    {
+        const glm::vec3 ex = glm::max(obb.half_extents, glm::vec3(0.0f));
+        const glm::vec3 abs_x = glm::abs(obb.axis_x);
+        const glm::vec3 abs_y = glm::abs(obb.axis_y);
+        const glm::vec3 abs_z = glm::abs(obb.axis_z);
+        const glm::vec3 world_ext = abs_x * ex.x + abs_y * ex.y + abs_z * ex.z;
+
+        AABB out{};
+        out.minv = obb.center - world_ext;
+        out.maxv = obb.center + world_ext;
+        return out;
+    }
+
+    inline AABB aabb_from_capsule(const Capsule& capsule)
+    {
+        const float r = std::max(capsule.radius, 0.0f);
+        const glm::vec3 ext(r);
+        AABB out{};
+        out.minv = glm::min(capsule.a, capsule.b) - ext;
+        out.maxv = glm::max(capsule.a, capsule.b) + ext;
+        return out;
+    }
+
+    inline void assign_light_cull_bounds(
+        CullingLightGPU& out,
+        const Sphere& broad_sphere,
+        const AABB& world_aabb)
+    {
+        const float r = std::max(broad_sphere.radius, 0.0f);
+        out.cull_sphere = glm::vec4(broad_sphere.center, r);
+        out.cull_aabb_min = glm::vec4(world_aabb.minv, 1.0f);
+        out.cull_aabb_max = glm::vec4(world_aabb.maxv, 1.0f);
+    }
+
+    inline void assign_light_cull_bounds(
+        CullingLightGPU& out,
+        const Sphere& broad_sphere)
+    {
+        assign_light_cull_bounds(out, broad_sphere, aabb_from_sphere(broad_sphere));
+    }
+
+    template<typename T>
+    concept LightCullSphereSource = requires(const T& src) {
+        { src.bounding_sphere() } -> std::convertible_to<Sphere>;
+    };
+
+    template<typename T>
+    concept LightCullAABBSource = requires(const T& src) {
+        { src.world_aabb() } -> std::convertible_to<AABB>;
+    };
+
+    template<LightCullSphereSource T>
+    inline void apply_light_cull_bounds_from_source(
+        CullingLightGPU& out,
+        const T& source,
+        LightCullingShape source_shape = LightCullingShape::GenericJoltBounds)
+    {
+        const Sphere broad = source.bounding_sphere();
+        if constexpr (LightCullAABBSource<T>)
+        {
+            assign_light_cull_bounds(out, broad, source.world_aabb());
+        }
+        else
+        {
+            assign_light_cull_bounds(out, broad);
+        }
+        out.type_shape_flags.y = static_cast<uint32_t>(source_shape);
+    }
 
     // Note: These helpers provide geometry bounds for GPU packing and broad-phase culling.
     inline Sphere point_light_culling_sphere(const PointLight& point)
@@ -238,6 +331,7 @@ namespace shs
             static_cast<uint32_t>(LightCullingShape::Sphere),
             point.common.flags,
             static_cast<uint32_t>(point.common.attenuation_model));
+        assign_light_cull_bounds(out, bounds);
         return out;
     }
 
@@ -266,6 +360,7 @@ namespace shs
             static_cast<uint32_t>(LightCullingShape::Cone),
             spot.common.flags,
             static_cast<uint32_t>(spot.common.attenuation_model));
+        assign_light_cull_bounds(out, bounds);
         return out;
     }
 
@@ -291,6 +386,7 @@ namespace shs
             static_cast<uint32_t>(LightCullingShape::OrientedBox),
             rect.common.flags,
             static_cast<uint32_t>(rect.common.attenuation_model));
+        assign_light_cull_bounds(out, bounds, aabb_from_obb(obb));
         return out;
     }
 
@@ -318,6 +414,7 @@ namespace shs
             static_cast<uint32_t>(LightCullingShape::Capsule),
             tube.common.flags,
             static_cast<uint32_t>(tube.common.attenuation_model));
+        assign_light_cull_bounds(out, bounds, aabb_from_capsule(cap));
         return out;
     }
 }

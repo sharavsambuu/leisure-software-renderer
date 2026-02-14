@@ -9,8 +9,10 @@
             flatten хийх extendable container семантик.
 */
 
+#include <algorithm>
 #include <cstddef>
 #include <limits>
+#include <span>
 #include <vector>
 
 #include "shs/lighting/light_types.hpp"
@@ -56,6 +58,33 @@ namespace shs
             append(spots, [](const SpotLight& l) { return make_spot_culling_light(l); });
             append(rect_areas, [](const RectAreaLight& l) { return make_rect_area_culling_light(l); });
             append(tube_areas, [](const TubeAreaLight& l) { return make_tube_area_culling_light(l); });
+        }
+
+        // Overlay Jolt-backed (or any FastCullable-like) bounds onto the packed lights.
+        // Source ordering must match flatten_cullable_gpu order:
+        // points -> spots -> rect_areas -> tube_areas.
+        template<LightCullSphereSource T>
+        void flatten_cullable_gpu(
+            std::vector<CullingLightGPU>& out,
+            std::span<const T> cull_sources,
+            size_t max_count,
+            LightCullingShape source_shape = LightCullingShape::GenericJoltBounds) const
+        {
+            flatten_cullable_gpu(out, max_count);
+            const size_t n = std::min(out.size(), cull_sources.size());
+            for (size_t i = 0; i < n; ++i)
+            {
+                apply_light_cull_bounds_from_source(out[i], cull_sources[i], source_shape);
+            }
+        }
+
+        template<LightCullSphereSource T>
+        void flatten_cullable_gpu(
+            std::vector<CullingLightGPU>& out,
+            std::span<const T> cull_sources,
+            LightCullingShape source_shape = LightCullingShape::GenericJoltBounds) const
+        {
+            flatten_cullable_gpu(out, cull_sources, std::numeric_limits<size_t>::max(), source_shape);
         }
     };
 }

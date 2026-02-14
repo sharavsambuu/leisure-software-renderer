@@ -65,8 +65,12 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
 
     set(VK_TRI_VERT "${VK_TRI_SHADER_DIR}/vulkan_triangle.vert")
     set(VK_TRI_FRAG "${VK_TRI_SHADER_DIR}/vulkan_triangle.frag")
+    set(VK_CULLING_VERT "${VK_TRI_SHADER_DIR}/culling_vk.vert")
+    set(VK_CULLING_FRAG "${VK_TRI_SHADER_DIR}/culling_vk.frag")
     set(VK_TRI_VERT_SPV "${VK_TRI_OUT_DIR}/vulkan_triangle.vert.spv")
     set(VK_TRI_FRAG_SPV "${VK_TRI_OUT_DIR}/vulkan_triangle.frag.spv")
+    set(VK_CULLING_VERT_SPV "${VK_TRI_OUT_DIR}/culling_vk.vert.spv")
+    set(VK_CULLING_FRAG_SPV "${VK_TRI_OUT_DIR}/culling_vk.frag.spv")
 
     set(VK_PB_SHADOW_VERT "${VK_DEFAULT_SHADER_DIR}/pb_shadow.vert")
     set(VK_PB_SCENE_VERT "${VK_DEFAULT_SHADER_DIR}/pb_scene.vert")
@@ -110,6 +114,18 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
         OUTPUT "${VK_TRI_FRAG_SPV}"
         COMMAND ${GLSLANG_VALIDATOR} -V "${VK_TRI_FRAG}" -o "${VK_TRI_FRAG_SPV}"
         DEPENDS "${VK_TRI_FRAG}"
+        VERBATIM
+    )
+    add_custom_command(
+        OUTPUT "${VK_CULLING_VERT_SPV}"
+        COMMAND ${GLSLANG_VALIDATOR} -V "${VK_CULLING_VERT}" -o "${VK_CULLING_VERT_SPV}"
+        DEPENDS "${VK_CULLING_VERT}"
+        VERBATIM
+    )
+    add_custom_command(
+        OUTPUT "${VK_CULLING_FRAG_SPV}"
+        COMMAND ${GLSLANG_VALIDATOR} -V "${VK_CULLING_FRAG}" -o "${VK_CULLING_FRAG_SPV}"
+        DEPENDS "${VK_CULLING_FRAG}"
         VERBATIM
     )
     add_custom_command(
@@ -203,6 +219,7 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
         VERBATIM
     )
     add_custom_target(HelloVulkanTriangleShaders DEPENDS "${VK_TRI_VERT_SPV}" "${VK_TRI_FRAG_SPV}")
+    add_custom_target(HelloCullingVkShaders DEPENDS "${VK_CULLING_VERT_SPV}" "${VK_CULLING_FRAG_SPV}")
     add_custom_target(HelloPassBasicsVulkanShaders
         DEPENDS
             "${VK_PB_SHADOW_VERT_SPV}"
@@ -351,15 +368,12 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
     )
 
     add_executable(hello_culling_vk hello_culling_vk.cpp)
-    add_dependencies(hello_culling_vk HelloForwardPlusStressVulkanShaders)
+    add_dependencies(hello_culling_vk HelloCullingVkShaders)
     target_link_libraries(hello_culling_vk PRIVATE shs::renderer)
     set_target_properties(hello_culling_vk PROPERTIES FOLDER "Demos")
     target_compile_definitions(hello_culling_vk PRIVATE
-        SHS_VK_FP_SCENE_VERT_SPV="${VK_FP_SCENE_VERT_SPV}"
-        SHS_VK_FP_SCENE_FRAG_SPV="${VK_FP_SCENE_FRAG_SPV}"
-        SHS_VK_FP_SHADOW_VERT_SPV="${VK_FP_SHADOW_VERT_SPV}"
-        SHS_VK_FP_LIGHT_CULL_COMP_SPV="${VK_FP_LIGHT_CULL_COMP_SPV}"
-        SHS_VK_FP_DEPTH_REDUCE_COMP_SPV="${VK_FP_DEPTH_REDUCE_COMP_SPV}"
+        SHS_VK_CULLING_VERT_SPV="${VK_CULLING_VERT_SPV}"
+        SHS_VK_CULLING_FRAG_SPV="${VK_CULLING_FRAG_SPV}"
     )
 endif()
 
