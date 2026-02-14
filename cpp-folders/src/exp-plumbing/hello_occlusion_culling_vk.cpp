@@ -24,6 +24,7 @@
 #include <shs/camera/convention.hpp>
 #include <shs/core/context.hpp>
 #include <shs/geometry/culling_runtime.hpp>
+#include <shs/geometry/culling_visibility.hpp>
 #include <shs/geometry/jolt_culling.hpp>
 #include <shs/geometry/jolt_debug_draw.hpp>
 #include <shs/geometry/jolt_shapes.hpp>
@@ -48,8 +49,13 @@ namespace
 {
 constexpr int kWindowW = 1200;
 constexpr int kWindowH = 900;
-constexpr uint32_t kFrameRing = 2u;
+// Vulkan backend currently runs with max_frames_in_flight = 1, so keep ring resources in lockstep.
+constexpr uint32_t kFrameRing = 1u;
 const glm::vec3 kSunLightDirWs = glm::normalize(glm::vec3(0.20f, -1.0f, 0.16f));
+constexpr uint8_t kOcclusionHideConfirmFrames = 2u;
+constexpr uint8_t kOcclusionShowConfirmFrames = 1u;
+constexpr uint64_t kOcclusionMinVisibleSamples = 1u;
+constexpr uint32_t kOcclusionWarmupFramesAfterCameraMove = 0u;
 
 struct Vertex
 {
@@ -98,6 +104,8 @@ struct ShapeInstance
     glm::vec3 angular_vel{0.0f};
     glm::mat4 model{1.0f};
     bool visible = true;
+    bool frustum_visible = true;
+    bool occluded = false;
     bool animated = true;
 };
 
@@ -203,10 +211,10 @@ inline std::vector<Vertex> make_vertices_with_normals(const DebugMesh& mesh)
     return verts;
 }
 
-class HelloCullingVkApp
+class HelloOcclusionCullingVkApp
 {
 public:
-    ~HelloCullingVkApp()
+    ~HelloOcclusionCullingVkApp()
     {
         cleanup();
     }
@@ -218,6 +226,7 @@ public:
         init_backend();
         create_descriptor_resources();
         create_scene();
+        create_occlusion_query_resources();
         create_pipelines();
         main_loop();
         jolt::shutdown_jolt();
@@ -233,7 +242,7 @@ private:
         sdl_ready_ = true;
 
         win_ = SDL_CreateWindow(
-            "Culling & Debug Draw Demo (Vulkan)",
+            "Occlusion + Frustum Culling Demo (Vulkan)",
             SDL_WINDOWPOS_CENTERED,
             SDL_WINDOWPOS_CENTERED,
             kWindowW,
@@ -278,7 +287,7 @@ private:
         init.width = dw;
         init.height = dh;
         init.enable_validation = false;
-        init.app_name = "hello_culling_vk";
+        init.app_name = "hello_occlusion_culling_vk";
         if (!vk_->init(init)) throw std::runtime_error("Vulkan init failed");
 
         ctx_.set_primary_backend(vk_);
@@ -501,6 +510,43 @@ private:
         }
     }
 
+    void create_occlusion_query_resources()
+    {
+        destroy_occlusion_query_resources();
+        if (!vk_ || vk_->device() == VK_NULL_HANDLE) return;
+
+        max_query_count_ = std::max<uint32_t>(1u, static_cast<uint32_t>(instances_.size()));
+        for (uint32_t i = 0; i < kFrameRing; ++i)
+        {
+            VkQueryPoolCreateInfo ci{};
+            ci.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+            ci.queryType = VK_QUERY_TYPE_OCCLUSION;
+            ci.queryCount = max_query_count_;
+            if (vkCreateQueryPool(vk_->device(), &ci, nullptr, &occlusion_query_pools_[i]) != VK_SUCCESS)
+            {
+                throw std::runtime_error("vkCreateQueryPool failed");
+            }
+            occlusion_query_counts_[i] = 0;
+            occlusion_query_instances_[i].clear();
+        }
+    }
+
+    void destroy_occlusion_query_resources()
+    {
+        if (!vk_ || vk_->device() == VK_NULL_HANDLE) return;
+        for (uint32_t i = 0; i < kFrameRing; ++i)
+        {
+            if (occlusion_query_pools_[i] != VK_NULL_HANDLE)
+            {
+                vkDestroyQueryPool(vk_->device(), occlusion_query_pools_[i], nullptr);
+                occlusion_query_pools_[i] = VK_NULL_HANDLE;
+            }
+            occlusion_query_counts_[i] = 0;
+            occlusion_query_instances_[i].clear();
+        }
+        max_query_count_ = 0;
+    }
+
     void create_descriptor_resources()
     {
         if (set_layout_ == VK_NULL_HANDLE)
@@ -596,6 +642,16 @@ private:
             vkDestroyPipeline(dev, pipeline_line_, nullptr);
             pipeline_line_ = VK_NULL_HANDLE;
         }
+        if (pipeline_depth_prepass_ != VK_NULL_HANDLE)
+        {
+            vkDestroyPipeline(dev, pipeline_depth_prepass_, nullptr);
+            pipeline_depth_prepass_ = VK_NULL_HANDLE;
+        }
+        if (pipeline_occ_query_ != VK_NULL_HANDLE)
+        {
+            vkDestroyPipeline(dev, pipeline_occ_query_, nullptr);
+            pipeline_occ_query_ = VK_NULL_HANDLE;
+        }
         if (pipeline_layout_ != VK_NULL_HANDLE)
         {
             vkDestroyPipelineLayout(dev, pipeline_layout_, nullptr);
@@ -603,7 +659,13 @@ private:
         }
     }
 
-    VkPipeline create_pipeline(VkPrimitiveTopology topology, VkPolygonMode polygon_mode)
+    VkPipeline create_pipeline(
+        VkPrimitiveTopology topology,
+        VkPolygonMode polygon_mode,
+        VkCullModeFlags cull_mode,
+        bool depth_test,
+        bool depth_write,
+        bool color_write)
     {
         const VkDevice dev = vk_->device();
 
@@ -656,7 +718,7 @@ private:
         VkPipelineRasterizationStateCreateInfo rs{};
         rs.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
         rs.polygonMode = polygon_mode;
-        rs.cullMode = (topology == VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST) ? VK_CULL_MODE_BACK_BIT : VK_CULL_MODE_NONE;
+        rs.cullMode = cull_mode;
         // We render with flipped-Y Vulkan viewport; with LH/clockwise mesh winding this maps to CCW front faces.
         rs.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
         rs.lineWidth = 1.0f;
@@ -667,16 +729,17 @@ private:
 
         VkPipelineDepthStencilStateCreateInfo ds{};
         ds.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-        ds.depthTestEnable = VK_TRUE;
-        ds.depthWriteEnable = VK_TRUE;
+        ds.depthTestEnable = depth_test ? VK_TRUE : VK_FALSE;
+        ds.depthWriteEnable = depth_write ? VK_TRUE : VK_FALSE;
         ds.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
 
         VkPipelineColorBlendAttachmentState cba{};
-        cba.colorWriteMask =
-            VK_COLOR_COMPONENT_R_BIT |
-            VK_COLOR_COMPONENT_G_BIT |
-            VK_COLOR_COMPONENT_B_BIT |
-            VK_COLOR_COMPONENT_A_BIT;
+        cba.colorWriteMask = color_write
+            ? (VK_COLOR_COMPONENT_R_BIT |
+               VK_COLOR_COMPONENT_G_BIT |
+               VK_COLOR_COMPONENT_B_BIT |
+               VK_COLOR_COMPONENT_A_BIT)
+            : 0u;
 
         VkPipelineColorBlendStateCreateInfo cb{};
         cb.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
@@ -736,8 +799,36 @@ private:
             throw std::runtime_error("vkCreatePipelineLayout failed");
         }
 
-        pipeline_tri_ = create_pipeline(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, VK_POLYGON_MODE_FILL);
-        pipeline_line_ = create_pipeline(VK_PRIMITIVE_TOPOLOGY_LINE_LIST, VK_POLYGON_MODE_FILL);
+        pipeline_tri_ = create_pipeline(
+            VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+            VK_POLYGON_MODE_FILL,
+            VK_CULL_MODE_BACK_BIT,
+            true,
+            true,
+            true);
+        // Match software debug behavior: lines are overlay (no depth test/write).
+        pipeline_line_ = create_pipeline(
+            VK_PRIMITIVE_TOPOLOGY_LINE_LIST,
+            VK_POLYGON_MODE_FILL,
+            VK_CULL_MODE_NONE,
+            false,
+            false,
+            true);
+        pipeline_depth_prepass_ = create_pipeline(
+            VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+            VK_POLYGON_MODE_FILL,
+            VK_CULL_MODE_BACK_BIT,
+            true,
+            true,
+            false);
+        // Occlusion queries use proxy AABBs; avoid winding sensitivity by disabling face culling.
+        pipeline_occ_query_ = create_pipeline(
+            VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+            VK_POLYGON_MODE_FILL,
+            VK_CULL_MODE_NONE,
+            true,
+            false,
+            false);
         pipeline_gen_ = vk_->swapchain_generation();
     }
 
@@ -752,6 +843,7 @@ private:
             if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE) out.quit = true;
             if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_l) out.toggle_light_shafts = true;
             if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_b) out.toggle_bot = true;
+            if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_F2) out.cycle_cull_mode = true;
 
             if (e.type == SDL_MOUSEMOTION)
             {
@@ -805,20 +897,140 @@ private:
             frustum_,
             [](const ShapeInstance& inst) -> const SceneShape& { return inst.shape; });
 
-        for (auto& inst : instances_)
+        frustum_visible_indices_ = frustum_result.frustum_visible_indices;
+        for (size_t i = 0; i < instances_.size(); ++i)
         {
+            auto& inst = instances_[i];
+            const bool frustum_visible =
+                (i < frustum_result.frustum_classes.size()) &&
+                cull_class_is_visible(
+                    frustum_result.frustum_classes[i],
+                    frustum_result.request.include_intersecting);
+            inst.frustum_visible = frustum_visible;
             inst.visible = false;
+            if (!frustum_visible)
+            {
+                inst.occluded = false;
+                visibility_history_.reset(inst.shape.stable_id);
+            }
         }
-        for (uint32_t idx : frustum_result.visible_indices)
-        {
-            if (idx < instances_.size()) instances_[idx].visible = true;
-        }
-        stats_ = frustum_result.stats;
     }
 
-    void record_draws(VkCommandBuffer cmd, VkDescriptorSet camera_set)
+    void consume_occlusion_results(uint32_t ring)
+    {
+        if (!enable_occlusion_) return;
+        if (!vk_->has_depth_attachment()) return;
+        if (ring >= kFrameRing) return;
+        if (occlusion_query_pools_[ring] == VK_NULL_HANDLE) return;
+
+        const uint32_t query_count = occlusion_query_counts_[ring];
+        if (query_count == 0) return;
+
+        std::vector<uint64_t> query_data(static_cast<size_t>(query_count), 0u);
+        const VkResult qr = vkGetQueryPoolResults(
+            vk_->device(),
+            occlusion_query_pools_[ring],
+            0,
+            query_count,
+            static_cast<VkDeviceSize>(query_data.size() * sizeof(uint64_t)),
+            query_data.data(),
+            sizeof(uint64_t),
+            VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT);
+
+        if (qr != VK_SUCCESS) return;
+
+        const auto& inst_map = occlusion_query_instances_[ring];
+        apply_query_visibility_samples(
+            std::span<ShapeInstance>(instances_.data(), instances_.size()),
+            std::span<const uint32_t>(inst_map.data(), inst_map.size()),
+            std::span<const uint64_t>(query_data.data(), query_data.size()),
+            kOcclusionMinVisibleSamples,
+            visibility_history_,
+            [](const ShapeInstance& inst) -> uint32_t {
+                return inst.shape.stable_id;
+            },
+            [](ShapeInstance& inst, bool occluded) {
+                inst.occluded = occluded;
+            });
+    }
+
+    void record_depth_prepass(VkCommandBuffer cmd, VkDescriptorSet camera_set)
+    {
+        if (pipeline_depth_prepass_ == VK_NULL_HANDLE) return;
+
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_depth_prepass_);
+        vkCmdBindDescriptorSets(
+            cmd,
+            VK_PIPELINE_BIND_POINT_GRAPHICS,
+            pipeline_layout_,
+            0,
+            1,
+            &camera_set,
+            0,
+            nullptr);
+
+        for (const uint32_t idx : render_visible_indices_)
+        {
+            if (idx >= instances_.size()) continue;
+            const auto& inst = instances_[idx];
+            if (inst.mesh_index >= meshes_.size()) continue;
+            const MeshGPU& mesh = meshes_[inst.mesh_index];
+            if (mesh.tri_indices.buffer == VK_NULL_HANDLE || mesh.tri_index_count == 0) continue;
+
+            const VkBuffer vb = mesh.vertex.buffer;
+            const VkDeviceSize vb_off = 0;
+            vkCmdBindVertexBuffers(cmd, 0, 1, &vb, &vb_off);
+            vkCmdBindIndexBuffer(cmd, mesh.tri_indices.buffer, 0, VK_INDEX_TYPE_UINT32);
+
+            DrawPush push{};
+            push.model = inst.model;
+            push.base_color = glm::vec4(inst.color, 1.0f);
+            push.mode_pad.x = 1u;
+            vkCmdPushConstants(
+                cmd,
+                pipeline_layout_,
+                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                0,
+                sizeof(DrawPush),
+                &push);
+            vkCmdDrawIndexed(cmd, mesh.tri_index_count, 1, 0, 0, 0);
+        }
+    }
+
+    void build_visible_lists(uint32_t ring)
+    {
+        stats_ = build_visibility_from_frustum(
+            std::span<ShapeInstance>(instances_.data(), instances_.size()),
+            std::span<const uint32_t>(frustum_visible_indices_.data(), frustum_visible_indices_.size()),
+            apply_occlusion_this_frame_,
+            [](const ShapeInstance& inst) -> bool {
+                return inst.occluded;
+            },
+            [](ShapeInstance& inst, bool visible) {
+                inst.visible = visible;
+            },
+            render_visible_indices_);
+
+        // Safety: never allow occlusion logic to blank the full frustum-visible scene.
+        if (should_use_frustum_visibility_fallback(
+                enable_occlusion_,
+                vk_ && vk_->has_depth_attachment(),
+                (ring < kFrameRing) ? occlusion_query_counts_[ring] : 0u,
+                stats_))
+        {
+            render_visible_indices_ = frustum_visible_indices_;
+            stats_ = make_culling_stats(
+                static_cast<uint32_t>(instances_.size()),
+                static_cast<uint32_t>(frustum_visible_indices_.size()),
+                static_cast<uint32_t>(render_visible_indices_.size()));
+        }
+    }
+
+    void record_main_draws(VkCommandBuffer cmd, VkDescriptorSet camera_set)
     {
         const glm::vec4 aabb_color(1.0f, 0.94f, 0.31f, 1.0f);
+        // Occlusion demo should render only frustum+occlusion-visible objects in both modes.
+        const std::vector<uint32_t>& draw_indices = render_visible_indices_;
 
         if (render_lit_surfaces_)
         {
@@ -838,9 +1050,10 @@ private:
             0,
             nullptr);
 
-        for (const auto& inst : instances_)
+        for (const uint32_t idx : draw_indices)
         {
-            if (!inst.visible) continue;
+            if (idx >= instances_.size()) continue;
+            const auto& inst = instances_[idx];
             if (inst.mesh_index >= meshes_.size()) continue;
             const MeshGPU& mesh = meshes_[inst.mesh_index];
 
@@ -891,9 +1104,10 @@ private:
         vkCmdBindVertexBuffers(cmd, 0, 1, &vb, &vb_off);
         vkCmdBindIndexBuffer(cmd, aabb_mesh.line_indices.buffer, 0, VK_INDEX_TYPE_UINT32);
 
-        for (const auto& inst : instances_)
+        for (const uint32_t idx : draw_indices)
         {
-            if (!inst.visible) continue;
+            if (idx >= instances_.size()) continue;
+            const auto& inst = instances_[idx];
             const AABB box = inst.shape.world_aabb();
             const glm::vec3 center = (box.minv + box.maxv) * 0.5f;
             const glm::vec3 size = glm::max(box.maxv - box.minv, glm::vec3(1e-4f));
@@ -904,6 +1118,66 @@ private:
             push.mode_pad.x = 0u;
             vkCmdPushConstants(cmd, pipeline_layout_, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(DrawPush), &push);
             vkCmdDrawIndexed(cmd, aabb_mesh.line_index_count, 1, 0, 0, 0);
+        }
+    }
+
+    void record_occlusion_queries(VkCommandBuffer cmd, VkDescriptorSet camera_set, uint32_t ring)
+    {
+        if (!enable_occlusion_) return;
+        if (!vk_->has_depth_attachment()) return;
+        if (ring >= kFrameRing) return;
+        if (occlusion_query_pools_[ring] == VK_NULL_HANDLE) return;
+        if (pipeline_occ_query_ == VK_NULL_HANDLE) return;
+
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_occ_query_);
+        vkCmdBindDescriptorSets(
+            cmd,
+            VK_PIPELINE_BIND_POINT_GRAPHICS,
+            pipeline_layout_,
+            0,
+            1,
+            &camera_set,
+            0,
+            nullptr);
+
+        occlusion_query_instances_[ring].clear();
+        occlusion_query_instances_[ring].reserve(frustum_visible_indices_.size());
+        occlusion_query_counts_[ring] = 0;
+
+        for (const uint32_t idx : frustum_visible_indices_)
+        {
+            if (idx >= instances_.size()) continue;
+            const auto& inst = instances_[idx];
+            if (inst.mesh_index >= meshes_.size()) continue;
+            if (occlusion_query_counts_[ring] >= max_query_count_) break;
+
+            const MeshGPU& mesh = meshes_[inst.mesh_index];
+            if (mesh.tri_indices.buffer == VK_NULL_HANDLE || mesh.tri_index_count == 0) continue;
+
+            const uint32_t query_idx = occlusion_query_counts_[ring];
+            occlusion_query_instances_[ring].push_back(idx);
+            occlusion_query_counts_[ring]++;
+
+            const VkBuffer vb = mesh.vertex.buffer;
+            const VkDeviceSize vb_off = 0;
+            vkCmdBindVertexBuffers(cmd, 0, 1, &vb, &vb_off);
+            vkCmdBindIndexBuffer(cmd, mesh.tri_indices.buffer, 0, VK_INDEX_TYPE_UINT32);
+
+            DrawPush push{};
+            push.model = inst.model;
+            push.base_color = glm::vec4(inst.color, 1.0f);
+            push.mode_pad.x = 1u;
+            vkCmdPushConstants(
+                cmd,
+                pipeline_layout_,
+                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                0,
+                sizeof(DrawPush),
+                &push);
+
+            vkCmdBeginQuery(cmd, occlusion_query_pools_[ring], query_idx, 0);
+            vkCmdDrawIndexed(cmd, mesh.tri_index_count, 1, 0, 0, 0);
+            vkCmdEndQuery(cmd, occlusion_query_pools_[ring], query_idx);
         }
     }
 
@@ -937,6 +1211,22 @@ private:
         }
 
         const uint32_t ring = static_cast<uint32_t>(ctx_.frame_index % kFrameRing);
+        apply_occlusion_this_frame_ =
+            enable_occlusion_ &&
+            vk_->has_depth_attachment() &&
+            (occlusion_warmup_frames_ == 0u);
+
+        if (!apply_occlusion_this_frame_)
+        {
+            for (auto& inst : instances_) inst.occluded = false;
+            if (!enable_occlusion_) visibility_history_.clear();
+        }
+
+        // Consume occlusion results only after begin_frame() fence wait.
+        // Reading before that can race GPU completion and produce flicker.
+        if (apply_occlusion_this_frame_) consume_occlusion_results(ring);
+        build_visible_lists(ring);
+
         CameraUBO cam{};
         const glm::mat4 view = camera_.view_matrix();
         const glm::mat4 proj = perspective_lh_no(glm::radians(60.0f), aspect_, 0.1f, 1000.0f);
@@ -951,6 +1241,19 @@ private:
         if (vkBeginCommandBuffer(fi.cmd, &bi) != VK_SUCCESS)
         {
             throw std::runtime_error("vkBeginCommandBuffer failed");
+        }
+
+        if (enable_occlusion_ &&
+            vk_->has_depth_attachment() &&
+            occlusion_query_pools_[ring] != VK_NULL_HANDLE &&
+            max_query_count_ > 0)
+        {
+            vkCmdResetQueryPool(fi.cmd, occlusion_query_pools_[ring], 0, max_query_count_);
+        }
+        else
+        {
+            occlusion_query_counts_[ring] = 0;
+            occlusion_query_instances_[ring].clear();
         }
 
         VkClearValue clear_values[2]{};
@@ -968,7 +1271,9 @@ private:
 
         vkCmdBeginRenderPass(fi.cmd, &rp, VK_SUBPASS_CONTENTS_INLINE);
         vk_cmd_set_viewport_scissor(fi.cmd, fi.extent.width, fi.extent.height, true);
-        record_draws(fi.cmd, camera_sets_[ring]);
+        record_depth_prepass(fi.cmd, camera_sets_[ring]);
+        record_occlusion_queries(fi.cmd, camera_sets_[ring], ring);
+        record_main_draws(fi.cmd, camera_sets_[ring]);
         vkCmdEndRenderPass(fi.cmd);
 
         if (vkEndCommandBuffer(fi.cmd) != VK_SUCCESS)
@@ -978,6 +1283,7 @@ private:
 
         vk_->end_frame(fi);
         ctx_.frame_index++;
+        if (occlusion_warmup_frames_ > 0u) --occlusion_warmup_frames_;
     }
 
     void update_title(float avg_ms)
@@ -986,10 +1292,12 @@ private:
         std::snprintf(
             title,
             sizeof(title),
-            "Culling Demo (VK) | Scene:%u Visible:%u Culled:%u | Mode:%s | AABB:%s | %.2f ms",
+            "Occlusion Culling Demo (VK) | Scene:%u Frustum:%u Occluded:%u Visible:%u | Occ:%s | Mode:%s | AABB:%s | %.2f ms",
             stats_.scene_count,
+            stats_.frustum_visible_count,
+            stats_.occluded_count,
             stats_.visible_count,
-            stats_.culled_count,
+            (enable_occlusion_ && vk_ && vk_->has_depth_attachment()) ? "ON" : "OFF",
             render_lit_surfaces_ ? "Lit" : "Debug",
             show_aabb_debug_ ? "ON" : "OFF",
             avg_ms);
@@ -998,7 +1306,7 @@ private:
 
     void main_loop()
     {
-        std::printf("Controls: RMB look, WASD+QE move, Shift boost, B toggle AABB, L toggle debug/lit\n");
+        std::printf("Controls: RMB look, WASD+QE move, Shift boost, B toggle AABB, L toggle debug/lit, F2 toggle occlusion\n");
 
         bool running = true;
         auto t0 = std::chrono::steady_clock::now();
@@ -1019,8 +1327,32 @@ private:
             if (input.quit) break;
             if (input.toggle_bot) show_aabb_debug_ = !show_aabb_debug_;
             if (input.toggle_light_shafts) render_lit_surfaces_ = !render_lit_surfaces_;
+            if (input.cycle_cull_mode)
+            {
+                enable_occlusion_ = !enable_occlusion_;
+                visibility_history_.clear();
+                for (auto& inst : instances_)
+                {
+                    inst.occluded = false;
+                }
+                occlusion_warmup_frames_ = kOcclusionWarmupFramesAfterCameraMove;
+            }
 
             camera_.update(input, dt);
+            if (camera_prev_valid_)
+            {
+                const float pos_delta = glm::length(camera_.pos - camera_prev_pos_);
+                const float yaw_delta = std::abs(camera_.yaw - camera_prev_yaw_);
+                const float pitch_delta = std::abs(camera_.pitch - camera_prev_pitch_);
+                if (pos_delta > 0.03f || yaw_delta > 0.0025f || pitch_delta > 0.0025f)
+                {
+                    occlusion_warmup_frames_ = kOcclusionWarmupFramesAfterCameraMove;
+                }
+            }
+            camera_prev_valid_ = true;
+            camera_prev_pos_ = camera_.pos;
+            camera_prev_yaw_ = camera_.yaw;
+            camera_prev_pitch_ = camera_.pitch;
             update_scene_and_culling(time_s);
 
             const auto cpu0 = std::chrono::steady_clock::now();
@@ -1069,6 +1401,7 @@ private:
                 destroy_buffer(b);
             }
 
+            destroy_occlusion_query_resources();
             destroy_pipelines();
 
             if (descriptor_pool_ != VK_NULL_HANDLE)
@@ -1115,10 +1448,19 @@ private:
     VkPipelineLayout pipeline_layout_ = VK_NULL_HANDLE;
     VkPipeline pipeline_tri_ = VK_NULL_HANDLE;
     VkPipeline pipeline_line_ = VK_NULL_HANDLE;
+    VkPipeline pipeline_depth_prepass_ = VK_NULL_HANDLE;
+    VkPipeline pipeline_occ_query_ = VK_NULL_HANDLE;
     uint64_t pipeline_gen_ = 0;
+
+    std::array<VkQueryPool, kFrameRing> occlusion_query_pools_{};
+    std::array<uint32_t, kFrameRing> occlusion_query_counts_{};
+    std::array<std::vector<uint32_t>, kFrameRing> occlusion_query_instances_{};
+    uint32_t max_query_count_ = 0;
 
     std::vector<MeshGPU> meshes_{};
     std::vector<ShapeInstance> instances_{};
+    std::vector<uint32_t> frustum_visible_indices_{};
+    std::vector<uint32_t> render_visible_indices_{};
     uint32_t aabb_mesh_index_ = 0;
 
     FreeCamera camera_{};
@@ -1127,7 +1469,17 @@ private:
 
     bool show_aabb_debug_ = false;
     bool render_lit_surfaces_ = false;
-
+    bool enable_occlusion_ = true;
+    bool apply_occlusion_this_frame_ = false;
+    uint32_t occlusion_warmup_frames_ = 0;
+    bool camera_prev_valid_ = false;
+    glm::vec3 camera_prev_pos_{0.0f};
+    float camera_prev_yaw_ = 0.0f;
+    float camera_prev_pitch_ = 0.0f;
+    VisibilityHistory visibility_history_{
+        VisibilityHistoryPolicy{
+            kOcclusionHideConfirmFrames,
+            kOcclusionShowConfirmFrames}};
     CullingStats stats_{};
 };
 
@@ -1137,7 +1489,7 @@ int main()
 {
     try
     {
-        HelloCullingVkApp app{};
+        HelloOcclusionCullingVkApp app{};
         app.run();
         return 0;
     }
