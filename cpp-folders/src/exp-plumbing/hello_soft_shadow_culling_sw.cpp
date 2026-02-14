@@ -42,11 +42,15 @@ const int SHADOW_MAP_H = 1024;
 const int SHADOW_OCC_W = 320;
 const int SHADOW_OCC_H = 320;
 constexpr float kSunHeightLift = 6.0f;
-constexpr float kShadowStrength = 0.82f;
+constexpr float kShadowStrength = 0.75f;
 constexpr float kShadowBiasConst = 0.0010f;
 constexpr float kShadowBiasSlope = 0.0020f;
 constexpr int kShadowPcfRadius = 2;
 constexpr float kShadowPcfStep = 1.0f;
+constexpr float kShadowRangeScale = 50.0f;
+constexpr float kAmbientBase = 0.28f;
+constexpr float kAmbientHemi = 0.18f;
+const glm::vec3 kFloorBaseColor(0.30f, 0.30f, 0.35f);
 
 struct ShapeInstance {
     SceneShape shape;
@@ -308,7 +312,8 @@ void draw_mesh_blinn_phong_shadowed_transformed(
                 const float ndotl = std::max(0.0f, glm::dot(n, L));
                 const float ndoth = std::max(0.0f, glm::dot(n, H));
 
-                const float ambient = 0.18f;
+                const float hemi = glm::clamp(n.y * 0.5f + 0.5f, 0.0f, 1.0f);
+                const float ambient = kAmbientBase + kAmbientHemi * hemi;
                 const float shadow_vis_raw = shadow_visibility_dir(shadow_map, shadow_params, world_pos, ndotl);
                 const float shadow_vis = glm::mix(1.0f, shadow_vis_raw, kShadowStrength);
                 const float diffuse = 0.72f * ndotl * shadow_vis;
@@ -386,6 +391,17 @@ AABB compute_shadow_caster_bounds(const std::vector<ShapeInstance>& instances)
         out.minv = glm::vec3(-1.0f);
         out.maxv = glm::vec3(1.0f);
     }
+    return out;
+}
+
+AABB scale_aabb_about_center(const AABB& src, float scale)
+{
+    const float s = std::max(scale, 1.0f);
+    const glm::vec3 c = src.center();
+    const glm::vec3 e = src.extent() * s;
+    AABB out{};
+    out.minv = c - e;
+    out.maxv = c + e;
     return out;
 }
 
@@ -579,7 +595,7 @@ int main() {
         floor.model = compose_model(floor.base_pos, floor.base_rot);
         floor.shape.transform = jolt::to_jph(floor.model);
         floor.shape.stable_id = 9000;
-        floor.color = glm::vec3(0.18f, 0.18f, 0.22f);
+        floor.color = kFloorBaseColor;
         floor.animated = false;
         floor.casts_shadow = true;
 
@@ -752,6 +768,7 @@ int main() {
         glm::mat4 proj = perspective_lh_no(glm::radians(60.0f), (float)CANVAS_W / CANVAS_H, 0.1f, 1000.0f);
         glm::mat4 vp = proj * view;
         const AABB caster_bounds = compute_shadow_caster_bounds(instances);
+        const AABB shadow_bounds = scale_aabb_about_center(caster_bounds, kShadowRangeScale);
         const glm::vec3 scene_center = caster_bounds.center();
         const float scene_radius = std::max(42.0f, glm::length(caster_bounds.extent()) * 1.8f);
         const float orbit_angle = 0.17f * time_s;
@@ -763,7 +780,7 @@ int main() {
 
         const LightCamera light_cam = build_dir_light_camera_aabb(
             sun_dir_ws,
-            caster_bounds,
+            shadow_bounds,
             8.0f,
             static_cast<uint32_t>(SHADOW_MAP_W));
         const glm::mat4 light_vp = light_cam.viewproj;

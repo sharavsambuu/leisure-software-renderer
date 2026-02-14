@@ -20,6 +20,9 @@ layout(location = 4) in vec4 v_shadow_pos;
 
 layout(location = 0) out vec4 out_color;
 
+const float kAmbientBase = 0.28;
+const float kAmbientHemi = 0.18;
+
 float shadow_visibility(float ndotl)
 {
     vec3 proj = v_shadow_pos.xyz / max(v_shadow_pos.w, 1e-6);
@@ -85,7 +88,8 @@ void main()
     float ndotl = max(dot(N, L), 0.0);
     float ndoth = max(dot(N, H), 0.0);
 
-    float ambient = 0.18;
+    float hemi = clamp(N.y * 0.5 + 0.5, 0.0, 1.0);
+    float ambient = kAmbientBase + kAmbientHemi * hemi;
     float shadow_vis = shadow_visibility(ndotl);
     float diffuse = 0.72 * ndotl * shadow_vis;
     float specular = (ndotl > 0.0) ? (0.35 * pow(ndoth, 32.0) * shadow_vis) : 0.0;

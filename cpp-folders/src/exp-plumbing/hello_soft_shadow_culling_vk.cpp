@@ -64,11 +64,13 @@ constexpr int kWindowH = 900;
 constexpr uint32_t kFrameRing = 1u;
 constexpr uint32_t kShadowMapSize = 2048u;
 constexpr float kSunHeightLift = 6.0f;
-constexpr float kShadowStrength = 0.82f;
+constexpr float kShadowStrength = 0.75f;
 constexpr float kShadowBiasConst = 0.0010f;
 constexpr float kShadowBiasSlope = 0.0020f;
 constexpr float kShadowPcfStep = 1.0f;
 constexpr int kShadowPcfRadius = 2;
+constexpr float kShadowRangeScale = 50.0f;
+const glm::vec3 kFloorBaseColor(0.30f, 0.30f, 0.35f);
 constexpr uint8_t kOcclusionHideConfirmFrames = 3u;
 constexpr uint8_t kOcclusionShowConfirmFrames = 2u;
 constexpr uint64_t kOcclusionMinVisibleSamples = 1u;
@@ -268,6 +270,17 @@ AABB compute_shadow_caster_bounds(const std::vector<ShapeInstance>& instances)
         out.minv = glm::vec3(-1.0f);
         out.maxv = glm::vec3(1.0f);
     }
+    return out;
+}
+
+AABB scale_aabb_about_center(const AABB& src, float scale)
+{
+    const float s = std::max(scale, 1.0f);
+    const glm::vec3 c = src.center();
+    const glm::vec3 e = src.extent() * s;
+    AABB out{};
+    out.minv = c - e;
+    out.maxv = c + e;
     return out;
 }
 
@@ -615,7 +628,7 @@ private:
             floor.model = compose_model(floor.base_pos, floor.base_rot);
             floor.shape.transform = jolt::to_jph(floor.model);
             floor.shape.stable_id = 9000;
-            floor.color = glm::vec3(0.18f, 0.18f, 0.22f);
+            floor.color = kFloorBaseColor;
             floor.animated = false;
             floor.casts_shadow = true;
             floor.mesh_index = upload_debug_mesh(make_tessellated_floor_mesh(120.0f, 96));
@@ -1548,6 +1561,7 @@ private:
         frustum_ = extract_frustum_planes(vp_mtx_);
 
         shadow_caster_bounds_ = compute_shadow_caster_bounds(instances_);
+        const AABB shadow_bounds = scale_aabb_about_center(shadow_caster_bounds_, kShadowRangeScale);
         const glm::vec3 scene_center = shadow_caster_bounds_.center();
         const float scene_radius = std::max(42.0f, glm::length(shadow_caster_bounds_.extent()) * 1.8f);
         const float orbit_angle = 0.17f * time_s;
@@ -1559,7 +1573,7 @@ private:
 
         light_cam_ = build_dir_light_camera_aabb(
             sun_dir_ws_,
-            shadow_caster_bounds_,
+            shadow_bounds,
             8.0f,
             kShadowMapSize);
         // Culling frustum uses the canonical LH NO matrix conventions in library space.
