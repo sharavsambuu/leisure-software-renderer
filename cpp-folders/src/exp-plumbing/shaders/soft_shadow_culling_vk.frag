@@ -20,8 +20,8 @@ layout(location = 4) in vec4 v_shadow_pos;
 
 layout(location = 0) out vec4 out_color;
 
-const float kAmbientBase = 0.28;
-const float kAmbientHemi = 0.18;
+const float kAmbientBase = 0.22;
+const float kAmbientHemi = 0.12;
 
 float shadow_visibility(float ndotl)
 {

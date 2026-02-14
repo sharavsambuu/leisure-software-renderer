@@ -68,9 +68,15 @@ constexpr int kWindowH = 900;
 constexpr uint32_t kFrameRing = 1u;
 constexpr uint32_t kShadowMapSize = 2048u;
 constexpr float kSunHeightLift = 6.0f;
-constexpr float kShadowStrength = 0.75f;
-constexpr float kShadowBiasConst = 0.0010f;
-constexpr float kShadowBiasSlope = 0.0020f;
+constexpr float kSunOrbitRadiusScale = 0.70f;
+constexpr float kSunMinOrbitRadius = 28.0f;
+constexpr float kSunMinHeight = 56.0f;
+constexpr float kSunSceneTopOffset = 34.0f;
+constexpr float kSunTargetLead = 14.0f;
+constexpr float kSunTargetDrop = 16.0f;
+constexpr float kShadowStrength = 0.92f;
+constexpr float kShadowBiasConst = 0.0008f;
+constexpr float kShadowBiasSlope = 0.0016f;
 constexpr float kShadowPcfStep = 1.0f;
 constexpr int kShadowPcfRadius = 2;
 constexpr float kShadowRangeScale = 50.0f;
@@ -1751,11 +1757,18 @@ private:
         const glm::vec3 scene_center = shadow_caster_bounds_.center();
         const float scene_radius = std::max(42.0f, glm::length(shadow_caster_bounds_.extent()) * 1.8f);
         const float orbit_angle = 0.17f * time_s;
+        const float sun_orbit_radius = std::max(kSunMinOrbitRadius, scene_radius * kSunOrbitRadiusScale);
+        const float sun_height =
+            std::max(kSunMinHeight, shadow_caster_bounds_.maxv.y + kSunSceneTopOffset) + kSunHeightLift;
         const glm::vec3 sun_pos_ws = scene_center + glm::vec3(
-            std::cos(orbit_angle) * scene_radius,
-            std::max(26.0f, shadow_caster_bounds_.maxv.y + 22.0f) + kSunHeightLift,
-            std::sin(orbit_angle) * scene_radius);
-        sun_dir_ws_ = glm::normalize(scene_center - sun_pos_ws);
+            std::cos(orbit_angle) * sun_orbit_radius,
+            sun_height,
+            std::sin(orbit_angle) * sun_orbit_radius);
+        const glm::vec3 sun_target_ws = scene_center + glm::vec3(
+            -std::sin(orbit_angle) * kSunTargetLead,
+            -kSunTargetDrop,
+            std::cos(orbit_angle) * kSunTargetLead);
+        sun_dir_ws_ = glm::normalize(sun_target_ws - sun_pos_ws);
 
         light_cam_ = build_dir_light_camera_aabb(
             sun_dir_ws_,

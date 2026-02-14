@@ -42,14 +42,20 @@ const int SHADOW_MAP_H = 1024;
 const int SHADOW_OCC_W = 320;
 const int SHADOW_OCC_H = 320;
 constexpr float kSunHeightLift = 6.0f;
-constexpr float kShadowStrength = 0.75f;
-constexpr float kShadowBiasConst = 0.0010f;
-constexpr float kShadowBiasSlope = 0.0020f;
+constexpr float kSunOrbitRadiusScale = 0.70f;
+constexpr float kSunMinOrbitRadius = 28.0f;
+constexpr float kSunMinHeight = 56.0f;
+constexpr float kSunSceneTopOffset = 34.0f;
+constexpr float kSunTargetLead = 14.0f;
+constexpr float kSunTargetDrop = 16.0f;
+constexpr float kShadowStrength = 0.92f;
+constexpr float kShadowBiasConst = 0.0008f;
+constexpr float kShadowBiasSlope = 0.0016f;
 constexpr int kShadowPcfRadius = 2;
 constexpr float kShadowPcfStep = 1.0f;
 constexpr float kShadowRangeScale = 50.0f;
-constexpr float kAmbientBase = 0.28f;
-constexpr float kAmbientHemi = 0.18f;
+constexpr float kAmbientBase = 0.22f;
+constexpr float kAmbientHemi = 0.12f;
 const glm::vec3 kFloorBaseColor(0.30f, 0.30f, 0.35f);
 
 struct ShapeInstance {
@@ -772,11 +778,17 @@ int main() {
         const glm::vec3 scene_center = caster_bounds.center();
         const float scene_radius = std::max(42.0f, glm::length(caster_bounds.extent()) * 1.8f);
         const float orbit_angle = 0.17f * time_s;
+        const float sun_orbit_radius = std::max(kSunMinOrbitRadius, scene_radius * kSunOrbitRadiusScale);
+        const float sun_height = std::max(kSunMinHeight, caster_bounds.maxv.y + kSunSceneTopOffset) + kSunHeightLift;
         const glm::vec3 sun_pos_ws = scene_center + glm::vec3(
-            std::cos(orbit_angle) * scene_radius,
-            std::max(26.0f, caster_bounds.maxv.y + 22.0f) + kSunHeightLift,
-            std::sin(orbit_angle) * scene_radius);
-        const glm::vec3 sun_dir_ws = glm::normalize(scene_center - sun_pos_ws);
+            std::cos(orbit_angle) * sun_orbit_radius,
+            sun_height,
+            std::sin(orbit_angle) * sun_orbit_radius);
+        const glm::vec3 sun_target_ws = scene_center + glm::vec3(
+            -std::sin(orbit_angle) * kSunTargetLead,
+            -kSunTargetDrop,
+            std::cos(orbit_angle) * kSunTargetLead);
+        const glm::vec3 sun_dir_ws = glm::normalize(sun_target_ws - sun_pos_ws);
 
         const LightCamera light_cam = build_dir_light_camera_aabb(
             sun_dir_ws,
