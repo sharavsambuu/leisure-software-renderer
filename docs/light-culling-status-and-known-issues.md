@@ -57,3 +57,7 @@ Even after these fixes, the issue persists and needs a deeper pass.
 2. Capture and compare CPU reference culling vs GPU tile output for the same camera/light frame.
 3. Validate frag-space tile indexing against compute tile indexing under Y-flip and viewport setup.
 4. Add a deterministic regression scene with fixed camera, fixed seeds, and golden tile-count snapshots.
+
+## Related Notes
+
+- See `/docs/lighting-space-integration-notes.md` for SHS-space vs Jolt-space lighting/shadow conventions and a mismatch prevention checklist.

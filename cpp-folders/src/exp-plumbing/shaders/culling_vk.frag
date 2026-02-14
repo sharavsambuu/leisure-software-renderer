@@ -4,7 +4,7 @@ layout(set = 0, binding = 0) uniform CameraUBO
 {
     mat4 view_proj;
     vec4 camera_pos;
-    vec4 light_dir_ws;
+    vec4 sun_dir_to_scene_ws;
 } ubo;
 
 layout(location = 0) in vec3 v_world_pos;
@@ -24,7 +24,8 @@ void main()
     }
 
     vec3 N = normalize(v_normal_ws);
-    vec3 L = normalize(-ubo.light_dir_ws.xyz);
+    // SHS convention: sun_dir_to_scene_ws points from light toward scene.
+    vec3 L = normalize(-ubo.sun_dir_to_scene_ws.xyz);
     vec3 V = normalize(ubo.camera_pos.xyz - v_world_pos);
     vec3 H = normalize(L + V);
 

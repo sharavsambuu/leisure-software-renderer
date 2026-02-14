@@ -4,7 +4,7 @@ layout(set = 0, binding = 0) uniform CameraUBO
 {
     mat4 view_proj;
     vec4 camera_pos;
-    vec4 light_dir_ws;
+    vec4 sun_dir_to_scene_ws;
     mat4 light_view_proj;
     vec4 shadow_params; // x=strength, y=bias_const, z=bias_slope, w=pcf_step
     vec4 shadow_misc;   // x=pcf_radius

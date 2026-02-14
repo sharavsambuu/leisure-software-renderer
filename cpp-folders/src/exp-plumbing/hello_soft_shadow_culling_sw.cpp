@@ -247,12 +247,13 @@ void draw_mesh_blinn_phong_shadowed_transformed(
     int canvas_w,
     int canvas_h,
     const glm::vec3& camera_pos,
-    const glm::vec3& light_dir_ws,
+    const glm::vec3& sun_dir_to_scene_ws,
     const glm::vec3& base_color,
     const RT_ShadowDepth& shadow_map,
     const ShadowParams& shadow_params)
 {
-    const glm::vec3 L = glm::normalize(-light_dir_ws);
+    // SHS convention: sun_dir_to_scene_ws points from light toward scene.
+    const glm::vec3 L = glm::normalize(-sun_dir_to_scene_ws);
     for (size_t i = 0; i + 2 < mesh_local.indices.size(); i += 3) {
         const glm::vec3 lp0 = mesh_local.vertices[mesh_local.indices[i + 0]];
         const glm::vec3 lp1 = mesh_local.vertices[mesh_local.indices[i + 1]];
@@ -374,14 +375,35 @@ void rasterize_shadow_mesh_transformed(
     }
 }
 
-AABB compute_shadow_caster_bounds(const std::vector<ShapeInstance>& instances)
+AABB compute_local_aabb_from_debug_mesh(const DebugMesh& mesh)
+{
+    AABB out{};
+    if (mesh.vertices.empty())
+    {
+        out.minv = glm::vec3(-0.5f);
+        out.maxv = glm::vec3(0.5f);
+        return out;
+    }
+    out.minv = mesh.vertices[0];
+    out.maxv = mesh.vertices[0];
+    for (const glm::vec3& p : mesh.vertices)
+    {
+        out.expand(p);
+    }
+    return out;
+}
+
+AABB compute_shadow_caster_bounds_shs(
+    const std::vector<ShapeInstance>& instances,
+    const std::vector<AABB>& mesh_local_aabbs)
 {
     AABB out{};
     bool any = false;
     for (const auto& inst : instances)
     {
         if (!inst.casts_shadow) continue;
-        const AABB box = inst.shape.world_aabb();
+        if (inst.mesh_index >= mesh_local_aabbs.size()) continue;
+        const AABB box = transform_aabb(mesh_local_aabbs[inst.mesh_index], inst.model);
         if (!any)
         {
             out.minv = box.minv;
@@ -591,6 +613,7 @@ int main() {
 
     std::vector<ShapeInstance> instances;
     std::vector<DebugMesh> mesh_library;
+    std::vector<AABB> mesh_local_aabbs;
 
     // Large floor
     {
@@ -607,6 +630,7 @@ int main() {
 
         floor.mesh_index = static_cast<uint32_t>(mesh_library.size());
         mesh_library.push_back(make_tessellated_floor_mesh(120.0f, 96));
+        mesh_local_aabbs.push_back(compute_local_aabb_from_debug_mesh(mesh_library.back()));
         instances.push_back(floor);
     }
 
@@ -655,6 +679,7 @@ int main() {
                 inst.shape.shape = make_scaled_demo_shape(kind, scale);
                 inst.mesh_index = static_cast<uint32_t>(mesh_library.size());
                 mesh_library.push_back(debug_mesh_from_shape(*inst.shape.shape, JPH::Mat44::sIdentity()));
+                mesh_local_aabbs.push_back(compute_local_aabb_from_debug_mesh(mesh_library.back()));
 
                 inst.base_pos = glm::vec3(
                     (-0.5f * (float)(cols_per_row - 1) + (float)col) * col_spacing_x + zig,
@@ -686,6 +711,7 @@ int main() {
         unit.minv = glm::vec3(-0.5f);
         unit.maxv = glm::vec3(0.5f);
         mesh_library.push_back(debug_mesh_from_aabb(unit));
+        mesh_local_aabbs.push_back(compute_local_aabb_from_debug_mesh(mesh_library.back()));
     }
 
     SceneElementSet view_cull_scene;
@@ -773,7 +799,7 @@ int main() {
         glm::mat4 view = camera.get_view_matrix();
         glm::mat4 proj = perspective_lh_no(glm::radians(60.0f), (float)CANVAS_W / CANVAS_H, 0.1f, 1000.0f);
         glm::mat4 vp = proj * view;
-        const AABB caster_bounds = compute_shadow_caster_bounds(instances);
+        const AABB caster_bounds = compute_shadow_caster_bounds_shs(instances, mesh_local_aabbs);
         const AABB shadow_bounds = scale_aabb_about_center(caster_bounds, kShadowRangeScale);
         const glm::vec3 scene_center = caster_bounds.center();
         const float scene_radius = std::max(42.0f, glm::length(caster_bounds.extent()) * 1.8f);
@@ -788,10 +814,10 @@ int main() {
             -std::sin(orbit_angle) * kSunTargetLead,
             -kSunTargetDrop,
             std::cos(orbit_angle) * kSunTargetLead);
-        const glm::vec3 sun_dir_ws = glm::normalize(sun_target_ws - sun_pos_ws);
+        const glm::vec3 sun_dir_to_scene_ws = glm::normalize(sun_target_ws - sun_pos_ws);
 
         const LightCamera light_cam = build_dir_light_camera_aabb(
-            sun_dir_ws,
+            sun_dir_to_scene_ws,
             shadow_bounds,
             8.0f,
             static_cast<uint32_t>(SHADOW_MAP_W));
@@ -925,7 +951,7 @@ int main() {
                     CANVAS_W,
                     CANVAS_H,
                     camera.pos,
-                    sun_dir_ws,
+                    sun_dir_to_scene_ws,
                     base_color,
                     shadow_map,
                     shadow_params);

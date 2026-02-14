@@ -97,7 +97,7 @@ struct alignas(16) CameraUBO
 {
     glm::mat4 view_proj{1.0f};
     glm::vec4 camera_pos{0.0f, 0.0f, 0.0f, 1.0f};
-    glm::vec4 light_dir_ws{0.0f, -1.0f, 0.0f, 0.0f};
+    glm::vec4 sun_dir_to_scene_ws{0.0f, -1.0f, 0.0f, 0.0f};
     glm::mat4 light_view_proj{1.0f};
     glm::vec4 shadow_params{kShadowStrength, kShadowBiasConst, kShadowBiasSlope, kShadowPcfStep};
     glm::vec4 shadow_misc{static_cast<float>(kShadowPcfRadius), 0.0f, 0.0f, 0.0f};
@@ -128,6 +128,7 @@ struct MeshGPU
     GpuBuffer vertex{};
     GpuBuffer tri_indices{};
     GpuBuffer line_indices{};
+    AABB local_aabb{};
     uint32_t tri_index_count = 0;
     uint32_t line_index_count = 0;
 };
@@ -263,14 +264,35 @@ inline std::vector<Vertex> make_vertices_with_normals(const DebugMesh& mesh)
     return verts;
 }
 
-AABB compute_shadow_caster_bounds(const std::vector<ShapeInstance>& instances)
+AABB compute_local_aabb_from_debug_mesh(const DebugMesh& mesh)
+{
+    AABB out{};
+    if (mesh.vertices.empty())
+    {
+        out.minv = glm::vec3(-0.5f);
+        out.maxv = glm::vec3(0.5f);
+        return out;
+    }
+    out.minv = mesh.vertices[0];
+    out.maxv = mesh.vertices[0];
+    for (const glm::vec3& p : mesh.vertices)
+    {
+        out.expand(p);
+    }
+    return out;
+}
+
+AABB compute_shadow_caster_bounds_shs(
+    const std::vector<ShapeInstance>& instances,
+    const std::vector<MeshGPU>& meshes)
 {
     AABB out{};
     bool any = false;
     for (const auto& inst : instances)
     {
         if (!inst.casts_shadow) continue;
-        const AABB box = inst.shape.world_aabb();
+        if (inst.mesh_index >= meshes.size()) continue;
+        const AABB box = transform_aabb(meshes[inst.mesh_index].local_aabb, inst.model);
         if (!any)
         {
             out.minv = box.minv;
@@ -797,6 +819,7 @@ private:
             VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
             gpu.line_indices);
 
+        gpu.local_aabb = compute_local_aabb_from_debug_mesh(mesh);
         gpu.tri_index_count = static_cast<uint32_t>(mesh.indices.size());
         gpu.line_index_count = static_cast<uint32_t>(line_indices.size());
 
@@ -1752,7 +1775,7 @@ private:
         vp_mtx_ = proj_mtx_ * view_mtx_;
         frustum_ = extract_frustum_planes(vp_mtx_);
 
-        shadow_caster_bounds_ = compute_shadow_caster_bounds(instances_);
+        shadow_caster_bounds_ = compute_shadow_caster_bounds_shs(instances_, meshes_);
         const AABB shadow_bounds = scale_aabb_about_center(shadow_caster_bounds_, kShadowRangeScale);
         const glm::vec3 scene_center = shadow_caster_bounds_.center();
         const float scene_radius = std::max(42.0f, glm::length(shadow_caster_bounds_.extent()) * 1.8f);
@@ -1768,10 +1791,10 @@ private:
             -std::sin(orbit_angle) * kSunTargetLead,
             -kSunTargetDrop,
             std::cos(orbit_angle) * kSunTargetLead);
-        sun_dir_ws_ = glm::normalize(sun_target_ws - sun_pos_ws);
+        sun_dir_to_scene_ws_ = glm::normalize(sun_target_ws - sun_pos_ws);
 
         light_cam_ = build_dir_light_camera_aabb(
-            sun_dir_ws_,
+            sun_dir_to_scene_ws_,
             shadow_bounds,
             8.0f,
             kShadowMapSize);
@@ -2583,7 +2606,7 @@ private:
         CameraUBO cam{};
         cam.view_proj = vp_mtx_;
         cam.camera_pos = glm::vec4(camera_.pos, 1.0f);
-        cam.light_dir_ws = glm::vec4(sun_dir_ws_, 0.0f);
+        cam.sun_dir_to_scene_ws = glm::vec4(sun_dir_to_scene_ws_, 0.0f);
         cam.light_view_proj = light_view_proj_mtx_;
         cam.shadow_params = glm::vec4(kShadowStrength, kShadowBiasConst, kShadowBiasSlope, kShadowPcfStep);
         cam.shadow_misc = glm::vec4((float)kShadowPcfRadius, 0.0f, 0.0f, 0.0f);
@@ -2975,7 +2998,7 @@ private:
     glm::mat4 proj_mtx_{1.0f};
     glm::mat4 vp_mtx_{1.0f};
     glm::mat4 light_view_proj_mtx_{1.0f};
-    glm::vec3 sun_dir_ws_{0.0f, -1.0f, 0.0f};
+    glm::vec3 sun_dir_to_scene_ws_{0.0f, -1.0f, 0.0f};
     LightCamera light_cam_{};
     AABB shadow_caster_bounds_{};
     Frustum frustum_{};
