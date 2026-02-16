@@ -269,16 +269,22 @@ namespace shs
         glm::vec3 right = rect.right_ws - dir * glm::dot(rect.right_ws, dir);
         right = normalize_or(right, glm::vec3(1.0f, 0.0f, 0.0f));
         glm::vec3 up = glm::normalize(glm::cross(dir, right));
+        right = normalize_or(glm::cross(up, dir), right);
+        const float hx = std::max(rect.half_extents.x, 0.001f);
+        const float hy = std::max(rect.half_extents.y, 0.001f);
+        const float range = std::max(rect.common.range, 0.0f);
 
         OBB obb{};
-        obb.center = rect.common.position_ws;
+        // Conservative one-sided influence bounds:
+        // forward slab [0, range] along emit direction + spherical dilation by range.
+        obb.center = rect.common.position_ws + dir * (range * 0.5f);
         obb.axis_x = right;
         obb.axis_y = up;
-        obb.axis_z = -dir;
+        obb.axis_z = dir;
         obb.half_extents = glm::vec3(
-            std::max(rect.half_extents.x, 0.001f),
-            std::max(rect.half_extents.y, 0.001f),
-            std::max(rect.common.range, 0.0f) * 0.5f);
+            hx + range,
+            hy + range,
+            std::max(range * 0.5f, 0.001f));
         return obb;
     }
 
@@ -295,10 +301,15 @@ namespace shs
     {
         const glm::vec3 axis = normalize_or(tube.axis_ws, glm::vec3(1.0f, 0.0f, 0.0f));
         const float half_len = std::max(tube.half_length, 0.001f);
+        // Lighting evaluates distance to nearest point on the segment and gates by common.range,
+        // so conservative culling must at least use that radius.
+        const float influence_radius = std::max(
+            std::max(tube.common.range, 0.0f),
+            std::max(tube.radius, 0.001f));
         Capsule c{};
         c.a = tube.common.position_ws - axis * half_len;
         c.b = tube.common.position_ws + axis * half_len;
-        c.radius = std::max(tube.radius, 0.001f);
+        c.radius = influence_radius;
         return c;
     }
 
@@ -316,7 +327,8 @@ namespace shs
     {
         CullingLightGPU out{};
         const Sphere bounds = point_light_culling_sphere(point);
-        out.position_range = glm::vec4(bounds.center, bounds.radius);
+        // position_range.w is the shading range; cull bounds are kept separately.
+        out.position_range = glm::vec4(point.common.position_ws, std::max(point.common.range, 0.0f));
         out.color_intensity = glm::vec4(glm::max(point.common.color, glm::vec3(0.0f)), std::max(point.common.intensity, 0.0f));
         out.direction_spot = glm::vec4(0.0f, -1.0f, 0.0f, 1.0f);
         out.axis_spot_outer = glm::vec4(1.0f, 0.0f, 0.0f, 0.0f);
@@ -345,7 +357,8 @@ namespace shs
         const float inner_cos = std::cos(inner);
         const float outer_cos = std::cos(outer);
 
-        out.position_range = glm::vec4(bounds.center, bounds.radius);
+        // position_range.w is the shading range; cull bounds are kept separately.
+        out.position_range = glm::vec4(spot.common.position_ws, std::max(spot.common.range, 0.0f));
         out.color_intensity = glm::vec4(glm::max(spot.common.color, glm::vec3(0.0f)), std::max(spot.common.intensity, 0.0f));
         out.direction_spot = glm::vec4(dir, inner_cos);
         out.axis_spot_outer = glm::vec4(1.0f, 0.0f, 0.0f, outer_cos);
@@ -371,7 +384,8 @@ namespace shs
         const Sphere bounds = rect_area_light_culling_sphere(rect);
         const glm::vec3 dir = -obb.axis_z;
 
-        out.position_range = glm::vec4(bounds.center, bounds.radius);
+        // position_range.w is the shading range; cull bounds are kept separately.
+        out.position_range = glm::vec4(rect.common.position_ws, std::max(rect.common.range, 0.0f));
         out.color_intensity = glm::vec4(glm::max(rect.common.color, glm::vec3(0.0f)), std::max(rect.common.intensity, 0.0f));
         out.direction_spot = glm::vec4(dir, 1.0f);
         out.axis_spot_outer = glm::vec4(obb.axis_x, 0.0f);
@@ -399,7 +413,8 @@ namespace shs
         const float half_length = glm::length(cap.b - cap.a) * 0.5f;
         const float radius = cap.radius;
 
-        out.position_range = glm::vec4(bounds.center, bounds.radius);
+        // position_range.w is the shading range; cull bounds are kept separately.
+        out.position_range = glm::vec4(tube.common.position_ws, std::max(tube.common.range, 0.0f));
         out.color_intensity = glm::vec4(glm::max(tube.common.color, glm::vec3(0.0f)), std::max(tube.common.intensity, 0.0f));
         out.direction_spot = glm::vec4(axis, 1.0f);
         out.axis_spot_outer = glm::vec4(axis, 0.0f);

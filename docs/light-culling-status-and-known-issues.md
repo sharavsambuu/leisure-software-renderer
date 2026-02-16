@@ -40,10 +40,22 @@ This setup reduces visual popping and query-related instability.
 
 ## 5) Archived Issue Notes
 
-There were earlier observations of instability around tiled/tiled-depth culling paths.
-For this phase closure, those observations are not treated as blocking for the Jolt shape/volume culling milestone.
+Earlier observations around tiled/tiled-depth/clustered instability are now partly resolved and should be tracked with clearer status:
 
-If those paths are actively resumed, continue tracking in separate focused issues.
+- Resolved:
+  - rectangular block/patch lighting artifacts in GPU culling modes
+  - root cause: mismatch between light influence evaluation and culling bounds in some local light types
+  - fixes landed:
+    - stricter shape-aware influence checks in scene lighting evaluation
+    - conservative cull-bound construction for anisotropic light volumes
+    - conservative compute culling fallback bounds in stress path
+- Remaining:
+  - continue monitoring visual stability/perf tradeoffs when adding new light types or new culling kernels
+
+Practical status:
+
+- current issue is considered fixed for active demos
+- keep regression checks when touching light packing or culling shaders
 
 ## 6) Connection To The Next Phase
 
@@ -68,3 +80,16 @@ Practical effect:
 
 - less duplicated light-type logic across SW/VK demos
 - lower risk of contract drift between CPU light packing and GPU light evaluation
+
+## 8) Next Phase Handoff
+
+With light-volume and culling stability in place, the next phase is render-path composition:
+
+- introduce shared render-path interfaces/contracts
+- keep current Forward/Forward+ behavior as baseline path
+- add an additional path (Deferred) on top of same light/culling inputs
+- support runtime path switching with comparable stats
+
+See:
+
+- `docs/dynamic-render-path-composition-plan.md`

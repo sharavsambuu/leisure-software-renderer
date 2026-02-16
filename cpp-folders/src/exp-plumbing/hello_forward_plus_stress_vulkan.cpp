@@ -24,16 +24,20 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include <shs/core/context.hpp>
+#include <shs/camera/camera_math.hpp>
 #include <shs/camera/convention.hpp>
 #include <shs/camera/light_camera.hpp>
 #include <shs/frame/technique_mode.hpp>
 #include <shs/geometry/jolt_adapter.hpp>
+#include <shs/geometry/culling_software.hpp>
 #include <shs/geometry/jolt_culling.hpp>
+#include <shs/geometry/jolt_debug_draw.hpp>
 #include <shs/geometry/jolt_shapes.hpp>
 #include <shs/geometry/scene_shape.hpp>
 #include <shs/job/thread_pool_job_system.hpp>
 #include <shs/job/wait_group.hpp>
 #include <shs/lighting/light_culling_mode.hpp>
+#include <shs/lighting/light_runtime.hpp>
 #include <shs/lighting/light_set.hpp>
 #include <shs/lighting/shadow_technique.hpp>
 #include <shs/pipeline/technique_profile.hpp>
@@ -52,8 +56,12 @@ constexpr int kDefaultW = 1280;
 constexpr int kDefaultH = 720;
 constexpr uint32_t kTileSize = 16;
 constexpr uint32_t kMaxLightsPerTile = 128;
-constexpr uint32_t kMaxLights = 8192;
-constexpr uint32_t kDefaultLightCount = 2048;
+constexpr uint32_t kMaxLights = 768;
+constexpr uint32_t kDefaultLightCount = 384;
+constexpr int kSceneOccW = 320;
+constexpr int kSceneOccH = 180;
+constexpr int kLightOccW = 320;
+constexpr int kLightOccH = 180;
 constexpr float kTechniqueSwitchPeriodSec = 8.0f;
 constexpr uint32_t kClusterZSlices = 16;
 constexpr float kShadowNearZ = 0.05f;
@@ -117,13 +125,25 @@ static_assert(sizeof(ShadowLightGPU) % 16 == 0, "ShadowLightGPU must be std430 c
 
 struct Instance
 {
+    enum class MeshKind : uint8_t
+    {
+        Sphere = 0,
+        Box = 1,
+        Cone = 2,
+        Capsule = 3,
+        Cylinder = 4
+    };
+
     glm::vec3 base_pos{0.0f};
     glm::vec4 base_color{1.0f};
+    glm::vec3 base_rot{0.0f};
+    glm::vec3 rot_speed{0.0f};
     float scale = 1.0f;
     float phase = 0.0f;
     float metallic = 0.08f;
     float roughness = 0.36f;
     float ao = 1.0f;
+    MeshKind mesh_kind = MeshKind::Sphere;
 };
 
 struct GpuBuffer
@@ -188,6 +208,78 @@ struct LocalShadowCaster
     float strength = 1.0f;
 };
 
+struct FreeCamera
+{
+    glm::vec3 pos{0.0f, 13.0f, -38.0f};
+    float yaw = glm::half_pi<float>();
+    float pitch = -0.22f;
+    float move_speed = 20.0f;
+    float look_speed = 0.003f;
+    static constexpr float kMouseSpikeThreshold = 240.0f;
+    static constexpr float kMouseDeltaClamp = 90.0f;
+
+    void update(
+        bool move_forward,
+        bool move_backward,
+        bool move_left,
+        bool move_right,
+        bool move_up,
+        bool move_down,
+        bool boost,
+        bool left_mouse_down,
+        bool right_mouse_down,
+        float mouse_dx,
+        float mouse_dy,
+        float dt)
+    {
+        if (left_mouse_down || right_mouse_down)
+        {
+            float mdx = mouse_dx;
+            float mdy = mouse_dy;
+            if (std::abs(mdx) > kMouseSpikeThreshold || std::abs(mdy) > kMouseSpikeThreshold)
+            {
+                mdx = 0.0f;
+                mdy = 0.0f;
+            }
+            mdx = std::clamp(mdx, -kMouseDeltaClamp, kMouseDeltaClamp);
+            mdy = std::clamp(mdy, -kMouseDeltaClamp, kMouseDeltaClamp);
+            yaw -= mdx * look_speed;
+            pitch -= mdy * look_speed;
+            pitch = std::clamp(pitch, -glm::half_pi<float>() + 0.01f, glm::half_pi<float>() - 0.01f);
+        }
+
+        const glm::vec3 fwd = shs::forward_from_yaw_pitch(yaw, pitch);
+        const glm::vec3 right = shs::right_from_forward(fwd);
+        const glm::vec3 up(0.0f, 1.0f, 0.0f);
+        const float speed = move_speed * (boost ? 2.0f : 1.0f);
+        if (move_forward) pos += fwd * speed * dt;
+        if (move_backward) pos -= fwd * speed * dt;
+        if (move_left) pos += right * speed * dt;
+        if (move_right) pos -= right * speed * dt;
+        if (move_up) pos += up * speed * dt;
+        if (move_down) pos -= up * speed * dt;
+    }
+
+    glm::mat4 view_matrix() const
+    {
+        return shs::look_at_lh(pos, pos + shs::forward_from_yaw_pitch(yaw, pitch), glm::vec3(0.0f, 1.0f, 0.0f));
+    }
+};
+
+enum class DebugVolumeMeshKind : uint8_t
+{
+    Sphere = 0,
+    Cone = 1,
+    Box = 2
+};
+
+struct LightVolumeDebugDraw
+{
+    DebugVolumeMeshKind mesh = DebugVolumeMeshKind::Sphere;
+    glm::mat4 model{1.0f};
+    glm::vec4 color{1.0f};
+};
+
 enum class VulkanCullerBackend : uint8_t
 {
     GpuCompute = 0,
@@ -202,6 +294,39 @@ const char* vulkan_culler_backend_name(VulkanCullerBackend backend)
         case VulkanCullerBackend::Disabled: return "off";
     }
     return "gpu";
+}
+
+glm::vec3 safe_perp_axis(const glm::vec3& v)
+{
+    if (std::abs(v.y) < 0.9f) return glm::vec3(0.0f, 1.0f, 0.0f);
+    return glm::vec3(0.0f, 0.0f, 1.0f);
+}
+
+void basis_from_axis(
+    const glm::vec3& axis_y,
+    glm::vec3& out_x,
+    glm::vec3& out_y,
+    glm::vec3& out_z)
+{
+    out_y = shs::normalize_or(axis_y, glm::vec3(0.0f, 1.0f, 0.0f));
+    const glm::vec3 up_hint = safe_perp_axis(out_y);
+    out_x = shs::normalize_or(glm::cross(up_hint, out_y), glm::vec3(1.0f, 0.0f, 0.0f));
+    out_z = shs::normalize_or(glm::cross(out_y, out_x), glm::vec3(0.0f, 0.0f, 1.0f));
+}
+
+glm::mat4 model_from_basis_and_scale(
+    const glm::vec3& position,
+    const glm::vec3& axis_x,
+    const glm::vec3& axis_y,
+    const glm::vec3& axis_z,
+    const glm::vec3& scale_xyz)
+{
+    glm::mat4 m(1.0f);
+    m[0] = glm::vec4(axis_x * scale_xyz.x, 0.0f);
+    m[1] = glm::vec4(axis_y * scale_xyz.y, 0.0f);
+    m[2] = glm::vec4(axis_z * scale_xyz.z, 0.0f);
+    m[3] = glm::vec4(position, 1.0f);
+    return m;
 }
 
 bool profile_has_pass(const shs::TechniqueProfile& profile, const char* pass_id)
@@ -259,6 +384,7 @@ public:
         init_jobs();
         init_scene_data();
         init_gpu_resources();
+        print_controls();
         main_loop();
     }
 
@@ -281,6 +407,17 @@ public:
         destroy_buffer(index_buffer_);
         destroy_buffer(floor_vertex_buffer_);
         destroy_buffer(floor_index_buffer_);
+        destroy_buffer(cone_vertex_buffer_);
+        destroy_buffer(cone_index_buffer_);
+        destroy_buffer(box_vertex_buffer_);
+        destroy_buffer(box_index_buffer_);
+        destroy_buffer(sphere_line_index_buffer_);
+        destroy_buffer(cone_line_index_buffer_);
+        destroy_buffer(box_line_index_buffer_);
+        destroy_buffer(capsule_vertex_buffer_);
+        destroy_buffer(capsule_index_buffer_);
+        destroy_buffer(cylinder_vertex_buffer_);
+        destroy_buffer(cylinder_index_buffer_);
 
         for (auto& fr : frame_resources_)
         {
@@ -330,6 +467,34 @@ public:
     }
 
 private:
+    void print_controls() const
+    {
+        std::fprintf(stderr, "\n[%s] Controls\n", kAppName);
+        std::fprintf(stderr, "  Esc        : quit\n");
+        std::fprintf(stderr, "  F1         : toggle recording mode (inline / MT-secondary)\n");
+        std::fprintf(stderr, "  F2         : cycle technique mode\n");
+        std::fprintf(stderr, "  F3         : cycle light culling override (None/Tiled/TiledDepth/Clustered)\n");
+        std::fprintf(stderr, "  F4         : clear culling override (use technique default)\n");
+        std::fprintf(stderr, "  F5         : toggle shadows\n");
+        std::fprintf(stderr, "  F6         : toggle Vulkan culler backend (gpu / disabled)\n");
+        std::fprintf(stderr, "  F7         : toggle light debug wireframe draw\n");
+        std::fprintf(stderr, "  F8         : toggle scene occlusion culling\n");
+        std::fprintf(stderr, "  F9         : toggle light occlusion culling\n");
+        std::fprintf(stderr, "  F10        : cycle light-object prefilter (None/Sphere/Volume)\n");
+        std::fprintf(stderr, "  F11        : toggle auto technique switching\n");
+        std::fprintf(stderr, "  F12        : toggle directional (sun) shadow contribution\n");
+        std::fprintf(stderr, "  Drag LMB/RMB: free-look camera (WSL spike-filtered)\n");
+        std::fprintf(stderr, "  W/A/S/D + Q/E: move camera, Shift: boost\n");
+        std::fprintf(stderr, "  1/2        : orbit radius scale -/+\n");
+        std::fprintf(stderr, "  3/4        : light height bias -/+\n");
+        std::fprintf(stderr, "  5/6        : light range scale -/+\n");
+        std::fprintf(stderr, "  7/8        : light intensity scale -/+\n");
+        std::fprintf(stderr, "  9/0        : sun shadow strength -/+ (when F12 is on)\n");
+        std::fprintf(stderr, "  R          : reset light tuning\n");
+        std::fprintf(stderr, "  +/-        : decrease/increase active light count\n");
+        std::fprintf(stderr, "  Title bar  : shows mode, culling stack, rejections, and frame ms\n\n");
+    }
+
     void init_sdl()
     {
         if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0)
@@ -423,26 +588,284 @@ private:
         return out;
     }
 
+    static shs::AABB compute_local_aabb_from_vertices(const std::vector<Vertex>& vertices)
+    {
+        shs::AABB out{};
+        if (vertices.empty())
+        {
+            out.minv = glm::vec3(-0.5f);
+            out.maxv = glm::vec3(0.5f);
+            return out;
+        }
+        for (const Vertex& v : vertices) out.expand(v.pos);
+        return out;
+    }
+
+    static void make_tessellated_floor_geometry(
+        float half_extent,
+        int subdivisions,
+        std::vector<Vertex>& out_vertices,
+        std::vector<uint32_t>& out_indices)
+    {
+        const int div = std::max(1, subdivisions);
+        const int verts_per_row = div + 1;
+        const float full = std::max(half_extent, 1.0f) * 2.0f;
+        const float step = full / static_cast<float>(div);
+
+        out_vertices.clear();
+        out_indices.clear();
+        out_vertices.reserve(static_cast<size_t>(verts_per_row) * static_cast<size_t>(verts_per_row));
+        out_indices.reserve(static_cast<size_t>(div) * static_cast<size_t>(div) * 6u);
+
+        for (int z = 0; z <= div; ++z)
+        {
+            for (int x = 0; x <= div; ++x)
+            {
+                const float px = -half_extent + static_cast<float>(x) * step;
+                const float pz = -half_extent + static_cast<float>(z) * step;
+                Vertex v{};
+                v.pos = glm::vec3(px, 0.0f, pz);
+                v.normal = glm::vec3(0.0f, 1.0f, 0.0f);
+                out_vertices.push_back(v);
+            }
+        }
+
+        const auto idx_of = [verts_per_row](int x, int z) -> uint32_t {
+            return static_cast<uint32_t>(z * verts_per_row + x);
+        };
+
+        for (int z = 0; z < div; ++z)
+        {
+            for (int x = 0; x < div; ++x)
+            {
+                const uint32_t i00 = idx_of(x + 0, z + 0);
+                const uint32_t i10 = idx_of(x + 1, z + 0);
+                const uint32_t i01 = idx_of(x + 0, z + 1);
+                const uint32_t i11 = idx_of(x + 1, z + 1);
+
+                out_indices.push_back(i00);
+                out_indices.push_back(i10);
+                out_indices.push_back(i11);
+
+                out_indices.push_back(i00);
+                out_indices.push_back(i11);
+                out_indices.push_back(i01);
+            }
+        }
+    }
+
+    static shs::DebugMesh make_debug_mesh_from_vertex_index_data(
+        const std::vector<Vertex>& verts,
+        const std::vector<uint32_t>& indices)
+    {
+        shs::DebugMesh mesh{};
+        mesh.vertices.reserve(verts.size());
+        for (const Vertex& v : verts)
+        {
+            mesh.vertices.push_back(v.pos);
+        }
+        mesh.indices = indices;
+        return mesh;
+    }
+
+    static std::vector<uint32_t> make_line_indices_from_triangles(const std::vector<uint32_t>& tri_indices)
+    {
+        std::vector<uint32_t> out{};
+        out.reserve((tri_indices.size() / 3u) * 6u);
+        for (size_t i = 0; i + 2 < tri_indices.size(); i += 3)
+        {
+            const uint32_t a = tri_indices[i + 0];
+            const uint32_t b = tri_indices[i + 1];
+            const uint32_t c = tri_indices[i + 2];
+            out.push_back(a); out.push_back(b);
+            out.push_back(b); out.push_back(c);
+            out.push_back(c); out.push_back(a);
+        }
+        return out;
+    }
+
+    static std::vector<Vertex> make_vertices_with_normals_from_debug_mesh(const shs::DebugMesh& mesh)
+    {
+        std::vector<Vertex> verts(mesh.vertices.size());
+        for (size_t i = 0; i < mesh.vertices.size(); ++i)
+        {
+            verts[i].pos = mesh.vertices[i];
+            verts[i].normal = glm::vec3(0.0f, 1.0f, 0.0f);
+        }
+
+        for (size_t i = 0; i + 2 < mesh.indices.size(); i += 3)
+        {
+            const uint32_t i0 = mesh.indices[i + 0];
+            const uint32_t i1 = mesh.indices[i + 1];
+            const uint32_t i2 = mesh.indices[i + 2];
+            if (i0 >= verts.size() || i1 >= verts.size() || i2 >= verts.size()) continue;
+
+            const glm::vec3 p0 = verts[i0].pos;
+            const glm::vec3 p1 = verts[i1].pos;
+            const glm::vec3 p2 = verts[i2].pos;
+            glm::vec3 n = glm::cross(p2 - p0, p1 - p0);
+            const float n2 = glm::dot(n, n);
+            if (n2 <= 1e-12f) n = glm::vec3(0.0f, 1.0f, 0.0f);
+            else n *= (1.0f / std::sqrt(n2));
+
+            verts[i0].normal += n;
+            verts[i1].normal += n;
+            verts[i2].normal += n;
+        }
+
+        for (auto& v : verts)
+        {
+            const float n2 = glm::dot(v.normal, v.normal);
+            if (n2 <= 1e-12f) v.normal = glm::vec3(0.0f, 1.0f, 0.0f);
+            else v.normal *= (1.0f / std::sqrt(n2));
+        }
+        return verts;
+    }
+
+    const shs::AABB& local_aabb_for_mesh(Instance::MeshKind kind) const
+    {
+        switch (kind)
+        {
+            case Instance::MeshKind::Box: return box_local_aabb_;
+            case Instance::MeshKind::Cone: return cone_local_aabb_;
+            case Instance::MeshKind::Capsule: return capsule_local_aabb_;
+            case Instance::MeshKind::Cylinder: return cylinder_local_aabb_;
+            case Instance::MeshKind::Sphere:
+            default: return sphere_local_aabb_;
+        }
+    }
+
+    const shs::Sphere& local_bound_for_mesh(Instance::MeshKind kind) const
+    {
+        switch (kind)
+        {
+            case Instance::MeshKind::Box: return box_local_bound_;
+            case Instance::MeshKind::Cone: return cone_local_bound_;
+            case Instance::MeshKind::Capsule: return capsule_local_bound_;
+            case Instance::MeshKind::Cylinder: return cylinder_local_bound_;
+            case Instance::MeshKind::Sphere:
+            default: return sphere_local_bound_;
+        }
+    }
+
+    const JPH::ShapeRefC& cull_shape_for_mesh(Instance::MeshKind kind) const
+    {
+        switch (kind)
+        {
+            case Instance::MeshKind::Box: return box_shape_jolt_;
+            case Instance::MeshKind::Cone: return cone_shape_jolt_;
+            case Instance::MeshKind::Capsule: return capsule_shape_jolt_;
+            case Instance::MeshKind::Cylinder: return cylinder_shape_jolt_;
+            case Instance::MeshKind::Sphere:
+            default: return sphere_shape_jolt_;
+        }
+    }
+
+    const shs::DebugMesh& occluder_mesh_for_mesh(Instance::MeshKind kind) const
+    {
+        switch (kind)
+        {
+            case Instance::MeshKind::Box: return box_occluder_mesh_;
+            case Instance::MeshKind::Cone: return cone_occluder_mesh_;
+            case Instance::MeshKind::Capsule: return capsule_occluder_mesh_;
+            case Instance::MeshKind::Cylinder: return cylinder_occluder_mesh_;
+            case Instance::MeshKind::Sphere:
+            default: return sphere_occluder_mesh_;
+        }
+    }
+
+    const GpuBuffer& vertex_buffer_for_mesh(Instance::MeshKind kind) const
+    {
+        switch (kind)
+        {
+            case Instance::MeshKind::Box: return box_vertex_buffer_;
+            case Instance::MeshKind::Cone: return cone_vertex_buffer_;
+            case Instance::MeshKind::Capsule: return capsule_vertex_buffer_;
+            case Instance::MeshKind::Cylinder: return cylinder_vertex_buffer_;
+            case Instance::MeshKind::Sphere:
+            default: return vertex_buffer_;
+        }
+    }
+
+    const GpuBuffer& index_buffer_for_mesh(Instance::MeshKind kind) const
+    {
+        switch (kind)
+        {
+            case Instance::MeshKind::Box: return box_index_buffer_;
+            case Instance::MeshKind::Cone: return cone_index_buffer_;
+            case Instance::MeshKind::Capsule: return capsule_index_buffer_;
+            case Instance::MeshKind::Cylinder: return cylinder_index_buffer_;
+            case Instance::MeshKind::Sphere:
+            default: return index_buffer_;
+        }
+    }
+
+    uint32_t index_count_for_mesh(Instance::MeshKind kind) const
+    {
+        switch (kind)
+        {
+            case Instance::MeshKind::Box: return static_cast<uint32_t>(box_indices_.size());
+            case Instance::MeshKind::Cone: return static_cast<uint32_t>(cone_indices_.size());
+            case Instance::MeshKind::Capsule: return static_cast<uint32_t>(capsule_indices_.size());
+            case Instance::MeshKind::Cylinder: return static_cast<uint32_t>(cylinder_indices_.size());
+            case Instance::MeshKind::Sphere:
+            default: return static_cast<uint32_t>(indices_.size());
+        }
+    }
+
     void init_scene_data()
     {
         shs::ResourceRegistry resources{};
         const shs::MeshAssetHandle sphere_h = shs::import_sphere_primitive(resources, shs::SphereDesc{0.5f, 18, 12}, "fplus_sphere");
-        const shs::MeshAssetHandle floor_h = shs::import_plane_primitive(resources, shs::PlaneDesc{300.0f, 300.0f, 64, 64}, "fplus_floor");
+        const shs::MeshAssetHandle cone_h = shs::import_cone_primitive(resources, shs::ConeDesc{1.0f, 1.0f, 20, 1, false}, "fplus_light_cone");
+        const shs::MeshAssetHandle box_h = shs::import_box_primitive(resources, shs::BoxDesc{glm::vec3(1.0f), 1, 1, 1}, "fplus_light_box");
 
         const shs::MeshData* sphere_mesh = resources.get_mesh(sphere_h);
         if (!sphere_mesh || sphere_mesh->empty())
         {
             throw std::runtime_error("Failed to generate sphere primitive mesh");
         }
-        const shs::MeshData* floor_mesh = resources.get_mesh(floor_h);
-        if (!floor_mesh || floor_mesh->empty())
+        const shs::MeshData* cone_mesh = resources.get_mesh(cone_h);
+        if (!cone_mesh || cone_mesh->empty())
         {
-            throw std::runtime_error("Failed to generate floor primitive mesh");
+            throw std::runtime_error("Failed to generate cone primitive mesh");
         }
+        const shs::MeshData* box_mesh = resources.get_mesh(box_h);
+        if (!box_mesh || box_mesh->empty())
+        {
+            throw std::runtime_error("Failed to generate box primitive mesh");
+        }
+
+        const JPH::ShapeRefC capsule_debug_shape = shs::jolt::make_capsule(0.92f, 0.42f);
+        const JPH::ShapeRefC cylinder_debug_shape = shs::jolt::make_cylinder(0.90f, 0.46f);
+        const shs::DebugMesh capsule_debug_mesh = shs::debug_mesh_from_shape(*capsule_debug_shape, JPH::Mat44::sIdentity());
+        const shs::DebugMesh cylinder_debug_mesh = shs::debug_mesh_from_shape(*cylinder_debug_shape, JPH::Mat44::sIdentity());
+        if (capsule_debug_mesh.vertices.empty() || capsule_debug_mesh.indices.empty())
+        {
+            throw std::runtime_error("Failed to build capsule debug mesh");
+        }
+        if (cylinder_debug_mesh.vertices.empty() || cylinder_debug_mesh.indices.empty())
+        {
+            throw std::runtime_error("Failed to build cylinder debug mesh");
+        }
+
         sphere_local_aabb_ = compute_local_aabb_from_positions(sphere_mesh->positions);
-        floor_local_aabb_ = compute_local_aabb_from_positions(floor_mesh->positions);
+        make_tessellated_floor_geometry(90.0f, 80, floor_vertices_, floor_indices_);
+        floor_local_aabb_ = compute_local_aabb_from_vertices(floor_vertices_);
+        cone_local_aabb_ = compute_local_aabb_from_positions(cone_mesh->positions);
+        box_local_aabb_ = compute_local_aabb_from_positions(box_mesh->positions);
+        capsule_local_aabb_ = compute_local_aabb_from_positions(capsule_debug_mesh.vertices);
+        cylinder_local_aabb_ = compute_local_aabb_from_positions(cylinder_debug_mesh.vertices);
         sphere_local_bound_ = shs::sphere_from_aabb(sphere_local_aabb_);
-        instance_shape_jolt_ = shs::jolt::make_sphere(sphere_local_bound_.radius);
+        cone_local_bound_ = shs::sphere_from_aabb(cone_local_aabb_);
+        box_local_bound_ = shs::sphere_from_aabb(box_local_aabb_);
+        capsule_local_bound_ = shs::sphere_from_aabb(capsule_local_aabb_);
+        cylinder_local_bound_ = shs::sphere_from_aabb(cylinder_local_aabb_);
+        sphere_shape_jolt_ = shs::jolt::make_sphere(sphere_local_bound_.radius);
+        box_shape_jolt_ = shs::jolt::make_box(box_local_aabb_.extent());
+        cone_shape_jolt_ = shs::jolt::make_convex_hull(cone_mesh->positions);
+        capsule_shape_jolt_ = capsule_debug_shape;
+        cylinder_shape_jolt_ = cylinder_debug_shape;
 
         vertices_.clear();
         vertices_.reserve(sphere_mesh->positions.size());
@@ -455,50 +878,114 @@ private:
         }
         indices_ = sphere_mesh->indices;
 
-        floor_vertices_.clear();
-        floor_vertices_.reserve(floor_mesh->positions.size());
-        for (size_t i = 0; i < floor_mesh->positions.size(); ++i)
-        {
-            Vertex v{};
-            v.pos = floor_mesh->positions[i];
-            if (i < floor_mesh->normals.size()) v.normal = floor_mesh->normals[i];
-            floor_vertices_.push_back(v);
-        }
-        floor_indices_ = floor_mesh->indices;
-        floor_model_ = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -1.2f, 0.0f));
+        floor_model_ = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -0.25f, 0.0f));
         floor_material_color_ = glm::vec4(120.0f / 255.0f, 122.0f / 255.0f, 128.0f / 255.0f, 1.0f);
         // PBR plastic floor material.
         floor_material_params_ = glm::vec4(0.0f, 0.62f, 1.0f, 0.0f);
 
+        cone_vertices_.clear();
+        cone_vertices_.reserve(cone_mesh->positions.size());
+        for (size_t i = 0; i < cone_mesh->positions.size(); ++i)
+        {
+            Vertex v{};
+            v.pos = cone_mesh->positions[i];
+            if (i < cone_mesh->normals.size()) v.normal = cone_mesh->normals[i];
+            cone_vertices_.push_back(v);
+        }
+        cone_indices_ = cone_mesh->indices;
+        cone_line_indices_ = make_line_indices_from_triangles(cone_indices_);
+        cone_occluder_mesh_ = make_debug_mesh_from_vertex_index_data(cone_vertices_, cone_indices_);
+
+        box_vertices_.clear();
+        box_vertices_.reserve(box_mesh->positions.size());
+        for (size_t i = 0; i < box_mesh->positions.size(); ++i)
+        {
+            Vertex v{};
+            v.pos = box_mesh->positions[i];
+            if (i < box_mesh->normals.size()) v.normal = box_mesh->normals[i];
+            box_vertices_.push_back(v);
+        }
+        box_indices_ = box_mesh->indices;
+        box_line_indices_ = make_line_indices_from_triangles(box_indices_);
+
+        capsule_vertices_ = make_vertices_with_normals_from_debug_mesh(capsule_debug_mesh);
+        capsule_indices_ = capsule_debug_mesh.indices;
+        cylinder_vertices_ = make_vertices_with_normals_from_debug_mesh(cylinder_debug_mesh);
+        cylinder_indices_ = cylinder_debug_mesh.indices;
+
+        sphere_occluder_mesh_ = make_debug_mesh_from_vertex_index_data(vertices_, indices_);
+        sphere_line_indices_ = make_line_indices_from_triangles(indices_);
+        box_occluder_mesh_ = make_debug_mesh_from_vertex_index_data(box_vertices_, box_indices_);
+        capsule_occluder_mesh_ = make_debug_mesh_from_vertex_index_data(capsule_vertices_, capsule_indices_);
+        cylinder_occluder_mesh_ = make_debug_mesh_from_vertex_index_data(cylinder_vertices_, cylinder_indices_);
+        floor_occluder_mesh_ = make_debug_mesh_from_vertex_index_data(floor_vertices_, floor_indices_);
+
         instances_.clear();
         instance_models_.clear();
-        const int grid_x = 48;
-        const int grid_z = 32;
-        const float spacing = 2.4f;
+        const int layer_count = 5;
+        const int rows_per_layer = 8;
+        const int cols_per_row = 12;
+        const float col_spacing_x = 4.2f;
+        const float row_spacing_z = 3.7f;
+        const float layer_spacing_z = 16.0f;
+        const float base_y = 1.1f;
+        const float layer_y_step = 1.25f;
         std::mt19937 rng(1337u);
         std::uniform_real_distribution<float> jitter(-0.18f, 0.18f);
         std::uniform_real_distribution<float> hue(0.0f, 1.0f);
-        for (int z = 0; z < grid_z; ++z)
+        std::uniform_real_distribution<float> scale_rand(0.54f, 1.18f);
+        std::uniform_real_distribution<float> rot_rand(-0.28f, 0.28f);
+        std::uniform_real_distribution<float> spin_rand(0.08f, 0.35f);
+        for (int layer = 0; layer < layer_count; ++layer)
         {
-            for (int x = 0; x < grid_x; ++x)
+            const float layer_z = (-0.5f * static_cast<float>(layer_count - 1) + static_cast<float>(layer)) * layer_spacing_z;
+            for (int row = 0; row < rows_per_layer; ++row)
             {
-                Instance inst{};
-                inst.base_pos = glm::vec3(
-                    (static_cast<float>(x) - static_cast<float>(grid_x - 1) * 0.5f) * spacing + jitter(rng),
-                    0.0f,
-                    (static_cast<float>(z) - static_cast<float>(grid_z - 1) * 0.5f) * spacing + jitter(rng));
-                const float h = hue(rng);
-                inst.base_color = glm::vec4(
-                    0.45f + 0.55f * std::sin(6.28318f * (h + 0.00f)),
-                    0.45f + 0.55f * std::sin(6.28318f * (h + 0.33f)),
-                    0.45f + 0.55f * std::sin(6.28318f * (h + 0.66f)),
-                    1.0f);
-                inst.scale = 0.78f;
-                inst.phase = hue(rng) * 10.0f;
-                inst.metallic = 0.04f + 0.22f * hue(rng);
-                inst.roughness = 0.22f + 0.45f * hue(rng);
-                inst.ao = 1.0f;
-                instances_.push_back(inst);
+                const float row_z = layer_z + (-0.5f * static_cast<float>(rows_per_layer - 1) + static_cast<float>(row)) * row_spacing_z;
+                const float zig = (((row + layer) & 1) != 0) ? (0.45f * col_spacing_x) : 0.0f;
+                for (int col = 0; col < cols_per_row; ++col)
+                {
+                    const uint32_t logical_idx =
+                        static_cast<uint32_t>(layer * rows_per_layer * cols_per_row + row * cols_per_row + col);
+                    Instance inst{};
+                    switch (logical_idx % 5u)
+                    {
+                        case 1u:
+                            inst.mesh_kind = Instance::MeshKind::Box;
+                            break;
+                        case 2u:
+                            inst.mesh_kind = Instance::MeshKind::Cone;
+                            break;
+                        case 3u:
+                            inst.mesh_kind = Instance::MeshKind::Capsule;
+                            break;
+                        case 4u:
+                            inst.mesh_kind = Instance::MeshKind::Cylinder;
+                            break;
+                        case 0u:
+                        default:
+                            inst.mesh_kind = Instance::MeshKind::Sphere;
+                            break;
+                    }
+                    inst.base_pos = glm::vec3(
+                        (-0.5f * static_cast<float>(cols_per_row - 1) + static_cast<float>(col)) * col_spacing_x + zig + jitter(rng),
+                        base_y + layer_y_step * static_cast<float>(layer) + 0.30f * static_cast<float>(col % 3),
+                        row_z + jitter(rng));
+                    const float h = hue(rng);
+                    inst.base_color = glm::vec4(
+                        0.45f + 0.55f * std::sin(6.28318f * (h + 0.00f)),
+                        0.45f + 0.55f * std::sin(6.28318f * (h + 0.33f)),
+                        0.45f + 0.55f * std::sin(6.28318f * (h + 0.66f)),
+                        1.0f);
+                    inst.scale = scale_rand(rng);
+                    inst.phase = hue(rng) * 10.0f;
+                    inst.base_rot = glm::vec3(rot_rand(rng), rot_rand(rng), rot_rand(rng));
+                    inst.rot_speed = glm::vec3(spin_rand(rng), spin_rand(rng), spin_rand(rng));
+                    inst.metallic = 0.04f + 0.22f * hue(rng);
+                    inst.roughness = 0.24f + 0.42f * hue(rng);
+                    inst.ao = 1.0f;
+                    instances_.push_back(inst);
+                }
             }
         }
         instance_models_.resize(instances_.size(), glm::mat4(1.0f));
@@ -512,7 +999,7 @@ private:
         constexpr float kMaxBobAmplitude = 0.28f;
         for (const Instance& inst : instances_)
         {
-            const float r = std::max(0.001f, sphere_local_bound_.radius * inst.scale);
+            const float r = std::max(0.001f, local_bound_for_mesh(inst.mesh_kind).radius * inst.scale * 1.20f);
             const glm::vec3 minv = inst.base_pos + glm::vec3(-r, -r - kMaxBobAmplitude, -r);
             const glm::vec3 maxv = inst.base_pos + glm::vec3( r,  r + kMaxBobAmplitude,  r);
             shadow_scene_static_aabb_.expand(minv);
@@ -525,10 +1012,10 @@ private:
         gpu_lights_.resize(kMaxLights);
         shadow_lights_gpu_.assign(kMaxLights, ShadowLightGPU{});
         std::uniform_real_distribution<float> angle0(0.0f, 6.28318f);
-        std::uniform_real_distribution<float> rad(8.0f, 82.0f);
-        std::uniform_real_distribution<float> hgt(1.0f, 14.0f);
-        std::uniform_real_distribution<float> spd(0.15f, 1.10f);
-        std::uniform_real_distribution<float> radius(7.5f, 15.0f);
+        std::uniform_real_distribution<float> rad(8.0f, 34.0f);
+        std::uniform_real_distribution<float> hgt(2.8f, 9.2f);
+        std::uniform_real_distribution<float> spd(0.12f, 0.82f);
+        std::uniform_real_distribution<float> radius(5.0f, 8.6f);
         std::uniform_real_distribution<float> inner_deg(12.0f, 20.0f);
         std::uniform_real_distribution<float> outer_extra_deg(6.0f, 14.0f);
         std::uniform_real_distribution<float> area_extent(0.8f, 2.4f);
@@ -557,40 +1044,41 @@ private:
             l.attenuation_bias = att_bias(rng);
             l.attenuation_cutoff = 0.0f;
 
-            const uint32_t bucket = i % 10u;
-            if (bucket < 6u)
+            switch (i % 4u)
             {
-                l.type = shs::LightType::Point;
-                l.attenuation_model = shs::LightAttenuationModel::InverseSquare;
-                // Warm-dominant palette for point lights.
-                l.color = glm::mix(l.color, glm::vec3(1.0f, 0.62f, 0.28f), 0.58f);
-            }
-            else if (bucket < 9u)
-            {
-                l.type = shs::LightType::Spot;
-                l.attenuation_model = shs::LightAttenuationModel::InverseSquare;
-                const float inner = glm::radians(inner_deg(rng));
-                l.spot_inner_outer.x = inner;
-                l.spot_inner_outer.y = inner + glm::radians(outer_extra_deg(rng));
-                // Cool palette for spot lights.
-                l.color = glm::mix(l.color, glm::vec3(0.35f, 0.85f, 1.0f), 0.62f);
-            }
-            else if ((i & 1u) == 0u)
-            {
-                l.type = shs::LightType::RectArea;
-                l.attenuation_model = shs::LightAttenuationModel::Smooth;
-                l.shape_params = glm::vec4(area_extent(rng), area_extent(rng), 0.0f, 0.0f);
-                l.rect_right_ws = shs::normalize_or(glm::vec3(right_rand(rng), 0.0f, right_rand(rng)), glm::vec3(1.0f, 0.0f, 0.0f));
-                // Magenta-biased rect-area accents.
-                l.color = glm::mix(l.color, glm::vec3(1.0f, 0.35f, 0.78f), 0.65f);
-            }
-            else
-            {
-                l.type = shs::LightType::TubeArea;
-                l.attenuation_model = shs::LightAttenuationModel::Linear;
-                l.shape_params = glm::vec4(tube_half_len(rng), tube_rad(rng), 0.0f, 0.0f);
-                // Green tube-area accents.
-                l.color = glm::mix(l.color, glm::vec3(0.32f, 1.0f, 0.55f), 0.62f);
+                case 0u:
+                    l.type = shs::LightType::Point;
+                    l.attenuation_model = shs::LightAttenuationModel::InverseSquare;
+                    l.intensity *= 0.95f;
+                    l.color = glm::mix(l.color, glm::vec3(1.0f, 0.66f, 0.30f), 0.58f);
+                    break;
+                case 1u:
+                {
+                    l.type = shs::LightType::Spot;
+                    l.attenuation_model = shs::LightAttenuationModel::InverseSquare;
+                    const float inner = glm::radians(inner_deg(rng));
+                    l.spot_inner_outer.x = inner;
+                    l.spot_inner_outer.y = inner + glm::radians(outer_extra_deg(rng));
+                    l.intensity *= 1.10f;
+                    l.color = glm::mix(l.color, glm::vec3(0.34f, 0.84f, 1.0f), 0.63f);
+                    break;
+                }
+                case 2u:
+                    l.type = shs::LightType::RectArea;
+                    l.attenuation_model = shs::LightAttenuationModel::Smooth;
+                    l.shape_params = glm::vec4(area_extent(rng), area_extent(rng), 0.0f, 0.0f);
+                    l.rect_right_ws = shs::normalize_or(glm::vec3(right_rand(rng), 0.0f, right_rand(rng)), glm::vec3(1.0f, 0.0f, 0.0f));
+                    l.intensity *= 0.85f;
+                    l.color = glm::mix(l.color, glm::vec3(0.98f, 0.44f, 0.80f), 0.64f);
+                    break;
+                case 3u:
+                default:
+                    l.type = shs::LightType::TubeArea;
+                    l.attenuation_model = shs::LightAttenuationModel::Linear;
+                    l.shape_params = glm::vec4(tube_half_len(rng), tube_rad(rng), 0.0f, 0.0f);
+                    l.intensity *= 0.90f;
+                    l.color = glm::mix(l.color, glm::vec3(0.36f, 1.0f, 0.58f), 0.60f);
+                    break;
             }
             l.direction_ws = shs::normalize_or(glm::vec3(axis_rand(rng), -0.85f, axis_rand(rng)), glm::vec3(0.0f, -1.0f, 0.0f));
             light_anim_.push_back(l);
@@ -608,8 +1096,10 @@ private:
         shadow_settings_.quality.pcf_step = 1.0f;
         shadow_settings_.budget.max_spot = std::min<uint32_t>(4u, kMaxSpotShadowMaps);
         shadow_settings_.budget.max_point = std::min<uint32_t>(2u, kMaxPointShadowLights);
-        shadow_settings_.budget.max_rect_area = 2u;
-        shadow_settings_.budget.max_tube_area = 2u;
+        shadow_settings_.rect_area_proxy = false;
+        shadow_settings_.tube_area_proxy = false;
+        shadow_settings_.budget.max_rect_area = 0u;
+        shadow_settings_.budget.max_tube_area = 0u;
 
         apply_technique_mode(shs::TechniqueMode::ForwardPlus);
     }
@@ -762,6 +1252,103 @@ private:
             floor_index_buffer_,
             true);
         std::memcpy(floor_index_buffer_.mapped, floor_indices_.data(), floor_indices_.size() * sizeof(uint32_t));
+
+        create_buffer(
+            static_cast<VkDeviceSize>(cone_vertices_.size() * sizeof(Vertex)),
+            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+            host_flags,
+            cone_vertex_buffer_,
+            true);
+        std::memcpy(cone_vertex_buffer_.mapped, cone_vertices_.data(), cone_vertices_.size() * sizeof(Vertex));
+
+        create_buffer(
+            static_cast<VkDeviceSize>(cone_indices_.size() * sizeof(uint32_t)),
+            VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+            host_flags,
+            cone_index_buffer_,
+            true);
+        std::memcpy(cone_index_buffer_.mapped, cone_indices_.data(), cone_indices_.size() * sizeof(uint32_t));
+
+        create_buffer(
+            static_cast<VkDeviceSize>(box_vertices_.size() * sizeof(Vertex)),
+            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+            host_flags,
+            box_vertex_buffer_,
+            true);
+        std::memcpy(box_vertex_buffer_.mapped, box_vertices_.data(), box_vertices_.size() * sizeof(Vertex));
+
+        create_buffer(
+            static_cast<VkDeviceSize>(box_indices_.size() * sizeof(uint32_t)),
+            VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+            host_flags,
+            box_index_buffer_,
+            true);
+        std::memcpy(box_index_buffer_.mapped, box_indices_.data(), box_indices_.size() * sizeof(uint32_t));
+
+        create_buffer(
+            static_cast<VkDeviceSize>(sphere_line_indices_.size() * sizeof(uint32_t)),
+            VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+            host_flags,
+            sphere_line_index_buffer_,
+            true);
+        std::memcpy(
+            sphere_line_index_buffer_.mapped,
+            sphere_line_indices_.data(),
+            sphere_line_indices_.size() * sizeof(uint32_t));
+
+        create_buffer(
+            static_cast<VkDeviceSize>(cone_line_indices_.size() * sizeof(uint32_t)),
+            VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+            host_flags,
+            cone_line_index_buffer_,
+            true);
+        std::memcpy(
+            cone_line_index_buffer_.mapped,
+            cone_line_indices_.data(),
+            cone_line_indices_.size() * sizeof(uint32_t));
+
+        create_buffer(
+            static_cast<VkDeviceSize>(box_line_indices_.size() * sizeof(uint32_t)),
+            VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+            host_flags,
+            box_line_index_buffer_,
+            true);
+        std::memcpy(
+            box_line_index_buffer_.mapped,
+            box_line_indices_.data(),
+            box_line_indices_.size() * sizeof(uint32_t));
+
+        create_buffer(
+            static_cast<VkDeviceSize>(capsule_vertices_.size() * sizeof(Vertex)),
+            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+            host_flags,
+            capsule_vertex_buffer_,
+            true);
+        std::memcpy(capsule_vertex_buffer_.mapped, capsule_vertices_.data(), capsule_vertices_.size() * sizeof(Vertex));
+
+        create_buffer(
+            static_cast<VkDeviceSize>(capsule_indices_.size() * sizeof(uint32_t)),
+            VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+            host_flags,
+            capsule_index_buffer_,
+            true);
+        std::memcpy(capsule_index_buffer_.mapped, capsule_indices_.data(), capsule_indices_.size() * sizeof(uint32_t));
+
+        create_buffer(
+            static_cast<VkDeviceSize>(cylinder_vertices_.size() * sizeof(Vertex)),
+            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+            host_flags,
+            cylinder_vertex_buffer_,
+            true);
+        std::memcpy(cylinder_vertex_buffer_.mapped, cylinder_vertices_.data(), cylinder_vertices_.size() * sizeof(Vertex));
+
+        create_buffer(
+            static_cast<VkDeviceSize>(cylinder_indices_.size() * sizeof(uint32_t)),
+            VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+            host_flags,
+            cylinder_index_buffer_,
+            true);
+        std::memcpy(cylinder_index_buffer_.mapped, cylinder_indices_.data(), cylinder_indices_.size() * sizeof(uint32_t));
     }
 
     void create_dynamic_buffers()
@@ -1450,6 +2037,7 @@ private:
         destroy_layout(shadow_pipeline_layout_);
 
         destroy_pipeline(scene_pipeline_);
+        destroy_pipeline(scene_wire_pipeline_);
         destroy_layout(scene_pipeline_layout_);
 
         destroy_pipeline(depth_reduce_pipeline_);
@@ -1690,6 +2278,21 @@ private:
             throw std::runtime_error("vkCreateGraphicsPipelines failed (scene)");
         }
 
+        VkPipelineInputAssemblyStateCreateInfo ia_lines = ia;
+        ia_lines.topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+
+        VkPipelineDepthStencilStateCreateInfo ds_wire = ds_scene;
+        ds_wire.depthWriteEnable = VK_FALSE;
+
+        VkGraphicsPipelineCreateInfo gp_scene_wire = gp_scene;
+        gp_scene_wire.pInputAssemblyState = &ia_lines;
+        gp_scene_wire.pDepthStencilState = &ds_wire;
+        if (vkCreateGraphicsPipelines(vk_->device(), VK_NULL_HANDLE, 1, &gp_scene_wire, nullptr, &scene_wire_pipeline_) != VK_SUCCESS)
+        {
+            cleanup_modules();
+            throw std::runtime_error("vkCreateGraphicsPipelines failed (scene wire)");
+        }
+
         VkComputePipelineCreateInfo cp{};
         cp.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
         cp.layout = compute_pipeline_layout_;
@@ -1886,7 +2489,7 @@ private:
         for (size_t i = 0; i < instances_.size(); ++i)
         {
             shs::SceneShape shape{};
-            shape.shape = instance_shape_jolt_;
+            shape.shape = cull_shape_for_mesh(instances_[i].mesh_kind);
             shape.transform = shs::jolt::to_jph(instance_models_[i]);
             shape.stable_id = static_cast<uint32_t>(i);
             instance_cull_shapes_[i] = shape;
@@ -1906,13 +2509,19 @@ private:
         }
 
         const shs::CullResult instance_cull = shs::cull_vs_cell(std::span<const shs::SceneShape>{instance_cull_shapes_}, cell);
+        frustum_visible_instance_indices_.clear();
+        frustum_visible_instance_indices_.reserve(instances_.size());
         uint32_t visible_instances = 0;
         const size_t cull_count = std::min(instance_visible_mask_.size(), instance_cull.classes.size());
         for (size_t i = 0; i < cull_count; ++i)
         {
             const bool visible = shs::cull_class_is_visible(instance_cull.classes[i], true);
             instance_visible_mask_[i] = visible ? 1u : 0u;
-            if (visible) ++visible_instances;
+            if (visible)
+            {
+                ++visible_instances;
+                frustum_visible_instance_indices_.push_back(static_cast<uint32_t>(i));
+            }
         }
         for (size_t i = cull_count; i < instance_visible_mask_.size(); ++i)
         {
@@ -1925,36 +2534,210 @@ private:
         floor_visible_ = shs::cull_class_is_visible(floor_class, true);
     }
 
+    void apply_scene_software_occlusion()
+    {
+        if (!enable_scene_occlusion_)
+        {
+            return;
+        }
+
+        const size_t expected = static_cast<size_t>(kSceneOccW) * static_cast<size_t>(kSceneOccH);
+        if (scene_occlusion_depth_.size() != expected)
+        {
+            scene_occlusion_depth_.assign(expected, 1.0f);
+        }
+        else
+        {
+            std::fill(scene_occlusion_depth_.begin(), scene_occlusion_depth_.end(), 1.0f);
+        }
+
+        std::vector<uint32_t> sorted = frustum_visible_instance_indices_;
+        std::sort(
+            sorted.begin(),
+            sorted.end(),
+            [&](uint32_t a, uint32_t b)
+            {
+                if (a >= instance_models_.size() || b >= instance_models_.size()) return a < b;
+                const shs::AABB aa = shs::transform_aabb(local_aabb_for_mesh(instances_[a].mesh_kind), instance_models_[a]);
+                const shs::AABB bb = shs::transform_aabb(local_aabb_for_mesh(instances_[b].mesh_kind), instance_models_[b]);
+                const float da = shs::culling_sw::view_depth_of_aabb_center(aa, camera_ubo_.view);
+                const float db = shs::culling_sw::view_depth_of_aabb_center(bb, camera_ubo_.view);
+                return da < db;
+            });
+
+        uint32_t visible_instances = 0;
+        for (const uint32_t idx : sorted)
+        {
+            if (idx >= instance_models_.size() || idx >= instance_visible_mask_.size()) continue;
+            const shs::AABB world_box = shs::transform_aabb(local_aabb_for_mesh(instances_[idx].mesh_kind), instance_models_[idx]);
+            const shs::culling_sw::ScreenRectDepth rect = shs::culling_sw::project_aabb_to_screen_rect(
+                world_box,
+                camera_ubo_.view_proj,
+                kSceneOccW,
+                kSceneOccH);
+            const bool occluded = shs::culling_sw::is_rect_occluded(
+                std::span<const float>(scene_occlusion_depth_.data(), scene_occlusion_depth_.size()),
+                kSceneOccW,
+                kSceneOccH,
+                rect,
+                1e-4f);
+
+            if (occluded)
+            {
+                instance_visible_mask_[idx] = 0u;
+                continue;
+            }
+
+            instance_visible_mask_[idx] = 1u;
+            ++visible_instances;
+            shs::culling_sw::rasterize_mesh_depth_transformed(
+                std::span<float>(scene_occlusion_depth_.data(), scene_occlusion_depth_.size()),
+                kSceneOccW,
+                kSceneOccH,
+                occluder_mesh_for_mesh(instances_[idx].mesh_kind),
+                instance_models_[idx],
+                camera_ubo_.view_proj);
+        }
+        visible_instance_count_ = visible_instances;
+    }
+
+    void build_light_occlusion_depth_from_scene()
+    {
+        if (!enable_light_occlusion_)
+        {
+            return;
+        }
+
+        const size_t expected = static_cast<size_t>(kLightOccW) * static_cast<size_t>(kLightOccH);
+        if (light_occlusion_depth_.size() != expected)
+        {
+            light_occlusion_depth_.assign(expected, 1.0f);
+        }
+        else
+        {
+            std::fill(light_occlusion_depth_.begin(), light_occlusion_depth_.end(), 1.0f);
+        }
+
+        for (size_t idx = 0; idx < instance_visible_mask_.size() && idx < instance_models_.size(); ++idx)
+        {
+            if (instance_visible_mask_[idx] == 0u) continue;
+            shs::culling_sw::rasterize_mesh_depth_transformed(
+                std::span<float>(light_occlusion_depth_.data(), light_occlusion_depth_.size()),
+                kLightOccW,
+                kLightOccH,
+                occluder_mesh_for_mesh(instances_[idx].mesh_kind),
+                instance_models_[idx],
+                camera_ubo_.view_proj);
+        }
+
+        if (floor_visible_)
+        {
+            shs::culling_sw::rasterize_mesh_depth_transformed(
+                std::span<float>(light_occlusion_depth_.data(), light_occlusion_depth_.size()),
+                kLightOccW,
+                kLightOccH,
+                floor_occluder_mesh_,
+                floor_model_,
+                camera_ubo_.view_proj);
+        }
+    }
+
+    void refresh_visible_object_bounds_for_light_prefilter()
+    {
+        visible_object_aabbs_.clear();
+        if (light_object_cull_mode_ == shs::LightObjectCullMode::None) return;
+        visible_object_aabbs_.reserve(visible_instance_count_ + (floor_visible_ ? 1u : 0u));
+        for (size_t i = 0; i < instance_visible_mask_.size() && i < instance_models_.size(); ++i)
+        {
+            if (instance_visible_mask_[i] == 0u) continue;
+            visible_object_aabbs_.push_back(shs::transform_aabb(local_aabb_for_mesh(instances_[i].mesh_kind), instance_models_[i]));
+        }
+        if (floor_visible_)
+        {
+            visible_object_aabbs_.push_back(shs::transform_aabb(floor_local_aabb_, floor_model_));
+        }
+    }
+
+    bool passes_light_object_prefilter(const shs::CullingLightGPU& packed) const
+    {
+        if (light_object_cull_mode_ == shs::LightObjectCullMode::None) return true;
+        if (visible_object_aabbs_.empty()) return false;
+
+        if (light_object_cull_mode_ == shs::LightObjectCullMode::SphereAabb)
+        {
+            shs::Sphere s{};
+            s.center = glm::vec3(packed.cull_sphere);
+            s.radius = std::max(packed.cull_sphere.w, 0.0f);
+            for (const shs::AABB& obj : visible_object_aabbs_)
+            {
+                if (shs::intersect_sphere_aabb(s, obj)) return true;
+            }
+            return false;
+        }
+
+        shs::AABB light_box{};
+        light_box.minv = glm::vec3(packed.cull_aabb_min);
+        light_box.maxv = glm::vec3(packed.cull_aabb_max);
+        for (const shs::AABB& obj : visible_object_aabbs_)
+        {
+            if (shs::intersect_aabb_aabb(light_box, obj)) return true;
+        }
+        return false;
+    }
+
     void update_frame_data(float dt, float t, uint32_t w, uint32_t h, uint32_t frame_slot)
     {
-        (void)dt;
-
         const float aspect = (h > 0) ? (static_cast<float>(w) / static_cast<float>(h)) : 1.0f;
-        const float orbit_r = 68.0f;
-        const glm::vec3 cam_pos = glm::vec3(std::sin(t * 0.22f) * orbit_r, 26.0f + std::sin(t * 0.35f) * 5.0f, std::cos(t * 0.22f) * orbit_r);
-        const glm::vec3 cam_target = glm::vec3(0.0f, 2.0f, 0.0f);
+        camera_.update(
+            move_forward_,
+            move_backward_,
+            move_left_,
+            move_right_,
+            move_up_,
+            move_down_,
+            move_boost_,
+            mouse_left_down_,
+            mouse_right_down_,
+            mouse_dx_accum_,
+            mouse_dy_accum_,
+            dt);
+        mouse_dx_accum_ = 0.0f;
+        mouse_dy_accum_ = 0.0f;
 
-        camera_ubo_.view = shs::look_at_lh(cam_pos, cam_target, glm::vec3(0.0f, 1.0f, 0.0f));
+        const glm::vec3 cam_pos = camera_.pos;
+        camera_ubo_.view = camera_.view_matrix();
         camera_ubo_.proj = shs::perspective_lh_no(glm::radians(62.0f), aspect, 0.1f, 260.0f);
         camera_ubo_.view_proj = camera_ubo_.proj * camera_ubo_.view;
         camera_ubo_.camera_pos_time = glm::vec4(cam_pos, t);
-        camera_ubo_.sun_dir_intensity = glm::vec4(glm::normalize(glm::vec3(-0.35f, -1.0f, -0.18f)), 1.65f);
+        camera_ubo_.sun_dir_intensity = glm::vec4(glm::normalize(glm::vec3(-0.35f, -1.0f, -0.18f)), 1.45f);
         camera_ubo_.screen_tile_lightcount = glm::uvec4(w, h, tile_w_, active_light_count_);
         camera_ubo_.params = glm::uvec4(tile_h_, kMaxLightsPerTile, kTileSize, static_cast<uint32_t>(culling_mode_));
         camera_ubo_.culling_params = glm::uvec4(kClusterZSlices, 0u, 0u, 0u);
         camera_ubo_.depth_params = glm::vec4(0.1f, 260.0f, 0.0f, 0.0f);
         camera_ubo_.exposure_gamma = glm::vec4(1.4f, 2.2f, 0.0f, 0.0f);
-        camera_ubo_.sun_shadow_params = glm::vec4(0.88f, 0.0008f, 0.0018f, 2.0f);
-        camera_ubo_.sun_shadow_filter = glm::vec4(shadow_settings_.quality.pcf_step, shadow_settings_.enable ? 1.0f : 0.0f, 0.0f, 0.0f);
+        // Keep directional shadow optional and subtle in this stress demo
+        // so local-light behavior remains readable.
+        const float dir_shadow_strength =
+            (shadow_settings_.enable && enable_sun_shadow_)
+                ? std::clamp(sun_shadow_strength_, 0.0f, 1.0f)
+                : 0.0f;
+        camera_ubo_.sun_shadow_params = glm::vec4(dir_shadow_strength, 0.0012f, 0.0030f, 2.0f);
+        camera_ubo_.sun_shadow_filter = glm::vec4(
+            shadow_settings_.quality.pcf_step,
+            (shadow_settings_.enable && enable_sun_shadow_) ? 1.0f : 0.0f,
+            0.0f,
+            0.0f);
 
         for (size_t i = 0; i < instances_.size(); ++i)
         {
             const Instance& inst = instances_[i];
-            const float bob = std::sin(t * 1.2f + inst.phase) * 0.28f;
-            const float rot = t * (0.2f + 0.03f * std::sin(inst.phase));
+            const float bob = std::sin(t * 1.15f + inst.phase) * 0.24f;
+            const glm::vec3 rot = inst.base_rot + inst.rot_speed * t;
             glm::mat4 m(1.0f);
             m = glm::translate(m, inst.base_pos + glm::vec3(0.0f, bob, 0.0f));
-            m = glm::rotate(m, rot, glm::vec3(0.0f, 1.0f, 0.0f));
+            m = glm::rotate(m, rot.x, glm::vec3(1.0f, 0.0f, 0.0f));
+            m = glm::rotate(m, rot.y, glm::vec3(0.0f, 1.0f, 0.0f));
+            m = glm::rotate(m, rot.z, glm::vec3(0.0f, 0.0f, 1.0f));
             m = glm::scale(m, glm::vec3(inst.scale));
             instance_models_[i] = m;
         }
@@ -1964,6 +2747,9 @@ private:
             camera_ubo_.view_proj,
             shs::CullingCellKind::CameraFrustumPerspective);
         update_visibility_from_cell(camera_cell);
+        apply_scene_software_occlusion();
+        build_light_occlusion_depth_from_scene();
+        refresh_visible_object_bounds_for_light_prefilter();
 
         shs::AABB shadow_scene_aabb = shadow_scene_static_bounds_ready_
             ? shadow_scene_static_aabb_
@@ -2025,16 +2811,41 @@ private:
             return shs::cull_class_is_visible(light_class, true);
         };
 
+        const auto light_in_occlusion = [&](const shs::Sphere& bounds) -> bool {
+            if (!enable_light_occlusion_) return true;
+            if (light_occlusion_depth_.empty()) return true;
+            const shs::AABB light_box = shs::aabb_from_sphere(bounds);
+            const shs::culling_sw::ScreenRectDepth rect = shs::culling_sw::project_aabb_to_screen_rect(
+                light_box,
+                camera_ubo_.view_proj,
+                kLightOccW,
+                kLightOccH);
+            if (!rect.valid) return true;
+            return !shs::culling_sw::is_rect_occluded(
+                std::span<const float>(light_occlusion_depth_.data(), light_occlusion_depth_.size()),
+                kLightOccW,
+                kLightOccH,
+                rect,
+                1e-4f);
+        };
+
         light_set_.clear_local_lights();
         const uint32_t lc = std::min<uint32_t>(active_light_count_, static_cast<uint32_t>(light_anim_.size()));
         uint32_t visible_light_count = 0;
+        light_volume_debug_draws_.clear();
+        light_volume_debug_draws_.reserve(lc);
+        light_frustum_rejected_ = 0;
+        light_occlusion_rejected_ = 0;
+        light_prefilter_rejected_ = 0;
         for (uint32_t i = 0; i < lc; ++i)
         {
             const LightAnim& la = light_anim_[i];
             const float a = la.angle0 + la.speed * t;
-            const float y = la.height + std::sin(a * 1.7f + la.phase) * 2.6f;
-            const glm::vec3 p(std::cos(a) * la.orbit_radius, y, std::sin(a) * la.orbit_radius);
-            bool visible_light = false;
+            const float orbit_r = std::max(2.0f, la.orbit_radius * light_orbit_scale_);
+            const float y = (la.height + light_height_bias_) + std::sin(a * 1.7f + la.phase) * 1.2f;
+            const glm::vec3 p(std::cos(a) * orbit_r, y, std::sin(a) * orbit_r);
+            const float tuned_range = std::max(0.75f, la.range * light_range_scale_);
+            const float tuned_intensity = std::max(0.0f, la.intensity * light_intensity_scale_);
 
             switch (la.type)
             {
@@ -2042,9 +2853,9 @@ private:
                 {
                     shs::SpotLight l{};
                     l.common.position_ws = p;
-                    l.common.range = la.range;
+                    l.common.range = tuned_range;
                     l.common.color = la.color;
-                    l.common.intensity = la.intensity;
+                    l.common.intensity = tuned_intensity;
                     l.common.attenuation_model = la.attenuation_model;
                     l.common.attenuation_power = la.attenuation_power;
                     l.common.attenuation_bias = la.attenuation_bias;
@@ -2054,8 +2865,22 @@ private:
                     l.inner_angle_rad = la.spot_inner_outer.x;
                     l.outer_angle_rad = la.spot_inner_outer.y;
                     const shs::Sphere light_bounds = shs::spot_light_culling_sphere(l);
-                    visible_light = light_in_frustum(light_bounds);
-                    if (!visible_light) break;
+                    if (!light_in_frustum(light_bounds))
+                    {
+                        ++light_frustum_rejected_;
+                        break;
+                    }
+                    if (!light_in_occlusion(light_bounds))
+                    {
+                        ++light_occlusion_rejected_;
+                        break;
+                    }
+                    const shs::CullingLightGPU packed = shs::make_spot_culling_light(l);
+                    if (!passes_light_object_prefilter(packed))
+                    {
+                        ++light_prefilter_rejected_;
+                        break;
+                    }
                     const uint32_t light_index = visible_light_count;
                     if (shadow_settings_.enable &&
                         shadow_settings_.spot &&
@@ -2067,7 +2892,7 @@ private:
                         sh.light_view_proj = build_local_shadow_vp(l.common.position_ws, l.direction_ws, l.outer_angle_rad * 2.0f, l.common.range);
                         sh.position_range = glm::vec4(l.common.position_ws, l.common.range);
                         sh.shadow_params = glm::vec4(
-                            0.92f,
+                            0.72f,
                             camera_ubo_.sun_shadow_params.y,
                             camera_ubo_.sun_shadow_params.z,
                             camera_ubo_.sun_shadow_params.w);
@@ -2091,6 +2916,18 @@ private:
                     }
                     light_set_.spots.push_back(l);
                     gpu_lights_[light_index] = shs::make_spot_culling_light(l);
+                    {
+                        LightVolumeDebugDraw d{};
+                        d.mesh = DebugVolumeMeshKind::Cone;
+                        d.model = make_spot_volume_debug_model(
+                            l.common.position_ws,
+                            l.direction_ws,
+                            l.common.range,
+                            l.outer_angle_rad);
+                        const glm::vec3 c = glm::clamp(l.common.color * 1.08f, glm::vec3(0.05f), glm::vec3(1.0f));
+                        d.color = glm::vec4(c, 1.0f);
+                        light_volume_debug_draws_.push_back(d);
+                    }
                     visible_light_count++;
                     break;
                 }
@@ -2098,9 +2935,9 @@ private:
                 {
                     shs::RectAreaLight l{};
                     l.common.position_ws = p;
-                    l.common.range = la.range;
+                    l.common.range = tuned_range;
                     l.common.color = la.color;
-                    l.common.intensity = la.intensity;
+                    l.common.intensity = tuned_intensity;
                     l.common.attenuation_model = la.attenuation_model;
                     l.common.attenuation_power = la.attenuation_power;
                     l.common.attenuation_bias = la.attenuation_bias;
@@ -2110,8 +2947,22 @@ private:
                     l.right_ws = la.rect_right_ws;
                     l.half_extents = glm::vec2(la.shape_params.x, la.shape_params.y);
                     const shs::Sphere light_bounds = shs::rect_area_light_culling_sphere(l);
-                    visible_light = light_in_frustum(light_bounds);
-                    if (!visible_light) break;
+                    if (!light_in_frustum(light_bounds))
+                    {
+                        ++light_frustum_rejected_;
+                        break;
+                    }
+                    if (!light_in_occlusion(light_bounds))
+                    {
+                        ++light_occlusion_rejected_;
+                        break;
+                    }
+                    const shs::CullingLightGPU packed = shs::make_rect_area_culling_light(l);
+                    if (!passes_light_object_prefilter(packed))
+                    {
+                        ++light_prefilter_rejected_;
+                        break;
+                    }
                     const uint32_t light_index = visible_light_count;
                     if (shadow_settings_.enable &&
                         shadow_settings_.rect_area_proxy &&
@@ -2126,7 +2977,7 @@ private:
                         sh.light_view_proj = build_local_shadow_vp(l.common.position_ws, l.direction_ws, proxy_fov, l.common.range);
                         sh.position_range = glm::vec4(l.common.position_ws, l.common.range);
                         sh.shadow_params = glm::vec4(
-                            0.78f,
+                            0.62f,
                             camera_ubo_.sun_shadow_params.y,
                             camera_ubo_.sun_shadow_params.z,
                             1.0f);
@@ -2150,6 +3001,20 @@ private:
                     }
                     light_set_.rect_areas.push_back(l);
                     gpu_lights_[light_index] = shs::make_rect_area_culling_light(l);
+                    {
+                        LightVolumeDebugDraw d{};
+                        d.mesh = DebugVolumeMeshKind::Box;
+                        d.model = make_rect_volume_debug_model(
+                            l.common.position_ws,
+                            l.direction_ws,
+                            l.right_ws,
+                            l.half_extents.x,
+                            l.half_extents.y,
+                            l.common.range);
+                        const glm::vec3 c = glm::clamp(l.common.color * 1.06f, glm::vec3(0.05f), glm::vec3(1.0f));
+                        d.color = glm::vec4(c, 1.0f);
+                        light_volume_debug_draws_.push_back(d);
+                    }
                     visible_light_count++;
                     break;
                 }
@@ -2157,9 +3022,9 @@ private:
                 {
                     shs::TubeAreaLight l{};
                     l.common.position_ws = p;
-                    l.common.range = la.range;
+                    l.common.range = tuned_range;
                     l.common.color = la.color;
-                    l.common.intensity = la.intensity;
+                    l.common.intensity = tuned_intensity;
                     l.common.attenuation_model = la.attenuation_model;
                     l.common.attenuation_power = la.attenuation_power;
                     l.common.attenuation_bias = la.attenuation_bias;
@@ -2169,8 +3034,22 @@ private:
                     l.half_length = la.shape_params.x;
                     l.radius = la.shape_params.y;
                     const shs::Sphere light_bounds = shs::tube_area_light_culling_sphere(l);
-                    visible_light = light_in_frustum(light_bounds);
-                    if (!visible_light) break;
+                    if (!light_in_frustum(light_bounds))
+                    {
+                        ++light_frustum_rejected_;
+                        break;
+                    }
+                    if (!light_in_occlusion(light_bounds))
+                    {
+                        ++light_occlusion_rejected_;
+                        break;
+                    }
+                    const shs::CullingLightGPU packed = shs::make_tube_area_culling_light(l);
+                    if (!passes_light_object_prefilter(packed))
+                    {
+                        ++light_prefilter_rejected_;
+                        break;
+                    }
                     const uint32_t light_index = visible_light_count;
                     if (shadow_settings_.enable &&
                         shadow_settings_.tube_area_proxy &&
@@ -2186,7 +3065,7 @@ private:
                         sh.light_view_proj = build_local_shadow_vp(l.common.position_ws, dir, proxy_fov, l.common.range);
                         sh.position_range = glm::vec4(l.common.position_ws, l.common.range);
                         sh.shadow_params = glm::vec4(
-                            0.72f,
+                            0.58f,
                             camera_ubo_.sun_shadow_params.y,
                             camera_ubo_.sun_shadow_params.z,
                             1.0f);
@@ -2210,6 +3089,18 @@ private:
                     }
                     light_set_.tube_areas.push_back(l);
                     gpu_lights_[light_index] = shs::make_tube_area_culling_light(l);
+                    {
+                        LightVolumeDebugDraw d{};
+                        d.mesh = DebugVolumeMeshKind::Box;
+                        d.model = make_tube_volume_debug_model(
+                            l.common.position_ws,
+                            l.axis_ws,
+                            l.half_length,
+                            l.radius);
+                        const glm::vec3 c = glm::clamp(l.common.color * 1.05f, glm::vec3(0.05f), glm::vec3(1.0f));
+                        d.color = glm::vec4(c, 1.0f);
+                        light_volume_debug_draws_.push_back(d);
+                    }
                     visible_light_count++;
                     break;
                 }
@@ -2218,17 +3109,31 @@ private:
                 {
                     shs::PointLight l{};
                     l.common.position_ws = p;
-                    l.common.range = la.range;
+                    l.common.range = tuned_range;
                     l.common.color = la.color;
-                    l.common.intensity = la.intensity;
+                    l.common.intensity = tuned_intensity;
                     l.common.attenuation_model = la.attenuation_model;
                     l.common.attenuation_power = la.attenuation_power;
                     l.common.attenuation_bias = la.attenuation_bias;
                     l.common.attenuation_cutoff = la.attenuation_cutoff;
                     l.common.flags = shs::LightFlagsDefault;
                     const shs::Sphere light_bounds = shs::point_light_culling_sphere(l);
-                    visible_light = light_in_frustum(light_bounds);
-                    if (!visible_light) break;
+                    if (!light_in_frustum(light_bounds))
+                    {
+                        ++light_frustum_rejected_;
+                        break;
+                    }
+                    if (!light_in_occlusion(light_bounds))
+                    {
+                        ++light_occlusion_rejected_;
+                        break;
+                    }
+                    const shs::CullingLightGPU packed = shs::make_point_culling_light(l);
+                    if (!passes_light_object_prefilter(packed))
+                    {
+                        ++light_prefilter_rejected_;
+                        break;
+                    }
                     const uint32_t light_index = visible_light_count;
                     if (shadow_settings_.enable &&
                         shadow_settings_.point &&
@@ -2240,7 +3145,7 @@ private:
                         ShadowLightGPU sh{};
                         sh.position_range = glm::vec4(l.common.position_ws, l.common.range);
                         sh.shadow_params = glm::vec4(
-                            0.86f,
+                            0.68f,
                             camera_ubo_.sun_shadow_params.y,
                             camera_ubo_.sun_shadow_params.z,
                             camera_ubo_.sun_shadow_params.w);
@@ -2262,6 +3167,14 @@ private:
                     }
                     light_set_.points.push_back(l);
                     gpu_lights_[light_index] = shs::make_point_culling_light(l);
+                    {
+                        LightVolumeDebugDraw d{};
+                        d.mesh = DebugVolumeMeshKind::Sphere;
+                        d.model = make_point_volume_debug_model(l.common.position_ws, l.common.range);
+                        const glm::vec3 c = glm::clamp(l.common.color * 1.04f, glm::vec3(0.05f), glm::vec3(1.0f));
+                        d.color = glm::vec4(c, 1.0f);
+                        light_volume_debug_draws_.push_back(d);
+                    }
                     visible_light_count++;
                     break;
                 }
@@ -2416,17 +3329,22 @@ private:
         }
 
         const shs::CullResult shadow_cull = shs::cull_vs_cell(std::span<const shs::SceneShape>{instance_cull_shapes_}, shadow_cell);
-        vkCmdBindVertexBuffers(cmd, 0, 1, &vertex_buffer_.buffer, &vb_off);
-        vkCmdBindIndexBuffer(cmd, index_buffer_.buffer, 0, VK_INDEX_TYPE_UINT32);
         for (size_t idx : shadow_cull.visible_indices)
         {
             if (idx >= instance_models_.size()) continue;
             const uint32_t i = static_cast<uint32_t>(idx);
+            const Instance::MeshKind mesh_kind = instances_[i].mesh_kind;
+            const GpuBuffer& vb = vertex_buffer_for_mesh(mesh_kind);
+            const GpuBuffer& ib = index_buffer_for_mesh(mesh_kind);
+            const uint32_t index_count = index_count_for_mesh(mesh_kind);
+            if (vb.buffer == VK_NULL_HANDLE || ib.buffer == VK_NULL_HANDLE || index_count == 0u) continue;
+            vkCmdBindVertexBuffers(cmd, 0, 1, &vb.buffer, &vb_off);
+            vkCmdBindIndexBuffer(cmd, ib.buffer, 0, VK_INDEX_TYPE_UINT32);
             ShadowPush pc{};
             pc.light_view_proj = light_view_proj;
             pc.model = instance_models_[i];
             vkCmdPushConstants(cmd, shadow_pipeline_layout_, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(ShadowPush), &pc);
-            vkCmdDrawIndexed(cmd, static_cast<uint32_t>(indices_.size()), 1, 0, 0, 0);
+            vkCmdDrawIndexed(cmd, index_count, 1, 0, 0, 0);
         }
     }
 
@@ -2469,6 +3387,137 @@ private:
         }
     }
 
+    glm::mat4 make_point_volume_debug_model(const glm::vec3& pos_ws, float range) const
+    {
+        // Draw compact light proxy meshes (not full influence volumes).
+        const float r = std::clamp(range * 0.080f, 0.34f, 1.05f);
+        // Source sphere mesh radius is 0.5, so multiply by 2*r for target radius r.
+        return glm::translate(glm::mat4(1.0f), pos_ws) * glm::scale(glm::mat4(1.0f), glm::vec3(r * 2.0f));
+    }
+
+    glm::mat4 make_spot_volume_debug_model(
+        const glm::vec3& pos_ws,
+        const glm::vec3& dir_ws,
+        float range,
+        float outer_angle_rad) const
+    {
+        const glm::vec3 dir = shs::normalize_or(dir_ws, glm::vec3(0.0f, -1.0f, 0.0f));
+        const float h = std::clamp(range * 0.16f, 1.05f, 2.05f);
+        const float base_radius = std::clamp(
+            std::tan(std::max(outer_angle_rad, glm::radians(3.0f))) * h * 0.85f,
+            0.22f,
+            1.10f);
+
+        glm::vec3 bx{};
+        glm::vec3 by{};
+        glm::vec3 bz{};
+        // Cone mesh tip is at +Y, so align +Y to -dir and offset center so tip sits at light position.
+        basis_from_axis(-dir, bx, by, bz);
+        const glm::vec3 center = pos_ws + dir * (h * 0.5f);
+        return model_from_basis_and_scale(center, bx, by, bz, glm::vec3(base_radius, h, base_radius));
+    }
+
+    glm::mat4 make_rect_volume_debug_model(
+        const glm::vec3& pos_ws,
+        const glm::vec3& dir_ws,
+        const glm::vec3& right_ws,
+        float half_x,
+        float half_y,
+        float /*range*/) const
+    {
+        glm::vec3 fwd = shs::normalize_or(dir_ws, glm::vec3(0.0f, -1.0f, 0.0f));
+        glm::vec3 right = right_ws - fwd * glm::dot(right_ws, fwd);
+        right = shs::normalize_or(right, glm::vec3(1.0f, 0.0f, 0.0f));
+        glm::vec3 up = shs::normalize_or(glm::cross(fwd, right), glm::vec3(0.0f, 1.0f, 0.0f));
+        right = shs::normalize_or(glm::cross(up, fwd), right);
+
+        const float ex = std::clamp(half_x * 0.95f, 0.44f, 1.60f);
+        const float ey = std::clamp(half_y * 0.95f, 0.44f, 1.60f);
+        const float ez = 0.22f;
+        const glm::vec3 center = pos_ws;
+        return model_from_basis_and_scale(center, right, up, fwd, glm::vec3(ex, ey, ez));
+    }
+
+    glm::mat4 make_tube_volume_debug_model(
+        const glm::vec3& pos_ws,
+        const glm::vec3& axis_ws,
+        float half_length,
+        float radius) const
+    {
+        glm::vec3 axis = shs::normalize_or(axis_ws, glm::vec3(1.0f, 0.0f, 0.0f));
+        glm::vec3 up_hint = safe_perp_axis(axis);
+        glm::vec3 up = shs::normalize_or(glm::cross(axis, up_hint), glm::vec3(0.0f, 1.0f, 0.0f));
+        glm::vec3 side = shs::normalize_or(glm::cross(up, axis), glm::vec3(0.0f, 0.0f, 1.0f));
+
+        const float ex = std::clamp(half_length * 1.10f, 0.52f, 1.85f);
+        const float ey = std::clamp(radius * 2.10f, 0.22f, 0.72f);
+        const float ez = std::clamp(radius * 2.10f, 0.22f, 0.72f);
+        return model_from_basis_and_scale(pos_ws, axis, up, side, glm::vec3(ex, ey, ez));
+    }
+
+    void draw_light_volumes_debug(VkCommandBuffer cmd, VkPipelineLayout layout, uint32_t frame_slot)
+    {
+        if (!show_light_volumes_debug_) return;
+        if (light_volume_debug_draws_.empty()) return;
+        if (!frame_resources_.valid_slot(frame_slot)) return;
+        if (scene_wire_pipeline_ == VK_NULL_HANDLE) return;
+
+        const VkDescriptorSet global_set = frame_resources_.at_slot(frame_slot).global_set;
+        if (global_set == VK_NULL_HANDLE) return;
+
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, scene_wire_pipeline_);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &global_set, 0, nullptr);
+
+        const uint32_t draw_count = std::min<uint32_t>(static_cast<uint32_t>(light_volume_debug_draws_.size()), 512u);
+        for (uint32_t i = 0; i < draw_count; ++i)
+        {
+            const LightVolumeDebugDraw& d = light_volume_debug_draws_[i];
+            const GpuBuffer* vb = nullptr;
+            const GpuBuffer* ib = nullptr;
+            uint32_t index_count = 0u;
+
+            switch (d.mesh)
+            {
+                case DebugVolumeMeshKind::Sphere:
+                    vb = &vertex_buffer_;
+                    ib = &sphere_line_index_buffer_;
+                    index_count = static_cast<uint32_t>(sphere_line_indices_.size());
+                    break;
+                case DebugVolumeMeshKind::Cone:
+                    vb = &cone_vertex_buffer_;
+                    ib = &cone_line_index_buffer_;
+                    index_count = static_cast<uint32_t>(cone_line_indices_.size());
+                    break;
+                case DebugVolumeMeshKind::Box:
+                    vb = &box_vertex_buffer_;
+                    ib = &box_line_index_buffer_;
+                    index_count = static_cast<uint32_t>(box_line_indices_.size());
+                    break;
+            }
+
+            if (!vb || !ib) continue;
+            if (vb->buffer == VK_NULL_HANDLE || ib->buffer == VK_NULL_HANDLE || index_count == 0u) continue;
+
+            const VkDeviceSize vb_off = 0;
+            vkCmdBindVertexBuffers(cmd, 0, 1, &vb->buffer, &vb_off);
+            vkCmdBindIndexBuffer(cmd, ib->buffer, 0, VK_INDEX_TYPE_UINT32);
+
+            DrawPush pc{};
+            pc.model = d.model;
+            pc.base_color = d.color;
+            // Unlit, colored wireframe overlay.
+            pc.material_params = glm::vec4(0.0f, 1.0f, 1.0f, 1.0f);
+            vkCmdPushConstants(
+                cmd,
+                layout,
+                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                0,
+                sizeof(DrawPush),
+                &pc);
+            vkCmdDrawIndexed(cmd, index_count, 1, 0, 0, 0);
+        }
+    }
+
     void draw_floor(VkCommandBuffer cmd, VkPipelineLayout layout)
     {
         if (!floor_visible_) return;
@@ -2488,12 +3537,16 @@ private:
     void draw_sphere_range(VkCommandBuffer cmd, VkPipelineLayout layout, uint32_t start, uint32_t end)
     {
         const VkDeviceSize vb_off = 0;
-        vkCmdBindVertexBuffers(cmd, 0, 1, &vertex_buffer_.buffer, &vb_off);
-        vkCmdBindIndexBuffer(cmd, index_buffer_.buffer, 0, VK_INDEX_TYPE_UINT32);
-
         for (uint32_t i = start; i < end; ++i)
         {
             if (i >= instance_visible_mask_.size() || instance_visible_mask_[i] == 0u) continue;
+            const Instance::MeshKind mesh_kind = instances_[i].mesh_kind;
+            const GpuBuffer& vb = vertex_buffer_for_mesh(mesh_kind);
+            const GpuBuffer& ib = index_buffer_for_mesh(mesh_kind);
+            const uint32_t index_count = index_count_for_mesh(mesh_kind);
+            if (vb.buffer == VK_NULL_HANDLE || ib.buffer == VK_NULL_HANDLE || index_count == 0u) continue;
+            vkCmdBindVertexBuffers(cmd, 0, 1, &vb.buffer, &vb_off);
+            vkCmdBindIndexBuffer(cmd, ib.buffer, 0, VK_INDEX_TYPE_UINT32);
 
             DrawPush pc{};
             pc.model = instance_models_[i];
@@ -2504,7 +3557,7 @@ private:
                 instances_[i].ao,
                 0.0f);
             vkCmdPushConstants(cmd, layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(DrawPush), &pc);
-            vkCmdDrawIndexed(cmd, static_cast<uint32_t>(indices_.size()), 1, 0, 0, 0);
+            vkCmdDrawIndexed(cmd, index_count, 1, 0, 0, 0);
         }
     }
 
@@ -2942,6 +3995,7 @@ private:
             {
                 begin_render_pass_scene(fi.cmd, fi);
                 vkCmdExecuteCommands(fi.cmd, static_cast<uint32_t>(scene_secondaries.size()), scene_secondaries.data());
+                draw_light_volumes_debug(fi.cmd, scene_pipeline_layout_, frame_slot);
                 vkCmdEndRenderPass(fi.cmd);
             }
             else
@@ -2961,6 +4015,7 @@ private:
 
                 vkCmdBeginRenderPass(fi.cmd, &rp, VK_SUBPASS_CONTENTS_INLINE);
                 record_inline_scene(fi.cmd, scene_pipeline_, scene_pipeline_layout_, fi.extent.width, fi.extent.height, frame_slot);
+                draw_light_volumes_debug(fi.cmd, scene_pipeline_layout_, frame_slot);
                 vkCmdEndRenderPass(fi.cmd);
             }
         }
@@ -2979,6 +4034,7 @@ private:
             rp.clearValueCount = vk_->has_depth_attachment() ? 2u : 1u;
             rp.pClearValues = clear;
             vkCmdBeginRenderPass(fi.cmd, &rp, VK_SUBPASS_CONTENTS_INLINE);
+            draw_light_volumes_debug(fi.cmd, scene_pipeline_layout_, frame_slot);
             vkCmdEndRenderPass(fi.cmd);
         }
 
@@ -2998,18 +4054,19 @@ private:
         const char* cull_src = manual_culling_override_ ? "manual" : "tech";
         const char* culler_backend = vulkan_culler_backend_name(vulkan_culler_backend_);
         const char* rec_mode = use_multithread_recording_ ? "MT-secondary" : "inline";
-        const float switch_in = std::max(0.0f, kTechniqueSwitchPeriodSec - technique_switch_accum_sec_);
+        const float switch_in = auto_cycle_technique_ ? std::max(0.0f, kTechniqueSwitchPeriodSec - technique_switch_accum_sec_) : 0.0f;
         const double avg_refs = (cull_debug_list_count_ > 0)
             ? static_cast<double>(cull_debug_total_refs_) / static_cast<double>(cull_debug_list_count_)
             : 0.0;
         const uint32_t visible_draws = visible_instance_count_ + (floor_visible_ ? 1u : 0u);
         const uint32_t total_draws = static_cast<uint32_t>(instances_.size()) + 1u;
+        const uint32_t culled_total = (active_light_count_ > visible_light_count_) ? (active_light_count_ - visible_light_count_) : 0u;
 
-        char title[512];
+        char title[640];
         std::snprintf(
             title,
             sizeof(title),
-            "%s | mode:%s | cull:%s(%s/%s) | rec:%s | lights:%u/%u[p:%u s:%u r:%u t:%u] | shad:sun:%s spot:%u point:%u | draws:%u/%u | tile:%ux%u | refs:%llu avg:%.1f max:%u nz:%u/%u | switch:%.1fs | %.2f ms",
+            "%s | mode:%s | cull:%s(%s/%s) | rec:%s | lights:%u/%u[p:%u s:%u r:%u t:%u] | lvol:%s occ:%s/%s lobj:%s culled:%u[f:%u o:%u p:%u] | shad:sun:%s(%.2f) spot:%u point:%u | cfg:orb%.2f h%.1f r%.2f i%.2f | draws:%u/%u | tile:%ux%u | refs:%llu avg:%.1f max:%u nz:%u/%u | techsw:%s %.1fs | %.2f ms",
             kAppName,
             mode_name,
             cull_name,
@@ -3022,9 +4079,22 @@ private:
             spot_count_active_,
             rect_count_active_,
             tube_count_active_,
-            shadow_settings_.enable ? "on" : "off",
+            show_light_volumes_debug_ ? "on" : "off",
+            enable_scene_occlusion_ ? "on" : "off",
+            enable_light_occlusion_ ? "on" : "off",
+            shs::light_object_cull_mode_name(light_object_cull_mode_),
+            culled_total,
+            light_frustum_rejected_,
+            light_occlusion_rejected_,
+            light_prefilter_rejected_,
+            (shadow_settings_.enable && enable_sun_shadow_) ? "on" : "off",
+            sun_shadow_strength_,
             spot_shadow_count_,
             point_shadow_count_,
+            light_orbit_scale_,
+            light_height_bias_,
+            light_range_scale_,
+            light_intensity_scale_,
             visible_draws,
             total_draws,
             tile_w_,
@@ -3034,6 +4104,7 @@ private:
             cull_debug_max_list_size_,
             cull_debug_non_empty_lists_,
             cull_debug_list_count_,
+            auto_cycle_technique_ ? "auto" : "manual",
             switch_in,
             avg_ms);
         SDL_SetWindowTitle(win_, title);
@@ -3042,6 +4113,52 @@ private:
     void handle_event(const SDL_Event& e)
     {
         if (e.type == SDL_QUIT) running_ = false;
+
+        if (e.type == SDL_KEYDOWN || e.type == SDL_KEYUP)
+        {
+            const bool down = (e.type == SDL_KEYDOWN);
+            switch (e.key.keysym.sym)
+            {
+                case SDLK_w:
+                    move_forward_ = down;
+                    break;
+                case SDLK_s:
+                    move_backward_ = down;
+                    break;
+                case SDLK_a:
+                    move_left_ = down;
+                    break;
+                case SDLK_d:
+                    move_right_ = down;
+                    break;
+                case SDLK_q:
+                    move_down_ = down;
+                    break;
+                case SDLK_e:
+                    move_up_ = down;
+                    break;
+                case SDLK_LSHIFT:
+                case SDLK_RSHIFT:
+                    move_boost_ = down;
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        if (e.type == SDL_MOUSEBUTTONDOWN || e.type == SDL_MOUSEBUTTONUP)
+        {
+            const bool down = (e.type == SDL_MOUSEBUTTONDOWN);
+            if (e.button.button == SDL_BUTTON_LEFT) mouse_left_down_ = down;
+            if (e.button.button == SDL_BUTTON_RIGHT) mouse_right_down_ = down;
+        }
+
+        if (e.type == SDL_MOUSEMOTION)
+        {
+            mouse_dx_accum_ += static_cast<float>(e.motion.xrel);
+            mouse_dy_accum_ += static_cast<float>(e.motion.yrel);
+        }
+
         if (e.type == SDL_KEYDOWN)
         {
             switch (e.key.keysym.sym)
@@ -3070,14 +4187,71 @@ private:
                             ? VulkanCullerBackend::Disabled
                             : VulkanCullerBackend::GpuCompute;
                     break;
+                case SDLK_F7:
+                    show_light_volumes_debug_ = !show_light_volumes_debug_;
+                    break;
+                case SDLK_F8:
+                    enable_scene_occlusion_ = !enable_scene_occlusion_;
+                    break;
+                case SDLK_F9:
+                    enable_light_occlusion_ = !enable_light_occlusion_;
+                    break;
+                case SDLK_F10:
+                    light_object_cull_mode_ = shs::next_light_object_cull_mode(light_object_cull_mode_);
+                    break;
+                case SDLK_F11:
+                    auto_cycle_technique_ = !auto_cycle_technique_;
+                    technique_switch_accum_sec_ = 0.0f;
+                    break;
+                case SDLK_F12:
+                    enable_sun_shadow_ = !enable_sun_shadow_;
+                    break;
+                case SDLK_1:
+                    light_orbit_scale_ = std::clamp(light_orbit_scale_ - 0.10f, 0.35f, 2.50f);
+                    break;
+                case SDLK_2:
+                    light_orbit_scale_ = std::clamp(light_orbit_scale_ + 0.10f, 0.35f, 2.50f);
+                    break;
+                case SDLK_3:
+                    light_height_bias_ = std::clamp(light_height_bias_ - 0.50f, -8.0f, 12.0f);
+                    break;
+                case SDLK_4:
+                    light_height_bias_ = std::clamp(light_height_bias_ + 0.50f, -8.0f, 12.0f);
+                    break;
+                case SDLK_5:
+                    light_range_scale_ = std::clamp(light_range_scale_ - 0.10f, 0.35f, 2.50f);
+                    break;
+                case SDLK_6:
+                    light_range_scale_ = std::clamp(light_range_scale_ + 0.10f, 0.35f, 2.50f);
+                    break;
+                case SDLK_7:
+                    light_intensity_scale_ = std::clamp(light_intensity_scale_ - 0.10f, 0.15f, 3.00f);
+                    break;
+                case SDLK_8:
+                    light_intensity_scale_ = std::clamp(light_intensity_scale_ + 0.10f, 0.15f, 3.00f);
+                    break;
+                case SDLK_9:
+                    sun_shadow_strength_ = std::clamp(sun_shadow_strength_ - 0.05f, 0.0f, 1.0f);
+                    break;
+                case SDLK_0:
+                    sun_shadow_strength_ = std::clamp(sun_shadow_strength_ + 0.05f, 0.0f, 1.0f);
+                    break;
+                case SDLK_r:
+                    light_orbit_scale_ = 1.0f;
+                    light_height_bias_ = 0.0f;
+                    light_range_scale_ = 1.0f;
+                    light_intensity_scale_ = 1.0f;
+                    enable_sun_shadow_ = false;
+                    sun_shadow_strength_ = 0.0f;
+                    break;
                 case SDLK_MINUS:
                 case SDLK_KP_MINUS:
-                    if (active_light_count_ > 256) active_light_count_ -= 256;
+                    active_light_count_ = (active_light_count_ > 64u) ? (active_light_count_ - 64u) : 64u;
                     break;
                 case SDLK_EQUALS:
                 case SDLK_PLUS:
                 case SDLK_KP_PLUS:
-                    active_light_count_ = std::min<uint32_t>(kMaxLights, active_light_count_ + 256);
+                    active_light_count_ = std::min<uint32_t>(kMaxLights, active_light_count_ + 64u);
                     break;
                 default:
                     break;
@@ -3113,10 +4287,13 @@ private:
             last = now;
             dt = std::clamp(dt, 1.0f / 240.0f, 1.0f / 15.0f);
             time_sec_ += dt;
-            technique_switch_accum_sec_ += dt;
-            if (technique_switch_accum_sec_ >= kTechniqueSwitchPeriodSec)
+            if (auto_cycle_technique_)
             {
-                cycle_technique_mode();
+                technique_switch_accum_sec_ += dt;
+                if (technique_switch_accum_sec_ >= kTechniqueSwitchPeriodSec)
+                {
+                    cycle_technique_mode();
+                }
             }
 
             auto cpu_t0 = clock::now();
@@ -3181,19 +4358,52 @@ private:
     std::vector<uint32_t> indices_{};
     std::vector<Vertex> floor_vertices_{};
     std::vector<uint32_t> floor_indices_{};
+    std::vector<Vertex> cone_vertices_{};
+    std::vector<uint32_t> cone_indices_{};
+    std::vector<Vertex> box_vertices_{};
+    std::vector<uint32_t> box_indices_{};
+    std::vector<uint32_t> sphere_line_indices_{};
+    std::vector<uint32_t> cone_line_indices_{};
+    std::vector<uint32_t> box_line_indices_{};
+    std::vector<Vertex> capsule_vertices_{};
+    std::vector<uint32_t> capsule_indices_{};
+    std::vector<Vertex> cylinder_vertices_{};
+    std::vector<uint32_t> cylinder_indices_{};
     std::vector<Instance> instances_{};
     std::vector<glm::mat4> instance_models_{};
     std::vector<uint8_t> instance_visible_mask_{};
+    std::vector<uint32_t> frustum_visible_instance_indices_{};
     std::vector<shs::SceneShape> instance_cull_shapes_{};
-    JPH::ShapeRefC instance_shape_jolt_{};
+    JPH::ShapeRefC sphere_shape_jolt_{};
+    JPH::ShapeRefC box_shape_jolt_{};
+    JPH::ShapeRefC cone_shape_jolt_{};
+    JPH::ShapeRefC capsule_shape_jolt_{};
+    JPH::ShapeRefC cylinder_shape_jolt_{};
     std::vector<LightAnim> light_anim_{};
     shs::LightSet light_set_{};
     std::vector<shs::CullingLightGPU> gpu_lights_{};
     std::vector<ShadowLightGPU> shadow_lights_gpu_{};
     std::vector<LocalShadowCaster> local_shadow_casters_{};
+    std::vector<shs::AABB> visible_object_aabbs_{};
+    shs::DebugMesh sphere_occluder_mesh_{};
+    shs::DebugMesh cone_occluder_mesh_{};
+    shs::DebugMesh box_occluder_mesh_{};
+    shs::DebugMesh capsule_occluder_mesh_{};
+    shs::DebugMesh cylinder_occluder_mesh_{};
+    shs::DebugMesh floor_occluder_mesh_{};
+    std::vector<float> scene_occlusion_depth_{};
+    std::vector<float> light_occlusion_depth_{};
     glm::mat4 sun_shadow_view_proj_{1.0f};
     shs::AABB sphere_local_aabb_{};
+    shs::AABB cone_local_aabb_{};
+    shs::AABB box_local_aabb_{};
+    shs::AABB capsule_local_aabb_{};
+    shs::AABB cylinder_local_aabb_{};
     shs::Sphere sphere_local_bound_{};
+    shs::Sphere cone_local_bound_{};
+    shs::Sphere box_local_bound_{};
+    shs::Sphere capsule_local_bound_{};
+    shs::Sphere cylinder_local_bound_{};
     shs::AABB floor_local_aabb_{};
     shs::AABB shadow_scene_static_aabb_{};
     bool shadow_scene_static_bounds_ready_ = false;
@@ -3205,6 +4415,17 @@ private:
     GpuBuffer index_buffer_{};
     GpuBuffer floor_vertex_buffer_{};
     GpuBuffer floor_index_buffer_{};
+    GpuBuffer cone_vertex_buffer_{};
+    GpuBuffer cone_index_buffer_{};
+    GpuBuffer box_vertex_buffer_{};
+    GpuBuffer box_index_buffer_{};
+    GpuBuffer sphere_line_index_buffer_{};
+    GpuBuffer cone_line_index_buffer_{};
+    GpuBuffer box_line_index_buffer_{};
+    GpuBuffer capsule_vertex_buffer_{};
+    GpuBuffer capsule_index_buffer_{};
+    GpuBuffer cylinder_vertex_buffer_{};
+    GpuBuffer cylinder_index_buffer_{};
     shs::VkFrameRing<FrameResources, kWorkerPoolRingSize> frame_resources_{};
 
     CameraUBO camera_ubo_{};
@@ -3222,6 +4443,7 @@ private:
     VkPipeline depth_pipeline_ = VK_NULL_HANDLE;
     VkPipelineLayout scene_pipeline_layout_ = VK_NULL_HANDLE;
     VkPipeline scene_pipeline_ = VK_NULL_HANDLE;
+    VkPipeline scene_wire_pipeline_ = VK_NULL_HANDLE;
     VkPipelineLayout compute_pipeline_layout_ = VK_NULL_HANDLE;
     VkPipeline depth_reduce_pipeline_ = VK_NULL_HANDLE;
     VkPipeline compute_pipeline_ = VK_NULL_HANDLE;
@@ -3239,6 +4461,20 @@ private:
     uint32_t tube_count_active_ = 0;
     uint32_t point_shadow_count_ = 0;
     uint32_t spot_shadow_count_ = 0;
+    bool show_light_volumes_debug_ = false;
+    std::vector<LightVolumeDebugDraw> light_volume_debug_draws_{};
+    bool enable_scene_occlusion_ = false;
+    bool enable_light_occlusion_ = false;
+    shs::LightObjectCullMode light_object_cull_mode_ = shs::LightObjectCullMode::None;
+    uint32_t light_frustum_rejected_ = 0;
+    uint32_t light_occlusion_rejected_ = 0;
+    uint32_t light_prefilter_rejected_ = 0;
+    float light_orbit_scale_ = 1.0f;
+    float light_height_bias_ = 0.0f;
+    float light_range_scale_ = 1.0f;
+    float light_intensity_scale_ = 1.0f;
+    bool enable_sun_shadow_ = false;
+    float sun_shadow_strength_ = 0.0f;
     bool use_forward_plus_ = true;
     shs::LightCullingMode culling_mode_ = shs::LightCullingMode::Tiled;
     shs::ShadowCompositionSettings shadow_settings_ = shs::make_default_shadow_composition_settings();
@@ -3256,7 +4492,20 @@ private:
     shs::TechniqueMode active_technique_ = shs::TechniqueMode::ForwardPlus;
     size_t technique_cycle_index_ = 1;
     float technique_switch_accum_sec_ = 0.0f;
+    bool auto_cycle_technique_ = false;
     bool use_multithread_recording_ = false;
+    FreeCamera camera_{};
+    bool move_forward_ = false;
+    bool move_backward_ = false;
+    bool move_left_ = false;
+    bool move_right_ = false;
+    bool move_up_ = false;
+    bool move_down_ = false;
+    bool move_boost_ = false;
+    bool mouse_left_down_ = false;
+    bool mouse_right_down_ = false;
+    float mouse_dx_accum_ = 0.0f;
+    float mouse_dy_accum_ = 0.0f;
     float time_sec_ = 0.0f;
 };
 }

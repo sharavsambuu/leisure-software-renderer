@@ -47,6 +47,40 @@ layout(set = 0, binding = 4, std430) readonly buffer TileDepthRanges
 vec4 resolve_cull_sphere(CullingLightGPU light)
 {
     vec4 s = light.cull_sphere;
+    uint light_type = light.type_shape_flags.x;
+    float shading_range = max(light.position_range.w, 0.0);
+
+    // Safety net: keep cull bounds conservative even if a producer packed
+    // too-tight bounds for anisotropic lights.
+    if (light_type == SHS_LIGHT_TYPE_RECT_AREA)
+    {
+        float hx = max(light.up_shape_x.w, 0.0);
+        float hy = max(light.shape_attenuation.x, 0.0);
+        vec3 dir = normalize(light.direction_spot.xyz);
+        vec3 c = light.position_range.xyz + dir * (shading_range * 0.5);
+        float r = length(vec3(hx + shading_range, hy + shading_range, max(shading_range * 0.5, 0.001)));
+        if (s.w <= 0.0 || s.w < r)
+        {
+            s = vec4(c, r);
+        }
+    }
+    else if (light_type == SHS_LIGHT_TYPE_TUBE_AREA)
+    {
+        float half_len = max(light.up_shape_x.w, 0.0);
+        float r = half_len + shading_range;
+        if (s.w <= 0.0 || s.w < r)
+        {
+            s = vec4(light.position_range.xyz, r);
+        }
+    }
+    else if (light_type == SHS_LIGHT_TYPE_SPOT || light_type == SHS_LIGHT_TYPE_POINT)
+    {
+        if (s.w <= 0.0 || s.w < shading_range)
+        {
+            s = vec4(light.position_range.xyz, shading_range);
+        }
+    }
+
     if (s.w > 0.0) return s;
 
     vec3 bmin = light.cull_aabb_min.xyz;
@@ -85,6 +119,10 @@ bool project_light_screen(vec3 pos_ws, float radius_ws, uint width, uint height,
     center_px.x = (ndc.x * 0.5 + 0.5) * float(width);
     center_px.y = (0.5 - ndc.y * 0.5) * float(height);
     radius_px = abs(radius_ws * ubo.proj[1][1] * float(height) / view_depth);
+    // Conservative inflation to avoid tile-boundary under-coverage
+    // (common source of blocky lighting with tiled/clustered lists).
+    float perspective_inflate = 1.0 + clamp(radius_ws / max(view_depth, near_z), 0.0, 2.5) * 0.65;
+    radius_px = radius_px * perspective_inflate + 4.0;
     return true;
 }
 
@@ -182,7 +220,7 @@ void main()
         float view_depth = 0.0;
         if (!project_light_screen(cull_sphere.xyz, cull_sphere.w, width, height, screen, radius_px, view_depth)) continue;
 
-        const float screen_pad_px = 3.0;
+        const float screen_pad_px = 16.0;
         if ((screen.x + radius_px + screen_pad_px) < tile_min.x) continue;
         if ((screen.y + radius_px + screen_pad_px) < tile_min.y) continue;
         if ((screen.x - radius_px - screen_pad_px) > tile_max.x) continue;
@@ -190,19 +228,26 @@ void main()
 
         if (culling_mode == 2u)
         {
-            const float depth_pad = max(0.1, max(cull_sphere.w * 0.04, view_depth * 0.002));
+            // Keep depth-range test conservative; false negatives are much worse
+            // than extra lights in stress/demo mode.
+            const float depth_pad = max(1.0, max(cull_sphere.w * 0.35, view_depth * 0.03));
             float light_min = view_depth - cull_sphere.w - depth_pad;
             float light_max = view_depth + cull_sphere.w + depth_pad;
-            if (light_max < tile_view_depth_range.x) continue;
-            if (light_min > tile_view_depth_range.y) continue;
+            if (light_max < tile_view_depth_range.x || light_min > tile_view_depth_range.y)
+            {
+                // Very large projected lights are kept to avoid patch artifacts on broad surfaces.
+                if (radius_px < float(tile_size) * 4.0) continue;
+            }
         }
         else if (culling_mode == 3u)
         {
-            const float depth_pad = max(0.05, cull_sphere.w * 0.02);
+            const float depth_pad = max(0.8, max(cull_sphere.w * 0.25, view_depth * 0.02));
             float light_min = view_depth - cull_sphere.w - depth_pad;
             float light_max = view_depth + cull_sphere.w + depth_pad;
-            if (light_max < cluster_near) continue;
-            if (light_min > cluster_far) continue;
+            if (light_max < cluster_near || light_min > cluster_far)
+            {
+                if (radius_px < float(tile_size) * 4.0) continue;
+            }
         }
         else if (culling_mode == 0u)
         {

@@ -30,6 +30,7 @@
 #include <shs/geometry/jolt_shapes.hpp>
 #include <shs/geometry/scene_shape.hpp>
 #include <shs/geometry/volumes.hpp>
+#include <shs/lighting/light_culling_runtime.hpp>
 #include <shs/lighting/light_runtime.hpp>
 #include <shs/platform/platform_input.hpp>
 #include <shs/rhi/backend/backend_factory.hpp>
@@ -60,6 +61,10 @@ constexpr int kLightOccW = 240;
 constexpr int kLightOccH = 180;
 constexpr uint32_t kMaxLightsPerObject = kLightSelectionCapacity;
 constexpr uint32_t kGpuMaxLights = 64u;
+constexpr uint32_t kLightBinTileSize = 32u;
+constexpr uint32_t kLightClusterDepthSlices = 16u;
+constexpr float kCameraNear = 0.1f;
+constexpr float kCameraFar = 1000.0f;
 constexpr bool kLightOcclusionDefault = false;
 
 struct Vertex
@@ -1180,6 +1185,7 @@ private:
             if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_F3) out.toggle_front_face = true;
             if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_F4) out.toggle_shading_model = true;
             if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_F5) out.toggle_sky_mode = true;
+            if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_F6) out.toggle_follow_camera = true;
 
             if (e.type == SDL_MOUSEMOTION)
             {
@@ -1242,6 +1248,8 @@ private:
         SDL_Vulkan_GetDrawableSize(win_, &dw, &dh);
         if (dw > 0 && dh > 0)
         {
+            viewport_w_ = static_cast<uint32_t>(dw);
+            viewport_h_ = static_cast<uint32_t>(dh);
             aspect_ = static_cast<float>(dw) / static_cast<float>(dh);
         }
     }
@@ -1282,10 +1290,10 @@ private:
         sync_instances_to_scene(view_cull_scene_, instances_);
         sync_lights_to_scene(light_cull_scene_, lights_);
 
-        const glm::mat4 view = camera_.view_matrix();
-        const glm::mat4 proj = perspective_lh_no(glm::radians(60.0f), aspect_, 0.1f, 1000.0f);
-        const glm::mat4 vp = proj * view;
-        frustum_ = extract_frustum_planes(vp);
+        view_matrix_ = camera_.view_matrix();
+        proj_matrix_ = perspective_lh_no(glm::radians(60.0f), aspect_, kCameraNear, kCameraFar);
+        view_proj_matrix_ = proj_matrix_ * view_matrix_;
+        frustum_ = extract_frustum_planes(view_proj_matrix_);
 
         view_cull_ctx_.run_frustum(view_cull_scene_, frustum_);
         view_cull_ctx_.run_software_occlusion(
@@ -1294,8 +1302,8 @@ private:
             std::span<float>(occlusion_depth_.data(), occlusion_depth_.size()),
             kOccW,
             kOccH,
-            view,
-            vp,
+            view_matrix_,
+            view_proj_matrix_,
             [&](const SceneElement& elem, uint32_t, std::span<float> depth_span) {
                 if (elem.user_index >= instances_.size()) return;
                 const ShapeInstance& inst = instances_[elem.user_index];
@@ -1306,7 +1314,7 @@ private:
                     kOccH,
                     mesh_cpu_[inst.mesh_index],
                     inst.model,
-                    vp);
+                    view_proj_matrix_);
             });
         (void)view_cull_ctx_.apply_frustum_fallback_if_needed(
             view_cull_scene_,
@@ -1321,8 +1329,8 @@ private:
             std::span<float>(light_occlusion_depth_.data(), light_occlusion_depth_.size()),
             kLightOccW,
             kLightOccH,
-            view,
-            vp,
+            view_matrix_,
+            view_proj_matrix_,
             [&](const SceneElement& elem, uint32_t, std::span<float> depth_span) {
                 if (elem.user_index >= lights_.size()) return;
                 const LightInstance& light = lights_[elem.user_index];
@@ -1333,7 +1341,7 @@ private:
                     kLightOccH,
                     mesh_cpu_[light.mesh_index],
                     light.volume_model,
-                    vp);
+                    view_proj_matrix_);
             });
         (void)light_cull_ctx_.apply_frustum_fallback_if_needed(
             light_cull_scene_,
@@ -1378,6 +1386,45 @@ private:
         }
 
         visible_light_scene_indices_ = light_cull_ctx_.visible_indices();
+
+        light_bin_cfg_.mode = light_culling_mode_;
+        light_bin_cfg_.tile_size = kLightBinTileSize;
+        light_bin_cfg_.cluster_depth_slices = kLightClusterDepthSlices;
+        light_bin_cfg_.z_near = kCameraNear;
+        light_bin_cfg_.z_far = kCameraFar;
+
+        TileViewDepthRange tile_depth_range{};
+        std::span<const float> tile_min_depth{};
+        std::span<const float> tile_max_depth{};
+        if (light_culling_mode_ == LightCullingMode::TiledDepthRange)
+        {
+            tile_depth_range = build_tile_view_depth_range_from_scene(
+                std::span<const uint32_t>(draw_scene_indices_.data(), draw_scene_indices_.size()),
+                view_cull_scene_,
+                view_matrix_,
+                view_proj_matrix_,
+                viewport_w_,
+                viewport_h_,
+                kLightBinTileSize,
+                kCameraNear,
+                kCameraFar);
+
+            if (tile_depth_range.valid())
+            {
+                tile_min_depth = std::span<const float>(tile_depth_range.min_view_depth.data(), tile_depth_range.min_view_depth.size());
+                tile_max_depth = std::span<const float>(tile_depth_range.max_view_depth.data(), tile_depth_range.max_view_depth.size());
+            }
+        }
+
+        light_bin_data_ = build_light_bin_culling(
+            std::span<const uint32_t>(visible_light_scene_indices_.data(), visible_light_scene_indices_.size()),
+            light_cull_scene_,
+            view_proj_matrix_,
+            viewport_w_,
+            viewport_h_,
+            light_bin_cfg_,
+            tile_min_depth,
+            tile_max_depth);
     }
 
     void bind_and_draw_mesh(
@@ -1451,6 +1498,8 @@ private:
     {
         last_light_links_total_ = 0;
         last_max_lights_per_object_ = 0;
+        last_light_candidates_total_ = 0;
+        last_max_light_candidates_ = 0;
 
         if (render_lit_surfaces_)
         {
@@ -1475,9 +1524,20 @@ private:
             if (render_lit_surfaces_)
             {
                 const AABB world_box = inst.shape.world_aabb();
+                const std::span<const uint32_t> candidate_light_scene_indices =
+                    gather_light_scene_candidates_for_aabb(
+                        light_bin_data_,
+                        world_box,
+                        view_matrix_,
+                        view_proj_matrix_,
+                        light_candidate_scene_scratch_);
+
+                last_light_candidates_total_ += candidate_light_scene_indices.size();
+                last_max_light_candidates_ = std::max(last_max_light_candidates_, static_cast<uint32_t>(candidate_light_scene_indices.size()));
+
                 const LightSelection selection = collect_object_lights(
                     world_box,
-                    std::span<const uint32_t>(visible_light_scene_indices_.data(), visible_light_scene_indices_.size()),
+                    candidate_light_scene_indices,
                     light_cull_scene_,
                     lights_,
                     light_object_cull_mode_);
@@ -1563,10 +1623,12 @@ private:
         if (!draw_scene_indices_.empty())
         {
             last_avg_lights_per_object_ = static_cast<float>(last_light_links_total_) / static_cast<float>(draw_scene_indices_.size());
+            last_avg_light_candidates_per_object_ = static_cast<float>(last_light_candidates_total_) / static_cast<float>(draw_scene_indices_.size());
         }
         else
         {
             last_avg_lights_per_object_ = 0.0f;
+            last_avg_light_candidates_per_object_ = 0.0f;
         }
     }
 
@@ -1600,9 +1662,7 @@ private:
 
         const uint32_t ring = static_cast<uint32_t>(ctx_.frame_index % kFrameRing);
         CameraUBO cam{};
-        const glm::mat4 view = camera_.view_matrix();
-        const glm::mat4 proj = perspective_lh_no(glm::radians(60.0f), aspect_, 0.1f, 1000.0f);
-        cam.view_proj = proj * view;
+        cam.view_proj = view_proj_matrix_;
         cam.camera_pos = glm::vec4(camera_.pos, 1.0f);
         cam.sun_dir_to_scene_ws = glm::vec4(glm::normalize(glm::vec3(0.20f, -1.0f, 0.16f)), 0.0f);
         std::memcpy(camera_ubos_[ring].mapped, &cam, sizeof(CameraUBO));
@@ -1657,15 +1717,18 @@ private:
         std::snprintf(
             title,
             sizeof(title),
-            "Light Types Culling (VK) | Obj F:%u O:%u V:%u | Light F:%u O:%u V:%u | L/Obj %.2f (max %u) | LCull:%s | Occ:%s/%s | Vol:%s | %s | %.2f ms",
+            "Light Types Culling (VK) | Obj F:%u O:%u V:%u | Light F:%u O:%u V:%u | Cand %.2f (max %u) | L/Obj %.2f (max %u) | LMode:%s | LCull:%s | Occ:%s/%s | Vol:%s | %s | %.2f ms",
             draw_stats_.frustum_visible_count,
             draw_stats_.occluded_count,
             draw_stats_.visible_count,
             light_stats_.frustum_visible_count,
             light_stats_.occluded_count,
             light_stats_.visible_count,
+            last_avg_light_candidates_per_object_,
+            last_max_light_candidates_,
             last_avg_lights_per_object_,
             last_max_lights_per_object_,
+            light_culling_mode_name(light_culling_mode_),
             light_object_cull_mode_name(light_object_cull_mode_),
             enable_scene_occlusion_ ? "ON" : "OFF",
             enable_light_occlusion_ ? "ON" : "OFF",
@@ -1679,7 +1742,7 @@ private:
     {
         std::printf(
             "Controls: LMB/RMB drag look, WASD+QE move, Shift boost | "
-            "L lit/debug, B AABB, F1 light volumes, F2 scene occlusion, F3 light occlusion, F4 light/object culling, F5 freeze lights\n");
+            "L lit/debug, B AABB, F1 light volumes, F2 scene occlusion, F3 light occlusion, F4 light/object culling, F5 freeze lights, F6 light bin mode\n");
 
         auto t0 = std::chrono::steady_clock::now();
         auto prev = t0;
@@ -1705,6 +1768,7 @@ private:
             if (input.toggle_front_face) enable_light_occlusion_ = !enable_light_occlusion_;
             if (input.toggle_shading_model) light_object_cull_mode_ = next_light_object_cull_mode(light_object_cull_mode_);
             if (input.toggle_sky_mode) freeze_lights_ = !freeze_lights_;
+            if (input.toggle_follow_camera) light_culling_mode_ = next_light_culling_mode(light_culling_mode_);
 
             update_aspect_from_drawable();
             camera_.update(input, dt);
@@ -1723,15 +1787,18 @@ private:
             }
 
             std::printf(
-                "Obj F:%u O:%u V:%u | Light F:%u O:%u V:%u | L/Obj:%4.2f max:%u | LCull:%s | Occ:%s/%s | Vol:%s | Mode:%s\r",
+                "Obj F:%u O:%u V:%u | Light F:%u O:%u V:%u | Cand:%4.2f max:%u | L/Obj:%4.2f max:%u | LMode:%s | LCull:%s | Occ:%s/%s | Vol:%s | Mode:%s\r",
                 draw_stats_.frustum_visible_count,
                 draw_stats_.occluded_count,
                 draw_stats_.visible_count,
                 light_stats_.frustum_visible_count,
                 light_stats_.occluded_count,
                 light_stats_.visible_count,
+                last_avg_light_candidates_per_object_,
+                last_max_light_candidates_,
                 last_avg_lights_per_object_,
                 last_max_lights_per_object_,
+                light_culling_mode_name(light_culling_mode_),
                 light_object_cull_mode_name(light_object_cull_mode_),
                 enable_scene_occlusion_ ? "ON " : "OFF",
                 enable_light_occlusion_ ? "ON " : "OFF",
@@ -1837,6 +1904,11 @@ private:
 
     FreeCamera camera_{};
     float aspect_ = static_cast<float>(kWindowW) / static_cast<float>(kWindowH);
+    uint32_t viewport_w_ = static_cast<uint32_t>(kWindowW);
+    uint32_t viewport_h_ = static_cast<uint32_t>(kWindowH);
+    glm::mat4 view_matrix_{1.0f};
+    glm::mat4 proj_matrix_{1.0f};
+    glm::mat4 view_proj_matrix_{1.0f};
     Frustum frustum_{};
 
     SceneElementSet view_cull_scene_{};
@@ -1857,6 +1929,9 @@ private:
     uint64_t last_light_links_total_ = 0;
     uint32_t last_max_lights_per_object_ = 0;
     float last_avg_lights_per_object_ = 0.0f;
+    uint64_t last_light_candidates_total_ = 0;
+    uint32_t last_max_light_candidates_ = 0;
+    float last_avg_light_candidates_per_object_ = 0.0f;
 
     bool show_aabb_debug_ = false;
     bool render_lit_surfaces_ = true;
@@ -1864,7 +1939,11 @@ private:
     bool enable_scene_occlusion_ = true;
     bool enable_light_occlusion_ = kLightOcclusionDefault;
     bool freeze_lights_ = false;
+    LightCullingMode light_culling_mode_ = LightCullingMode::Clustered;
     LightObjectCullMode light_object_cull_mode_ = LightObjectCullMode::VolumeAabb;
+    LightBinCullingConfig light_bin_cfg_{};
+    LightBinCullingData light_bin_data_{};
+    std::vector<uint32_t> light_candidate_scene_scratch_{};
 
     bool relative_mouse_mode_ = false;
     bool mouse_right_held_ = false;

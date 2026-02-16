@@ -32,4 +32,16 @@ namespace shs
         }
         return "unknown";
     }
+
+    inline LightCullingMode next_light_culling_mode(LightCullingMode mode)
+    {
+        switch (mode)
+        {
+            case LightCullingMode::None: return LightCullingMode::Tiled;
+            case LightCullingMode::Tiled: return LightCullingMode::TiledDepthRange;
+            case LightCullingMode::TiledDepthRange: return LightCullingMode::Clustered;
+            case LightCullingMode::Clustered: return LightCullingMode::None;
+        }
+        return LightCullingMode::None;
+    }
 }

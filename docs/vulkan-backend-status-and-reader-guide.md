@@ -173,3 +173,14 @@ Priority order for the next backend phase:
 4. Continue shader modularization to cover BRDF + shadow helper reuse.
 5. Add clearer perf/debug instrumentation (timestamps, pass markers, GPU timing summary).
 6. Introduce a lightweight allocation strategy to reduce manual allocation churn.
+
+Render-path composition alignment (now that light/culling stability is stronger):
+
+7. Introduce a reusable render-path interface contract and wrap current Forward/Forward+ path as baseline.
+8. Add a second algorithm path (Deferred + light accumulation) reusing the same scene/light/culling inputs.
+9. Add runtime path switching and path-aware telemetry for consistent A/B comparison.
+10. Refactor common passes (depth/shadow/light-cull/debug) into reusable path modules.
+
+Related plan:
+
+- `docs/dynamic-render-path-composition-plan.md`

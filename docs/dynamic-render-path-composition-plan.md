@@ -1,5 +1,7 @@
 # Dynamic Compositional and Configurable Render Paths
 
+Last updated: 2026-02-16
+
 This document is the implementation plan for the next phase:
 
 - Different light volume providers
@@ -259,7 +261,85 @@ If separating implementation `.cpp` files:
 - Shadow occlusion default remains OFF
 - Compatibility validation rejects invalid recipes early
 
-## 11) Shader Modularization Baseline (Now In Place)
+## 11) Current Readiness Snapshot (2026-02-16)
+
+The project is now in a stronger starting state for render-path composition:
+
+- Multiple local light types are active in Vulkan demos:
+  - point
+  - spot
+  - rect area
+  - tube area
+- Multiple culling techniques are running and switchable:
+  - none
+  - tiled
+  - tiled depth-range
+  - clustered
+- A recent GPU artifact class was fixed:
+  - rectangular/patched lighting in culling modes
+  - root cause: mismatch between shading influence and culling bounds
+  - resolution: stricter shape-aware influence + conservative cull bounds/fallback
+
+This is sufficient to move from "light/culling stabilization" into "render algorithm/path composition."
+
+## 12) Immediate Next Tasks (Confirmed)
+
+### 12.1 Introduce a render-path interface contract
+
+Add a stable interface (for example `IRenderPath`) that owns one frame of path execution with explicit inputs/outputs:
+
+- inputs:
+  - camera data
+  - visible scene data
+  - light/culling data
+  - per-frame/pass resources
+- outputs:
+  - recorded/issued passes
+  - frame stats
+
+### 12.2 Promote current Forward/Forward+ path as baseline
+
+Wrap the existing stress/demo Vulkan path into the new interface first, without visual behavior changes.
+
+Deliverable:
+
+- parity baseline path with current visuals and controls
+
+### 12.3 Implement a second render algorithm path
+
+Add a Deferred path with light accumulation while reusing the same scene, light set, and culling inputs.
+
+Deliverable:
+
+- two concrete algorithms behind the same path contract
+
+### 12.4 Add runtime path switching and shared telemetry
+
+Provide hot-switching between path implementations at runtime and expose path identity in title/debug stats.
+
+Deliverable:
+
+- reproducible A/B comparison:
+  - same scene
+  - same lights
+  - same culling mode
+  - different render algorithm
+
+### 12.5 Extract common pass modules
+
+Refactor shared pieces into reusable modules/nodes:
+
+- depth prepass
+- shadow pass
+- light culling pass
+- scene shading pass
+- debug overlay pass
+
+Deliverable:
+
+- less demo-specific glue and cleaner composition for future recipes
+
+## 13) Shader Modularization Baseline (Now In Place)
 
 To support scalable render-path composition, a shared Vulkan shader common layer now exists:
 
@@ -277,7 +357,7 @@ Current paths already consuming these shared blocks:
 
 This reduces shader contract drift and should be treated as a required baseline for future recipe modules.
 
-## 12) Immediate Follow-up (Recommended)
+## 14) Immediate Follow-up (Recommended)
 
 Before increasing render-path permutations, add one more shader refactor pass:
 
@@ -286,7 +366,7 @@ Before increasing render-path permutations, add one more shader refactor pass:
 - keep per-demo style/tuning local, but keep math/contract code shared
 - README/docs explain how to add new recipes/modules
 
-## 13) Recommended Immediate Start
+## 15) Recommended Immediate Start
 
 Start with Phase 1 + Phase 2 for lowest risk:
 

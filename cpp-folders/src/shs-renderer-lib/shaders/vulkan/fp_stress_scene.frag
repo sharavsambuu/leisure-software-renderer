@@ -353,16 +353,32 @@ vec3 eval_local_light(uint idx, vec3 N, vec3 V, vec3 albedo, float metallic, flo
     float range = max(light.position_range.w, 0.001);
     vec3 local_to_light = light_sample_pos - v_world_pos;
     float dist = length(local_to_light);
+    float rect_forward = 0.0;
 
     if (light_type == SHS_LIGHT_TYPE_RECT_AREA)
     {
         vec3 right = normalize(light.axis_spot_outer.xyz);
         vec3 up = normalize(light.up_shape_x.xyz);
+        vec3 emit_dir = normalize(light.direction_spot.xyz);
         float hx = max(light.up_shape_x.w, 1e-4);
         float hy = max(light.shape_attenuation.x, 1e-4);
         vec3 rel = v_world_pos - light.position_range.xyz;
-        float x = clamp(dot(rel, right), -hx, hx);
-        float y = clamp(dot(rel, up), -hy, hy);
+
+        // Keep rect-area influence in front of the emitter and inside its
+        // rounded prism distance bound (rect face dilated by range).
+        rect_forward = dot(rel, emit_dir);
+        if (rect_forward <= 1e-4 || rect_forward >= range) return vec3(0.0);
+
+        float lx = dot(rel, right);
+        float ly = dot(rel, up);
+        float x = clamp(lx, -hx, hx);
+        float y = clamp(ly, -hy, hy);
+
+        float dx = max(abs(lx) - hx, 0.0);
+        float dy = max(abs(ly) - hy, 0.0);
+        float rounded_prism_dist = length(vec3(dx, dy, rect_forward));
+        if (rounded_prism_dist >= range) return vec3(0.0);
+
         light_sample_pos = light.position_range.xyz + right * x + up * y;
         local_to_light = light_sample_pos - v_world_pos;
         dist = length(local_to_light);
@@ -381,7 +397,7 @@ vec3 eval_local_light(uint idx, vec3 N, vec3 V, vec3 albedo, float metallic, flo
         dist = length(local_to_light);
     }
 
-    if (dist >= range) return vec3(0.0);
+    if (dist <= 1e-5 || dist >= range) return vec3(0.0);
     vec3 L = local_to_light / max(dist, 1e-5);
     float atten = shs_eval_light_attenuation_quadratic(
         dist,
@@ -405,9 +421,10 @@ vec3 eval_local_light(uint idx, vec3 N, vec3 V, vec3 albedo, float metallic, flo
     else if (light_type == SHS_LIGHT_TYPE_RECT_AREA)
     {
         vec3 emit_dir = normalize(light.direction_spot.xyz);
-        float one_sided = max(dot(emit_dir, v_world_pos - light_sample_pos), 0.0);
+        float one_sided = max(dot(emit_dir, -L), 0.0);
         if (one_sided <= 0.0) return vec3(0.0);
-        atten *= one_sided;
+        float forward_falloff = clamp(1.0 - rect_forward / max(range, 1e-4), 0.0, 1.0);
+        atten *= one_sided * forward_falloff;
     }
     else if (light_type == SHS_LIGHT_TYPE_TUBE_AREA)
     {
@@ -433,6 +450,13 @@ uint cluster_slice_from_view_depth(float view_depth, uint z_slices)
 
 void main()
 {
+    // material_params.w > 0.5 => unlit debug geometry (light volume visualization).
+    if (pc.material_params.w > 0.5)
+    {
+        out_color = vec4(clamp(pc.base_color.rgb, vec3(0.0), vec3(1.0)), 1.0);
+        return;
+    }
+
     vec3 albedo = v_base_color;
     float metallic = clamp(pc.material_params.x, 0.0, 1.0);
     float roughness = clamp(pc.material_params.y, 0.04, 1.0);
