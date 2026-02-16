@@ -258,9 +258,35 @@ If separating implementation `.cpp` files:
 - Runtime toggles/state are controlled through one contract
 - Shadow occlusion default remains OFF
 - Compatibility validation rejects invalid recipes early
+
+## 11) Shader Modularization Baseline (Now In Place)
+
+To support scalable render-path composition, a shared Vulkan shader common layer now exists:
+
+- `cpp-folders/src/shs-renderer-lib/shaders/vulkan/common/math.glsl`
+- `cpp-folders/src/shs-renderer-lib/shaders/vulkan/common/light_constants.glsl`
+- `cpp-folders/src/shs-renderer-lib/shaders/vulkan/common/light_math.glsl`
+- `cpp-folders/src/shs-renderer-lib/shaders/vulkan/common/culling_light_struct.glsl`
+
+Current paths already consuming these shared blocks:
+
+- light-types culling Vulkan demo fragment shader
+- forward-plus stress scene fragment shader
+- forward-plus stress light-culling compute shader
+- shape cell/volume culling compute shaders
+
+This reduces shader contract drift and should be treated as a required baseline for future recipe modules.
+
+## 12) Immediate Follow-up (Recommended)
+
+Before increasing render-path permutations, add one more shader refactor pass:
+
+- extract shared BRDF helpers into common modules
+- extract shared shadow sampling/filter helpers into common modules
+- keep per-demo style/tuning local, but keep math/contract code shared
 - README/docs explain how to add new recipes/modules
 
-## 11) Recommended Immediate Start
+## 13) Recommended Immediate Start
 
 Start with Phase 1 + Phase 2 for lowest risk:
 

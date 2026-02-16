@@ -60,19 +60,29 @@ endif()
 if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
     set(VK_TRI_SHADER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/shaders")
     set(VK_DEFAULT_SHADER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../shs-renderer-lib/shaders/vulkan")
+    set(VK_SHADER_COMMON_DIR "${VK_DEFAULT_SHADER_DIR}/common")
     set(VK_TRI_OUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/shaders")
     file(MAKE_DIRECTORY "${VK_TRI_OUT_DIR}")
+
+    set(VK_COMMON_MATH "${VK_SHADER_COMMON_DIR}/math.glsl")
+    set(VK_COMMON_LIGHT_CONSTANTS "${VK_SHADER_COMMON_DIR}/light_constants.glsl")
+    set(VK_COMMON_LIGHT_MATH "${VK_SHADER_COMMON_DIR}/light_math.glsl")
+    set(VK_COMMON_CULLING_LIGHT_STRUCT "${VK_SHADER_COMMON_DIR}/culling_light_struct.glsl")
 
     set(VK_TRI_VERT "${VK_TRI_SHADER_DIR}/vulkan_triangle.vert")
     set(VK_TRI_FRAG "${VK_TRI_SHADER_DIR}/vulkan_triangle.frag")
     set(VK_CULLING_VERT "${VK_TRI_SHADER_DIR}/culling_vk.vert")
     set(VK_CULLING_FRAG "${VK_TRI_SHADER_DIR}/culling_vk.frag")
+    set(VK_LIGHT_TYPES_CULLING_VERT "${VK_TRI_SHADER_DIR}/light_types_culling_vk.vert")
+    set(VK_LIGHT_TYPES_CULLING_FRAG "${VK_TRI_SHADER_DIR}/light_types_culling_vk.frag")
     set(VK_SOFT_SHADOW_CULLING_VERT "${VK_TRI_SHADER_DIR}/soft_shadow_culling_vk.vert")
     set(VK_SOFT_SHADOW_CULLING_FRAG "${VK_TRI_SHADER_DIR}/soft_shadow_culling_vk.frag")
     set(VK_TRI_VERT_SPV "${VK_TRI_OUT_DIR}/vulkan_triangle.vert.spv")
     set(VK_TRI_FRAG_SPV "${VK_TRI_OUT_DIR}/vulkan_triangle.frag.spv")
     set(VK_CULLING_VERT_SPV "${VK_TRI_OUT_DIR}/culling_vk.vert.spv")
     set(VK_CULLING_FRAG_SPV "${VK_TRI_OUT_DIR}/culling_vk.frag.spv")
+    set(VK_LIGHT_TYPES_CULLING_VERT_SPV "${VK_TRI_OUT_DIR}/light_types_culling_vk.vert.spv")
+    set(VK_LIGHT_TYPES_CULLING_FRAG_SPV "${VK_TRI_OUT_DIR}/light_types_culling_vk.frag.spv")
     set(VK_SOFT_SHADOW_CULLING_VERT_SPV "${VK_TRI_OUT_DIR}/soft_shadow_culling_vk.vert.spv")
     set(VK_SOFT_SHADOW_CULLING_FRAG_SPV "${VK_TRI_OUT_DIR}/soft_shadow_culling_vk.frag.spv")
 
@@ -130,6 +140,22 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
         OUTPUT "${VK_CULLING_FRAG_SPV}"
         COMMAND ${GLSLANG_VALIDATOR} -V "${VK_CULLING_FRAG}" -o "${VK_CULLING_FRAG_SPV}"
         DEPENDS "${VK_CULLING_FRAG}"
+        VERBATIM
+    )
+    add_custom_command(
+        OUTPUT "${VK_LIGHT_TYPES_CULLING_VERT_SPV}"
+        COMMAND ${GLSLANG_VALIDATOR} -V "${VK_LIGHT_TYPES_CULLING_VERT}" -o "${VK_LIGHT_TYPES_CULLING_VERT_SPV}"
+        DEPENDS "${VK_LIGHT_TYPES_CULLING_VERT}"
+        VERBATIM
+    )
+    add_custom_command(
+        OUTPUT "${VK_LIGHT_TYPES_CULLING_FRAG_SPV}"
+        COMMAND ${GLSLANG_VALIDATOR} -V "${VK_LIGHT_TYPES_CULLING_FRAG}" -o "${VK_LIGHT_TYPES_CULLING_FRAG_SPV}"
+        DEPENDS
+            "${VK_LIGHT_TYPES_CULLING_FRAG}"
+            "${VK_COMMON_LIGHT_CONSTANTS}"
+            "${VK_COMMON_MATH}"
+            "${VK_COMMON_LIGHT_MATH}"
         VERBATIM
     )
     add_custom_command(
@@ -213,7 +239,11 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
     add_custom_command(
         OUTPUT "${VK_FP_SCENE_FRAG_SPV}"
         COMMAND ${GLSLANG_VALIDATOR} -V "${VK_FP_SCENE_FRAG}" -o "${VK_FP_SCENE_FRAG_SPV}"
-        DEPENDS "${VK_FP_SCENE_FRAG}"
+        DEPENDS
+            "${VK_FP_SCENE_FRAG}"
+            "${VK_COMMON_LIGHT_CONSTANTS}"
+            "${VK_COMMON_LIGHT_MATH}"
+            "${VK_COMMON_CULLING_LIGHT_STRUCT}"
         VERBATIM
     )
     add_custom_command(
@@ -225,7 +255,10 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
     add_custom_command(
         OUTPUT "${VK_FP_LIGHT_CULL_COMP_SPV}"
         COMMAND ${GLSLANG_VALIDATOR} -V "${VK_FP_LIGHT_CULL_COMP}" -o "${VK_FP_LIGHT_CULL_COMP_SPV}"
-        DEPENDS "${VK_FP_LIGHT_CULL_COMP}"
+        DEPENDS
+            "${VK_FP_LIGHT_CULL_COMP}"
+            "${VK_COMMON_LIGHT_CONSTANTS}"
+            "${VK_COMMON_CULLING_LIGHT_STRUCT}"
         VERBATIM
     )
     add_custom_command(
@@ -236,6 +269,11 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
     )
     add_custom_target(HelloVulkanTriangleShaders DEPENDS "${VK_TRI_VERT_SPV}" "${VK_TRI_FRAG_SPV}")
     add_custom_target(HelloCullingVkShaders DEPENDS "${VK_CULLING_VERT_SPV}" "${VK_CULLING_FRAG_SPV}")
+    add_custom_target(HelloLightTypesCullingVkShaders
+        DEPENDS
+            "${VK_LIGHT_TYPES_CULLING_VERT_SPV}"
+            "${VK_LIGHT_TYPES_CULLING_FRAG_SPV}"
+    )
     add_custom_target(HelloSoftShadowCullingVkShaders
         DEPENDS
             "${VK_CULLING_VERT_SPV}"
@@ -409,6 +447,15 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
         SHS_VK_CULLING_FRAG_SPV="${VK_CULLING_FRAG_SPV}"
     )
 
+    add_executable(hello_light_types_culling_vk hello_light_types_culling_vk.cpp)
+    add_dependencies(hello_light_types_culling_vk HelloLightTypesCullingVkShaders)
+    target_link_libraries(hello_light_types_culling_vk PRIVATE shs::renderer)
+    set_target_properties(hello_light_types_culling_vk PROPERTIES FOLDER "Demos")
+    target_compile_definitions(hello_light_types_culling_vk PRIVATE
+        SHS_VK_LIGHT_TYPES_CULLING_VERT_SPV="${VK_LIGHT_TYPES_CULLING_VERT_SPV}"
+        SHS_VK_LIGHT_TYPES_CULLING_FRAG_SPV="${VK_LIGHT_TYPES_CULLING_FRAG_SPV}"
+    )
+
     add_executable(hello_soft_shadow_culling_vk hello_soft_shadow_culling_vk.cpp)
     add_dependencies(hello_soft_shadow_culling_vk HelloSoftShadowCullingVkShaders)
     target_link_libraries(hello_soft_shadow_culling_vk PRIVATE shs::renderer)
@@ -437,3 +484,8 @@ add_executable(hello_soft_shadow_culling_sw hello_soft_shadow_culling_sw.cpp)
 target_link_libraries(hello_soft_shadow_culling_sw PRIVATE shs::renderer)
 set_target_properties(hello_soft_shadow_culling_sw PROPERTIES FOLDER "Demos")
 target_compile_features(hello_soft_shadow_culling_sw PRIVATE cxx_std_20)
+
+add_executable(hello_light_types_culling_sw hello_light_types_culling_sw.cpp)
+target_link_libraries(hello_light_types_culling_sw PRIVATE shs::renderer)
+set_target_properties(hello_light_types_culling_sw PROPERTIES FOLDER "Demos")
+target_compile_features(hello_light_types_culling_sw PRIVATE cxx_std_20)

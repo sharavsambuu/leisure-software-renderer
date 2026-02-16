@@ -39,6 +39,7 @@
 #include <shs/rhi/drivers/vulkan/vk_cmd_utils.hpp>
 #include <shs/rhi/drivers/vulkan/vk_memory_utils.hpp>
 #include <shs/rhi/drivers/vulkan/vk_shader_utils.hpp>
+#include <shs/pipeline/render_path_compiler.hpp>
 #include <shs/scene/scene_culling.hpp>
 #include <shs/scene/scene_elements.hpp>
 
@@ -509,6 +510,7 @@ public:
         jolt::init_jolt();
         init_sdl();
         init_backend();
+        configure_render_path_defaults();
         configure_recording_workers();
         create_worker_pools();
         create_upload_resources();
@@ -595,6 +597,37 @@ private:
         {
             jobs_.reset();
         }
+    }
+
+    void configure_render_path_defaults()
+    {
+        render_path_recipe_ = make_default_soft_shadow_culling_recipe(RenderBackendType::Vulkan);
+        const RenderPathCompiler compiler{};
+        render_path_plan_ = compiler.compile(render_path_recipe_, ctx_, nullptr);
+
+        for (const auto& w : render_path_plan_.warnings)
+        {
+            std::fprintf(stderr, "[render-path][vk][warn] %s\n", w.c_str());
+        }
+        for (const auto& e : render_path_plan_.errors)
+        {
+            std::fprintf(stderr, "[render-path][vk][error] %s\n", e.c_str());
+        }
+
+        render_path_plan_valid_ = render_path_plan_.valid;
+        if (!render_path_plan_valid_)
+        {
+            std::fprintf(stderr, "[render-path][vk] Recipe compile failed. Falling back to legacy demo defaults.\n");
+            return;
+        }
+
+        std::fprintf(stderr, "[render-path][vk] Using recipe '%s' with %zu passes.\n",
+                     render_path_plan_.recipe_name.c_str(),
+                     render_path_plan_.pass_chain.size());
+        enable_occlusion_ = render_path_plan_.runtime_state.view_occlusion_enabled;
+        enable_shadow_occlusion_culling_ = render_path_plan_.runtime_state.shadow_occlusion_enabled;
+        show_aabb_debug_ = render_path_plan_.runtime_state.debug_aabb;
+        render_lit_surfaces_ = render_path_plan_.runtime_state.lit_mode;
     }
 
     void create_worker_pools()
@@ -2799,7 +2832,7 @@ private:
         std::snprintf(
             title,
             sizeof(title),
-            "Soft Shadow Culling Demo (VK) | Scene:%u Frustum:%u Occ:%u Vis:%u | Shadow F:%u O:%u V:%u | Occ:%s | SOcc:%s | Mode:%s | AABB:%s | Rec:%s | %.2f ms",
+            "Soft Shadow Culling Demo (VK) | Scene:%u Frustum:%u Occ:%u Vis:%u | Shadow F:%u O:%u V:%u | Occ:%s | SOcc:%s | Mode:%s | AABB:%s | Rec:%s | RP:%s | %.2f ms",
             scene_stats_.scene_count,
             scene_stats_.frustum_visible_count,
             scene_stats_.occluded_count,
@@ -2812,6 +2845,7 @@ private:
             render_lit_surfaces_ ? "Lit" : "Debug",
             show_aabb_debug_ ? "ON" : "OFF",
             used_secondary_this_frame_ ? "MT-secondary" : "Inline",
+            render_path_plan_valid_ ? "OK" : "Fallback",
             avg_ms);
         SDL_SetWindowTitle(win_, title);
     }
@@ -3083,6 +3117,9 @@ private:
     float camera_prev_pitch_ = 0.0f;
     CullingStats scene_stats_{};
     CullingStats shadow_stats_{};
+    RenderPathRecipe render_path_recipe_{};
+    RenderPathExecutionPlan render_path_plan_{};
+    bool render_path_plan_valid_ = false;
 };
 
 } // namespace

@@ -54,3 +54,17 @@ Next major goal:
 Plan document:
 
 - `docs/dynamic-render-path-composition-plan.md`
+
+## 7) Reusable Light Runtime and Shader Contract Notes
+
+Recent work added reusable light runtime abstractions and shader-level reuse that are worth preserving:
+
+- shared C++ light runtime abstractions:
+  - `cpp-folders/src/shs-renderer-lib/include/shs/lighting/light_runtime.hpp`
+- shared Vulkan shader common blocks:
+  - `cpp-folders/src/shs-renderer-lib/shaders/vulkan/common/*.glsl`
+
+Practical effect:
+
+- less duplicated light-type logic across SW/VK demos
+- lower risk of contract drift between CPU light packing and GPU light evaluation

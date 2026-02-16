@@ -1,4 +1,8 @@
 #version 450
+#extension GL_GOOGLE_include_directive : require
+
+#include "common/light_constants.glsl"
+#include "common/culling_light_struct.glsl"
 
 layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 
@@ -18,20 +22,6 @@ layout(set = 0, binding = 0) uniform CameraUBO
     vec4 sun_shadow_params;
     vec4 sun_shadow_filter;
 } ubo;
-
-struct CullingLightGPU
-{
-    vec4 position_range;
-    vec4 color_intensity;
-    vec4 direction_spot;
-    vec4 axis_spot_outer;
-    vec4 up_shape_x;
-    vec4 shape_attenuation;
-    uvec4 type_shape_flags;
-    vec4 cull_sphere;
-    vec4 cull_aabb_min;
-    vec4 cull_aabb_max;
-};
 
 layout(set = 0, binding = 1, std430) readonly buffer LightBuffer
 {
@@ -53,8 +43,6 @@ layout(set = 0, binding = 4, std430) readonly buffer TileDepthRanges
 {
     vec2 tile_depth_ranges[];
 };
-
-const uint LIGHT_FLAG_ENABLED = 1u;
 
 vec4 resolve_cull_sphere(CullingLightGPU light)
 {
@@ -186,7 +174,7 @@ void main()
     {
         CullingLightGPU light = light_buffer.lights[i];
         uint flags = light.type_shape_flags.z;
-        if ((flags & LIGHT_FLAG_ENABLED) == 0u) continue;
+        if ((flags & SHS_LIGHT_FLAG_ENABLED) == 0u) continue;
 
         vec4 cull_sphere = resolve_cull_sphere(light);
         vec2 screen = vec2(0.0);

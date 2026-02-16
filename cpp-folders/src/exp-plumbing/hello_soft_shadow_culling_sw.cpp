@@ -26,6 +26,7 @@
 #include <shs/core/context.hpp>
 #include <shs/gfx/rt_types.hpp>
 #include <shs/gfx/rt_shadow.hpp>
+#include <shs/pipeline/render_path_compiler.hpp>
 #include <shs/camera/camera_math.hpp>
 #include <shs/camera/convention.hpp>
 
@@ -618,6 +619,32 @@ int main() {
     };
     if (!runtime.valid()) return 1;
 
+    const RenderPathRecipe render_recipe = make_default_soft_shadow_culling_recipe(RenderBackendType::Software);
+    const RenderPathCompiler render_path_compiler{};
+    BackendCapabilities recipe_caps{};
+    recipe_caps.supports_present = true;
+    recipe_caps.supports_offscreen = true;
+    const RenderPathCapabilitySet recipe_cap_set = make_render_path_capability_set(RenderBackendType::Software, recipe_caps);
+    const RenderPathExecutionPlan render_plan = render_path_compiler.compile(render_recipe, recipe_cap_set, nullptr);
+    for (const auto& w : render_plan.warnings)
+    {
+        std::fprintf(stderr, "[render-path][sw][warn] %s\n", w.c_str());
+    }
+    for (const auto& e : render_plan.errors)
+    {
+        std::fprintf(stderr, "[render-path][sw][error] %s\n", e.c_str());
+    }
+    if (render_plan.valid)
+    {
+        std::fprintf(stderr, "[render-path][sw] Using recipe '%s' with %zu passes.\n",
+                     render_plan.recipe_name.c_str(),
+                     render_plan.pass_chain.size());
+    }
+    else
+    {
+        std::fprintf(stderr, "[render-path][sw] Recipe compile failed. Falling back to legacy demo defaults.\n");
+    }
+
     RT_ColorLDR ldr_rt{CANVAS_W, CANVAS_H};
     std::vector<uint8_t> rgba8_staging(CANVAS_W * CANVAS_H * 4);
     std::vector<float> depth_buffer((size_t)CANVAS_W * (size_t)CANVAS_H, 1.0f);
@@ -757,10 +784,11 @@ int main() {
     SceneCullingContext shadow_cull_ctx{};
 
     FreeCamera camera;
-    bool show_aabb_debug = false;
-    bool render_lit_surfaces = true;
-    bool enable_occlusion = true;
-    bool enable_shadow_occlusion_culling = kShadowOcclusionDefault;
+    bool show_aabb_debug = render_plan.valid ? render_plan.runtime_state.debug_aabb : false;
+    bool render_lit_surfaces = render_plan.valid ? render_plan.runtime_state.lit_mode : true;
+    bool enable_occlusion = render_plan.valid ? render_plan.runtime_state.view_occlusion_enabled : true;
+    bool enable_shadow_occlusion_culling =
+        render_plan.valid ? render_plan.runtime_state.shadow_occlusion_enabled : kShadowOcclusionDefault;
     bool mouse_drag_held = false;
     std::printf("Controls: LMB/RMB drag look, WASD+QE move, Shift boost, B toggle AABB, L toggle debug/lit, F2 toggle occlusion, F3 toggle shadow occlusion\n");
 

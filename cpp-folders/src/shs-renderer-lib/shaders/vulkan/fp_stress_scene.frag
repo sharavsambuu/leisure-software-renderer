@@ -1,4 +1,9 @@
 #version 450
+#extension GL_GOOGLE_include_directive : require
+
+#include "common/light_constants.glsl"
+#include "common/light_math.glsl"
+#include "common/culling_light_struct.glsl"
 
 layout(set = 0, binding = 0) uniform CameraUBO
 {
@@ -16,20 +21,6 @@ layout(set = 0, binding = 0) uniform CameraUBO
     vec4 sun_shadow_params;       // x: strength, y: bias_const, z: bias_slope, w: pcf_radius
     vec4 sun_shadow_filter;       // x: pcf_step, y: enabled
 } ubo;
-
-struct CullingLightGPU
-{
-    vec4 position_range;
-    vec4 color_intensity;
-    vec4 direction_spot;
-    vec4 axis_spot_outer;
-    vec4 up_shape_x;
-    vec4 shape_attenuation;
-    uvec4 type_shape_flags;
-    vec4 cull_sphere;
-    vec4 cull_aabb_min;
-    vec4 cull_aabb_max;
-};
 
 struct ShadowLightGPU
 {
@@ -77,15 +68,6 @@ layout(location = 2) in vec3 v_base_color;
 layout(location = 0) out vec4 out_color;
 
 const float PI = 3.14159265359;
-const uint LIGHT_TYPE_POINT = 1u;
-const uint LIGHT_TYPE_SPOT = 2u;
-const uint LIGHT_TYPE_RECT_AREA = 3u;
-const uint LIGHT_TYPE_TUBE_AREA = 4u;
-const uint LIGHT_FLAG_ENABLED = 1u;
-const uint LIGHT_FLAG_AFFECTS_SHADOWS = 8u;
-const uint LIGHT_ATTEN_LINEAR = 0u;
-const uint LIGHT_ATTEN_SMOOTH = 1u;
-const uint LIGHT_ATTEN_INVERSE_SQUARE = 2u;
 const uint SHADOW_TECH_NONE = 0u;
 const uint SHADOW_TECH_DIRECTIONAL = 1u;
 const uint SHADOW_TECH_SPOT = 2u;
@@ -143,39 +125,6 @@ vec3 eval_pbr_light(vec3 N, vec3 V, vec3 L, vec3 radiance, vec3 albedo, float me
     vec3 kD = (vec3(1.0) - kS) * (1.0 - metallic);
 
     return (kD * albedo / PI + specular) * radiance * NdotL;
-}
-
-float eval_light_attenuation(
-    float dist,
-    float range,
-    uint att_model,
-    float att_power,
-    float att_bias,
-    float att_cutoff)
-{
-    float r = max(range, 1e-4);
-    float t = clamp(dist / r, 0.0, 1.0);
-    float edge = 1.0 - t;
-    float a = 0.0;
-
-    if (att_model == LIGHT_ATTEN_LINEAR)
-    {
-        a = edge;
-    }
-    else if (att_model == LIGHT_ATTEN_INVERSE_SQUARE)
-    {
-        float d2 = max(dist * dist, max(att_bias, 1e-5));
-        float inv = (r * r) / d2;
-        a = inv * edge * edge;
-    }
-    else
-    {
-        a = edge * edge;
-    }
-
-    a = pow(max(a, 0.0), max(att_power, 0.001));
-    if (a <= max(att_cutoff, 0.0)) return 0.0;
-    return a;
 }
 
 float shadow_bias(float ndotl, float bias_const, float bias_slope)
@@ -322,7 +271,7 @@ void point_shadow_face_uv(vec3 dir, out uint face, out vec2 uv, out float view_d
 float eval_local_shadow(uint idx, vec3 N, vec3 L)
 {
     CullingLightGPU light = light_buffer.lights[idx];
-    if ((light.type_shape_flags.z & LIGHT_FLAG_AFFECTS_SHADOWS) == 0u) return 1.0;
+    if ((light.type_shape_flags.z & SHS_LIGHT_FLAG_AFFECTS_SHADOWS) == 0u) return 1.0;
 
     ShadowLightGPU s = shadow_buffer.shadow_lights[idx];
     if (s.meta.w == 0u) return 1.0;
@@ -391,11 +340,11 @@ vec3 eval_local_light(uint idx, vec3 N, vec3 V, vec3 albedo, float metallic, flo
     uint light_type = light.type_shape_flags.x;
     uint flags = light.type_shape_flags.z;
     uint att_model = light.type_shape_flags.w;
-    if ((flags & LIGHT_FLAG_ENABLED) == 0u) return vec3(0.0);
-    if (light_type != LIGHT_TYPE_POINT &&
-        light_type != LIGHT_TYPE_SPOT &&
-        light_type != LIGHT_TYPE_RECT_AREA &&
-        light_type != LIGHT_TYPE_TUBE_AREA)
+    if ((flags & SHS_LIGHT_FLAG_ENABLED) == 0u) return vec3(0.0);
+    if (light_type != SHS_LIGHT_TYPE_POINT &&
+        light_type != SHS_LIGHT_TYPE_SPOT &&
+        light_type != SHS_LIGHT_TYPE_RECT_AREA &&
+        light_type != SHS_LIGHT_TYPE_TUBE_AREA)
     {
         return vec3(0.0);
     }
@@ -405,7 +354,7 @@ vec3 eval_local_light(uint idx, vec3 N, vec3 V, vec3 albedo, float metallic, flo
     vec3 local_to_light = light_sample_pos - v_world_pos;
     float dist = length(local_to_light);
 
-    if (light_type == LIGHT_TYPE_RECT_AREA)
+    if (light_type == SHS_LIGHT_TYPE_RECT_AREA)
     {
         vec3 right = normalize(light.axis_spot_outer.xyz);
         vec3 up = normalize(light.up_shape_x.xyz);
@@ -418,7 +367,7 @@ vec3 eval_local_light(uint idx, vec3 N, vec3 V, vec3 albedo, float metallic, flo
         local_to_light = light_sample_pos - v_world_pos;
         dist = length(local_to_light);
     }
-    else if (light_type == LIGHT_TYPE_TUBE_AREA)
+    else if (light_type == SHS_LIGHT_TYPE_TUBE_AREA)
     {
         vec3 axis = normalize(light.axis_spot_outer.xyz);
         float half_len = max(light.up_shape_x.w, 1e-4);
@@ -434,7 +383,7 @@ vec3 eval_local_light(uint idx, vec3 N, vec3 V, vec3 albedo, float metallic, flo
 
     if (dist >= range) return vec3(0.0);
     vec3 L = local_to_light / max(dist, 1e-5);
-    float atten = eval_light_attenuation(
+    float atten = shs_eval_light_attenuation_quadratic(
         dist,
         range,
         att_model,
@@ -443,7 +392,7 @@ vec3 eval_local_light(uint idx, vec3 N, vec3 V, vec3 albedo, float metallic, flo
         light.shape_attenuation.w);
     if (atten <= 0.0) return vec3(0.0);
 
-    if (light_type == LIGHT_TYPE_SPOT)
+    if (light_type == SHS_LIGHT_TYPE_SPOT)
     {
         vec3 spot_dir = normalize(light.direction_spot.xyz);
         float inner_cos = clamp(light.direction_spot.w, -1.0, 1.0);
@@ -453,14 +402,14 @@ vec3 eval_local_light(uint idx, vec3 N, vec3 V, vec3 albedo, float metallic, flo
         if (spot <= 0.0) return vec3(0.0);
         atten *= spot;
     }
-    else if (light_type == LIGHT_TYPE_RECT_AREA)
+    else if (light_type == SHS_LIGHT_TYPE_RECT_AREA)
     {
         vec3 emit_dir = normalize(light.direction_spot.xyz);
         float one_sided = max(dot(emit_dir, v_world_pos - light_sample_pos), 0.0);
         if (one_sided <= 0.0) return vec3(0.0);
         atten *= one_sided;
     }
-    else if (light_type == LIGHT_TYPE_TUBE_AREA)
+    else if (light_type == SHS_LIGHT_TYPE_TUBE_AREA)
     {
         float tube_radius = max(light.shape_attenuation.x, 1e-4);
         float edge_soften = clamp(tube_radius / max(range, 1e-4), 0.05, 1.0);

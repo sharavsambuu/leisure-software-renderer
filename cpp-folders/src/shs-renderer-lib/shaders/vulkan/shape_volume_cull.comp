@@ -1,4 +1,7 @@
 #version 450
+#extension GL_GOOGLE_include_directive : require
+
+#include "common/math.glsl"
 
 // Deprecated compatibility shader name.
 // Canonical file: shape_cell_cull.comp.
@@ -86,13 +89,6 @@ layout(push_constant) uniform CullPush
     vec4 eps;
 } pc;
 
-vec3 normalize_or(vec3 v, vec3 fallback)
-{
-    float len2 = dot(v, v);
-    if (len2 <= 1e-20) return fallback;
-    return v * inversesqrt(len2);
-}
-
 float plane_signed_distance(vec4 plane, vec3 p)
 {
     return dot(plane.xyz, p) + plane.w;
@@ -130,7 +126,7 @@ float support_capsule(vec3 a, vec3 b, float radius, vec3 dir)
 
 float support_cone(vec3 apex, vec3 axis, float height, float radius, vec3 dir)
 {
-    vec3 ax = normalize_or(axis, vec3(0.0, -1.0, 0.0));
+    vec3 ax = shs_normalize_or(axis, vec3(0.0, -1.0, 0.0));
     vec3 base = apex + ax * max(height, 0.0);
     float ax_dot = dot(dir, ax);
     vec3 perp = dir - ax * ax_dot;
@@ -140,7 +136,7 @@ float support_cone(vec3 apex, vec3 axis, float height, float radius, vec3 dir)
 
 float support_cone_frustum(vec3 apex, vec3 axis, float near_d, float far_d, float near_r, float far_r, vec3 dir)
 {
-    vec3 ax = normalize_or(axis, vec3(0.0, -1.0, 0.0));
+    vec3 ax = shs_normalize_or(axis, vec3(0.0, -1.0, 0.0));
     float nd = max(near_d, 0.0);
     float fd = max(far_d, nd);
     vec3 near_c = apex + ax * nd;
@@ -155,7 +151,7 @@ float support_cone_frustum(vec3 apex, vec3 axis, float near_d, float far_d, floa
 
 float support_cylinder(vec3 center, vec3 axis, float half_h, float radius, vec3 dir)
 {
-    vec3 ax = normalize_or(axis, vec3(0.0, 1.0, 0.0));
+    vec3 ax = shs_normalize_or(axis, vec3(0.0, 1.0, 0.0));
     float ax_dot = dot(dir, ax);
     vec3 perp = dir - ax * ax_dot;
     return dot(dir, center) + max(half_h, 0.0) * abs(ax_dot) + max(radius, 0.0) * length(perp);

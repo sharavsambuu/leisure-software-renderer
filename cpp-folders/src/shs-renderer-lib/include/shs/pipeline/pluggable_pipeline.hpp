@@ -23,6 +23,7 @@
 
 #include "shs/pipeline/frame_graph.hpp"
 #include "shs/pipeline/pass_registry.hpp"
+#include "shs/pipeline/render_path_compiler.hpp"
 #include "shs/pipeline/render_pass.hpp"
 #include "shs/pipeline/technique_profile.hpp"
 #include "shs/rhi/sync/vk_runtime.hpp"
@@ -90,6 +91,50 @@ namespace shs
                 add_pass_instance(std::move(p));
             }
             return ok;
+        }
+
+        bool configure_from_render_path_plan(
+            const PassFactoryRegistry& registry,
+            const RenderPathExecutionPlan& plan,
+            std::vector<std::string>* out_missing_ids = nullptr)
+        {
+            passes_.clear();
+            graph_dirty_ = true;
+            if (out_missing_ids) out_missing_ids->clear();
+
+            bool ok = plan.valid;
+            for (const auto& entry : plan.pass_chain)
+            {
+                auto p = registry.create(entry.id);
+                if (!p)
+                {
+                    if (entry.required) ok = false;
+                    if (out_missing_ids) out_missing_ids->push_back(entry.id);
+                    continue;
+                }
+                if (!p->supports_technique_mode(plan.technique_mode))
+                {
+                    if (entry.required) ok = false;
+                    if (out_missing_ids) out_missing_ids->push_back(entry.id);
+                    continue;
+                }
+                add_pass_instance(std::move(p));
+            }
+            return ok;
+        }
+
+        bool configure_from_render_path_recipe(
+            const PassFactoryRegistry& registry,
+            const RenderPathCompiler& compiler,
+            const RenderPathRecipe& recipe,
+            const RenderPathCapabilitySet& capabilities,
+            RenderPathExecutionPlan* out_plan = nullptr,
+            std::vector<std::string>* out_missing_ids = nullptr)
+        {
+            const RenderPathExecutionPlan plan = compiler.compile(recipe, capabilities, &registry);
+            if (out_plan) *out_plan = plan;
+            const bool configured = configure_from_render_path_plan(registry, plan, out_missing_ids);
+            return configured && plan.valid;
         }
 
         IRenderPass* find(const std::string& pass_id)

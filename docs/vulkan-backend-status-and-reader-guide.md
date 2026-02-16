@@ -105,12 +105,48 @@ Integration examples checked:
 - Swapchain uploader currently uses legacy `vkCmdPipelineBarrier` transitions (not sync2-based helper path yet).
 - Ray query capability is probed and surfaced, but no full ray-query rendering workflow is integrated in this backend layer.
 
-## 6) Runtime Knobs
+## 6) Shader Organization Status (2026-02-16)
+
+### 6.1) Shared Vulkan shader modules added
+
+Common reusable GLSL blocks now exist under:
+
+- `cpp-folders/src/shs-renderer-lib/shaders/vulkan/common/math.glsl`
+- `cpp-folders/src/shs-renderer-lib/shaders/vulkan/common/light_constants.glsl`
+- `cpp-folders/src/shs-renderer-lib/shaders/vulkan/common/light_math.glsl`
+- `cpp-folders/src/shs-renderer-lib/shaders/vulkan/common/culling_light_struct.glsl`
+
+These are intended to reduce drift in light constants, attenuation logic, and core struct contracts.
+
+### 6.2) Refactored shader consumers
+
+Current consumers include:
+
+- `cpp-folders/src/exp-plumbing/shaders/light_types_culling_vk.frag`
+- `cpp-folders/src/shs-renderer-lib/shaders/vulkan/fp_stress_scene.frag`
+- `cpp-folders/src/shs-renderer-lib/shaders/vulkan/fp_stress_light_cull.comp`
+- `cpp-folders/src/shs-renderer-lib/shaders/vulkan/shape_cell_cull.comp`
+- `cpp-folders/src/shs-renderer-lib/shaders/vulkan/shape_volume_cull.comp`
+
+### 6.3) Build-system note (important)
+
+`exp-plumbing/CMakeLists.txt` now explicitly tracks shared include files in shader compile `DEPENDS` for affected SPIR-V targets.  
+This prevents stale shader binaries when common GLSL modules change.
+
+### 6.4) Remaining shader debt
+
+Still worth modularizing in future:
+
+- shared BRDF utility blocks
+- shared shadow sampling/filter helpers
+- optional unified local-light evaluation helpers
+
+## 7) Runtime Knobs
 
 - `SHS_VK_PRESENT_MODE=mailbox` requests mailbox present mode when supported.
 - Default behavior prefers FIFO for portability/stability.
 
-## 7) Reading Order For Future Contributors
+## 8) Reading Order For Future Contributors
 
 Recommended order:
 
@@ -127,12 +163,13 @@ Then inspect demo usage patterns:
 - `cpp-folders/src/exp-plumbing/hello_forward_plus_stress_vulkan.cpp`
 - `cpp-folders/src/exp-plumbing/hello_soft_shadow_culling_vk.cpp`
 
-## 8) Suggested Next Steps
+## 9) Suggested Next Steps
 
 Priority order for the next backend phase:
 
 1. Move core paths toward 2+ frames in flight by adopting per-frame resource rings consistently.
 2. Add an opt-in dynamic rendering path while keeping legacy render pass fallback.
 3. Migrate remaining barrier-heavy utilities to sync2 helper paths.
-4. Add clearer perf/debug instrumentation (timestamps, pass markers, GPU timing summary).
-5. Introduce a lightweight allocation strategy to reduce manual allocation churn.
+4. Continue shader modularization to cover BRDF + shadow helper reuse.
+5. Add clearer perf/debug instrumentation (timestamps, pass markers, GPU timing summary).
+6. Introduce a lightweight allocation strategy to reduce manual allocation churn.

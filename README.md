@@ -260,7 +260,8 @@
 <p><img width="1200" height="900" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/physics-based-rendering-light-shafts-1.png"></p>
 <p><img width="1200" height="930" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/occlusion-culling.png"></p>
 <p><img width="1200" height="900" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/shadow-mapping-with-cullings.png"></p>
-
+<p><img width="1200" height="900" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/light-types-debug.png"></p>
+<p><img width="1200" height="900" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/light-types-lit.png"></p>
 
 
 
