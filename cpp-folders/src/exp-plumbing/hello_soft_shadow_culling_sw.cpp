@@ -41,7 +41,7 @@ const int SHADOW_MAP_W = 1024;
 const int SHADOW_MAP_H = 1024;
 const int SHADOW_OCC_W = 320;
 const int SHADOW_OCC_H = 320;
-constexpr bool kEnableShadowOcclusionCulling = false;
+constexpr bool kShadowOcclusionDefault = false;
 constexpr float kSunHeightLift = 2.5f;
 constexpr float kSunOrbitRadiusScale = 0.90f;
 constexpr float kSunMinOrbitRadius = 28.0f;
@@ -760,8 +760,9 @@ int main() {
     bool show_aabb_debug = false;
     bool render_lit_surfaces = true;
     bool enable_occlusion = true;
+    bool enable_shadow_occlusion_culling = kShadowOcclusionDefault;
     bool mouse_drag_held = false;
-    std::printf("Controls: LMB/RMB drag look, WASD+QE move, Shift boost, B toggle AABB, L toggle debug/lit, F2 toggle occlusion\n");
+    std::printf("Controls: LMB/RMB drag look, WASD+QE move, Shift boost, B toggle AABB, L toggle debug/lit, F2 toggle occlusion, F3 toggle shadow occlusion\n");
 
     auto start_time = std::chrono::steady_clock::now();
     auto last_time = start_time;
@@ -778,6 +779,13 @@ int main() {
         if (input.toggle_bot) show_aabb_debug = !show_aabb_debug;
         if (input.toggle_light_shafts) render_lit_surfaces = !render_lit_surfaces;
         if (input.cycle_cull_mode) enable_occlusion = !enable_occlusion;
+        if (input.toggle_front_face)
+        {
+            enable_shadow_occlusion_culling = !enable_shadow_occlusion_culling;
+            shadow_cull_ctx.clear();
+            auto shadow_elems_reset = shadow_cull_scene.elements();
+            for (auto& elem : shadow_elems_reset) elem.occluded = false;
+        }
         const bool look_drag = input.right_mouse_down || input.left_mouse_down;
         if (look_drag != mouse_drag_held) {
             mouse_drag_held = look_drag;
@@ -847,7 +855,7 @@ int main() {
         const Frustum light_frustum = extract_frustum_planes(light_vp);
 
         shadow_cull_ctx.run_frustum(shadow_cull_scene, light_frustum);
-        const bool enable_shadow_occlusion = enable_occlusion && kEnableShadowOcclusionCulling;
+        const bool enable_shadow_occlusion = enable_occlusion && enable_shadow_occlusion_culling;
         shadow_cull_ctx.run_software_occlusion(
             shadow_cull_scene,
             enable_shadow_occlusion,
@@ -1024,7 +1032,7 @@ int main() {
         std::snprintf(
             title,
             sizeof(title),
-            "Soft Shadow Culling Demo (SW) | Scene:%u Frustum:%u Occ:%u Vis:%u | Shadow F:%u O:%u V:%u | Occ:%s | Mode:%s | AABB:%s",
+            "Soft Shadow Culling Demo (SW) | Scene:%u Frustum:%u Occ:%u Vis:%u | Shadow F:%u O:%u V:%u | Occ:%s | SOcc:%s | Mode:%s | AABB:%s",
             display_stats.scene_count,
             display_stats.frustum_visible_count,
             display_stats.occluded_count,
@@ -1033,11 +1041,12 @@ int main() {
             shadow_stats.occluded_count,
             shadow_stats.visible_count,
             enable_occlusion ? "ON" : "OFF",
+            enable_shadow_occlusion_culling ? "ON" : "OFF",
             render_lit_surfaces ? "Lit" : "Debug",
             show_aabb_debug ? "ON" : "OFF");
         runtime.set_title(title);
         std::printf(
-            "Scene:%u Frustum:%u Occ:%u Vis:%u | Shadow F:%u O:%u V:%u | Occ:%s | Mode:%s | AABB:%s\r",
+            "Scene:%u Frustum:%u Occ:%u Vis:%u | Shadow F:%u O:%u V:%u | Occ:%s | SOcc:%s | Mode:%s | AABB:%s\r",
             display_stats.scene_count,
             display_stats.frustum_visible_count,
             display_stats.occluded_count,
@@ -1046,6 +1055,7 @@ int main() {
             shadow_stats.occluded_count,
             shadow_stats.visible_count,
             enable_occlusion ? "ON " : "OFF",
+            enable_shadow_occlusion_culling ? "ON " : "OFF",
             render_lit_surfaces ? "Lit  " : "Debug",
             show_aabb_debug ? "ON " : "OFF");
         std::fflush(stdout);

@@ -87,7 +87,7 @@ constexpr uint8_t kOcclusionShowConfirmFrames = 2u;
 constexpr uint64_t kOcclusionMinVisibleSamples = 1u;
 constexpr uint32_t kOcclusionWarmupFramesAfterCameraMove = 2u;
 constexpr uint32_t kMaxRecordingWorkers = 8u;
-constexpr bool kEnableShadowOcclusionCulling = false;
+constexpr bool kShadowOcclusionDefault = false;
 
 struct Vertex
 {
@@ -1721,6 +1721,7 @@ private:
             if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_b) out.toggle_bot = true;
             if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_F1) out.cycle_debug_view = true;
             if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_F2) out.cycle_cull_mode = true;
+            if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_F3) out.toggle_front_face = true;
 
             if (e.type == SDL_MOUSEMOTION)
             {
@@ -1894,7 +1895,7 @@ private:
                 view_cull_ctx_,
                 view_cull_scene_);
         }
-        if (kEnableShadowOcclusionCulling)
+        if (enable_shadow_occlusion_culling_)
         {
             consume_query_results(
                 shadow_query_pools_[ring],
@@ -1909,7 +1910,7 @@ private:
     {
         view_cull_ctx_.finalize_visibility(view_cull_scene_, apply_occlusion_this_frame_);
         const bool apply_shadow_occlusion =
-            apply_occlusion_this_frame_ && kEnableShadowOcclusionCulling;
+            apply_occlusion_this_frame_ && enable_shadow_occlusion_culling_;
         shadow_cull_ctx_.finalize_visibility(shadow_cull_scene_, apply_shadow_occlusion);
 
         (void)view_cull_ctx_.apply_frustum_fallback_if_needed(
@@ -1919,7 +1920,7 @@ private:
             (ring < kFrameRing) ? view_query_counts_[ring] : 0u);
         (void)shadow_cull_ctx_.apply_frustum_fallback_if_needed(
             shadow_cull_scene_,
-            enable_occlusion_ && kEnableShadowOcclusionCulling,
+            enable_occlusion_ && enable_shadow_occlusion_culling_,
             true,
             (ring < kFrameRing) ? shadow_query_counts_[ring] : 0u);
 
@@ -2440,7 +2441,7 @@ private:
 
     void record_shadow_occlusion_queries(VkCommandBuffer cmd, uint32_t ring)
     {
-        if (!kEnableShadowOcclusionCulling) return;
+        if (!enable_shadow_occlusion_culling_) return;
         if (!enable_occlusion_) return;
         if (ring >= kFrameRing) return;
         if (shadow_query_pools_[ring] == VK_NULL_HANDLE) return;
@@ -2727,7 +2728,7 @@ private:
             view_query_scene_indices_[ring].clear();
         }
         if (enable_occlusion_ &&
-            kEnableShadowOcclusionCulling &&
+            enable_shadow_occlusion_culling_ &&
             shadow_query_pools_[ring] != VK_NULL_HANDLE &&
             max_shadow_query_count_ > 0)
         {
@@ -2798,7 +2799,7 @@ private:
         std::snprintf(
             title,
             sizeof(title),
-            "Soft Shadow Culling Demo (VK) | Scene:%u Frustum:%u Occ:%u Vis:%u | Shadow F:%u O:%u V:%u | Occ:%s | Mode:%s | AABB:%s | Rec:%s | %.2f ms",
+            "Soft Shadow Culling Demo (VK) | Scene:%u Frustum:%u Occ:%u Vis:%u | Shadow F:%u O:%u V:%u | Occ:%s | SOcc:%s | Mode:%s | AABB:%s | Rec:%s | %.2f ms",
             scene_stats_.scene_count,
             scene_stats_.frustum_visible_count,
             scene_stats_.occluded_count,
@@ -2807,6 +2808,7 @@ private:
             shadow_stats_.occluded_count,
             shadow_stats_.visible_count,
             (enable_occlusion_ && vk_ && vk_->has_depth_attachment()) ? "ON" : "OFF",
+            enable_shadow_occlusion_culling_ ? "ON" : "OFF",
             render_lit_surfaces_ ? "Lit" : "Debug",
             show_aabb_debug_ ? "ON" : "OFF",
             used_secondary_this_frame_ ? "MT-secondary" : "Inline",
@@ -2816,7 +2818,7 @@ private:
 
     void main_loop()
     {
-        std::printf("Controls: LMB/RMB drag look, WASD+QE move, Shift boost, B toggle AABB, L toggle debug/lit, F1 toggle MT-secondary recording, F2 toggle occlusion\n");
+        std::printf("Controls: LMB/RMB drag look, WASD+QE move, Shift boost, B toggle AABB, L toggle debug/lit, F1 toggle MT-secondary recording, F2 toggle occlusion, F3 toggle shadow occlusion\n");
 
         bool running = true;
         auto t0 = std::chrono::steady_clock::now();
@@ -2867,6 +2869,19 @@ private:
                 for (auto& elem : view_elems) elem.occluded = false;
                 auto shadow_elems = shadow_cull_scene_.elements();
                 for (auto& elem : shadow_elems) elem.occluded = false;
+                occlusion_warmup_frames_ = kOcclusionWarmupFramesAfterCameraMove;
+            }
+            if (input.toggle_front_face)
+            {
+                enable_shadow_occlusion_culling_ = !enable_shadow_occlusion_culling_;
+                shadow_cull_ctx_.clear();
+                auto shadow_elems = shadow_cull_scene_.elements();
+                for (auto& elem : shadow_elems) elem.occluded = false;
+                for (uint32_t i = 0; i < kFrameRing; ++i)
+                {
+                    shadow_query_counts_[i] = 0;
+                    shadow_query_scene_indices_[i].clear();
+                }
                 occlusion_warmup_frames_ = kOcclusionWarmupFramesAfterCameraMove;
             }
 
@@ -3056,6 +3071,7 @@ private:
     bool use_multithread_recording_ = false;
     bool used_secondary_this_frame_ = false;
     bool enable_occlusion_ = true;
+    bool enable_shadow_occlusion_culling_ = kShadowOcclusionDefault;
     bool relative_mouse_mode_ = false;
     bool mouse_right_held_ = false;
     bool mouse_left_held_ = false;
