@@ -20,8 +20,15 @@ layout(location = 4) in vec4 v_shadow_pos;
 
 layout(location = 0) out vec4 out_color;
 
-const float kAmbientBase = 0.22;
+const float kAmbientBase = 0.16;
 const float kAmbientHemi = 0.12;
+const float kShadowDensityGamma = 1.28;
+const float kAmbientShadowCoupling = 0.20;
+const float kShadowTailSoftness = 1.18;
+const float kBounceStrength = 0.10;
+const vec3 kBounceTint = vec3(0.32, 0.30, 0.27);
+const vec3 kSunTint = vec3(1.00, 0.97, 0.90);
+const vec3 kSkyTint = vec3(0.70, 0.76, 0.96);
 
 float shadow_visibility(float ndotl)
 {
@@ -48,6 +55,7 @@ float shadow_visibility(float ndotl)
     {
         float z_ref = texture(u_shadow_map, clamp(uv, min_uv, max_uv)).r;
         float vis = (z_test <= z_ref) ? 1.0 : 0.0;
+        vis = pow(clamp(vis, 0.0, 1.0), kShadowDensityGamma);
         return mix(1.0, vis, clamp(ubo.shadow_params.x, 0.0, 1.0));
     }
 
@@ -67,7 +75,10 @@ float shadow_visibility(float ndotl)
     }
 
     float shadow = shadow_sum / max(weight_sum, 1e-6);
+    // Keep contact shadows dense, but soften stretched tail regions.
+    shadow = pow(clamp(shadow, 0.0, 1.0), kShadowTailSoftness);
     float vis = 1.0 - shadow;
+    vis = pow(clamp(vis, 0.0, 1.0), kShadowDensityGamma);
     return mix(1.0, vis, clamp(ubo.shadow_params.x, 0.0, 1.0));
 }
 
@@ -92,9 +103,14 @@ void main()
     float hemi = clamp(N.y * 0.5 + 0.5, 0.0, 1.0);
     float ambient = kAmbientBase + kAmbientHemi * hemi;
     float shadow_vis = shadow_visibility(ndotl);
-    float diffuse = 0.72 * ndotl * shadow_vis;
-    float specular = (ndotl > 0.0) ? (0.35 * pow(ndoth, 32.0) * shadow_vis) : 0.0;
+    ambient *= mix(1.0, shadow_vis, kAmbientShadowCoupling);
+    float bounce = kBounceStrength * (0.30 + 0.70 * (1.0 - hemi)) * (1.0 - shadow_vis);
+    float diffuse = 0.92 * ndotl * shadow_vis;
+    float specular = (ndotl > 0.0) ? (0.34 * pow(ndoth, 40.0) * shadow_vis) : 0.0;
 
-    vec3 lit = clamp(base * (ambient + diffuse) + vec3(specular), vec3(0.0), vec3(1.0));
+    vec3 lit = clamp(
+        base * (ambient * kSkyTint + diffuse * kSunTint + bounce * kBounceTint) + (specular * kSunTint),
+        vec3(0.0),
+        vec3(1.0));
     out_color = vec4(lit, 1.0);
 }

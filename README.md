@@ -271,7 +271,8 @@
 <p><img width="1200" height="900" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/physics-based-rendering-monkey.png"></p>
 <p><img width="1200" height="900" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/physics-based-rendering-light-shafts.png"></p>
 <p><img width="1200" height="900" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/physics-based-rendering-light-shafts-1.png"></p>
-<p><img width="1200" height="900" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/debug-draw-based-jolt-shape.png"></p>
+<p><img width="1200" height="930" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/occlusion-culling.png"></p>
+<p><img width="1200" height="900" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/shadow-mapping-with-cullings.png"></p>
 
 
 

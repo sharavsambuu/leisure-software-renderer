@@ -67,25 +67,27 @@ constexpr int kWindowH = 900;
 // Vulkan backend currently runs with max_frames_in_flight = 1, so keep ring resources in lockstep.
 constexpr uint32_t kFrameRing = 1u;
 constexpr uint32_t kShadowMapSize = 2048u;
-constexpr float kSunHeightLift = 6.0f;
-constexpr float kSunOrbitRadiusScale = 0.70f;
+constexpr float kSunHeightLift = 2.5f;
+constexpr float kSunOrbitRadiusScale = 0.90f;
 constexpr float kSunMinOrbitRadius = 28.0f;
-constexpr float kSunMinHeight = 56.0f;
-constexpr float kSunSceneTopOffset = 34.0f;
-constexpr float kSunTargetLead = 14.0f;
-constexpr float kSunTargetDrop = 16.0f;
-constexpr float kShadowStrength = 0.92f;
-constexpr float kShadowBiasConst = 0.0008f;
-constexpr float kShadowBiasSlope = 0.0016f;
+constexpr float kSunMinHeight = 24.0f;
+constexpr float kSunSceneTopOffset = 14.0f;
+constexpr float kSunTargetLead = 18.0f;
+constexpr float kSunTargetDrop = 8.0f;
+constexpr float kShadowStrength = 1.0f;
+constexpr float kShadowBiasConst = 0.00035f;
+constexpr float kShadowBiasSlope = 0.0009f;
 constexpr float kShadowPcfStep = 1.0f;
-constexpr int kShadowPcfRadius = 2;
-constexpr float kShadowRangeScale = 50.0f;
-const glm::vec3 kFloorBaseColor(0.30f, 0.30f, 0.35f);
+constexpr int kShadowPcfRadius = 1;
+constexpr float kShadowRangeScale = 2.40f;
+constexpr float kShadowCameraExtraMargin = 28.0f;
+const glm::vec3 kFloorBaseColor(0.58f, 0.56f, 0.52f);
 constexpr uint8_t kOcclusionHideConfirmFrames = 3u;
 constexpr uint8_t kOcclusionShowConfirmFrames = 2u;
 constexpr uint64_t kOcclusionMinVisibleSamples = 1u;
 constexpr uint32_t kOcclusionWarmupFramesAfterCameraMove = 2u;
 constexpr uint32_t kMaxRecordingWorkers = 8u;
+constexpr bool kEnableShadowOcclusionCulling = false;
 
 struct Vertex
 {
@@ -1831,7 +1833,7 @@ private:
         light_cam_ = build_dir_light_camera_aabb(
             sun_dir_to_scene_ws_,
             shadow_bounds,
-            8.0f,
+            kShadowCameraExtraMargin,
             kShadowMapSize);
         // Culling frustum uses the canonical LH NO matrix conventions in library space.
         light_frustum_ = extract_frustum_planes(light_cam_.viewproj);
@@ -1892,18 +1894,23 @@ private:
                 view_cull_ctx_,
                 view_cull_scene_);
         }
-        consume_query_results(
-            shadow_query_pools_[ring],
-            shadow_query_counts_[ring],
-            shadow_query_scene_indices_[ring],
-            shadow_cull_ctx_,
-            shadow_cull_scene_);
+        if (kEnableShadowOcclusionCulling)
+        {
+            consume_query_results(
+                shadow_query_pools_[ring],
+                shadow_query_counts_[ring],
+                shadow_query_scene_indices_[ring],
+                shadow_cull_ctx_,
+                shadow_cull_scene_);
+        }
     }
 
     void finalize_visibility_lists(uint32_t ring)
     {
         view_cull_ctx_.finalize_visibility(view_cull_scene_, apply_occlusion_this_frame_);
-        shadow_cull_ctx_.finalize_visibility(shadow_cull_scene_, apply_occlusion_this_frame_);
+        const bool apply_shadow_occlusion =
+            apply_occlusion_this_frame_ && kEnableShadowOcclusionCulling;
+        shadow_cull_ctx_.finalize_visibility(shadow_cull_scene_, apply_shadow_occlusion);
 
         (void)view_cull_ctx_.apply_frustum_fallback_if_needed(
             view_cull_scene_,
@@ -1912,7 +1919,7 @@ private:
             (ring < kFrameRing) ? view_query_counts_[ring] : 0u);
         (void)shadow_cull_ctx_.apply_frustum_fallback_if_needed(
             shadow_cull_scene_,
-            enable_occlusion_,
+            enable_occlusion_ && kEnableShadowOcclusionCulling,
             true,
             (ring < kFrameRing) ? shadow_query_counts_[ring] : 0u);
 
@@ -2433,6 +2440,7 @@ private:
 
     void record_shadow_occlusion_queries(VkCommandBuffer cmd, uint32_t ring)
     {
+        if (!kEnableShadowOcclusionCulling) return;
         if (!enable_occlusion_) return;
         if (ring >= kFrameRing) return;
         if (shadow_query_pools_[ring] == VK_NULL_HANDLE) return;
@@ -2492,7 +2500,10 @@ private:
         rp.pClearValues = &clear;
 
         vkCmdBeginRenderPass(cmd, &rp, VK_SUBPASS_CONTENTS_INLINE);
-        vk_cmd_set_viewport_scissor(cmd, kShadowMapSize, kShadowMapSize, true);
+        // Keep shadow pass in canonical Vulkan UV orientation.
+        // Main scene pass uses flipped viewport for presentation, but shadow sampling math
+        // expects light NDC -> UV without an extra Y inversion.
+        vk_cmd_set_viewport_scissor(cmd, kShadowMapSize, kShadowMapSize, false);
 
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadow_pipeline_depth_);
         for (const uint32_t shadow_scene_idx : render_shadow_scene_indices_)
@@ -2716,6 +2727,7 @@ private:
             view_query_scene_indices_[ring].clear();
         }
         if (enable_occlusion_ &&
+            kEnableShadowOcclusionCulling &&
             shadow_query_pools_[ring] != VK_NULL_HANDLE &&
             max_shadow_query_count_ > 0)
         {

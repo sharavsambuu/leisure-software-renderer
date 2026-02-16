@@ -41,22 +41,25 @@ const int SHADOW_MAP_W = 1024;
 const int SHADOW_MAP_H = 1024;
 const int SHADOW_OCC_W = 320;
 const int SHADOW_OCC_H = 320;
-constexpr float kSunHeightLift = 6.0f;
-constexpr float kSunOrbitRadiusScale = 0.70f;
+constexpr bool kEnableShadowOcclusionCulling = false;
+constexpr float kSunHeightLift = 2.5f;
+constexpr float kSunOrbitRadiusScale = 0.90f;
 constexpr float kSunMinOrbitRadius = 28.0f;
-constexpr float kSunMinHeight = 56.0f;
-constexpr float kSunSceneTopOffset = 34.0f;
-constexpr float kSunTargetLead = 14.0f;
-constexpr float kSunTargetDrop = 16.0f;
-constexpr float kShadowStrength = 0.92f;
-constexpr float kShadowBiasConst = 0.0008f;
-constexpr float kShadowBiasSlope = 0.0016f;
-constexpr int kShadowPcfRadius = 2;
+constexpr float kSunMinHeight = 24.0f;
+constexpr float kSunSceneTopOffset = 14.0f;
+constexpr float kSunTargetLead = 18.0f;
+constexpr float kSunTargetDrop = 8.0f;
+constexpr float kShadowStrength = 1.0f;
+constexpr float kShadowBiasConst = 0.00035f;
+constexpr float kShadowBiasSlope = 0.0009f;
+constexpr int kShadowPcfRadius = 1;
 constexpr float kShadowPcfStep = 1.0f;
-constexpr float kShadowRangeScale = 50.0f;
-constexpr float kAmbientBase = 0.22f;
-constexpr float kAmbientHemi = 0.12f;
-const glm::vec3 kFloorBaseColor(0.30f, 0.30f, 0.35f);
+constexpr float kShadowRangeScale = 1.35f;
+constexpr float kAmbientBase = 0.10f;
+constexpr float kAmbientHemi = 0.07f;
+const glm::vec3 kSunTint(1.08f, 1.00f, 0.92f);
+const glm::vec3 kSkyTint(0.60f, 0.68f, 0.92f);
+const glm::vec3 kFloorBaseColor(0.58f, 0.56f, 0.52f);
 
 struct ShapeInstance {
     SceneShape shape;
@@ -79,8 +82,8 @@ struct FreeCamera {
     float pitch = -0.25f;
     float move_speed = 20.0f;
     float look_speed = 0.003f;
-    static constexpr float kMouseSpikeThreshold = 240.0f;
-    static constexpr float kMouseDeltaClamp = 90.0f;
+    static constexpr float kMouseSpikeThreshold = 180.0f;
+    static constexpr float kMouseDeltaClamp = 70.0f;
 
     void update(const PlatformInputState& input, float dt) {
         if (input.right_mouse_down || input.left_mouse_down) {
@@ -334,10 +337,10 @@ void draw_mesh_blinn_phong_shadowed_transformed(
                 const float ambient = kAmbientBase + kAmbientHemi * hemi;
                 const float shadow_vis_raw = shadow_visibility_dir(shadow_map, shadow_params, world_pos, ndotl);
                 const float shadow_vis = glm::mix(1.0f, shadow_vis_raw, kShadowStrength);
-                const float diffuse = 0.72f * ndotl * shadow_vis;
-                const float specular = (ndotl > 0.0f) ? (0.35f * std::pow(ndoth, 32.0f) * shadow_vis) : 0.0f;
+                const float diffuse = 1.05f * ndotl * shadow_vis;
+                const float specular = (ndotl > 0.0f) ? (0.52f * std::pow(ndoth, 40.0f) * shadow_vis) : 0.0f;
 
-                glm::vec3 lit = base_color * (ambient + diffuse) + glm::vec3(specular);
+                glm::vec3 lit = base_color * (ambient * kSkyTint + diffuse * kSunTint) + (specular * kSunTint);
                 lit = glm::clamp(lit, glm::vec3(0.0f), glm::vec3(1.0f));
                 depth_buffer[di] = depth;
                 rt.set_rgba(
@@ -755,7 +758,7 @@ int main() {
 
     FreeCamera camera;
     bool show_aabb_debug = false;
-    bool render_lit_surfaces = false;
+    bool render_lit_surfaces = true;
     bool enable_occlusion = true;
     bool mouse_drag_held = false;
     std::printf("Controls: LMB/RMB drag look, WASD+QE move, Shift boost, B toggle AABB, L toggle debug/lit, F2 toggle occlusion\n");
@@ -844,9 +847,10 @@ int main() {
         const Frustum light_frustum = extract_frustum_planes(light_vp);
 
         shadow_cull_ctx.run_frustum(shadow_cull_scene, light_frustum);
+        const bool enable_shadow_occlusion = enable_occlusion && kEnableShadowOcclusionCulling;
         shadow_cull_ctx.run_software_occlusion(
             shadow_cull_scene,
-            enable_occlusion,
+            enable_shadow_occlusion,
             std::span<float>(shadow_occlusion_depth.data(), shadow_occlusion_depth.size()),
             SHADOW_OCC_W,
             SHADOW_OCC_H,
@@ -867,7 +871,7 @@ int main() {
             });
         (void)shadow_cull_ctx.apply_frustum_fallback_if_needed(
             shadow_cull_scene,
-            enable_occlusion,
+            enable_shadow_occlusion,
             true,
             0u);
 
