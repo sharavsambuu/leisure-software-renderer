@@ -4,7 +4,9 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <memory>
 #include <span>
+#include <string>
 #include <vector>
 
 #include <glm/glm.hpp>
@@ -26,7 +28,9 @@
 #include <shs/core/context.hpp>
 #include <shs/gfx/rt_types.hpp>
 #include <shs/gfx/rt_shadow.hpp>
-#include <shs/pipeline/render_path_compiler.hpp>
+#include <shs/pipeline/render_composition_presets.hpp>
+#include <shs/pipeline/render_path_executor.hpp>
+#include <shs/pipeline/render_technique_presets.hpp>
 #include <shs/camera/camera_math.hpp>
 #include <shs/camera/convention.hpp>
 
@@ -56,11 +60,32 @@ constexpr float kShadowBiasSlope = 0.0009f;
 constexpr int kShadowPcfRadius = 1;
 constexpr float kShadowPcfStep = 1.0f;
 constexpr float kShadowRangeScale = 1.35f;
-constexpr float kAmbientBase = 0.10f;
-constexpr float kAmbientHemi = 0.07f;
 const glm::vec3 kSunTint(1.08f, 1.00f, 0.92f);
 const glm::vec3 kSkyTint(0.60f, 0.68f, 0.92f);
 const glm::vec3 kFloorBaseColor(0.58f, 0.56f, 0.52f);
+
+struct SurfaceLightingParams
+{
+    float ambient_base = 0.10f;
+    float ambient_hemi = 0.07f;
+    float diffuse_gain = 1.05f;
+    float specular_gain = 0.52f;
+    float specular_power = 40.0f;
+};
+
+SurfaceLightingParams make_surface_lighting_params(RenderTechniquePreset preset)
+{
+    SurfaceLightingParams params{};
+    if (preset == RenderTechniquePreset::PBR)
+    {
+        params.ambient_base = 0.16f;
+        params.ambient_hemi = 0.11f;
+        params.diffuse_gain = 0.92f;
+        params.specular_gain = 0.24f;
+        params.specular_power = 22.0f;
+    }
+    return params;
+}
 
 struct ShapeInstance {
     SceneShape shape;
@@ -264,6 +289,7 @@ void draw_mesh_blinn_phong_shadowed_transformed(
     const glm::vec3& camera_pos,
     const glm::vec3& sun_dir_to_scene_ws,
     const glm::vec3& base_color,
+    const SurfaceLightingParams& lighting_params,
     const RT_ShadowDepth& shadow_map,
     const ShadowParams& shadow_params)
 {
@@ -335,11 +361,13 @@ void draw_mesh_blinn_phong_shadowed_transformed(
                 const float ndoth = std::max(0.0f, glm::dot(n, H));
 
                 const float hemi = glm::clamp(n.y * 0.5f + 0.5f, 0.0f, 1.0f);
-                const float ambient = kAmbientBase + kAmbientHemi * hemi;
+                const float ambient = lighting_params.ambient_base + lighting_params.ambient_hemi * hemi;
                 const float shadow_vis_raw = shadow_visibility_dir(shadow_map, shadow_params, world_pos, ndotl);
                 const float shadow_vis = glm::mix(1.0f, shadow_vis_raw, kShadowStrength);
-                const float diffuse = 1.05f * ndotl * shadow_vis;
-                const float specular = (ndotl > 0.0f) ? (0.52f * std::pow(ndoth, 40.0f) * shadow_vis) : 0.0f;
+                const float diffuse = lighting_params.diffuse_gain * ndotl * shadow_vis;
+                const float specular = (ndotl > 0.0f)
+                    ? (lighting_params.specular_gain * std::pow(ndoth, lighting_params.specular_power) * shadow_vis)
+                    : 0.0f;
 
                 glm::vec3 lit = base_color * (ambient * kSkyTint + diffuse * kSunTint) + (specular * kSunTint);
                 lit = glm::clamp(lit, glm::vec3(0.0f), glm::vec3(1.0f));
@@ -619,31 +647,47 @@ int main() {
     };
     if (!runtime.valid()) return 1;
 
-    const RenderPathRecipe render_recipe = make_default_soft_shadow_culling_recipe(RenderBackendType::Software);
-    const RenderPathCompiler render_path_compiler{};
-    BackendCapabilities recipe_caps{};
-    recipe_caps.supports_present = true;
-    recipe_caps.supports_offscreen = true;
-    const RenderPathCapabilitySet recipe_cap_set = make_render_path_capability_set(RenderBackendType::Software, recipe_caps);
-    const RenderPathExecutionPlan render_plan = render_path_compiler.compile(render_recipe, recipe_cap_set, nullptr);
-    for (const auto& w : render_plan.warnings)
+    Context ctx{};
+    auto backend_result = create_render_backend("software");
+    std::vector<std::unique_ptr<IRenderBackend>> backend_keepalive{};
+    backend_keepalive.reserve(1 + backend_result.auxiliary_backends.size());
+    if (backend_result.backend)
     {
-        std::fprintf(stderr, "[render-path][sw][warn] %s\n", w.c_str());
+        backend_keepalive.push_back(std::move(backend_result.backend));
     }
-    for (const auto& e : render_plan.errors)
+    for (auto& b : backend_result.auxiliary_backends)
     {
-        std::fprintf(stderr, "[render-path][sw][error] %s\n", e.c_str());
+        if (b) backend_keepalive.push_back(std::move(b));
     }
-    if (render_plan.valid)
+    if (backend_keepalive.empty() || !backend_keepalive[0])
     {
-        std::fprintf(stderr, "[render-path][sw] Using recipe '%s' with %zu passes.\n",
-                     render_plan.recipe_name.c_str(),
-                     render_plan.pass_chain.size());
+        std::fprintf(stderr, "[render-path][sw] Failed to create software backend.\n");
+        shs::jolt::shutdown_jolt();
+        return 1;
     }
-    else
+    ctx.set_primary_backend(backend_keepalive[0].get());
+    for (size_t i = 1; i < backend_keepalive.size(); ++i)
     {
-        std::fprintf(stderr, "[render-path][sw] Recipe compile failed. Falling back to legacy demo defaults.\n");
+        if (backend_keepalive[i]) ctx.register_backend(backend_keepalive[i].get());
     }
+    if (!backend_result.note.empty())
+    {
+        std::fprintf(stderr, "[shs] %s\n", backend_result.note.c_str());
+    }
+
+    RenderPathExecutor render_path_executor{};
+    RenderPathExecutionPlan active_render_plan{};
+    std::string active_render_path_name = "safe_default";
+    std::string active_render_mode_name = "safe";
+    TechniqueMode active_render_mode = TechniqueMode::Forward;
+    bool active_render_path_valid = false;
+    RenderTechniquePreset active_render_technique_preset = RenderTechniquePreset::BlinnPhong;
+    RenderCompositionRecipe active_composition_recipe = make_builtin_render_composition_recipe(
+        RenderPathPreset::Forward,
+        active_render_technique_preset,
+        "composition_sw");
+    std::vector<RenderCompositionRecipe> composition_cycle_order{};
+    size_t active_composition_index = 0u;
 
     RT_ColorLDR ldr_rt{CANVAS_W, CANVAS_H};
     std::vector<uint8_t> rgba8_staging(CANVAS_W * CANVAS_H * 4);
@@ -784,13 +828,160 @@ int main() {
     SceneCullingContext shadow_cull_ctx{};
 
     FreeCamera camera;
-    bool show_aabb_debug = render_plan.valid ? render_plan.runtime_state.debug_aabb : false;
-    bool render_lit_surfaces = render_plan.valid ? render_plan.runtime_state.lit_mode : true;
-    bool enable_occlusion = render_plan.valid ? render_plan.runtime_state.view_occlusion_enabled : true;
-    bool enable_shadow_occlusion_culling =
-        render_plan.valid ? render_plan.runtime_state.shadow_occlusion_enabled : kShadowOcclusionDefault;
+    bool show_aabb_debug = false;
+    bool render_lit_surfaces = true;
+    bool enable_occlusion = true;
+    bool enable_shadow_occlusion_culling = kShadowOcclusionDefault;
+    bool enable_shadows = true;
     bool mouse_drag_held = false;
-    std::printf("Controls: LMB/RMB drag look, WASD+QE move, Shift boost, B toggle AABB, L toggle debug/lit, F2 toggle occlusion, F3 toggle shadow occlusion\n");
+    SurfaceLightingParams active_lighting_params = make_surface_lighting_params(active_render_technique_preset);
+
+    const auto plan_has_pass = [](const RenderPathExecutionPlan& plan, PassId pass_id) -> bool
+    {
+        if (!pass_id_is_standard(pass_id)) return false;
+        for (const auto& pass : plan.pass_chain)
+        {
+            if (pass.pass_id == pass_id || parse_pass_id(pass.id) == pass_id) return true;
+        }
+        return false;
+    };
+
+    const auto reset_culling_history = [&]()
+    {
+        view_cull_ctx.clear();
+        shadow_cull_ctx.clear();
+
+        auto view_elems = view_cull_scene.elements();
+        for (auto& elem : view_elems) elem.occluded = false;
+
+        auto shadow_elems = shadow_cull_scene.elements();
+        for (auto& elem : shadow_elems) elem.occluded = false;
+    };
+
+    const auto apply_render_technique_preset = [&](RenderTechniquePreset preset)
+    {
+        active_render_technique_preset = preset;
+        active_lighting_params = make_surface_lighting_params(active_render_technique_preset);
+    };
+
+    const auto apply_safe_runtime_defaults = [&]()
+    {
+        active_render_plan = RenderPathExecutionPlan{};
+        active_render_path_name = "safe_default";
+        active_render_mode_name = "safe";
+        active_render_mode = TechniqueMode::Forward;
+        active_render_path_valid = false;
+        show_aabb_debug = false;
+        render_lit_surfaces = true;
+        enable_occlusion = true;
+        enable_shadow_occlusion_culling = kShadowOcclusionDefault;
+        enable_shadows = true;
+        reset_culling_history();
+    };
+
+    const auto apply_render_path_by_index = [&](size_t index) -> bool
+    {
+        if (!render_path_executor.has_recipes()) return false;
+
+        active_render_path_valid = render_path_executor.apply_index(index, ctx, nullptr);
+        const RenderPathRecipe& recipe = render_path_executor.active_recipe();
+        const RenderPathExecutionPlan& plan = render_path_executor.active_plan();
+        active_render_plan = plan;
+        active_render_path_name = recipe.name.empty() ? std::string("unnamed_path") : recipe.name;
+        active_render_mode = plan.technique_mode;
+        active_render_mode_name = technique_mode_name(plan.technique_mode);
+
+        for (const auto& w : plan.warnings)
+        {
+            std::fprintf(stderr, "[render-path][sw][warn] %s\n", w.c_str());
+        }
+        for (const auto& e : plan.errors)
+        {
+            std::fprintf(stderr, "[render-path][sw][error] %s\n", e.c_str());
+        }
+
+        if (!plan.valid)
+        {
+            return false;
+        }
+
+        show_aabb_debug = recipe.runtime_defaults.debug_aabb;
+        render_lit_surfaces = recipe.runtime_defaults.lit_mode;
+        const bool has_depth_prepass = plan_has_pass(plan, PassId::DepthPrepass);
+        enable_occlusion = recipe.runtime_defaults.view_occlusion_enabled && has_depth_prepass;
+        enable_shadow_occlusion_culling = recipe.runtime_defaults.shadow_occlusion_enabled && has_depth_prepass;
+        enable_shadows = recipe.wants_shadows &&
+            recipe.runtime_defaults.enable_shadows &&
+            plan_has_pass(plan, PassId::ShadowMap);
+        reset_culling_history();
+
+        std::fprintf(stderr, "[render-path][sw] Using recipe '%s' (%s), passes:%zu.\n",
+            active_render_path_name.c_str(),
+            active_render_mode_name.c_str(),
+            plan.pass_chain.size());
+        return active_render_path_valid;
+    };
+
+    const auto refresh_active_composition_recipe = [&]()
+    {
+        const RenderPathPreset active_path_preset = render_path_preset_for_mode(active_render_mode);
+        active_composition_recipe = make_builtin_render_composition_recipe(
+            active_path_preset,
+            active_render_technique_preset,
+            "composition_sw");
+        for (size_t i = 0; i < composition_cycle_order.size(); ++i)
+        {
+            const auto& c = composition_cycle_order[i];
+            if (c.path_preset == active_path_preset &&
+                c.technique_preset == active_render_technique_preset)
+            {
+                active_composition_index = i;
+                active_composition_recipe = c;
+                break;
+            }
+        }
+    };
+
+    const auto apply_render_composition_by_index = [&](size_t index) -> bool
+    {
+        if (composition_cycle_order.empty() || !render_path_executor.has_recipes()) return false;
+        const size_t resolved = index % composition_cycle_order.size();
+        const RenderCompositionRecipe& composition = composition_cycle_order[resolved];
+        const size_t path_index = render_path_executor.find_recipe_index_by_mode(
+            render_path_preset_mode(composition.path_preset));
+        apply_render_technique_preset(composition.technique_preset);
+        if (!apply_render_path_by_index(path_index))
+        {
+            refresh_active_composition_recipe();
+            return false;
+        }
+        active_composition_index = resolved;
+        active_composition_recipe = composition;
+        return true;
+    };
+
+    composition_cycle_order = make_default_render_composition_recipes("composition_sw");
+
+    const bool have_builtin_paths =
+        render_path_executor.register_builtin_presets(RenderBackendType::Software, "sw_path");
+    if (!have_builtin_paths || !render_path_executor.has_recipes())
+    {
+        std::fprintf(stderr, "[render-path][sw] Built-in presets unavailable. Switching to safe defaults.\n");
+        apply_safe_runtime_defaults();
+    }
+    else
+    {
+        const size_t preferred_path_index =
+            render_path_executor.find_recipe_index_by_mode(TechniqueMode::Forward);
+        if (!apply_render_path_by_index(preferred_path_index))
+        {
+            std::fprintf(stderr, "[render-path][sw] Initial recipe apply failed. Switching to safe defaults.\n");
+            apply_safe_runtime_defaults();
+        }
+    }
+    refresh_active_composition_recipe();
+
+    std::printf("Controls: LMB/RMB drag look, WASD+QE move, Shift boost, B toggle AABB, L toggle debug/lit, F1 toggle occlusion, F2 cycle render path, F3 cycle composition, F4 cycle shading, F5 toggle shadow occlusion\n");
 
     auto start_time = std::chrono::steady_clock::now();
     auto last_time = start_time;
@@ -806,8 +997,31 @@ int main() {
         if (input.quit) break;
         if (input.toggle_bot) show_aabb_debug = !show_aabb_debug;
         if (input.toggle_light_shafts) render_lit_surfaces = !render_lit_surfaces;
-        if (input.cycle_cull_mode) enable_occlusion = !enable_occlusion;
+        if (input.cycle_debug_view) enable_occlusion = !enable_occlusion;
+        if (input.cycle_cull_mode)
+        {
+            if (!apply_render_path_by_index(render_path_executor.active_index() + 1u))
+            {
+                std::fprintf(stderr, "[render-path][sw] Path cycle failed. Switching to safe defaults.\n");
+                apply_safe_runtime_defaults();
+            }
+            refresh_active_composition_recipe();
+        }
         if (input.toggle_front_face)
+        {
+            if (!apply_render_composition_by_index(active_composition_index + 1u))
+            {
+                std::fprintf(stderr, "[render-path][sw] Composition cycle failed. Switching to safe defaults.\n");
+                apply_safe_runtime_defaults();
+                refresh_active_composition_recipe();
+            }
+        }
+        if (input.toggle_shading_model)
+        {
+            apply_render_technique_preset(next_render_technique_preset(active_render_technique_preset));
+            refresh_active_composition_recipe();
+        }
+        if (input.toggle_sky_mode)
         {
             enable_shadow_occlusion_culling = !enable_shadow_occlusion_culling;
             shadow_cull_ctx.clear();
@@ -881,51 +1095,57 @@ int main() {
             static_cast<uint32_t>(SHADOW_MAP_W));
         const glm::mat4 light_vp = light_cam.viewproj;
         const Frustum light_frustum = extract_frustum_planes(light_vp);
+        shadow_map.clear(1.0f);
+        if (enable_shadows)
+        {
+            shadow_cull_ctx.run_frustum(shadow_cull_scene, light_frustum);
+            const bool enable_shadow_occlusion = enable_occlusion && enable_shadow_occlusion_culling;
+            shadow_cull_ctx.run_software_occlusion(
+                shadow_cull_scene,
+                enable_shadow_occlusion,
+                std::span<float>(shadow_occlusion_depth.data(), shadow_occlusion_depth.size()),
+                SHADOW_OCC_W,
+                SHADOW_OCC_H,
+                light_cam.view,
+                light_vp,
+                [&](const SceneElement& elem, uint32_t, std::span<float> depth_span) {
+                    if (elem.user_index >= instances.size()) return;
+                    const ShapeInstance& inst = instances[elem.user_index];
+                    if (!inst.casts_shadow) return;
+                    if (inst.mesh_index >= mesh_library.size()) return;
+                    culling_sw::rasterize_mesh_depth_transformed(
+                        depth_span,
+                        SHADOW_OCC_W,
+                        SHADOW_OCC_H,
+                        mesh_library[inst.mesh_index],
+                        inst.model,
+                        light_vp);
+                });
+            (void)shadow_cull_ctx.apply_frustum_fallback_if_needed(
+                shadow_cull_scene,
+                enable_shadow_occlusion,
+                true,
+                0u);
 
-        shadow_cull_ctx.run_frustum(shadow_cull_scene, light_frustum);
-        const bool enable_shadow_occlusion = enable_occlusion && enable_shadow_occlusion_culling;
-        shadow_cull_ctx.run_software_occlusion(
-            shadow_cull_scene,
-            enable_shadow_occlusion,
-            std::span<float>(shadow_occlusion_depth.data(), shadow_occlusion_depth.size()),
-            SHADOW_OCC_W,
-            SHADOW_OCC_H,
-            light_cam.view,
-            light_vp,
-            [&](const SceneElement& elem, uint32_t, std::span<float> depth_span) {
-                if (elem.user_index >= instances.size()) return;
-                const ShapeInstance& inst = instances[elem.user_index];
-                if (!inst.casts_shadow) return;
-                if (inst.mesh_index >= mesh_library.size()) return;
-                culling_sw::rasterize_mesh_depth_transformed(
-                    depth_span,
-                    SHADOW_OCC_W,
-                    SHADOW_OCC_H,
+            const std::vector<uint32_t>& visible_shadow_scene_indices = shadow_cull_ctx.visible_indices();
+            for (uint32_t shadow_scene_idx : visible_shadow_scene_indices)
+            {
+                if (shadow_scene_idx >= shadow_cull_scene.size()) continue;
+                const uint32_t idx = shadow_cull_scene[shadow_scene_idx].user_index;
+                if (idx >= instances.size()) continue;
+                const ShapeInstance& inst = instances[idx];
+                if (!inst.casts_shadow) continue;
+                if (inst.mesh_index >= mesh_library.size()) continue;
+                rasterize_shadow_mesh_transformed(
+                    shadow_map,
                     mesh_library[inst.mesh_index],
                     inst.model,
                     light_vp);
-            });
-        (void)shadow_cull_ctx.apply_frustum_fallback_if_needed(
-            shadow_cull_scene,
-            enable_shadow_occlusion,
-            true,
-            0u);
-
-        shadow_map.clear(1.0f);
-        const std::vector<uint32_t>& visible_shadow_scene_indices = shadow_cull_ctx.visible_indices();
-        for (uint32_t shadow_scene_idx : visible_shadow_scene_indices)
+            }
+        }
+        else
         {
-            if (shadow_scene_idx >= shadow_cull_scene.size()) continue;
-            const uint32_t idx = shadow_cull_scene[shadow_scene_idx].user_index;
-            if (idx >= instances.size()) continue;
-            const ShapeInstance& inst = instances[idx];
-            if (!inst.casts_shadow) continue;
-            if (inst.mesh_index >= mesh_library.size()) continue;
-            rasterize_shadow_mesh_transformed(
-                shadow_map,
-                mesh_library[inst.mesh_index],
-                inst.model,
-                light_vp);
+            shadow_cull_ctx.clear();
         }
 
         const Frustum frustum = extract_frustum_planes(vp);
@@ -1012,6 +1232,7 @@ int main() {
                     camera.pos,
                     sun_dir_to_scene_ws,
                     base_color,
+                    active_lighting_params,
                     shadow_map,
                     shadow_params);
             } else {
@@ -1056,11 +1277,21 @@ int main() {
         runtime.upload_rgba8(rgba8_staging.data(), CANVAS_W, CANVAS_H, CANVAS_W * 4);
         runtime.present();
 
+        const size_t comp_total = composition_cycle_order.size();
+        const size_t comp_slot = comp_total > 0u ? ((active_composition_index % comp_total) + 1u) : 0u;
         char title[320];
         std::snprintf(
             title,
             sizeof(title),
-            "Soft Shadow Culling Demo (SW) | Scene:%u Frustum:%u Occ:%u Vis:%u | Shadow F:%u O:%u V:%u | Occ:%s | SOcc:%s | Mode:%s | AABB:%s",
+            "Soft Shadow Culling Demo (SW) | Path[F2]:%s (%s/%s,p%zu) | Comp[F3]:%s(%zu/%zu) | Tech[F4]:%s | Scene:%u Frustum:%u Occ:%u Vis:%u | Shadow F:%u O:%u V:%u | Occ[F1]:%s | SOcc[F5]:%s | Shadows:%s | Mode[L]:%s | AABB[B]:%s",
+            active_render_path_name.c_str(),
+            active_render_mode_name.c_str(),
+            active_render_path_valid ? "ok" : "fallback",
+            active_render_plan.pass_chain.size(),
+            active_composition_recipe.name.c_str(),
+            comp_slot,
+            comp_total,
+            render_technique_preset_name(active_render_technique_preset),
             display_stats.scene_count,
             display_stats.frustum_visible_count,
             display_stats.occluded_count,
@@ -1070,11 +1301,20 @@ int main() {
             shadow_stats.visible_count,
             enable_occlusion ? "ON" : "OFF",
             enable_shadow_occlusion_culling ? "ON" : "OFF",
+            enable_shadows ? "ON" : "OFF",
             render_lit_surfaces ? "Lit" : "Debug",
             show_aabb_debug ? "ON" : "OFF");
         runtime.set_title(title);
         std::printf(
-            "Scene:%u Frustum:%u Occ:%u Vis:%u | Shadow F:%u O:%u V:%u | Occ:%s | SOcc:%s | Mode:%s | AABB:%s\r",
+            "Path:%s(%s/%s,p%zu) | Comp:%s(%zu/%zu) | Tech:%s | Scene:%u Frustum:%u Occ:%u Vis:%u | Shadow F:%u O:%u V:%u | Occ:%s | SOcc:%s | Shadows:%s | Mode:%s | AABB:%s\r",
+            active_render_path_name.c_str(),
+            active_render_mode_name.c_str(),
+            active_render_path_valid ? "ok" : "fallback",
+            active_render_plan.pass_chain.size(),
+            active_composition_recipe.name.c_str(),
+            comp_slot,
+            comp_total,
+            render_technique_preset_name(active_render_technique_preset),
             display_stats.scene_count,
             display_stats.frustum_visible_count,
             display_stats.occluded_count,
@@ -1084,6 +1324,7 @@ int main() {
             shadow_stats.visible_count,
             enable_occlusion ? "ON " : "OFF",
             enable_shadow_occlusion_culling ? "ON " : "OFF",
+            enable_shadows ? "ON " : "OFF",
             render_lit_surfaces ? "Lit  " : "Debug",
             show_aabb_debug ? "ON " : "OFF");
         std::fflush(stdout);

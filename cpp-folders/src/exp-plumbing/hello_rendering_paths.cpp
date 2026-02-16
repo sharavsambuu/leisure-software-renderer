@@ -5,15 +5,21 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <filesystem>
+#include <fstream>
 #include <cstdint>
 #include <cctype>
 #include <cstring>
 #include <cstdio>
+#include <cstdlib>
+#include <initializer_list>
+#include <limits>
 #include <memory>
 #include <random>
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include <SDL2/SDL.h>
@@ -24,6 +30,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include <shs/core/context.hpp>
+#include <shs/core/units.hpp>
 #include <shs/camera/camera_math.hpp>
 #include <shs/camera/convention.hpp>
 #include <shs/camera/light_camera.hpp>
@@ -40,9 +47,24 @@
 #include <shs/lighting/light_runtime.hpp>
 #include <shs/lighting/light_set.hpp>
 #include <shs/lighting/shadow_technique.hpp>
+#include <shs/gfx/rt_shadow.hpp>
+#include <shs/gfx/rt_types.hpp>
 #include <shs/pipeline/render_path_compiler.hpp>
+#include <shs/pipeline/render_composition_presets.hpp>
+#include <shs/pipeline/pass_adapters.hpp>
+#include <shs/pipeline/pass_contract_registry.hpp>
+#include <shs/pipeline/pluggable_pipeline.hpp>
+#include <shs/pipeline/render_path_executor.hpp>
+#include <shs/pipeline/render_path_pass_dispatch.hpp>
+#include <shs/pipeline/render_path_presets.hpp>
 #include <shs/pipeline/render_path_recipe.hpp>
-#include <shs/pipeline/render_path_registry.hpp>
+#include <shs/pipeline/render_path_barrier_plan.hpp>
+#include <shs/pipeline/render_path_runtime_layout.hpp>
+#include <shs/pipeline/vk_render_path_pass_context.hpp>
+#include <shs/pipeline/vk_standard_pass_execution.hpp>
+#include <shs/pipeline/render_path_standard_pass_routing.hpp>
+#include <shs/pipeline/render_technique_presets.hpp>
+#include <shs/pipeline/render_path_temporal.hpp>
 #include <shs/pipeline/technique_profile.hpp>
 #include <shs/resources/loaders/primitive_import.hpp>
 #include <shs/resources/resource_registry.hpp>
@@ -51,13 +73,17 @@
 #include <shs/rhi/drivers/vulkan/vk_cmd_utils.hpp>
 #include <shs/rhi/drivers/vulkan/vk_frame_ownership.hpp>
 #include <shs/rhi/drivers/vulkan/vk_memory_utils.hpp>
+#include <shs/rhi/drivers/vulkan/vk_render_path_barrier_mapping.hpp>
+#include <shs/rhi/drivers/vulkan/vk_render_path_descriptors.hpp>
+#include <shs/rhi/drivers/vulkan/vk_render_path_temporal_resources.hpp>
 #include <shs/rhi/drivers/vulkan/vk_shader_utils.hpp>
+#include <shs/scene/scene_types.hpp>
 
 namespace
 {
 constexpr int kDefaultW = 1280;
 constexpr int kDefaultH = 720;
-constexpr uint32_t kTileSize = 16;
+constexpr uint32_t kDefaultTileSize = 16;
 constexpr uint32_t kMaxLightsPerTile = 128;
 constexpr uint32_t kMaxLights = 768;
 constexpr uint32_t kDefaultLightCount = 384;
@@ -66,8 +92,11 @@ constexpr int kSceneOccH = 180;
 constexpr int kLightOccW = 320;
 constexpr int kLightOccH = 180;
 constexpr float kTechniqueSwitchPeriodSec = 8.0f;
-constexpr uint32_t kClusterZSlices = 16;
+constexpr uint32_t kDefaultClusterZSlices = 16;
 constexpr float kShadowNearZ = 0.05f;
+constexpr float kDemoNearZ = 0.05f;
+constexpr float kDemoFarZ = 180.0f;
+constexpr float kDemoFloorSizeM = 64.0f * shs::units::meter;
 constexpr uint32_t kSunShadowMapSize = 2048;
 constexpr uint32_t kLocalShadowMapSize = 1024;
 constexpr uint32_t kMaxSpotShadowMaps = 8;
@@ -75,6 +104,7 @@ constexpr uint32_t kMaxPointShadowLights = 2;
 constexpr uint32_t kPointShadowFaceCount = 6;
 constexpr uint32_t kMaxLocalShadowLayers = kMaxSpotShadowMaps + (kMaxPointShadowLights * kPointShadowFaceCount);
 constexpr uint32_t kWorkerPoolRingSize = 2;
+constexpr uint32_t kMaxGpuPassTimestampQueries = 128;
 constexpr const char* kAppName = "HelloRenderingPaths";
 
 struct Vertex
@@ -105,12 +135,13 @@ struct alignas(16) CameraUBO
     glm::vec4 sun_dir_intensity{0.0f, -1.0f, 0.0f, 1.0f};
     glm::uvec4 screen_tile_lightcount{0u}; // x: width, y: height, z: tiles_x, w: light_count
     glm::uvec4 params{0u};                  // x: tiles_y, y: max_per_tile, z: tile_size, w: culling_mode
-    glm::uvec4 culling_params{0u};          // x: cluster_z_slices, y: lighting_technique
-    glm::vec4 depth_params{0.1f, 260.0f, 0.0f, 0.0f}; // x: near, y: far
+    glm::uvec4 culling_params{0u};          // x: cluster_z_slices, y: lighting_technique, z: semantic_debug_mode, w: semantic_id
+    glm::vec4 depth_params{kDemoNearZ, kDemoFarZ, 0.0f, 0.0f}; // x: near, y: far
     glm::vec4 exposure_gamma{1.0f, 2.2f, 0.0f, 0.0f};
     glm::mat4 sun_shadow_view_proj{1.0f};
     glm::vec4 sun_shadow_params{1.0f, 0.0008f, 0.0015f, 2.0f}; // x: strength, y: bias_const, z: bias_slope, w: pcf_radius
     glm::vec4 sun_shadow_filter{1.0f, 1.0f, 0.0f, 0.0f};       // x: pcf_step, y: enabled
+    glm::vec4 temporal_params{0.0f};                            // x: temporal-enable, y: history-valid, z: history-blend
 };
 
 struct alignas(16) ShadowLightGPU
@@ -176,6 +207,47 @@ struct DepthTarget
     uint32_t h = 0;
 };
 
+struct GBufferAttachment
+{
+    VkImage image = VK_NULL_HANDLE;
+    VkDeviceMemory memory = VK_NULL_HANDLE;
+    VkImageView view = VK_NULL_HANDLE;
+    VkFormat format = VK_FORMAT_UNDEFINED;
+};
+
+struct GBufferTarget
+{
+    std::array<GBufferAttachment, 4> colors{};
+    VkRenderPass render_pass = VK_NULL_HANDLE;
+    VkFramebuffer framebuffer = VK_NULL_HANDLE;
+    uint32_t w = 0;
+    uint32_t h = 0;
+};
+
+struct AmbientOcclusionTarget
+{
+    VkImage image = VK_NULL_HANDLE;
+    VkDeviceMemory memory = VK_NULL_HANDLE;
+    VkImageView view = VK_NULL_HANDLE;
+    VkRenderPass render_pass = VK_NULL_HANDLE;
+    VkFramebuffer framebuffer = VK_NULL_HANDLE;
+    VkFormat format = VK_FORMAT_UNDEFINED;
+    uint32_t w = 0;
+    uint32_t h = 0;
+};
+
+struct PostColorTarget
+{
+    VkImage image = VK_NULL_HANDLE;
+    VkDeviceMemory memory = VK_NULL_HANDLE;
+    VkImageView view = VK_NULL_HANDLE;
+    VkRenderPass render_pass = VK_NULL_HANDLE;
+    VkFramebuffer framebuffer = VK_NULL_HANDLE;
+    VkFormat format = VK_FORMAT_UNDEFINED;
+    uint32_t w = 0;
+    uint32_t h = 0;
+};
+
 struct LayeredDepthTarget
 {
     VkImage image = VK_NULL_HANDLE;
@@ -195,6 +267,186 @@ struct WorkerPool
     std::array<VkCommandPool, kWorkerPoolRingSize> pools{VK_NULL_HANDLE, VK_NULL_HANDLE};
 };
 
+struct GpuPassTimestampSample
+{
+    std::string pass_id{};
+    shs::PassId pass_kind = shs::PassId::Unknown;
+    uint32_t begin_query = UINT32_MAX;
+    uint32_t end_query = UINT32_MAX;
+    bool success = false;
+};
+
+struct GpuPassTimestampFrameState
+{
+    std::vector<GpuPassTimestampSample> samples{};
+    uint32_t query_count = 0;
+    bool pending = false;
+};
+
+struct PhaseFBenchmarkConfig
+{
+    bool enabled = false;
+    uint32_t warmup_frames = 90u;
+    uint32_t sample_frames = 180u;
+    bool include_post_variants = true;
+    bool include_full_cycle = false;
+    bool capture_snapshots = true;
+    uint32_t max_entries = 0u;
+    std::string output_path = "artifacts/phase_f_baseline_metrics.jsonl";
+    std::string snapshot_dir = "artifacts/phase_f_snapshots";
+};
+
+enum class PhaseFBenchmarkStage : uint8_t
+{
+    Disabled = 0,
+    Warmup = 1,
+    Sample = 2,
+    AwaitSnapshot = 3
+};
+
+struct PhaseFBenchmarkAccumulator
+{
+    uint32_t sampled_frames = 0u;
+    double frame_ms_sum = 0.0;
+    double frame_ms_min = std::numeric_limits<double>::max();
+    double frame_ms_max = 0.0;
+    double dispatch_cpu_ms_sum = 0.0;
+    double gpu_ms_sum = 0.0;
+    uint32_t gpu_valid_frames = 0u;
+    uint32_t gpu_zero_sample_frames = 0u;
+    uint64_t gpu_sample_count_sum = 0u;
+    uint64_t gpu_rejected_sample_count_sum = 0u;
+    uint64_t visible_lights_sum = 0u;
+    uint64_t active_lights_sum = 0u;
+    uint32_t gbuffer_frames = 0u;
+    uint32_t ssao_frames = 0u;
+    uint32_t deferred_frames = 0u;
+    uint32_t taa_frames = 0u;
+    uint32_t motion_frames = 0u;
+    uint32_t dof_frames = 0u;
+
+    void reset()
+    {
+        sampled_frames = 0u;
+        frame_ms_sum = 0.0;
+        frame_ms_min = std::numeric_limits<double>::max();
+        frame_ms_max = 0.0;
+        dispatch_cpu_ms_sum = 0.0;
+        gpu_ms_sum = 0.0;
+        gpu_valid_frames = 0u;
+        gpu_zero_sample_frames = 0u;
+        gpu_sample_count_sum = 0u;
+        gpu_rejected_sample_count_sum = 0u;
+        visible_lights_sum = 0u;
+        active_lights_sum = 0u;
+        gbuffer_frames = 0u;
+        ssao_frames = 0u;
+        deferred_frames = 0u;
+        taa_frames = 0u;
+        motion_frames = 0u;
+        dof_frames = 0u;
+    }
+};
+
+struct PhaseGSoakConfig
+{
+    bool enabled = false;
+    uint32_t duration_sec = 180u;
+    uint32_t cycle_frames = 240u;
+    uint32_t log_interval_frames = 120u;
+    uint32_t toggle_interval_cycles = 2u;
+    std::string output_path = "artifacts/phase_g_soak_metrics.jsonl";
+    double accept_max_avg_frame_ms = 50.0;
+    uint32_t accept_max_render_target_rebuild_delta = 24u;
+    uint32_t accept_max_pipeline_rebuild_delta = 24u;
+    uint32_t accept_max_swapchain_generation_delta = 24u;
+    uint32_t accept_max_cycle_failures = 0u;
+};
+
+struct PhaseGSoakState
+{
+    bool started = false;
+    bool finished = false;
+    uint64_t frame_counter = 0u;
+    uint64_t cycles = 0u;
+    uint64_t toggle_events = 0u;
+    uint64_t last_cycle_frame = 0u;
+    uint64_t last_log_frame = 0u;
+    float elapsed_sec = 0.0f;
+    uint64_t rebuild_target_start = 0u;
+    uint64_t rebuild_pipeline_start = 0u;
+    uint64_t swapchain_gen_start = 0u;
+    uint64_t cycle_apply_failures = 0u;
+    double frame_ms_sum = 0.0;
+    double frame_ms_min = std::numeric_limits<double>::max();
+    double frame_ms_max = 0.0;
+};
+
+struct PhaseIParityConfig
+{
+    bool enabled = false;
+    bool include_resource_validation = true;
+    std::string output_path = "artifacts/phase_i_backend_parity.jsonl";
+    bool runtime_sw_execute = true;
+    uint32_t runtime_warmup_frames = 2u;
+    uint32_t runtime_sample_frames = 6u;
+    uint32_t runtime_width = 320u;
+    uint32_t runtime_height = 180u;
+};
+
+struct PhaseISoftwareRuntimeSample
+{
+    bool attempted = false;
+    bool configured = false;
+    bool executed = false;
+    bool report_valid = false;
+    uint32_t sampled_frames = 0u;
+    double avg_frame_ms = 0.0;
+    uint64_t ldr_hash = 0u;
+    std::string error{};
+    std::string warning{};
+};
+
+struct CompositionParityEntry
+{
+    size_t index = 0u;
+    std::string name{};
+    shs::RenderPathPreset path_preset = shs::RenderPathPreset::Forward;
+    shs::RenderTechniquePreset technique_preset = shs::RenderTechniquePreset::PBR;
+    shs::RenderCompositionPostStackPreset post_stack = shs::RenderCompositionPostStackPreset::Default;
+
+    bool vk_plan_valid = false;
+    bool vk_resource_valid = false;
+    bool vk_barrier_valid = false;
+    bool vk_valid = false;
+    size_t vk_pass_count = 0u;
+    size_t vk_barrier_edges = 0u;
+    uint32_t vk_layout_transitions = 0u;
+    size_t vk_alias_classes = 0u;
+    uint32_t vk_alias_slots = 0u;
+    std::string vk_plan_error{};
+    std::string vk_resource_error{};
+    std::string vk_barrier_error{};
+    std::string vk_warning{};
+
+    bool sw_plan_valid = false;
+    bool sw_resource_valid = false;
+    bool sw_barrier_valid = false;
+    bool sw_valid = false;
+    size_t sw_pass_count = 0u;
+    std::string sw_plan_error{};
+    std::string sw_resource_error{};
+    std::string sw_barrier_error{};
+    std::string sw_warning{};
+
+    bool has_ssao = false;
+    bool has_taa = false;
+    bool has_motion = false;
+    bool has_dof = false;
+
+    PhaseISoftwareRuntimeSample sw_runtime{};
+};
+
 struct LocalShadowCaster
 {
     uint32_t light_index = 0;
@@ -209,10 +461,10 @@ struct LocalShadowCaster
 
 struct FreeCamera
 {
-    glm::vec3 pos{0.0f, 13.0f, -38.0f};
+    glm::vec3 pos{0.0f, 5.5f, -22.0f};
     float yaw = glm::half_pi<float>();
-    float pitch = -0.22f;
-    float move_speed = 20.0f;
+    float pitch = -0.18f;
+    float move_speed = 8.0f;
     float look_speed = 0.003f;
     static constexpr float kMouseSpikeThreshold = 240.0f;
     static constexpr float kMouseDeltaClamp = 90.0f;
@@ -285,20 +537,28 @@ enum class VulkanCullerBackend : uint8_t
     Disabled = 1
 };
 
-enum class LightingTechnique : uint32_t
+enum class FramebufferDebugPreset : uint8_t
 {
-    PBR = 0u,
-    BlinnPhong = 1u
+    FinalComposite = 0,
+    Albedo = 1,
+    Normal = 2,
+    Material = 3,
+    Depth = 4,
+    AmbientOcclusion = 5,
+    LightGrid = 6,
+    LightClusters = 7,
+    Shadow = 8,
+    ColorHDR = 9,
+    ColorLDR = 10,
+    Motion = 11,
+    DoFCircleOfConfusion = 12,
+    DoFBlur = 13,
+    DoFFactor = 14
 };
 
-const char* lighting_technique_name(LightingTechnique tech)
+const char* lighting_technique_name(shs::RenderTechniquePreset tech)
 {
-    switch (tech)
-    {
-        case LightingTechnique::PBR: return "pbr";
-        case LightingTechnique::BlinnPhong: return "blinn";
-    }
-    return "pbr";
+    return shs::render_technique_preset_name(tech);
 }
 
 const char* vulkan_culler_backend_name(VulkanCullerBackend backend)
@@ -309,6 +569,116 @@ const char* vulkan_culler_backend_name(VulkanCullerBackend backend)
         case VulkanCullerBackend::Disabled: return "off";
     }
     return "gpu";
+}
+
+const char* framebuffer_debug_preset_name(FramebufferDebugPreset preset)
+{
+    switch (preset)
+    {
+        case FramebufferDebugPreset::FinalComposite: return "final";
+        case FramebufferDebugPreset::Albedo: return "albedo";
+        case FramebufferDebugPreset::Normal: return "normal";
+        case FramebufferDebugPreset::Material: return "material";
+        case FramebufferDebugPreset::Depth: return "depth";
+        case FramebufferDebugPreset::AmbientOcclusion: return "ao";
+        case FramebufferDebugPreset::LightGrid: return "light_grid";
+        case FramebufferDebugPreset::LightClusters: return "light_clusters";
+        case FramebufferDebugPreset::Shadow: return "shadow";
+        case FramebufferDebugPreset::ColorHDR: return "hdr";
+        case FramebufferDebugPreset::ColorLDR: return "ldr";
+        case FramebufferDebugPreset::Motion: return "motion";
+        case FramebufferDebugPreset::DoFCircleOfConfusion: return "dof_coc";
+        case FramebufferDebugPreset::DoFBlur: return "dof_blur";
+        case FramebufferDebugPreset::DoFFactor: return "dof_factor";
+    }
+    return "final";
+}
+
+bool framebuffer_debug_preset_requires_motion_pass(FramebufferDebugPreset preset)
+{
+    return preset == FramebufferDebugPreset::Motion;
+}
+
+bool framebuffer_debug_preset_requires_dof_pass(FramebufferDebugPreset preset)
+{
+    return preset == FramebufferDebugPreset::DoFCircleOfConfusion ||
+        preset == FramebufferDebugPreset::DoFBlur ||
+        preset == FramebufferDebugPreset::DoFFactor;
+}
+
+uint32_t semantic_debug_mode_for_framebuffer_preset(FramebufferDebugPreset preset)
+{
+    switch (preset)
+    {
+        case FramebufferDebugPreset::FinalComposite:
+            return 0u;
+        case FramebufferDebugPreset::Albedo:
+            return 1u;
+        case FramebufferDebugPreset::Normal:
+            return 2u;
+        case FramebufferDebugPreset::Depth:
+            return 3u;
+        case FramebufferDebugPreset::Material:
+            return 4u;
+        case FramebufferDebugPreset::AmbientOcclusion:
+            return 5u;
+        case FramebufferDebugPreset::LightGrid:
+            return 6u;
+        case FramebufferDebugPreset::LightClusters:
+            return 7u;
+        case FramebufferDebugPreset::Shadow:
+            return 8u;
+        case FramebufferDebugPreset::ColorHDR:
+            return 10u;
+        case FramebufferDebugPreset::ColorLDR:
+            return 11u;
+        case FramebufferDebugPreset::Motion:
+            return 12u;
+        case FramebufferDebugPreset::DoFCircleOfConfusion:
+            return 13u;
+        case FramebufferDebugPreset::DoFBlur:
+            return 14u;
+        case FramebufferDebugPreset::DoFFactor:
+            return 15u;
+    }
+    return 0u;
+}
+
+uint32_t semantic_debug_mode_for_semantic(shs::PassSemantic semantic)
+{
+    // Shared with fp_stress_scene.frag semantic debug switch.
+    switch (semantic)
+    {
+        case shs::PassSemantic::Albedo:
+            return 1u;
+        case shs::PassSemantic::Normal:
+            return 2u;
+        case shs::PassSemantic::Depth:
+        case shs::PassSemantic::HistoryDepth:
+            return 3u;
+        case shs::PassSemantic::Material:
+            return 4u;
+        case shs::PassSemantic::AmbientOcclusion:
+            return 5u;
+        case shs::PassSemantic::LightGrid:
+        case shs::PassSemantic::LightIndexList:
+            return 6u;
+        case shs::PassSemantic::LightClusters:
+            return 7u;
+        case shs::PassSemantic::ShadowMap:
+            return 8u;
+        case shs::PassSemantic::ColorHDR:
+            return 10u;
+        case shs::PassSemantic::ColorLDR:
+        case shs::PassSemantic::HistoryColor:
+            return 11u;
+        case shs::PassSemantic::MotionVectors:
+        case shs::PassSemantic::HistoryMotion:
+            return 12u;
+        default:
+            break;
+    }
+    return 0u;
 }
 
 glm::vec3 safe_perp_axis(const glm::vec3& v)
@@ -344,98 +714,15 @@ glm::mat4 model_from_basis_and_scale(
     return m;
 }
 
-bool profile_has_pass(const shs::TechniqueProfile& profile, const char* pass_id)
+bool profile_has_pass(const shs::TechniqueProfile& profile, shs::PassId pass_id)
 {
+    if (!shs::pass_id_is_standard(pass_id)) return false;
     for (const auto& p : profile.passes)
     {
-        if (p.id == pass_id) return true;
+        if (p.pass_id == pass_id) return true;
+        if (shs::parse_pass_id(p.id) == pass_id) return true;
     }
     return false;
-}
-
-const std::array<shs::TechniqueMode, 5>& known_technique_modes()
-{
-    static const std::array<shs::TechniqueMode, 5> modes = {
-        shs::TechniqueMode::Forward,
-        shs::TechniqueMode::ForwardPlus,
-        shs::TechniqueMode::Deferred,
-        shs::TechniqueMode::TiledDeferred,
-        shs::TechniqueMode::ClusteredForward
-    };
-    return modes;
-}
-
-shs::LightCullingMode default_culling_mode_for_technique(shs::TechniqueMode mode)
-{
-    switch (mode)
-    {
-        case shs::TechniqueMode::ForwardPlus:
-            return shs::LightCullingMode::Tiled;
-        case shs::TechniqueMode::TiledDeferred:
-            return shs::LightCullingMode::TiledDepthRange;
-        case shs::TechniqueMode::ClusteredForward:
-            return shs::LightCullingMode::Clustered;
-        case shs::TechniqueMode::Forward:
-        case shs::TechniqueMode::Deferred:
-        default:
-            return shs::LightCullingMode::None;
-    }
-}
-
-shs::RenderPathRenderingTechnique default_render_path_technique_for_mode(shs::TechniqueMode mode)
-{
-    switch (mode)
-    {
-        case shs::TechniqueMode::Forward:
-            return shs::RenderPathRenderingTechnique::ForwardLit;
-        case shs::TechniqueMode::ForwardPlus:
-        case shs::TechniqueMode::ClusteredForward:
-            return shs::RenderPathRenderingTechnique::ForwardPlus;
-        case shs::TechniqueMode::Deferred:
-        case shs::TechniqueMode::TiledDeferred:
-            return shs::RenderPathRenderingTechnique::Deferred;
-        default:
-            return shs::RenderPathRenderingTechnique::ForwardPlus;
-    }
-}
-
-shs::RenderPathRecipe make_default_stress_vk_recipe(shs::TechniqueMode mode)
-{
-    shs::RenderPathRecipe recipe{};
-    recipe.name = std::string("stress_vk_") + shs::technique_mode_name(mode);
-    recipe.backend = shs::RenderBackendType::Vulkan;
-    recipe.light_volume_provider = shs::RenderPathLightVolumeProvider::JoltShapeVolumes;
-    recipe.view_culling = shs::RenderPathCullingMode::FrustumAndOptionalOcclusion;
-    recipe.shadow_culling = shs::RenderPathCullingMode::FrustumAndOptionalOcclusion;
-    recipe.render_technique = default_render_path_technique_for_mode(mode);
-    recipe.technique_mode = mode;
-    recipe.runtime_defaults.view_occlusion_enabled = true;
-    recipe.runtime_defaults.shadow_occlusion_enabled = false;
-    recipe.runtime_defaults.debug_aabb = false;
-    recipe.runtime_defaults.lit_mode = true;
-    recipe.runtime_defaults.enable_shadows = true;
-    recipe.wants_shadows = true;
-    recipe.strict_validation = true;
-
-    const shs::TechniqueProfile profile = shs::make_default_technique_profile(mode);
-    recipe.pass_chain.reserve(profile.passes.size());
-    for (const auto& p : profile.passes)
-    {
-        recipe.pass_chain.push_back(shs::RenderPathPassEntry{p.id, p.required});
-    }
-    return recipe;
-}
-
-LightingTechnique next_lighting_technique(LightingTechnique tech)
-{
-    switch (tech)
-    {
-        case LightingTechnique::PBR:
-            return LightingTechnique::BlinnPhong;
-        case LightingTechnique::BlinnPhong:
-        default:
-            return LightingTechnique::PBR;
-    }
 }
 
 class HelloRenderingPathsApp
@@ -449,12 +736,18 @@ public:
     void run()
     {
         shs::jolt::init_jolt();
+        configure_phase_f_from_env();
+        configure_phase_g_from_env();
+        configure_phase_i_from_env();
         init_sdl();
         init_backend();
         configure_vulkan_culler_backend_from_env();
         init_jobs();
         init_scene_data();
+        initialize_phase_i_parity_report();
         init_gpu_resources();
+        initialize_phase_f_benchmark();
+        initialize_phase_g_soak();
         print_controls();
         main_loop();
     }
@@ -466,8 +759,14 @@ public:
 
         if (vk_) vk_->wait_idle();
 
+        destroy_gpu_pass_timestamp_resources();
         destroy_pipelines();
         destroy_depth_target();
+        destroy_gbuffer_target();
+        destroy_ao_target();
+        destroy_post_color_target(post_target_a_);
+        destroy_post_color_target(post_target_b_);
+        shs::vk_destroy_render_path_temporal_resources(vk_->device(), temporal_resources_);
         destroy_layered_depth_target(sun_shadow_target_);
         destroy_layered_depth_target(local_shadow_target_);
 
@@ -489,6 +788,7 @@ public:
         destroy_buffer(capsule_index_buffer_);
         destroy_buffer(cylinder_vertex_buffer_);
         destroy_buffer(cylinder_index_buffer_);
+        destroy_buffer(phase_f_snapshot_readback_buffer_);
 
         for (auto& fr : frame_resources_)
         {
@@ -513,6 +813,19 @@ public:
                 vkDestroyDescriptorPool(vk_->device(), descriptor_pool_, nullptr);
                 descriptor_pool_ = VK_NULL_HANDLE;
             }
+            if (deferred_descriptor_pool_ != VK_NULL_HANDLE)
+            {
+                vkDestroyDescriptorPool(vk_->device(), deferred_descriptor_pool_, nullptr);
+                deferred_descriptor_pool_ = VK_NULL_HANDLE;
+                deferred_set_ = VK_NULL_HANDLE;
+                deferred_post_a_set_ = VK_NULL_HANDLE;
+                deferred_post_b_set_ = VK_NULL_HANDLE;
+            }
+            if (deferred_set_layout_ != VK_NULL_HANDLE)
+            {
+                vkDestroyDescriptorSetLayout(vk_->device(), deferred_set_layout_, nullptr);
+                deferred_set_layout_ = VK_NULL_HANDLE;
+            }
             if (global_set_layout_ != VK_NULL_HANDLE)
             {
                 vkDestroyDescriptorSetLayout(vk_->device(), global_set_layout_, nullptr);
@@ -534,6 +847,15 @@ public:
             sdl_ready_ = false;
         }
 
+        if (phase_f_metrics_stream_.is_open())
+        {
+            phase_f_metrics_stream_.close();
+        }
+        if (phase_g_metrics_stream_.is_open())
+        {
+            phase_g_metrics_stream_.close();
+        }
+
         shs::jolt::shutdown_jolt();
     }
 
@@ -544,10 +866,15 @@ private:
         std::fprintf(stderr, "  Esc        : quit\n");
         std::fprintf(stderr, "  F1         : toggle recording mode (inline / MT-secondary)\n");
         std::fprintf(stderr, "  F2         : cycle rendering path (Forward/Forward+/Deferred/TiledDeferred/ClusteredForward)\n");
-        std::fprintf(stderr, "  Shift+F2   : cycle lighting technique (PBR/Blinn)\n");
+        std::fprintf(stderr, "  F3         : cycle composed presets ({path + technique + post-stack variant})\n");
+        std::fprintf(stderr, "  F4         : cycle rendering-technique recipe (PBR/Blinn)\n");
+        std::fprintf(stderr, "  F5         : cycle framebuffer debug preset (final/albedo/normal/material/depth/ao/light-grid/light-clusters/shadow/hdr/ldr/motion/dof-coc/dof-blur/dof-factor)\n");
         std::fprintf(stderr, "  Tab        : cycle rendering path (alias)\n");
         std::fprintf(stderr, "  F6         : toggle Vulkan culler backend (gpu / disabled)\n");
         std::fprintf(stderr, "  F7         : toggle light debug wireframe draw\n");
+        std::fprintf(stderr, "  F8         : cycle semantic debug target from active resource plan\n");
+        std::fprintf(stderr, "  F9         : toggle temporal accumulation (history blend + jitter, when TAA pass exists)\n");
+        std::fprintf(stderr, "  F10        : print controls/help + composition catalog (includes VK/SW parity)\n");
         std::fprintf(stderr, "  F11        : toggle auto lighting-technique switching\n");
         std::fprintf(stderr, "  F12        : toggle directional (sun) shadow contribution\n");
         std::fprintf(stderr, "  Drag LMB/RMB: free-look camera (WSL spike-filtered)\n");
@@ -559,7 +886,1306 @@ private:
         std::fprintf(stderr, "  9/0        : sun shadow strength -/+ (when F12 is on)\n");
         std::fprintf(stderr, "  R          : reset light tuning\n");
         std::fprintf(stderr, "  +/-        : decrease/increase active light count\n");
-        std::fprintf(stderr, "  Title bar  : shows lighting-technique, render-path, culling mode, rejections, and frame ms\n\n");
+        std::fprintf(stderr, "  Title bar  : shows composition, path/technique state, culling/debug stats, CPU/GPU pass timing state, rebuild counters, and frame ms\n\n");
+        std::fprintf(stderr, "  Phase-I    : set `SHS_PHASE_I=1` for VK/SW parity JSONL (includes SW runtime sampling by default)\n\n");
+        std::fprintf(stderr, "  Phase-F    : set `SHS_PHASE_F=1` for auto matrix benchmark -> JSONL artifacts (+ optional PPM snapshots)\n\n");
+        std::fprintf(stderr, "  Phase-G    : set `SHS_PHASE_G=1` for timed soak auto-cycle -> JSONL churn/rebuild metrics + acceptance verdict\n\n");
+    }
+
+    std::vector<CompositionParityEntry> collect_composition_parity_entries(
+        bool include_resource_validation = true) const
+    {
+        std::vector<CompositionParityEntry> out{};
+        out.reserve(composition_cycle_order_.size());
+        if (composition_cycle_order_.empty()) return out;
+
+        const shs::RenderPathCompiler compiler{};
+        shs::BackendCapabilities software_caps{};
+        software_caps.supports_offscreen = true;
+        software_caps.supports_present = false;
+        const shs::RenderPathCapabilitySet software_capset =
+            shs::make_render_path_capability_set(shs::RenderBackendType::Software, software_caps);
+
+        for (size_t i = 0; i < composition_cycle_order_.size(); ++i)
+        {
+            const shs::RenderCompositionRecipe& c = composition_cycle_order_[i];
+            const shs::RenderCompositionResolved resolved =
+                shs::resolve_builtin_render_composition_recipe(
+                    c,
+                    shs::RenderBackendType::Vulkan,
+                    "render_path_vk",
+                    "render_tech_vk");
+
+            CompositionParityEntry entry{};
+            entry.index = i;
+            entry.name = c.name;
+            entry.path_preset = c.path_preset;
+            entry.technique_preset = c.technique_preset;
+            entry.post_stack = c.post_stack;
+
+            const shs::RenderPathExecutionPlan vk_plan =
+                compiler.compile(resolved.path_recipe, ctx_, &pass_contract_registry_);
+            entry.vk_plan_valid = vk_plan.valid;
+            entry.vk_pass_count = vk_plan.pass_chain.size();
+            if (!vk_plan.errors.empty()) entry.vk_plan_error = vk_plan.errors.front();
+            if (!vk_plan.warnings.empty()) entry.vk_warning = vk_plan.warnings.front();
+            entry.has_ssao = shs::render_path_plan_has_pass(vk_plan, shs::PassId::SSAO);
+            entry.has_taa = shs::render_path_plan_has_pass(vk_plan, shs::PassId::TAA);
+            entry.has_motion = shs::render_path_plan_has_pass(vk_plan, shs::PassId::MotionBlur);
+            entry.has_dof = shs::render_path_plan_has_pass(vk_plan, shs::PassId::DepthOfField);
+
+            if (include_resource_validation)
+            {
+                const shs::RenderPathResourcePlan vk_resource_plan =
+                    shs::compile_render_path_resource_plan(vk_plan, resolved.path_recipe, &pass_contract_registry_);
+                const shs::RenderPathBarrierPlan vk_barrier_plan =
+                    shs::compile_render_path_barrier_plan(vk_plan, vk_resource_plan, &pass_contract_registry_);
+                entry.vk_resource_valid = vk_resource_plan.valid;
+                entry.vk_barrier_valid = vk_barrier_plan.valid;
+                entry.vk_barrier_edges = vk_barrier_plan.edges.size();
+                entry.vk_layout_transitions = shs::render_path_barrier_layout_transition_count(vk_barrier_plan);
+                entry.vk_alias_classes = vk_barrier_plan.alias_classes.size();
+                entry.vk_alias_slots = shs::render_path_alias_slot_count(vk_barrier_plan);
+                if (!vk_resource_plan.errors.empty()) entry.vk_resource_error = vk_resource_plan.errors.front();
+                if (!vk_barrier_plan.errors.empty()) entry.vk_barrier_error = vk_barrier_plan.errors.front();
+            }
+            else
+            {
+                entry.vk_resource_valid = true;
+                entry.vk_barrier_valid = true;
+            }
+            entry.vk_valid = entry.vk_plan_valid && entry.vk_resource_valid && entry.vk_barrier_valid;
+
+            shs::RenderPathRecipe sw_recipe = resolved.path_recipe;
+            sw_recipe.backend = shs::RenderBackendType::Software;
+            sw_recipe.name = c.name + "__path_sw";
+            const shs::RenderPathExecutionPlan sw_plan =
+                compiler.compile(sw_recipe, software_capset, &pass_contract_registry_sw_);
+            entry.sw_plan_valid = sw_plan.valid;
+            entry.sw_pass_count = sw_plan.pass_chain.size();
+            if (!sw_plan.errors.empty()) entry.sw_plan_error = sw_plan.errors.front();
+            if (!sw_plan.warnings.empty()) entry.sw_warning = sw_plan.warnings.front();
+
+            if (include_resource_validation)
+            {
+                const shs::RenderPathResourcePlan sw_resource_plan =
+                    shs::compile_render_path_resource_plan(sw_plan, sw_recipe, &pass_contract_registry_sw_);
+                const shs::RenderPathBarrierPlan sw_barrier_plan =
+                    shs::compile_render_path_barrier_plan(sw_plan, sw_resource_plan, &pass_contract_registry_sw_);
+                entry.sw_resource_valid = sw_resource_plan.valid;
+                entry.sw_barrier_valid = sw_barrier_plan.valid;
+                if (!sw_resource_plan.errors.empty()) entry.sw_resource_error = sw_resource_plan.errors.front();
+                if (!sw_barrier_plan.errors.empty()) entry.sw_barrier_error = sw_barrier_plan.errors.front();
+            }
+            else
+            {
+                entry.sw_resource_valid = true;
+                entry.sw_barrier_valid = true;
+            }
+            entry.sw_valid = entry.sw_plan_valid && entry.sw_resource_valid && entry.sw_barrier_valid;
+
+            out.push_back(std::move(entry));
+        }
+        return out;
+    }
+
+    void print_composition_catalog() const
+    {
+        if (composition_cycle_order_.empty())
+        {
+            std::fprintf(stderr, "[render-path][composition] No registered compositions.\n");
+            return;
+        }
+
+        const std::vector<CompositionParityEntry> entries = collect_composition_parity_entries(true);
+        std::fprintf(
+            stderr,
+            "[render-path][composition] Cycle catalog (%zu entries):\n",
+            entries.size());
+        for (const CompositionParityEntry& e : entries)
+        {
+            std::fprintf(
+                stderr,
+                "  [%02zu] %-42s path:%-17s technique:%-7s post:%-8s bk[vk:%-7s sw:%-7s] pass[v:%2zu s:%2zu] post[s:%c t:%c m:%c d:%c] br:%zu lay:%u al:%zu/%u%s\n",
+                e.index,
+                e.name.c_str(),
+                shs::render_path_preset_name(e.path_preset),
+                shs::render_technique_preset_name(e.technique_preset),
+                shs::render_composition_post_stack_preset_name(e.post_stack),
+                e.vk_valid ? "ok" : "invalid",
+                e.sw_valid ? "ok" : "invalid",
+                e.vk_pass_count,
+                e.sw_pass_count,
+                e.has_ssao ? 'Y' : '-',
+                e.has_taa ? 'Y' : '-',
+                e.has_motion ? 'Y' : '-',
+                e.has_dof ? 'Y' : '-',
+                e.vk_barrier_edges,
+                e.vk_layout_transitions,
+                e.vk_alias_classes,
+                e.vk_alias_slots,
+                (e.index == active_composition_index_) ? "  <active>" : "");
+            if (!e.vk_plan_error.empty())
+            {
+                std::fprintf(stderr, "        plan-error: %s\n", e.vk_plan_error.c_str());
+            }
+            if (!e.vk_resource_error.empty())
+            {
+                std::fprintf(stderr, "        resource-error: %s\n", e.vk_resource_error.c_str());
+            }
+            if (!e.vk_barrier_error.empty())
+            {
+                std::fprintf(stderr, "        barrier-error: %s\n", e.vk_barrier_error.c_str());
+            }
+            if (!e.sw_plan_error.empty())
+            {
+                std::fprintf(stderr, "        sw-plan-error: %s\n", e.sw_plan_error.c_str());
+            }
+            if (!e.sw_resource_error.empty())
+            {
+                std::fprintf(stderr, "        sw-resource-error: %s\n", e.sw_resource_error.c_str());
+            }
+            if (!e.sw_barrier_error.empty())
+            {
+                std::fprintf(stderr, "        sw-barrier-error: %s\n", e.sw_barrier_error.c_str());
+            }
+        }
+    }
+
+    static std::string json_escape(const std::string& in)
+    {
+        std::string out{};
+        out.reserve(in.size() + 8u);
+        for (unsigned char c : in)
+        {
+            switch (c)
+            {
+                case '\\': out += "\\\\"; break;
+                case '"': out += "\\\""; break;
+                case '\b': out += "\\b"; break;
+                case '\f': out += "\\f"; break;
+                case '\n': out += "\\n"; break;
+                case '\r': out += "\\r"; break;
+                case '\t': out += "\\t"; break;
+                default:
+                    if (c < 0x20u)
+                    {
+                        char buf[7]{};
+                        std::snprintf(buf, sizeof(buf), "\\u%04x", static_cast<unsigned int>(c));
+                        out += buf;
+                    }
+                    else
+                    {
+                        out.push_back(static_cast<char>(c));
+                    }
+                    break;
+            }
+        }
+        return out;
+    }
+
+    static uint64_t hash_ldr_color_buffer(const shs::RT_ColorLDR& ldr)
+    {
+        static constexpr uint64_t kFNVOffset = 1469598103934665603ull;
+        static constexpr uint64_t kFNVPrime = 1099511628211ull;
+        uint64_t h = kFNVOffset;
+        for (const shs::Color& px : ldr.color.data)
+        {
+            h ^= static_cast<uint64_t>(px.r); h *= kFNVPrime;
+            h ^= static_cast<uint64_t>(px.g); h *= kFNVPrime;
+            h ^= static_cast<uint64_t>(px.b); h *= kFNVPrime;
+            h ^= static_cast<uint64_t>(px.a); h *= kFNVPrime;
+        }
+        return h;
+    }
+
+    PhaseISoftwareRuntimeSample run_phase_i_software_runtime_sample(
+        const shs::RenderPathRecipe& sw_recipe,
+        shs::RenderTechniquePreset technique_preset) const
+    {
+        PhaseISoftwareRuntimeSample out{};
+        out.attempted = true;
+
+        const uint32_t w = std::max(16u, phase_i_config_.runtime_width);
+        const uint32_t h = std::max(16u, phase_i_config_.runtime_height);
+        const uint32_t warmup_frames = phase_i_config_.runtime_warmup_frames;
+        const uint32_t sample_frames = std::max(1u, phase_i_config_.runtime_sample_frames);
+        const uint32_t total_frames = warmup_frames + sample_frames;
+
+        auto backend_result = shs::create_render_backend("software");
+        if (!backend_result.backend)
+        {
+            out.error = "software backend create failed";
+            return out;
+        }
+
+        shs::Context sw_ctx{};
+        std::vector<std::unique_ptr<shs::IRenderBackend>> keepalive{};
+        keepalive.reserve(1u + backend_result.auxiliary_backends.size());
+        keepalive.push_back(std::move(backend_result.backend));
+        for (auto& aux : backend_result.auxiliary_backends)
+        {
+            if (aux) keepalive.push_back(std::move(aux));
+        }
+        if (keepalive.empty() || !keepalive.front())
+        {
+            out.error = "software backend unavailable";
+            return out;
+        }
+        sw_ctx.set_primary_backend(keepalive.front().get());
+        for (size_t i = 1u; i < keepalive.size(); ++i)
+        {
+            if (keepalive[i]) sw_ctx.register_backend(keepalive[i].get());
+        }
+
+        shs::ResourceRegistry resources{};
+        shs::RTRegistry rtr{};
+        shs::PluggablePipeline pipeline{};
+
+        shs::RT_ShadowDepth shadow_rt{256, 256};
+        shs::RT_ColorHDR hdr_rt{static_cast<int>(w), static_cast<int>(h)};
+        shs::RT_ColorDepthMotion motion_rt{static_cast<int>(w), static_cast<int>(h), kDemoNearZ, kDemoFarZ};
+        shs::RT_ColorLDR ldr_rt{static_cast<int>(w), static_cast<int>(h)};
+        shs::RT_ColorLDR shafts_tmp_rt{static_cast<int>(w), static_cast<int>(h)};
+        shs::RT_ColorLDR motion_blur_tmp_rt{static_cast<int>(w), static_cast<int>(h)};
+
+        const shs::RT_Shadow rt_shadow_h = rtr.reg<shs::RT_Shadow>(&shadow_rt);
+        const shs::RTHandle rt_hdr_h = rtr.reg<shs::RTHandle>(&hdr_rt);
+        const shs::RT_Motion rt_motion_h = rtr.reg<shs::RT_Motion>(&motion_rt);
+        const shs::RTHandle rt_ldr_h = rtr.reg<shs::RTHandle>(&ldr_rt);
+        const shs::RTHandle rt_shafts_tmp_h = rtr.reg<shs::RTHandle>(&shafts_tmp_rt);
+        const shs::RTHandle rt_motion_blur_tmp_h = rtr.reg<shs::RTHandle>(&motion_blur_tmp_rt);
+
+        const shs::PassFactoryRegistry pass_registry = shs::make_standard_pass_factory_registry(
+            rt_shadow_h,
+            rt_hdr_h,
+            rt_motion_h,
+            rt_ldr_h,
+            rt_shafts_tmp_h,
+            rt_motion_blur_tmp_h);
+
+        const shs::RenderPathCompiler compiler{};
+        shs::BackendCapabilities software_caps{};
+        software_caps.supports_offscreen = true;
+        software_caps.supports_present = false;
+        const shs::RenderPathCapabilitySet software_capset =
+            shs::make_render_path_capability_set(shs::RenderBackendType::Software, software_caps);
+        const shs::RenderPathExecutionPlan sw_plan =
+            compiler.compile(sw_recipe, software_capset, &pass_registry);
+        if (!sw_plan.valid)
+        {
+            out.error = sw_plan.errors.empty() ? "software plan invalid" : sw_plan.errors.front();
+            return out;
+        }
+
+        std::vector<std::string> missing{};
+        out.configured = pipeline.configure_from_render_path_plan(pass_registry, sw_plan, &missing);
+        if (!out.configured)
+        {
+            out.error = missing.empty() ? "software pipeline configure failed" : ("missing pass: " + missing.front());
+            return out;
+        }
+
+        shs::Scene scene{};
+        scene.resources = &resources;
+        scene.cam.pos = glm::vec3(0.0f, 2.2f, 6.5f);
+        scene.cam.target = glm::vec3(0.0f, 0.6f, 0.0f);
+        scene.cam.up = glm::vec3(0.0f, 1.0f, 0.0f);
+        scene.cam.znear = kDemoNearZ;
+        scene.cam.zfar = kDemoFarZ;
+        scene.cam.fov_y_radians = glm::radians(60.0f);
+        scene.cam.view = glm::lookAt(scene.cam.pos, scene.cam.target, scene.cam.up);
+        scene.cam.proj = glm::perspective(scene.cam.fov_y_radians, static_cast<float>(w) / static_cast<float>(h), scene.cam.znear, scene.cam.zfar);
+        scene.cam.viewproj = scene.cam.proj * scene.cam.view;
+        scene.cam.prev_viewproj = scene.cam.viewproj;
+        scene.sun.dir_ws = glm::normalize(glm::vec3(-0.35f, -1.0f, -0.25f));
+        scene.sun.color = glm::vec3(1.0f, 0.97f, 0.92f);
+        scene.sun.intensity = 2.0f;
+
+        shs::FrameParams fp{};
+        fp.w = static_cast<int>(w);
+        fp.h = static_cast<int>(h);
+        fp.dt = 1.0f / 60.0f;
+        fp.time = 0.0f;
+        fp.debug_view = shs::DebugViewMode::Final;
+        fp.cull_mode = shs::CullMode::Back;
+        fp.technique.mode = sw_recipe.technique_mode;
+        fp.technique.active_modes_mask = shs::technique_mode_mask_all();
+        fp.pass.shadow.enable = sw_recipe.runtime_defaults.enable_shadows;
+        fp.enable_shadows = fp.pass.shadow.enable;
+        fp.hybrid.allow_cross_backend_passes = false;
+        fp.hybrid.strict_backend_availability = true;
+        fp.hybrid.emulate_vulkan_runtime = false;
+        const shs::RenderTechniqueRecipe tech_recipe =
+            shs::make_builtin_render_technique_recipe(technique_preset, "phase_i_sw_runtime");
+        shs::apply_render_technique_recipe_to_frame_params(tech_recipe, fp);
+
+        double sampled_frame_ms_sum = 0.0;
+        uint32_t sampled_count = 0u;
+        using clock = std::chrono::steady_clock;
+        for (uint32_t frame = 0u; frame < total_frames; ++frame)
+        {
+            const auto t0 = clock::now();
+            pipeline.execute(sw_ctx, scene, fp, rtr);
+            const auto t1 = clock::now();
+            const auto& report = pipeline.execution_report();
+            if (!report.valid)
+            {
+                out.report_valid = false;
+                out.error = report.errors.empty() ? "software execution report invalid" : report.errors.front();
+                return out;
+            }
+            if (!report.warnings.empty() && out.warning.empty())
+            {
+                out.warning = report.warnings.front();
+            }
+            out.report_valid = true;
+            out.executed = true;
+
+            if (frame >= warmup_frames)
+            {
+                sampled_frame_ms_sum +=
+                    std::chrono::duration<double, std::milli>(t1 - t0).count();
+                ++sampled_count;
+            }
+
+            fp.time += fp.dt;
+            scene.cam.prev_viewproj = scene.cam.viewproj;
+        }
+
+        out.sampled_frames = sampled_count;
+        out.avg_frame_ms = (sampled_count > 0u)
+            ? (sampled_frame_ms_sum / static_cast<double>(sampled_count))
+            : 0.0;
+        out.ldr_hash = hash_ldr_color_buffer(ldr_rt);
+        return out;
+    }
+
+    static bool parse_env_bool(const char* value, bool fallback)
+    {
+        if (!value || *value == '\0') return fallback;
+        std::string v(value);
+        std::transform(v.begin(), v.end(), v.begin(), [](unsigned char c) {
+            return static_cast<char>(std::tolower(c));
+        });
+        if (v == "1" || v == "true" || v == "on" || v == "yes") return true;
+        if (v == "0" || v == "false" || v == "off" || v == "no") return false;
+        return fallback;
+    }
+
+    static uint32_t parse_env_u32(const char* value, uint32_t fallback, uint32_t min_value = 1u)
+    {
+        if (!value || *value == '\0') return fallback;
+        char* end = nullptr;
+        const unsigned long parsed = std::strtoul(value, &end, 10);
+        if (end == value) return fallback;
+        const uint32_t out = static_cast<uint32_t>(std::min<unsigned long>(
+            parsed,
+            static_cast<unsigned long>(std::numeric_limits<uint32_t>::max())));
+        return std::max(min_value, out);
+    }
+
+    static double parse_env_f64(const char* value, double fallback, double min_value = 0.0)
+    {
+        if (!value || *value == '\0') return fallback;
+        char* end = nullptr;
+        const double parsed = std::strtod(value, &end);
+        if (end == value || !std::isfinite(parsed)) return fallback;
+        return std::max(min_value, parsed);
+    }
+
+    static std::string sanitize_file_component(const std::string& in)
+    {
+        std::string out{};
+        out.reserve(in.size());
+        for (char c : in)
+        {
+            if ((c >= 'a' && c <= 'z') ||
+                (c >= 'A' && c <= 'Z') ||
+                (c >= '0' && c <= '9') ||
+                c == '-' || c == '_' || c == '.')
+            {
+                out.push_back(c);
+            }
+            else
+            {
+                out.push_back('_');
+            }
+        }
+        if (out.empty()) out = "composition";
+        return out;
+    }
+
+    static double safe_div(double numerator, uint32_t denominator)
+    {
+        return (denominator > 0u) ? (numerator / static_cast<double>(denominator)) : 0.0;
+    }
+
+    void configure_phase_i_from_env()
+    {
+        const char* phase_i_env = std::getenv("SHS_PHASE_I");
+        const char* phase_i_enabled_env = std::getenv("SHS_PHASE_I_ENABLED");
+        phase_i_config_.enabled = parse_env_bool(phase_i_enabled_env, parse_env_bool(phase_i_env, false));
+        if (!phase_i_config_.enabled) return;
+
+        phase_i_config_.include_resource_validation = parse_env_bool(
+            std::getenv("SHS_PHASE_I_INCLUDE_RESOURCE_VALIDATION"),
+            phase_i_config_.include_resource_validation);
+        phase_i_config_.runtime_sw_execute = parse_env_bool(
+            std::getenv("SHS_PHASE_I_RUNTIME_SW"),
+            phase_i_config_.runtime_sw_execute);
+        phase_i_config_.runtime_warmup_frames = parse_env_u32(
+            std::getenv("SHS_PHASE_I_RUNTIME_WARMUP_FRAMES"),
+            phase_i_config_.runtime_warmup_frames,
+            0u);
+        phase_i_config_.runtime_sample_frames = parse_env_u32(
+            std::getenv("SHS_PHASE_I_RUNTIME_SAMPLE_FRAMES"),
+            phase_i_config_.runtime_sample_frames,
+            1u);
+        phase_i_config_.runtime_width = parse_env_u32(
+            std::getenv("SHS_PHASE_I_RUNTIME_WIDTH"),
+            phase_i_config_.runtime_width,
+            16u);
+        phase_i_config_.runtime_height = parse_env_u32(
+            std::getenv("SHS_PHASE_I_RUNTIME_HEIGHT"),
+            phase_i_config_.runtime_height,
+            16u);
+        if (const char* output_env = std::getenv("SHS_PHASE_I_OUTPUT"))
+        {
+            if (*output_env != '\0') phase_i_config_.output_path = output_env;
+        }
+    }
+
+    void initialize_phase_i_parity_report() const
+    {
+        if (!phase_i_config_.enabled) return;
+
+        std::vector<CompositionParityEntry> entries =
+            collect_composition_parity_entries(phase_i_config_.include_resource_validation);
+        if (entries.empty())
+        {
+            std::fprintf(stderr, "[phase-i] No compositions available for parity report.\n");
+            return;
+        }
+
+        std::filesystem::path output_path(phase_i_config_.output_path);
+        if (output_path.has_parent_path())
+        {
+            std::error_code ec{};
+            std::filesystem::create_directories(output_path.parent_path(), ec);
+        }
+
+        std::ofstream out(phase_i_config_.output_path, std::ios::out | std::ios::trunc);
+        if (!out.is_open())
+        {
+            std::fprintf(stderr, "[phase-i] Failed to open output: %s\n", phase_i_config_.output_path.c_str());
+            return;
+        }
+
+        size_t full_parity_count = 0u;
+        size_t vk_only_count = 0u;
+        size_t sw_only_count = 0u;
+        size_t sw_runtime_attempted = 0u;
+        size_t sw_runtime_executed = 0u;
+        double sw_runtime_frame_ms_sum = 0.0;
+        uint32_t sw_runtime_frame_ms_count = 0u;
+        for (const CompositionParityEntry& e : entries)
+        {
+            if (e.vk_valid && e.sw_valid) ++full_parity_count;
+            else if (e.vk_valid && !e.sw_valid) ++vk_only_count;
+            else if (!e.vk_valid && e.sw_valid) ++sw_only_count;
+        }
+
+        out << "{"
+            << "\"event\":\"phase_i_begin\","
+            << "\"composition_count\":" << entries.size() << ","
+            << "\"resource_validation\":" << (phase_i_config_.include_resource_validation ? "true" : "false") << ","
+            << "\"runtime_sw_execute\":" << (phase_i_config_.runtime_sw_execute ? "true" : "false")
+            << "}\n";
+
+        for (CompositionParityEntry& e : entries)
+        {
+            if (phase_i_config_.runtime_sw_execute &&
+                e.sw_plan_valid &&
+                e.index < composition_cycle_order_.size())
+            {
+                const shs::RenderCompositionRecipe& c = composition_cycle_order_[e.index];
+                const shs::RenderCompositionResolved sw_resolved =
+                    shs::resolve_builtin_render_composition_recipe(
+                        c,
+                        shs::RenderBackendType::Software,
+                        "render_path_sw",
+                        "render_tech_sw");
+                shs::RenderPathRecipe sw_recipe = sw_resolved.path_recipe;
+                sw_recipe.backend = shs::RenderBackendType::Software;
+                sw_recipe.name = c.name + "__phase_i_runtime_sw";
+                e.sw_runtime = run_phase_i_software_runtime_sample(sw_recipe, c.technique_preset);
+                if (e.sw_runtime.attempted) ++sw_runtime_attempted;
+                if (e.sw_runtime.executed)
+                {
+                    ++sw_runtime_executed;
+                    sw_runtime_frame_ms_sum += e.sw_runtime.avg_frame_ms;
+                    ++sw_runtime_frame_ms_count;
+                }
+            }
+
+            out << "{";
+            out << "\"event\":\"phase_i_composition\",";
+            out << "\"index\":" << e.index << ",";
+            out << "\"composition\":\"" << json_escape(e.name) << "\",";
+            out << "\"path\":\"" << shs::render_path_preset_name(e.path_preset) << "\",";
+            out << "\"technique\":\"" << shs::render_technique_preset_name(e.technique_preset) << "\",";
+            out << "\"post_stack\":\"" << shs::render_composition_post_stack_preset_name(e.post_stack) << "\",";
+            out << "\"vk_valid\":" << (e.vk_valid ? "true" : "false") << ",";
+            out << "\"vk_plan_valid\":" << (e.vk_plan_valid ? "true" : "false") << ",";
+            out << "\"vk_resource_valid\":" << (e.vk_resource_valid ? "true" : "false") << ",";
+            out << "\"vk_barrier_valid\":" << (e.vk_barrier_valid ? "true" : "false") << ",";
+            out << "\"vk_pass_count\":" << e.vk_pass_count << ",";
+            out << "\"vk_barrier_edges\":" << e.vk_barrier_edges << ",";
+            out << "\"vk_layout_transitions\":" << e.vk_layout_transitions << ",";
+            out << "\"vk_alias_classes\":" << e.vk_alias_classes << ",";
+            out << "\"vk_alias_slots\":" << e.vk_alias_slots << ",";
+            out << "\"sw_valid\":" << (e.sw_valid ? "true" : "false") << ",";
+            out << "\"sw_plan_valid\":" << (e.sw_plan_valid ? "true" : "false") << ",";
+            out << "\"sw_resource_valid\":" << (e.sw_resource_valid ? "true" : "false") << ",";
+            out << "\"sw_barrier_valid\":" << (e.sw_barrier_valid ? "true" : "false") << ",";
+            out << "\"sw_pass_count\":" << e.sw_pass_count << ",";
+            out << "\"post_ssao\":" << (e.has_ssao ? "true" : "false") << ",";
+            out << "\"post_taa\":" << (e.has_taa ? "true" : "false") << ",";
+            out << "\"post_motion\":" << (e.has_motion ? "true" : "false") << ",";
+            out << "\"post_dof\":" << (e.has_dof ? "true" : "false") << ",";
+            out << "\"vk_plan_error\":\"" << json_escape(e.vk_plan_error) << "\",";
+            out << "\"vk_resource_error\":\"" << json_escape(e.vk_resource_error) << "\",";
+            out << "\"vk_barrier_error\":\"" << json_escape(e.vk_barrier_error) << "\",";
+            out << "\"vk_warning\":\"" << json_escape(e.vk_warning) << "\",";
+            out << "\"sw_plan_error\":\"" << json_escape(e.sw_plan_error) << "\",";
+            out << "\"sw_resource_error\":\"" << json_escape(e.sw_resource_error) << "\",";
+            out << "\"sw_barrier_error\":\"" << json_escape(e.sw_barrier_error) << "\",";
+            out << "\"sw_warning\":\"" << json_escape(e.sw_warning) << "\",";
+            out << "\"sw_runtime_attempted\":" << (e.sw_runtime.attempted ? "true" : "false") << ",";
+            out << "\"sw_runtime_configured\":" << (e.sw_runtime.configured ? "true" : "false") << ",";
+            out << "\"sw_runtime_executed\":" << (e.sw_runtime.executed ? "true" : "false") << ",";
+            out << "\"sw_runtime_report_valid\":" << (e.sw_runtime.report_valid ? "true" : "false") << ",";
+            out << "\"sw_runtime_sampled_frames\":" << e.sw_runtime.sampled_frames << ",";
+            out << "\"sw_runtime_avg_frame_ms\":" << e.sw_runtime.avg_frame_ms << ",";
+            out << "\"sw_runtime_ldr_hash\":" << e.sw_runtime.ldr_hash << ",";
+            out << "\"sw_runtime_error\":\"" << json_escape(e.sw_runtime.error) << "\",";
+            out << "\"sw_runtime_warning\":\"" << json_escape(e.sw_runtime.warning) << "\"";
+            out << "}\n";
+        }
+
+        const double sw_runtime_avg_frame_ms =
+            (sw_runtime_frame_ms_count > 0u)
+                ? (sw_runtime_frame_ms_sum / static_cast<double>(sw_runtime_frame_ms_count))
+                : 0.0;
+        out << "{"
+            << "\"event\":\"phase_i_end\","
+            << "\"composition_count\":" << entries.size() << ","
+            << "\"full_parity\":" << full_parity_count << ","
+            << "\"vk_only\":" << vk_only_count << ","
+            << "\"sw_only\":" << sw_only_count << ","
+            << "\"sw_runtime_attempted\":" << sw_runtime_attempted << ","
+            << "\"sw_runtime_executed\":" << sw_runtime_executed << ","
+            << "\"sw_runtime_avg_frame_ms\":" << sw_runtime_avg_frame_ms
+            << "}\n";
+        out.flush();
+
+        std::fprintf(
+            stderr,
+            "[phase-i] Parity report written: %s (full:%zu/%zu, vk-only:%zu, sw-only:%zu, sw-runtime:%zu/%zu avg:%.2fms)\n",
+            phase_i_config_.output_path.c_str(),
+            full_parity_count,
+            entries.size(),
+            vk_only_count,
+            sw_only_count,
+            sw_runtime_executed,
+            sw_runtime_attempted,
+            sw_runtime_avg_frame_ms);
+    }
+
+    void configure_phase_f_from_env()
+    {
+        const char* phase_f_env = std::getenv("SHS_PHASE_F");
+        const char* phase_f_enabled_env = std::getenv("SHS_PHASE_F_ENABLED");
+        phase_f_config_.enabled = parse_env_bool(phase_f_enabled_env, parse_env_bool(phase_f_env, false));
+        if (!phase_f_config_.enabled) return;
+
+        phase_f_config_.warmup_frames = parse_env_u32(
+            std::getenv("SHS_PHASE_F_WARMUP_FRAMES"),
+            phase_f_config_.warmup_frames,
+            1u);
+        phase_f_config_.sample_frames = parse_env_u32(
+            std::getenv("SHS_PHASE_F_SAMPLE_FRAMES"),
+            phase_f_config_.sample_frames,
+            1u);
+        phase_f_config_.include_post_variants = parse_env_bool(
+            std::getenv("SHS_PHASE_F_INCLUDE_POST_VARIANTS"),
+            phase_f_config_.include_post_variants);
+        phase_f_config_.include_full_cycle = parse_env_bool(
+            std::getenv("SHS_PHASE_F_FULL_CYCLE"),
+            phase_f_config_.include_full_cycle);
+        phase_f_config_.capture_snapshots = parse_env_bool(
+            std::getenv("SHS_PHASE_F_CAPTURE_SNAPSHOTS"),
+            phase_f_config_.capture_snapshots);
+        phase_f_config_.max_entries = parse_env_u32(
+            std::getenv("SHS_PHASE_F_MAX_ENTRIES"),
+            phase_f_config_.max_entries,
+            0u);
+
+        if (const char* output_env = std::getenv("SHS_PHASE_F_OUTPUT"))
+        {
+            if (*output_env != '\0') phase_f_config_.output_path = output_env;
+        }
+        if (const char* snapshot_env = std::getenv("SHS_PHASE_F_SNAPSHOT_DIR"))
+        {
+            if (*snapshot_env != '\0') phase_f_config_.snapshot_dir = snapshot_env;
+        }
+    }
+
+    void configure_phase_g_from_env()
+    {
+        const char* phase_g_env = std::getenv("SHS_PHASE_G");
+        const char* phase_g_enabled_env = std::getenv("SHS_PHASE_G_ENABLED");
+        phase_g_config_.enabled = parse_env_bool(phase_g_enabled_env, parse_env_bool(phase_g_env, false));
+        if (!phase_g_config_.enabled) return;
+
+        phase_g_config_.duration_sec = parse_env_u32(
+            std::getenv("SHS_PHASE_G_DURATION_SEC"),
+            phase_g_config_.duration_sec,
+            1u);
+        phase_g_config_.cycle_frames = parse_env_u32(
+            std::getenv("SHS_PHASE_G_CYCLE_FRAMES"),
+            phase_g_config_.cycle_frames,
+            1u);
+        phase_g_config_.log_interval_frames = parse_env_u32(
+            std::getenv("SHS_PHASE_G_LOG_INTERVAL_FRAMES"),
+            phase_g_config_.log_interval_frames,
+            1u);
+        phase_g_config_.toggle_interval_cycles = parse_env_u32(
+            std::getenv("SHS_PHASE_G_TOGGLE_INTERVAL_CYCLES"),
+            phase_g_config_.toggle_interval_cycles,
+            1u);
+        phase_g_config_.accept_max_avg_frame_ms = parse_env_f64(
+            std::getenv("SHS_PHASE_G_ACCEPT_MAX_AVG_FRAME_MS"),
+            phase_g_config_.accept_max_avg_frame_ms,
+            0.1);
+        phase_g_config_.accept_max_render_target_rebuild_delta = parse_env_u32(
+            std::getenv("SHS_PHASE_G_ACCEPT_MAX_RT_REBUILDS"),
+            phase_g_config_.accept_max_render_target_rebuild_delta,
+            0u);
+        phase_g_config_.accept_max_pipeline_rebuild_delta = parse_env_u32(
+            std::getenv("SHS_PHASE_G_ACCEPT_MAX_PIPELINE_REBUILDS"),
+            phase_g_config_.accept_max_pipeline_rebuild_delta,
+            0u);
+        phase_g_config_.accept_max_swapchain_generation_delta = parse_env_u32(
+            std::getenv("SHS_PHASE_G_ACCEPT_MAX_SWAPCHAIN_GENERATION"),
+            phase_g_config_.accept_max_swapchain_generation_delta,
+            0u);
+        phase_g_config_.accept_max_cycle_failures = parse_env_u32(
+            std::getenv("SHS_PHASE_G_ACCEPT_MAX_CYCLE_FAILURES"),
+            phase_g_config_.accept_max_cycle_failures,
+            0u);
+        if (const char* output_env = std::getenv("SHS_PHASE_G_OUTPUT"))
+        {
+            if (*output_env != '\0') phase_g_config_.output_path = output_env;
+        }
+    }
+
+    void phase_g_write_json_line(const std::string& line)
+    {
+        if (!phase_g_metrics_stream_.is_open()) return;
+        phase_g_metrics_stream_ << line << "\n";
+        phase_g_metrics_stream_.flush();
+    }
+
+    void phase_g_emit_cycle_event(const shs::RenderCompositionRecipe& c, float frame_ms, float ema_ms)
+    {
+        std::string line = "{";
+        line += "\"event\":\"phase_g_cycle\",";
+        line += "\"cycle\":" + std::to_string(phase_g_state_.cycles) + ",";
+        line += "\"frame\":" + std::to_string(phase_g_state_.frame_counter) + ",";
+        line += "\"elapsed_sec\":" + std::to_string(phase_g_state_.elapsed_sec) + ",";
+        line += "\"composition\":\"" + c.name + "\",";
+        line += "\"path\":\"" + std::string(shs::render_path_preset_name(c.path_preset)) + "\",";
+        line += "\"technique\":\"" + std::string(shs::render_technique_preset_name(c.technique_preset)) + "\",";
+        line += "\"post_stack\":\"" + std::string(shs::render_composition_post_stack_preset_name(c.post_stack)) + "\",";
+        line += "\"frame_ms\":" + std::to_string(frame_ms) + ",";
+        line += "\"ema_ms\":" + std::to_string(ema_ms) + ",";
+        line += "\"rebuild_target\":" + std::to_string(render_target_rebuild_count_) + ",";
+        line += "\"rebuild_pipeline\":" + std::to_string(pipeline_rebuild_count_) + ",";
+        line += "\"swapchain_generation\":" + std::to_string(swapchain_generation_change_count_);
+        line += "}";
+        phase_g_write_json_line(line);
+    }
+
+    void phase_g_emit_heartbeat(float frame_ms, float ema_ms)
+    {
+        const char* composition_name = active_composition_recipe_.name.empty()
+            ? "n/a"
+            : active_composition_recipe_.name.c_str();
+        std::string line = "{";
+        line += "\"event\":\"phase_g_heartbeat\",";
+        line += "\"frame\":" + std::to_string(phase_g_state_.frame_counter) + ",";
+        line += "\"elapsed_sec\":" + std::to_string(phase_g_state_.elapsed_sec) + ",";
+        line += "\"composition\":\"" + std::string(composition_name) + "\",";
+        line += "\"frame_ms\":" + std::to_string(frame_ms) + ",";
+        line += "\"ema_ms\":" + std::to_string(ema_ms) + ",";
+        line += "\"visible_lights\":" + std::to_string(visible_light_count_) + ",";
+        line += "\"active_lights\":" + std::to_string(active_light_count_) + ",";
+        line += "\"rebuild_target\":" + std::to_string(render_target_rebuild_count_) + ",";
+        line += "\"rebuild_pipeline\":" + std::to_string(pipeline_rebuild_count_) + ",";
+        line += "\"swapchain_generation\":" + std::to_string(swapchain_generation_change_count_) + ",";
+        line += "\"gpu_timing_valid\":" + std::string(gpu_pass_timing_valid_ ? "true" : "false");
+        line += "}";
+        phase_g_write_json_line(line);
+    }
+
+    void phase_g_emit_end_event()
+    {
+        const uint64_t delta_rt_rebuild =
+            render_target_rebuild_count_ - phase_g_state_.rebuild_target_start;
+        const uint64_t delta_pipeline_rebuild =
+            pipeline_rebuild_count_ - phase_g_state_.rebuild_pipeline_start;
+        const uint64_t delta_swapchain_gen =
+            swapchain_generation_change_count_ - phase_g_state_.swapchain_gen_start;
+        const double avg_frame_ms =
+            (phase_g_state_.frame_counter > 0u)
+                ? (phase_g_state_.frame_ms_sum / static_cast<double>(phase_g_state_.frame_counter))
+                : 0.0;
+        const double min_frame_ms =
+            (phase_g_state_.frame_counter > 0u) ? phase_g_state_.frame_ms_min : 0.0;
+        const double max_frame_ms =
+            (phase_g_state_.frame_counter > 0u) ? phase_g_state_.frame_ms_max : 0.0;
+        const bool accept =
+            avg_frame_ms <= phase_g_config_.accept_max_avg_frame_ms &&
+            delta_rt_rebuild <= phase_g_config_.accept_max_render_target_rebuild_delta &&
+            delta_pipeline_rebuild <= phase_g_config_.accept_max_pipeline_rebuild_delta &&
+            delta_swapchain_gen <= phase_g_config_.accept_max_swapchain_generation_delta &&
+            phase_g_state_.cycle_apply_failures <= phase_g_config_.accept_max_cycle_failures;
+
+        std::string line = "{";
+        line += "\"event\":\"phase_g_end\",";
+        line += "\"elapsed_sec\":" + std::to_string(phase_g_state_.elapsed_sec) + ",";
+        line += "\"frames\":" + std::to_string(phase_g_state_.frame_counter) + ",";
+        line += "\"cycles\":" + std::to_string(phase_g_state_.cycles) + ",";
+        line += "\"toggle_events\":" + std::to_string(phase_g_state_.toggle_events) + ",";
+        line += "\"avg_frame_ms\":" + std::to_string(avg_frame_ms) + ",";
+        line += "\"min_frame_ms\":" + std::to_string(min_frame_ms) + ",";
+        line += "\"max_frame_ms\":" + std::to_string(max_frame_ms) + ",";
+        line += "\"cycle_apply_failures\":" + std::to_string(phase_g_state_.cycle_apply_failures) + ",";
+        line += "\"delta_render_target_rebuild\":" + std::to_string(delta_rt_rebuild) + ",";
+        line += "\"delta_pipeline_rebuild\":" + std::to_string(delta_pipeline_rebuild) + ",";
+        line += "\"delta_swapchain_generation\":" + std::to_string(delta_swapchain_gen) + ",";
+        line += "\"accept\":" + std::string(accept ? "true" : "false");
+        line += "}";
+        phase_g_write_json_line(line);
+
+        std::fprintf(
+            stderr,
+            "[phase-g] acceptance: %s (avg:%.2fms <= %.2f, rt:%llu <= %u, pipe:%llu <= %u, swap:%llu <= %u, cycle_fail:%llu <= %u)\n",
+            accept ? "PASS" : "FAIL",
+            avg_frame_ms,
+            phase_g_config_.accept_max_avg_frame_ms,
+            static_cast<unsigned long long>(delta_rt_rebuild),
+            phase_g_config_.accept_max_render_target_rebuild_delta,
+            static_cast<unsigned long long>(delta_pipeline_rebuild),
+            phase_g_config_.accept_max_pipeline_rebuild_delta,
+            static_cast<unsigned long long>(delta_swapchain_gen),
+            phase_g_config_.accept_max_swapchain_generation_delta,
+            static_cast<unsigned long long>(phase_g_state_.cycle_apply_failures),
+            phase_g_config_.accept_max_cycle_failures);
+    }
+
+    void phase_g_apply_toggle_perturbation()
+    {
+        if (active_taa_pass_enabled())
+        {
+            temporal_settings_.accumulation_enabled = !temporal_settings_.accumulation_enabled;
+            temporal_settings_.jitter_enabled = temporal_settings_.accumulation_enabled;
+        }
+        cycle_framebuffer_debug_target();
+        show_light_volumes_debug_ = !show_light_volumes_debug_;
+        ++phase_g_state_.toggle_events;
+    }
+
+    void initialize_phase_g_soak()
+    {
+        phase_g_state_ = PhaseGSoakState{};
+        if (!phase_g_config_.enabled) return;
+        if (phase_f_config_.enabled)
+        {
+            std::fprintf(stderr, "[phase-g] Disabled because Phase-F mode is active.\n");
+            phase_g_config_.enabled = false;
+            return;
+        }
+        if (composition_cycle_order_.empty())
+        {
+            std::fprintf(stderr, "[phase-g] No compositions available. Disabling soak mode.\n");
+            phase_g_config_.enabled = false;
+            return;
+        }
+
+        std::filesystem::path output_path(phase_g_config_.output_path);
+        if (output_path.has_parent_path())
+        {
+            std::error_code ec{};
+            std::filesystem::create_directories(output_path.parent_path(), ec);
+        }
+        phase_g_metrics_stream_.open(phase_g_config_.output_path, std::ios::out | std::ios::trunc);
+        if (!phase_g_metrics_stream_.is_open())
+        {
+            std::fprintf(stderr, "[phase-g] Failed to open output: %s\n", phase_g_config_.output_path.c_str());
+            phase_g_config_.enabled = false;
+            return;
+        }
+
+        phase_g_state_.started = true;
+        phase_g_state_.rebuild_target_start = render_target_rebuild_count_;
+        phase_g_state_.rebuild_pipeline_start = pipeline_rebuild_count_;
+        phase_g_state_.swapchain_gen_start = swapchain_generation_change_count_;
+
+        std::string line = "{";
+        line += "\"event\":\"phase_g_begin\",";
+        line += "\"duration_sec\":" + std::to_string(phase_g_config_.duration_sec) + ",";
+        line += "\"cycle_frames\":" + std::to_string(phase_g_config_.cycle_frames) + ",";
+        line += "\"log_interval_frames\":" + std::to_string(phase_g_config_.log_interval_frames) + ",";
+        line += "\"toggle_interval_cycles\":" + std::to_string(phase_g_config_.toggle_interval_cycles) + ",";
+        line += "\"accept_max_avg_frame_ms\":" + std::to_string(phase_g_config_.accept_max_avg_frame_ms) + ",";
+        line += "\"accept_max_rt_rebuilds\":" + std::to_string(phase_g_config_.accept_max_render_target_rebuild_delta) + ",";
+        line += "\"accept_max_pipeline_rebuilds\":" + std::to_string(phase_g_config_.accept_max_pipeline_rebuild_delta) + ",";
+        line += "\"accept_max_swapchain_generation\":" + std::to_string(phase_g_config_.accept_max_swapchain_generation_delta) + ",";
+        line += "\"accept_max_cycle_failures\":" + std::to_string(phase_g_config_.accept_max_cycle_failures) + ",";
+        line += "\"composition_count\":" + std::to_string(composition_cycle_order_.size());
+        line += "}";
+        phase_g_write_json_line(line);
+
+        std::fprintf(
+            stderr,
+            "[phase-g] Started soak mode (%us, cycle:%u frames, log:%u frames) -> %s\n",
+            phase_g_config_.duration_sec,
+            phase_g_config_.cycle_frames,
+            phase_g_config_.log_interval_frames,
+            phase_g_config_.output_path.c_str());
+    }
+
+    void phase_g_step_after_frame(float frame_ms, float ema_ms, float dt)
+    {
+        if (!phase_g_config_.enabled || !phase_g_state_.started || phase_g_state_.finished) return;
+        phase_g_state_.elapsed_sec += dt;
+        ++phase_g_state_.frame_counter;
+        phase_g_state_.frame_ms_sum += frame_ms;
+        phase_g_state_.frame_ms_min = std::min(phase_g_state_.frame_ms_min, static_cast<double>(frame_ms));
+        phase_g_state_.frame_ms_max = std::max(phase_g_state_.frame_ms_max, static_cast<double>(frame_ms));
+
+        if ((phase_g_state_.frame_counter - phase_g_state_.last_log_frame) >= phase_g_config_.log_interval_frames)
+        {
+            phase_g_state_.last_log_frame = phase_g_state_.frame_counter;
+            phase_g_emit_heartbeat(frame_ms, ema_ms);
+        }
+
+        if ((phase_g_state_.frame_counter - phase_g_state_.last_cycle_frame) >= phase_g_config_.cycle_frames)
+        {
+            phase_g_state_.last_cycle_frame = phase_g_state_.frame_counter;
+            if (!composition_cycle_order_.empty())
+            {
+                const size_t next = (active_composition_index_ + 1u) % composition_cycle_order_.size();
+                if (apply_render_composition_by_index(next))
+                {
+                    ++phase_g_state_.cycles;
+                    phase_g_emit_cycle_event(active_composition_recipe_, frame_ms, ema_ms);
+                    if (phase_g_config_.toggle_interval_cycles > 0u &&
+                        (phase_g_state_.cycles % phase_g_config_.toggle_interval_cycles) == 0u)
+                    {
+                        phase_g_apply_toggle_perturbation();
+                    }
+                }
+                else
+                {
+                    ++phase_g_state_.cycle_apply_failures;
+                }
+            }
+        }
+
+        if (phase_g_state_.elapsed_sec >= static_cast<float>(phase_g_config_.duration_sec))
+        {
+            phase_g_emit_end_event();
+            phase_g_state_.finished = true;
+            std::fprintf(stderr, "[phase-g] Soak run complete. Results: %s\n", phase_g_config_.output_path.c_str());
+            running_ = false;
+        }
+    }
+
+    size_t find_composition_index_exact(
+        shs::RenderPathPreset path_preset,
+        shs::RenderTechniquePreset technique_preset,
+        shs::RenderCompositionPostStackPreset post_stack,
+        bool* found = nullptr) const
+    {
+        for (size_t i = 0; i < composition_cycle_order_.size(); ++i)
+        {
+            const auto& c = composition_cycle_order_[i];
+            if (c.path_preset == path_preset &&
+                c.technique_preset == technique_preset &&
+                c.post_stack == post_stack)
+            {
+                if (found) *found = true;
+                return i;
+            }
+        }
+        if (found) *found = false;
+        return 0u;
+    }
+
+    void append_phase_f_plan_entry(std::vector<size_t>& out, size_t composition_index)
+    {
+        if (composition_index >= composition_cycle_order_.size()) return;
+        if (std::find(out.begin(), out.end(), composition_index) != out.end()) return;
+        out.push_back(composition_index);
+    }
+
+    std::vector<size_t> build_phase_f_plan() const
+    {
+        std::vector<size_t> out{};
+        out.reserve(composition_cycle_order_.size());
+
+        const auto& path_order = shs::default_render_path_preset_order();
+        const auto& tech_order = shs::default_render_technique_preset_order();
+        for (const shs::RenderPathPreset path : path_order)
+        {
+            for (const shs::RenderTechniquePreset tech : tech_order)
+            {
+                bool found = false;
+                const size_t idx = find_composition_index_exact(
+                    path,
+                    tech,
+                    shs::RenderCompositionPostStackPreset::Default,
+                    &found);
+                if (found)
+                {
+                    out.push_back(idx);
+                }
+            }
+        }
+
+        if (phase_f_config_.include_post_variants)
+        {
+            const auto append_if_present = [&](shs::RenderPathPreset path,
+                                               shs::RenderTechniquePreset tech,
+                                               shs::RenderCompositionPostStackPreset post) {
+                bool found = false;
+                const size_t idx = find_composition_index_exact(path, tech, post, &found);
+                if (found && std::find(out.begin(), out.end(), idx) == out.end())
+                {
+                    out.push_back(idx);
+                }
+            };
+            append_if_present(
+                shs::RenderPathPreset::ForwardPlus,
+                shs::RenderTechniquePreset::PBR,
+                shs::RenderCompositionPostStackPreset::Minimal);
+            append_if_present(
+                shs::RenderPathPreset::Deferred,
+                shs::RenderTechniquePreset::PBR,
+                shs::RenderCompositionPostStackPreset::Temporal);
+            append_if_present(
+                shs::RenderPathPreset::Deferred,
+                shs::RenderTechniquePreset::PBR,
+                shs::RenderCompositionPostStackPreset::Full);
+            append_if_present(
+                shs::RenderPathPreset::Deferred,
+                shs::RenderTechniquePreset::BlinnPhong,
+                shs::RenderCompositionPostStackPreset::Full);
+            append_if_present(
+                shs::RenderPathPreset::TiledDeferred,
+                shs::RenderTechniquePreset::PBR,
+                shs::RenderCompositionPostStackPreset::Full);
+        }
+
+        if (phase_f_config_.include_full_cycle)
+        {
+            for (size_t i = 0; i < composition_cycle_order_.size(); ++i)
+            {
+                if (std::find(out.begin(), out.end(), i) == out.end())
+                {
+                    out.push_back(i);
+                }
+            }
+        }
+
+        if (phase_f_config_.max_entries > 0u && out.size() > phase_f_config_.max_entries)
+        {
+            out.resize(phase_f_config_.max_entries);
+        }
+        return out;
+    }
+
+    void phase_f_write_json_line(const std::string& line)
+    {
+        if (!phase_f_metrics_stream_.is_open()) return;
+        phase_f_metrics_stream_ << line << "\n";
+        phase_f_metrics_stream_.flush();
+    }
+
+    std::string phase_f_snapshot_path_for_entry(size_t entry_slot, const shs::RenderCompositionRecipe& composition) const
+    {
+        const std::string safe_name = sanitize_file_component(composition.name);
+        return phase_f_config_.snapshot_dir + "/"
+            + std::to_string(entry_slot + 1u) + "_" + safe_name + ".ppm";
+    }
+
+    bool phase_f_swapchain_snapshot_supported_format(VkFormat format) const
+    {
+        switch (format)
+        {
+            case VK_FORMAT_B8G8R8A8_UNORM:
+            case VK_FORMAT_B8G8R8A8_SRGB:
+            case VK_FORMAT_R8G8B8A8_UNORM:
+            case VK_FORMAT_R8G8B8A8_SRGB:
+                return true;
+            default:
+                break;
+        }
+        return false;
+    }
+
+    void phase_f_begin_entry(size_t entry_slot, size_t composition_index)
+    {
+        phase_f_active_entry_slot_ = entry_slot;
+        phase_f_active_composition_index_ = composition_index;
+        phase_f_stage_ = PhaseFBenchmarkStage::Warmup;
+        phase_f_stage_frame_counter_ = 0u;
+        phase_f_accumulator_.reset();
+        phase_f_snapshot_request_armed_ = false;
+        phase_f_snapshot_copy_submitted_ = false;
+        phase_f_snapshot_completed_ = false;
+        phase_f_snapshot_failed_ = false;
+        phase_f_snapshot_path_.clear();
+        phase_f_rebuild_target_start_ = render_target_rebuild_count_;
+        phase_f_rebuild_pipeline_start_ = pipeline_rebuild_count_;
+        phase_f_swapchain_gen_start_ = swapchain_generation_change_count_;
+    }
+
+    void phase_f_finish_and_exit()
+    {
+        if (phase_f_finished_) return;
+        phase_f_finished_ = true;
+        phase_f_stage_ = PhaseFBenchmarkStage::Disabled;
+        phase_f_write_json_line(
+            "{\"event\":\"phase_f_end\",\"entries_processed\":" +
+            std::to_string(phase_f_entries_processed_) + "}");
+        std::fprintf(stderr, "[phase-f] Baseline run complete. Results: %s\n", phase_f_config_.output_path.c_str());
+        running_ = false;
+    }
+
+    void phase_f_advance_entry()
+    {
+        ++phase_f_entries_processed_;
+        const size_t next = phase_f_active_entry_slot_ + 1u;
+        if (next >= phase_f_plan_indices_.size())
+        {
+            phase_f_finish_and_exit();
+            return;
+        }
+        const size_t next_index = phase_f_plan_indices_[next];
+        if (!apply_render_composition_by_index(next_index))
+        {
+            std::fprintf(stderr, "[phase-f] Failed to apply composition index %zu\n", next_index);
+            phase_f_finish_and_exit();
+            return;
+        }
+        phase_f_begin_entry(next, next_index);
+        const shs::RenderCompositionRecipe& c = composition_cycle_order_[next_index];
+        std::fprintf(
+            stderr,
+            "[phase-f] Entry %zu/%zu warmup:%u sample:%u | %s\n",
+            next + 1u,
+            phase_f_plan_indices_.size(),
+            phase_f_config_.warmup_frames,
+            phase_f_config_.sample_frames,
+            c.name.c_str());
+    }
+
+    void phase_f_emit_sample_result(float ema_ms)
+    {
+        if (phase_f_active_composition_index_ >= composition_cycle_order_.size()) return;
+        const shs::RenderCompositionRecipe& c = composition_cycle_order_[phase_f_active_composition_index_];
+        const uint32_t sampled = std::max(1u, phase_f_accumulator_.sampled_frames);
+        const double avg_frame_ms = safe_div(phase_f_accumulator_.frame_ms_sum, sampled);
+        const double avg_dispatch_ms = safe_div(phase_f_accumulator_.dispatch_cpu_ms_sum, sampled);
+        const double avg_gpu_ms = safe_div(phase_f_accumulator_.gpu_ms_sum, phase_f_accumulator_.gpu_valid_frames);
+        const double avg_visible_lights = safe_div(static_cast<double>(phase_f_accumulator_.visible_lights_sum), sampled);
+        const double avg_active_lights = safe_div(static_cast<double>(phase_f_accumulator_.active_lights_sum), sampled);
+        const uint64_t delta_target_rebuild = render_target_rebuild_count_ - phase_f_rebuild_target_start_;
+        const uint64_t delta_pipeline_rebuild = pipeline_rebuild_count_ - phase_f_rebuild_pipeline_start_;
+        const uint64_t delta_swapchain_gen = swapchain_generation_change_count_ - phase_f_swapchain_gen_start_;
+
+        std::string line = "{";
+        line += "\"event\":\"composition_sample\",";
+        line += "\"entry\":" + std::to_string(phase_f_active_entry_slot_ + 1u) + ",";
+        line += "\"composition\":\"" + c.name + "\",";
+        line += "\"path\":\"" + std::string(shs::render_path_preset_name(c.path_preset)) + "\",";
+        line += "\"technique\":\"" + std::string(shs::render_technique_preset_name(c.technique_preset)) + "\",";
+        line += "\"post_stack\":\"" + std::string(shs::render_composition_post_stack_preset_name(c.post_stack)) + "\",";
+        line += "\"sampled_frames\":" + std::to_string(sampled) + ",";
+        line += "\"ema_frame_ms\":" + std::to_string(ema_ms) + ",";
+        line += "\"avg_frame_ms\":" + std::to_string(avg_frame_ms) + ",";
+        line += "\"min_frame_ms\":" + std::to_string(phase_f_accumulator_.frame_ms_min) + ",";
+        line += "\"max_frame_ms\":" + std::to_string(phase_f_accumulator_.frame_ms_max) + ",";
+        line += "\"avg_dispatch_cpu_ms\":" + std::to_string(avg_dispatch_ms) + ",";
+        line += "\"avg_gpu_ms\":" + std::to_string(avg_gpu_ms) + ",";
+        line += "\"gpu_valid_frames\":" + std::to_string(phase_f_accumulator_.gpu_valid_frames) + ",";
+        line += "\"gpu_zero_sample_frames\":" + std::to_string(phase_f_accumulator_.gpu_zero_sample_frames) + ",";
+        line += "\"gpu_sample_count_sum\":" + std::to_string(phase_f_accumulator_.gpu_sample_count_sum) + ",";
+        line += "\"gpu_rejected_sample_count_sum\":" + std::to_string(phase_f_accumulator_.gpu_rejected_sample_count_sum) + ",";
+        line += "\"avg_visible_lights\":" + std::to_string(avg_visible_lights) + ",";
+        line += "\"avg_active_lights\":" + std::to_string(avg_active_lights) + ",";
+        line += "\"gbuffer_ratio\":" + std::to_string(safe_div(phase_f_accumulator_.gbuffer_frames, sampled)) + ",";
+        line += "\"ssao_ratio\":" + std::to_string(safe_div(phase_f_accumulator_.ssao_frames, sampled)) + ",";
+        line += "\"deferred_ratio\":" + std::to_string(safe_div(phase_f_accumulator_.deferred_frames, sampled)) + ",";
+        line += "\"taa_ratio\":" + std::to_string(safe_div(phase_f_accumulator_.taa_frames, sampled)) + ",";
+        line += "\"motion_ratio\":" + std::to_string(safe_div(phase_f_accumulator_.motion_frames, sampled)) + ",";
+        line += "\"dof_ratio\":" + std::to_string(safe_div(phase_f_accumulator_.dof_frames, sampled)) + ",";
+        line += "\"delta_render_target_rebuild\":" + std::to_string(delta_target_rebuild) + ",";
+        line += "\"delta_pipeline_rebuild\":" + std::to_string(delta_pipeline_rebuild) + ",";
+        line += "\"delta_swapchain_generation\":" + std::to_string(delta_swapchain_gen) + ",";
+        line += "\"snapshot\":\"" + (phase_f_snapshot_path_.empty() ? std::string("") : phase_f_snapshot_path_) + "\"";
+        line += "}";
+        phase_f_write_json_line(line);
+    }
+
+    void phase_f_step_after_frame(float frame_ms, float ema_ms)
+    {
+        if (!phase_f_config_.enabled || phase_f_finished_) return;
+        if (phase_f_stage_ == PhaseFBenchmarkStage::Disabled) return;
+
+        if (phase_f_stage_ == PhaseFBenchmarkStage::Warmup)
+        {
+            ++phase_f_stage_frame_counter_;
+            if (phase_f_stage_frame_counter_ >= phase_f_config_.warmup_frames)
+            {
+                phase_f_stage_ = PhaseFBenchmarkStage::Sample;
+                phase_f_stage_frame_counter_ = 0u;
+                phase_f_accumulator_.reset();
+            }
+            return;
+        }
+
+        if (phase_f_stage_ == PhaseFBenchmarkStage::Sample)
+        {
+            phase_f_accumulator_.sampled_frames++;
+            phase_f_accumulator_.frame_ms_sum += frame_ms;
+            phase_f_accumulator_.frame_ms_min = std::min(phase_f_accumulator_.frame_ms_min, static_cast<double>(frame_ms));
+            phase_f_accumulator_.frame_ms_max = std::max(phase_f_accumulator_.frame_ms_max, static_cast<double>(frame_ms));
+            phase_f_accumulator_.dispatch_cpu_ms_sum += dispatch_total_cpu_ms_;
+            phase_f_accumulator_.visible_lights_sum += visible_light_count_;
+            phase_f_accumulator_.active_lights_sum += active_light_count_;
+            phase_f_accumulator_.gbuffer_frames += frame_gbuffer_pass_executed_ ? 1u : 0u;
+            phase_f_accumulator_.ssao_frames += frame_ssao_pass_executed_ ? 1u : 0u;
+            phase_f_accumulator_.deferred_frames += frame_deferred_lighting_pass_executed_ ? 1u : 0u;
+            phase_f_accumulator_.taa_frames += frame_taa_pass_executed_ ? 1u : 0u;
+            phase_f_accumulator_.motion_frames += frame_motion_blur_pass_executed_ ? 1u : 0u;
+            phase_f_accumulator_.dof_frames += frame_depth_of_field_pass_executed_ ? 1u : 0u;
+            phase_f_accumulator_.gpu_sample_count_sum += gpu_pass_sample_count_;
+            phase_f_accumulator_.gpu_rejected_sample_count_sum += gpu_pass_rejected_sample_count_;
+            if (gpu_pass_timing_valid_)
+            {
+                phase_f_accumulator_.gpu_ms_sum += gpu_pass_total_ms_;
+                phase_f_accumulator_.gpu_valid_frames++;
+            }
+            if (gpu_pass_sample_count_ == 0u)
+            {
+                phase_f_accumulator_.gpu_zero_sample_frames++;
+            }
+
+            ++phase_f_stage_frame_counter_;
+            if (phase_f_stage_frame_counter_ >= phase_f_config_.sample_frames)
+            {
+                phase_f_emit_sample_result(ema_ms);
+                phase_f_stage_frame_counter_ = 0u;
+
+                if (phase_f_config_.capture_snapshots)
+                {
+                    const shs::RenderCompositionRecipe& c = composition_cycle_order_[phase_f_active_composition_index_];
+                    phase_f_snapshot_path_ = phase_f_snapshot_path_for_entry(phase_f_active_entry_slot_, c);
+                    phase_f_snapshot_request_armed_ = true;
+                    phase_f_snapshot_completed_ = false;
+                    phase_f_snapshot_failed_ = false;
+                    phase_f_stage_ = PhaseFBenchmarkStage::AwaitSnapshot;
+                    return;
+                }
+
+                phase_f_advance_entry();
+            }
+            return;
+        }
+
+        if (phase_f_stage_ == PhaseFBenchmarkStage::AwaitSnapshot)
+        {
+            if (phase_f_snapshot_completed_ || phase_f_snapshot_failed_ || !phase_f_snapshot_request_armed_)
+            {
+                phase_f_advance_entry();
+            }
+        }
+    }
+
+    void initialize_phase_f_benchmark()
+    {
+        phase_f_finished_ = false;
+        phase_f_stage_ = PhaseFBenchmarkStage::Disabled;
+        phase_f_plan_indices_.clear();
+        if (!phase_f_config_.enabled) return;
+
+        phase_f_plan_indices_ = build_phase_f_plan();
+        if (phase_f_plan_indices_.empty())
+        {
+            std::fprintf(stderr, "[phase-f] No compositions available. Disabling benchmark mode.\n");
+            phase_f_config_.enabled = false;
+            return;
+        }
+
+        std::filesystem::path output_path(phase_f_config_.output_path);
+        if (output_path.has_parent_path())
+        {
+            std::error_code ec{};
+            std::filesystem::create_directories(output_path.parent_path(), ec);
+        }
+        if (phase_f_config_.capture_snapshots && !phase_f_config_.snapshot_dir.empty())
+        {
+            std::error_code ec{};
+            std::filesystem::create_directories(std::filesystem::path(phase_f_config_.snapshot_dir), ec);
+        }
+
+        phase_f_metrics_stream_.open(phase_f_config_.output_path, std::ios::out | std::ios::trunc);
+        if (!phase_f_metrics_stream_.is_open())
+        {
+            std::fprintf(stderr, "[phase-f] Failed to open output: %s\n", phase_f_config_.output_path.c_str());
+            phase_f_config_.enabled = false;
+            return;
+        }
+
+        phase_f_write_json_line(
+            "{\"event\":\"phase_f_begin\",\"entries\":" + std::to_string(phase_f_plan_indices_.size()) +
+            ",\"warmup_frames\":" + std::to_string(phase_f_config_.warmup_frames) +
+            ",\"sample_frames\":" + std::to_string(phase_f_config_.sample_frames) +
+            ",\"capture_snapshots\":" + std::string(phase_f_config_.capture_snapshots ? "true" : "false") + "}");
+
+        phase_f_entries_processed_ = 0u;
+        const size_t first_index = phase_f_plan_indices_.front();
+        if (!apply_render_composition_by_index(first_index))
+        {
+            std::fprintf(stderr, "[phase-f] Failed to apply first composition index %zu\n", first_index);
+            phase_f_config_.enabled = false;
+            return;
+        }
+        phase_f_begin_entry(0u, first_index);
+        const shs::RenderCompositionRecipe& c = composition_cycle_order_[first_index];
+        std::fprintf(
+            stderr,
+            "[phase-f] Started benchmark (%zu entries) -> %s | warmup:%u sample:%u\n",
+            phase_f_plan_indices_.size(),
+            c.name.c_str(),
+            phase_f_config_.warmup_frames,
+            phase_f_config_.sample_frames);
     }
 
     void init_sdl()
@@ -917,7 +2543,7 @@ private:
         }
 
         sphere_local_aabb_ = compute_local_aabb_from_positions(sphere_mesh->positions);
-        make_tessellated_floor_geometry(90.0f, 80, floor_vertices_, floor_indices_);
+        make_tessellated_floor_geometry(kDemoFloorSizeM, 72, floor_vertices_, floor_indices_);
         floor_local_aabb_ = compute_local_aabb_from_vertices(floor_vertices_);
         cone_local_aabb_ = compute_local_aabb_from_positions(cone_mesh->positions);
         box_local_aabb_ = compute_local_aabb_from_positions(box_mesh->positions);
@@ -945,7 +2571,7 @@ private:
         }
         indices_ = sphere_mesh->indices;
 
-        floor_model_ = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -0.25f, 0.0f));
+        floor_model_ = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -0.15f, 0.0f));
         floor_material_color_ = glm::vec4(120.0f / 255.0f, 122.0f / 255.0f, 128.0f / 255.0f, 1.0f);
         // PBR plastic floor material.
         floor_material_params_ = glm::vec4(0.0f, 0.62f, 1.0f, 0.0f);
@@ -992,17 +2618,17 @@ private:
         const int layer_count = 5;
         const int rows_per_layer = 8;
         const int cols_per_row = 12;
-        const float col_spacing_x = 4.2f;
-        const float row_spacing_z = 3.7f;
-        const float layer_spacing_z = 16.0f;
-        const float base_y = 1.1f;
-        const float layer_y_step = 1.25f;
+        const float col_spacing_x = 2.35f * shs::units::meter;
+        const float row_spacing_z = 2.15f * shs::units::meter;
+        const float layer_spacing_z = 8.5f * shs::units::meter;
+        const float base_y = 0.95f * shs::units::meter;
+        const float layer_y_step = 0.55f * shs::units::meter;
         std::mt19937 rng(1337u);
-        std::uniform_real_distribution<float> jitter(-0.18f, 0.18f);
+        std::uniform_real_distribution<float> jitter(-0.12f * shs::units::meter, 0.12f * shs::units::meter);
         std::uniform_real_distribution<float> hue(0.0f, 1.0f);
-        std::uniform_real_distribution<float> scale_rand(0.54f, 1.18f);
+        std::uniform_real_distribution<float> scale_rand(0.40f, 0.90f);
         std::uniform_real_distribution<float> rot_rand(-0.28f, 0.28f);
-        std::uniform_real_distribution<float> spin_rand(0.08f, 0.35f);
+        std::uniform_real_distribution<float> spin_rand(0.06f, 0.26f);
         for (int layer = 0; layer < layer_count; ++layer)
         {
             const float layer_z = (-0.5f * static_cast<float>(layer_count - 1) + static_cast<float>(layer)) * layer_spacing_z;
@@ -1036,7 +2662,7 @@ private:
                     }
                     inst.base_pos = glm::vec3(
                         (-0.5f * static_cast<float>(cols_per_row - 1) + static_cast<float>(col)) * col_spacing_x + zig + jitter(rng),
-                        base_y + layer_y_step * static_cast<float>(layer) + 0.30f * static_cast<float>(col % 3),
+                        base_y + layer_y_step * static_cast<float>(layer) + (0.18f * shs::units::meter) * static_cast<float>(col % 3),
                         row_z + jitter(rng));
                     const float h = hue(rng);
                     inst.base_color = glm::vec4(
@@ -1063,7 +2689,7 @@ private:
         // Build a stable world-space caster bounds for sun shadow fitting.
         // This avoids per-frame shadow frustum jitter from animation/camera culling.
         shadow_scene_static_aabb_ = shs::transform_aabb(floor_local_aabb_, floor_model_);
-        constexpr float kMaxBobAmplitude = 0.28f;
+        constexpr float kMaxBobAmplitude = 0.18f;
         for (const Instance& inst : instances_)
         {
             const float r = std::max(0.001f, local_bound_for_mesh(inst.mesh_kind).radius * inst.scale * 1.20f);
@@ -1079,18 +2705,18 @@ private:
         gpu_lights_.resize(kMaxLights);
         shadow_lights_gpu_.assign(kMaxLights, ShadowLightGPU{});
         std::uniform_real_distribution<float> angle0(0.0f, 6.28318f);
-        std::uniform_real_distribution<float> rad(8.0f, 34.0f);
-        std::uniform_real_distribution<float> hgt(2.8f, 9.2f);
-        std::uniform_real_distribution<float> spd(0.12f, 0.82f);
-        std::uniform_real_distribution<float> radius(5.0f, 8.6f);
+        std::uniform_real_distribution<float> rad(3.0f * shs::units::meter, 14.0f * shs::units::meter);
+        std::uniform_real_distribution<float> hgt(1.6f * shs::units::meter, 4.8f * shs::units::meter);
+        std::uniform_real_distribution<float> spd(0.18f, 0.85f);
+        std::uniform_real_distribution<float> radius(3.0f * shs::units::meter, 6.8f * shs::units::meter);
         std::uniform_real_distribution<float> inner_deg(12.0f, 20.0f);
         std::uniform_real_distribution<float> outer_extra_deg(6.0f, 14.0f);
-        std::uniform_real_distribution<float> area_extent(0.8f, 2.4f);
-        std::uniform_real_distribution<float> tube_half_len(0.7f, 2.2f);
-        std::uniform_real_distribution<float> tube_rad(0.18f, 0.55f);
+        std::uniform_real_distribution<float> area_extent(0.45f * shs::units::meter, 1.25f * shs::units::meter);
+        std::uniform_real_distribution<float> tube_half_len(0.45f * shs::units::meter, 1.40f * shs::units::meter);
+        std::uniform_real_distribution<float> tube_rad(0.10f * shs::units::meter, 0.28f * shs::units::meter);
         std::uniform_real_distribution<float> axis_rand(-1.0f, 1.0f);
         std::uniform_real_distribution<float> att_pow(0.85f, 1.55f);
-        std::uniform_real_distribution<float> att_bias(0.01f, 0.22f);
+        std::uniform_real_distribution<float> att_bias(0.01f, 0.12f);
         std::uniform_real_distribution<float> right_rand(-1.0f, 1.0f);
         for (uint32_t i = 0; i < kMaxLights; ++i)
         {
@@ -1106,7 +2732,7 @@ private:
                 0.35f + 0.65f * std::sin(6.28318f * (t + 0.00f)) * 0.5f + 0.5f,
                 0.35f + 0.65f * std::sin(6.28318f * (t + 0.33f)) * 0.5f + 0.5f,
                 0.35f + 0.65f * std::sin(6.28318f * (t + 0.66f)) * 0.5f + 0.5f);
-            l.intensity = 6.0f + 8.0f * std::fmod(0.6180339f * static_cast<float>(i), 1.0f);
+            l.intensity = 4.5f + 5.0f * std::fmod(0.6180339f * static_cast<float>(i), 1.0f);
             l.attenuation_power = att_pow(rng);
             l.attenuation_bias = att_bias(rng);
             l.attenuation_cutoff = 0.0f;
@@ -1197,12 +2823,14 @@ private:
         if (!vk_ || vk_->device() == VK_NULL_HANDLE) throw std::runtime_error("Vulkan device unavailable");
 
         create_worker_pools();
+        create_gpu_pass_timestamp_resources();
         create_descriptor_resources();
         create_geometry_buffers();
         create_dynamic_buffers();
         const VkExtent2D extent = vk_->swapchain_extent();
         ensure_render_targets(extent.width, extent.height);
-        create_pipelines(true);
+        create_pipelines(true, "init");
+        observed_swapchain_generation_ = vk_->swapchain_generation();
     }
 
     void create_worker_pools()
@@ -1239,6 +2867,337 @@ private:
             }
         }
         worker_pools_.clear();
+    }
+
+    void destroy_gpu_pass_timestamp_resources()
+    {
+        gpu_pass_timestamps_supported_ = false;
+        gpu_timestamp_period_ns_ = 0.0f;
+        gpu_pass_timestamp_recording_active_ = false;
+        gpu_pass_query_cursor_ = 0u;
+        gpu_pass_timestamp_record_frame_slot_ = 0u;
+        gpu_pass_total_ms_ = 0.0;
+        gpu_pass_slowest_ms_ = 0.0;
+        gpu_pass_slowest_id_.clear();
+        gpu_pass_timing_valid_ = false;
+        gpu_pass_sample_count_ = 0u;
+        gpu_pass_rejected_sample_count_ = 0u;
+        gpu_pass_timing_state_ = "disabled";
+
+        for (auto& state : gpu_pass_timestamp_frames_)
+        {
+            state.samples.clear();
+            state.query_count = 0u;
+            state.pending = false;
+        }
+
+        if (!vk_ || vk_->device() == VK_NULL_HANDLE)
+        {
+            for (auto& pool : gpu_pass_query_pools_)
+            {
+                pool = VK_NULL_HANDLE;
+            }
+            return;
+        }
+
+        for (auto& pool : gpu_pass_query_pools_)
+        {
+            if (pool != VK_NULL_HANDLE)
+            {
+                vkDestroyQueryPool(vk_->device(), pool, nullptr);
+                pool = VK_NULL_HANDLE;
+            }
+        }
+    }
+
+    void create_gpu_pass_timestamp_resources()
+    {
+        destroy_gpu_pass_timestamp_resources();
+        if (!vk_ || vk_->device() == VK_NULL_HANDLE || vk_->physical_device() == VK_NULL_HANDLE) return;
+
+        uint32_t family_count = 0u;
+        vkGetPhysicalDeviceQueueFamilyProperties(vk_->physical_device(), &family_count, nullptr);
+        if (family_count == 0u)
+        {
+            gpu_pass_timing_state_ = "no-queue-family";
+            return;
+        }
+
+        std::vector<VkQueueFamilyProperties> families(family_count);
+        vkGetPhysicalDeviceQueueFamilyProperties(vk_->physical_device(), &family_count, families.data());
+        const uint32_t graphics_family = vk_->graphics_queue_family_index();
+        if (graphics_family >= family_count)
+        {
+            gpu_pass_timing_state_ = "no-graphics-family";
+            return;
+        }
+        if (families[graphics_family].timestampValidBits == 0u)
+        {
+            gpu_pass_timing_state_ = "unsupported";
+            return;
+        }
+
+        VkPhysicalDeviceProperties props{};
+        vkGetPhysicalDeviceProperties(vk_->physical_device(), &props);
+        const uint32_t api_major = VK_VERSION_MAJOR(props.apiVersion);
+        const uint32_t api_minor = VK_VERSION_MINOR(props.apiVersion);
+        if (api_major < 1u || (api_major == 1u && api_minor < 2u))
+        {
+            gpu_pass_timing_state_ = "vk<1.2";
+            return;
+        }
+        if (props.limits.timestampPeriod <= 0.0f)
+        {
+            gpu_pass_timing_state_ = "bad-period";
+            return;
+        }
+
+        VkQueryPoolCreateInfo qci{};
+        qci.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+        qci.queryType = VK_QUERY_TYPE_TIMESTAMP;
+        qci.queryCount = kMaxGpuPassTimestampQueries;
+
+        for (auto& pool : gpu_pass_query_pools_)
+        {
+            if (vkCreateQueryPool(vk_->device(), &qci, nullptr, &pool) != VK_SUCCESS)
+            {
+                destroy_gpu_pass_timestamp_resources();
+                gpu_pass_timing_state_ = "pool-create-failed";
+                return;
+            }
+        }
+
+        gpu_timestamp_period_ns_ = props.limits.timestampPeriod;
+        gpu_pass_timestamps_supported_ = true;
+        gpu_pass_timing_state_ = "ready";
+    }
+
+    void collect_gpu_pass_timing_results(uint32_t frame_slot)
+    {
+        gpu_pass_total_ms_ = 0.0;
+        gpu_pass_slowest_ms_ = 0.0;
+        gpu_pass_slowest_id_.clear();
+        gpu_pass_timing_valid_ = false;
+        gpu_pass_sample_count_ = 0u;
+        gpu_pass_rejected_sample_count_ = 0u;
+
+        if (!gpu_pass_timestamps_supported_)
+        {
+            gpu_pass_timing_state_ = "disabled";
+            return;
+        }
+        if (!vk_ || vk_->device() == VK_NULL_HANDLE)
+        {
+            gpu_pass_timing_state_ = "no-device";
+            return;
+        }
+        if (frame_slot >= kWorkerPoolRingSize)
+        {
+            gpu_pass_timing_state_ = "bad-slot";
+            return;
+        }
+        if (gpu_pass_query_pools_[frame_slot] == VK_NULL_HANDLE)
+        {
+            gpu_pass_timing_state_ = "no-query-pool";
+            return;
+        }
+
+        GpuPassTimestampFrameState& frame_state = gpu_pass_timestamp_frames_[frame_slot];
+        if (!frame_state.pending)
+        {
+            gpu_pass_timing_state_ = "idle";
+            return;
+        }
+        if (frame_state.query_count < 2u || frame_state.samples.empty())
+        {
+            frame_state.pending = false;
+            gpu_pass_timing_state_ = "no-samples";
+            return;
+        }
+
+        std::vector<uint64_t> ticks(frame_state.query_count, 0ull);
+        const VkResult qr = vkGetQueryPoolResults(
+            vk_->device(),
+            gpu_pass_query_pools_[frame_slot],
+            0u,
+            frame_state.query_count,
+            ticks.size() * sizeof(uint64_t),
+            ticks.data(),
+            sizeof(uint64_t),
+            VK_QUERY_RESULT_64_BIT);
+        if (qr == VK_NOT_READY)
+        {
+            gpu_pass_timing_state_ = "query-pending";
+            return;
+        }
+        frame_state.pending = false;
+        if (qr != VK_SUCCESS)
+        {
+            gpu_pass_timing_state_ = "query-failed";
+            return;
+        }
+
+        for (const GpuPassTimestampSample& sample : frame_state.samples)
+        {
+            if (!sample.success)
+            {
+                ++gpu_pass_rejected_sample_count_;
+                continue;
+            }
+            if (sample.begin_query == UINT32_MAX || sample.end_query == UINT32_MAX)
+            {
+                ++gpu_pass_rejected_sample_count_;
+                continue;
+            }
+            if (sample.begin_query >= frame_state.query_count || sample.end_query >= frame_state.query_count)
+            {
+                ++gpu_pass_rejected_sample_count_;
+                continue;
+            }
+            const uint64_t begin_tick = ticks[sample.begin_query];
+            const uint64_t end_tick = ticks[sample.end_query];
+            if (end_tick < begin_tick)
+            {
+                ++gpu_pass_rejected_sample_count_;
+                continue;
+            }
+
+            const double ms =
+                static_cast<double>(end_tick - begin_tick) *
+                static_cast<double>(gpu_timestamp_period_ns_) *
+                1e-6;
+            gpu_pass_total_ms_ += ms;
+            if (ms >= gpu_pass_slowest_ms_)
+            {
+                gpu_pass_slowest_ms_ = ms;
+                gpu_pass_slowest_id_ = sample.pass_id;
+            }
+            ++gpu_pass_sample_count_;
+        }
+
+        if (gpu_pass_sample_count_ == 0u)
+        {
+            gpu_pass_timing_state_ = "zero-sample";
+            return;
+        }
+
+        gpu_pass_timing_state_ = "ready";
+        gpu_pass_timing_valid_ = true;
+    }
+
+    void begin_gpu_pass_timing_recording(VkCommandBuffer cmd, uint32_t frame_slot)
+    {
+        gpu_pass_timestamp_recording_active_ = false;
+        gpu_pass_query_cursor_ = 0u;
+        if (!gpu_pass_timestamps_supported_)
+        {
+            gpu_pass_timing_state_ = "disabled";
+            return;
+        }
+        if (frame_slot >= kWorkerPoolRingSize)
+        {
+            gpu_pass_timing_state_ = "bad-slot";
+            return;
+        }
+        if (gpu_pass_query_pools_[frame_slot] == VK_NULL_HANDLE)
+        {
+            gpu_pass_timing_state_ = "no-query-pool";
+            return;
+        }
+
+        GpuPassTimestampFrameState& frame_state = gpu_pass_timestamp_frames_[frame_slot];
+        frame_state.samples.clear();
+        frame_state.query_count = 0u;
+        frame_state.pending = false;
+
+        vkCmdResetQueryPool(cmd, gpu_pass_query_pools_[frame_slot], 0u, kMaxGpuPassTimestampQueries);
+        gpu_pass_timestamp_record_frame_slot_ = frame_slot;
+        gpu_pass_timestamp_recording_active_ = true;
+        gpu_pass_timing_state_ = "recording";
+    }
+
+    uint32_t begin_gpu_pass_timestamp(
+        shs::VkRenderPathPassExecutionContext<shs::VulkanRenderBackend::FrameInfo>& ctx,
+        const shs::RenderPathCompiledPass& pass)
+    {
+        if (!gpu_pass_timestamp_recording_active_) return UINT32_MAX;
+        if (!ctx.fi) return UINT32_MAX;
+        if (ctx.frame_slot >= kWorkerPoolRingSize) return UINT32_MAX;
+        if (ctx.frame_slot != gpu_pass_timestamp_record_frame_slot_) return UINT32_MAX;
+        if (gpu_pass_query_cursor_ + 2u > kMaxGpuPassTimestampQueries) return UINT32_MAX;
+        if (gpu_pass_query_pools_[ctx.frame_slot] == VK_NULL_HANDLE) return UINT32_MAX;
+
+        GpuPassTimestampFrameState& frame_state = gpu_pass_timestamp_frames_[ctx.frame_slot];
+        GpuPassTimestampSample sample{};
+        sample.pass_id = pass.id;
+        sample.pass_kind = shs::pass_id_is_standard(pass.pass_id) ? pass.pass_id : shs::parse_pass_id(pass.id);
+        sample.begin_query = gpu_pass_query_cursor_++;
+        vkCmdWriteTimestamp(
+            ctx.fi->cmd,
+            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+            gpu_pass_query_pools_[ctx.frame_slot],
+            sample.begin_query);
+        frame_state.samples.push_back(std::move(sample));
+        return static_cast<uint32_t>(frame_state.samples.size() - 1u);
+    }
+
+    void end_gpu_pass_timestamp(
+        shs::VkRenderPathPassExecutionContext<shs::VulkanRenderBackend::FrameInfo>& ctx,
+        uint32_t sample_index,
+        bool success)
+    {
+        if (!gpu_pass_timestamp_recording_active_) return;
+        if (!ctx.fi) return;
+        if (sample_index == UINT32_MAX) return;
+        if (ctx.frame_slot >= kWorkerPoolRingSize) return;
+        if (ctx.frame_slot != gpu_pass_timestamp_record_frame_slot_) return;
+        if (gpu_pass_query_pools_[ctx.frame_slot] == VK_NULL_HANDLE) return;
+        if (gpu_pass_query_cursor_ >= kMaxGpuPassTimestampQueries) return;
+
+        GpuPassTimestampFrameState& frame_state = gpu_pass_timestamp_frames_[ctx.frame_slot];
+        if (sample_index >= frame_state.samples.size()) return;
+        GpuPassTimestampSample& sample = frame_state.samples[sample_index];
+        sample.end_query = gpu_pass_query_cursor_++;
+        sample.success = success;
+        vkCmdWriteTimestamp(
+            ctx.fi->cmd,
+            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+            gpu_pass_query_pools_[ctx.frame_slot],
+            sample.end_query);
+    }
+
+    void finalize_gpu_pass_timing_recording(uint32_t frame_slot)
+    {
+        if (!gpu_pass_timestamp_recording_active_) return;
+        if (frame_slot >= kWorkerPoolRingSize) return;
+        if (frame_slot != gpu_pass_timestamp_record_frame_slot_) return;
+
+        GpuPassTimestampFrameState& frame_state = gpu_pass_timestamp_frames_[frame_slot];
+        frame_state.query_count = std::min<uint32_t>(gpu_pass_query_cursor_, kMaxGpuPassTimestampQueries);
+        frame_state.pending = frame_state.query_count >= 2u && !frame_state.samples.empty();
+        if (frame_state.pending)
+        {
+            gpu_pass_timing_state_ = "submitted";
+        }
+        else
+        {
+            gpu_pass_timing_state_ = "no-samples";
+        }
+
+        gpu_pass_timestamp_recording_active_ = false;
+        gpu_pass_query_cursor_ = 0u;
+    }
+
+    template <typename THandler>
+    bool execute_profiled_pass_handler(
+        shs::VkRenderPathPassExecutionContext<shs::VulkanRenderBackend::FrameInfo>& ctx,
+        const shs::RenderPathCompiledPass& pass,
+        THandler&& handler)
+    {
+        const uint32_t token = begin_gpu_pass_timestamp(ctx, pass);
+        const bool ok = handler(ctx, pass);
+        end_gpu_pass_timestamp(ctx, token, ok);
+        return ok;
     }
 
     void create_buffer(
@@ -1505,6 +3464,574 @@ private:
         depth_target_.w = 0;
         depth_target_.h = 0;
         depth_target_.format = VK_FORMAT_UNDEFINED;
+    }
+
+    void destroy_gbuffer_target()
+    {
+        if (!vk_ || vk_->device() == VK_NULL_HANDLE) return;
+        VkDevice dev = vk_->device();
+
+        if (gbuffer_target_.framebuffer != VK_NULL_HANDLE)
+        {
+            vkDestroyFramebuffer(dev, gbuffer_target_.framebuffer, nullptr);
+            gbuffer_target_.framebuffer = VK_NULL_HANDLE;
+        }
+        if (gbuffer_target_.render_pass != VK_NULL_HANDLE)
+        {
+            vkDestroyRenderPass(dev, gbuffer_target_.render_pass, nullptr);
+            gbuffer_target_.render_pass = VK_NULL_HANDLE;
+        }
+
+        for (auto& att : gbuffer_target_.colors)
+        {
+            if (att.view != VK_NULL_HANDLE)
+            {
+                vkDestroyImageView(dev, att.view, nullptr);
+                att.view = VK_NULL_HANDLE;
+            }
+            if (att.image != VK_NULL_HANDLE)
+            {
+                vkDestroyImage(dev, att.image, nullptr);
+                att.image = VK_NULL_HANDLE;
+            }
+            if (att.memory != VK_NULL_HANDLE)
+            {
+                vkFreeMemory(dev, att.memory, nullptr);
+                att.memory = VK_NULL_HANDLE;
+            }
+            att.format = VK_FORMAT_UNDEFINED;
+        }
+
+        gbuffer_target_.w = 0;
+        gbuffer_target_.h = 0;
+    }
+
+    VkFormat choose_ao_format() const
+    {
+        const std::array<VkFormat, 3> candidates{
+            VK_FORMAT_R8_UNORM,
+            VK_FORMAT_R16_SFLOAT,
+            VK_FORMAT_R8G8B8A8_UNORM
+        };
+        for (VkFormat fmt : candidates)
+        {
+            VkFormatProperties props{};
+            vkGetPhysicalDeviceFormatProperties(vk_->physical_device(), fmt, &props);
+            const VkFormatFeatureFlags need =
+                VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT |
+                VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT;
+            if ((props.optimalTilingFeatures & need) == need)
+            {
+                return fmt;
+            }
+        }
+        return VK_FORMAT_R8G8B8A8_UNORM;
+    }
+
+    void destroy_ao_target()
+    {
+        if (!vk_ || vk_->device() == VK_NULL_HANDLE) return;
+        VkDevice dev = vk_->device();
+
+        if (ao_target_.framebuffer != VK_NULL_HANDLE)
+        {
+            vkDestroyFramebuffer(dev, ao_target_.framebuffer, nullptr);
+            ao_target_.framebuffer = VK_NULL_HANDLE;
+        }
+        if (ao_target_.render_pass != VK_NULL_HANDLE)
+        {
+            vkDestroyRenderPass(dev, ao_target_.render_pass, nullptr);
+            ao_target_.render_pass = VK_NULL_HANDLE;
+        }
+        if (ao_target_.view != VK_NULL_HANDLE)
+        {
+            vkDestroyImageView(dev, ao_target_.view, nullptr);
+            ao_target_.view = VK_NULL_HANDLE;
+        }
+        if (ao_target_.image != VK_NULL_HANDLE)
+        {
+            vkDestroyImage(dev, ao_target_.image, nullptr);
+            ao_target_.image = VK_NULL_HANDLE;
+        }
+        if (ao_target_.memory != VK_NULL_HANDLE)
+        {
+            vkFreeMemory(dev, ao_target_.memory, nullptr);
+            ao_target_.memory = VK_NULL_HANDLE;
+        }
+
+        ao_target_.w = 0;
+        ao_target_.h = 0;
+        ao_target_.format = VK_FORMAT_UNDEFINED;
+    }
+
+    VkFormat choose_gbuffer_format() const
+    {
+        return VK_FORMAT_R16G16B16A16_SFLOAT;
+    }
+
+    void create_ao_target(uint32_t w, uint32_t h)
+    {
+        destroy_ao_target();
+        if (!vk_ || vk_->device() == VK_NULL_HANDLE) throw std::runtime_error("Vulkan device unavailable");
+        if (w == 0 || h == 0) return;
+
+        ao_target_.w = w;
+        ao_target_.h = h;
+        ao_target_.format = choose_ao_format();
+
+        VkImageCreateInfo ici{};
+        ici.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        ici.imageType = VK_IMAGE_TYPE_2D;
+        ici.extent.width = w;
+        ici.extent.height = h;
+        ici.extent.depth = 1;
+        ici.mipLevels = 1;
+        ici.arrayLayers = 1;
+        ici.format = ao_target_.format;
+        ici.tiling = VK_IMAGE_TILING_OPTIMAL;
+        ici.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        ici.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        ici.samples = VK_SAMPLE_COUNT_1_BIT;
+        ici.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        if (vkCreateImage(vk_->device(), &ici, nullptr, &ao_target_.image) != VK_SUCCESS)
+        {
+            throw std::runtime_error("vkCreateImage failed for AO target");
+        }
+
+        VkMemoryRequirements req{};
+        vkGetImageMemoryRequirements(vk_->device(), ao_target_.image, &req);
+
+        VkMemoryAllocateInfo mai{};
+        mai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        mai.allocationSize = req.size;
+        mai.memoryTypeIndex = shs::vk_find_memory_type(
+            vk_->physical_device(),
+            req.memoryTypeBits,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        if (mai.memoryTypeIndex == UINT32_MAX)
+        {
+            throw std::runtime_error("No compatible memory type for AO target");
+        }
+        if (vkAllocateMemory(vk_->device(), &mai, nullptr, &ao_target_.memory) != VK_SUCCESS)
+        {
+            throw std::runtime_error("vkAllocateMemory failed for AO target");
+        }
+        if (vkBindImageMemory(vk_->device(), ao_target_.image, ao_target_.memory, 0) != VK_SUCCESS)
+        {
+            throw std::runtime_error("vkBindImageMemory failed for AO target");
+        }
+
+        VkImageViewCreateInfo iv{};
+        iv.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        iv.image = ao_target_.image;
+        iv.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        iv.format = ao_target_.format;
+        iv.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        iv.subresourceRange.baseMipLevel = 0;
+        iv.subresourceRange.levelCount = 1;
+        iv.subresourceRange.baseArrayLayer = 0;
+        iv.subresourceRange.layerCount = 1;
+        if (vkCreateImageView(vk_->device(), &iv, nullptr, &ao_target_.view) != VK_SUCCESS)
+        {
+            throw std::runtime_error("vkCreateImageView failed for AO target");
+        }
+
+        VkAttachmentDescription ao_att{};
+        ao_att.format = ao_target_.format;
+        ao_att.samples = VK_SAMPLE_COUNT_1_BIT;
+        ao_att.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        ao_att.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        ao_att.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        ao_att.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        ao_att.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        ao_att.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+        VkAttachmentReference ao_ref{};
+        ao_ref.attachment = 0;
+        ao_ref.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+        VkSubpassDescription sub{};
+        sub.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+        sub.colorAttachmentCount = 1;
+        sub.pColorAttachments = &ao_ref;
+
+        VkSubpassDependency deps[2]{};
+        deps[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+        deps[0].dstSubpass = 0;
+        deps[0].srcStageMask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        deps[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        deps[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
+        deps[1].srcSubpass = 0;
+        deps[1].dstSubpass = VK_SUBPASS_EXTERNAL;
+        deps[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        deps[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        deps[1].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        deps[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+        VkRenderPassCreateInfo rp{};
+        rp.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+        rp.attachmentCount = 1;
+        rp.pAttachments = &ao_att;
+        rp.subpassCount = 1;
+        rp.pSubpasses = &sub;
+        rp.dependencyCount = 2;
+        rp.pDependencies = deps;
+        if (vkCreateRenderPass(vk_->device(), &rp, nullptr, &ao_target_.render_pass) != VK_SUCCESS)
+        {
+            throw std::runtime_error("vkCreateRenderPass failed for AO target");
+        }
+
+        VkFramebufferCreateInfo fb{};
+        fb.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        fb.renderPass = ao_target_.render_pass;
+        fb.attachmentCount = 1;
+        fb.pAttachments = &ao_target_.view;
+        fb.width = w;
+        fb.height = h;
+        fb.layers = 1;
+        if (vkCreateFramebuffer(vk_->device(), &fb, nullptr, &ao_target_.framebuffer) != VK_SUCCESS)
+        {
+            throw std::runtime_error("vkCreateFramebuffer failed for AO target");
+        }
+    }
+
+    void destroy_post_color_target(PostColorTarget& t)
+    {
+        if (!vk_ || vk_->device() == VK_NULL_HANDLE) return;
+        VkDevice dev = vk_->device();
+        if (t.framebuffer != VK_NULL_HANDLE)
+        {
+            vkDestroyFramebuffer(dev, t.framebuffer, nullptr);
+            t.framebuffer = VK_NULL_HANDLE;
+        }
+        if (t.render_pass != VK_NULL_HANDLE)
+        {
+            vkDestroyRenderPass(dev, t.render_pass, nullptr);
+            t.render_pass = VK_NULL_HANDLE;
+        }
+        if (t.view != VK_NULL_HANDLE)
+        {
+            vkDestroyImageView(dev, t.view, nullptr);
+            t.view = VK_NULL_HANDLE;
+        }
+        if (t.image != VK_NULL_HANDLE)
+        {
+            vkDestroyImage(dev, t.image, nullptr);
+            t.image = VK_NULL_HANDLE;
+        }
+        if (t.memory != VK_NULL_HANDLE)
+        {
+            vkFreeMemory(dev, t.memory, nullptr);
+            t.memory = VK_NULL_HANDLE;
+        }
+        t.w = 0;
+        t.h = 0;
+        t.format = VK_FORMAT_UNDEFINED;
+        if (&t == &post_target_a_) post_target_a_layout_ = VK_IMAGE_LAYOUT_UNDEFINED;
+        if (&t == &post_target_b_) post_target_b_layout_ = VK_IMAGE_LAYOUT_UNDEFINED;
+    }
+
+    void create_post_color_target(PostColorTarget& t, uint32_t w, uint32_t h, VkFormat format)
+    {
+        destroy_post_color_target(t);
+        if (!vk_ || vk_->device() == VK_NULL_HANDLE) throw std::runtime_error("Vulkan device unavailable");
+        if (w == 0 || h == 0 || format == VK_FORMAT_UNDEFINED) return;
+
+        t.w = w;
+        t.h = h;
+        t.format = format;
+
+        VkImageCreateInfo ici{};
+        ici.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        ici.imageType = VK_IMAGE_TYPE_2D;
+        ici.extent.width = w;
+        ici.extent.height = h;
+        ici.extent.depth = 1;
+        ici.mipLevels = 1;
+        ici.arrayLayers = 1;
+        ici.format = format;
+        ici.tiling = VK_IMAGE_TILING_OPTIMAL;
+        ici.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        ici.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+        ici.samples = VK_SAMPLE_COUNT_1_BIT;
+        ici.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        if (vkCreateImage(vk_->device(), &ici, nullptr, &t.image) != VK_SUCCESS)
+        {
+            throw std::runtime_error("vkCreateImage failed for post color target");
+        }
+
+        VkMemoryRequirements req{};
+        vkGetImageMemoryRequirements(vk_->device(), t.image, &req);
+
+        VkMemoryAllocateInfo mai{};
+        mai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        mai.allocationSize = req.size;
+        mai.memoryTypeIndex = shs::vk_find_memory_type(
+            vk_->physical_device(),
+            req.memoryTypeBits,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        if (mai.memoryTypeIndex == UINT32_MAX)
+        {
+            throw std::runtime_error("No compatible memory type for post color target");
+        }
+        if (vkAllocateMemory(vk_->device(), &mai, nullptr, &t.memory) != VK_SUCCESS)
+        {
+            throw std::runtime_error("vkAllocateMemory failed for post color target");
+        }
+        if (vkBindImageMemory(vk_->device(), t.image, t.memory, 0) != VK_SUCCESS)
+        {
+            throw std::runtime_error("vkBindImageMemory failed for post color target");
+        }
+
+        VkImageViewCreateInfo iv{};
+        iv.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        iv.image = t.image;
+        iv.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        iv.format = format;
+        iv.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        iv.subresourceRange.baseMipLevel = 0;
+        iv.subresourceRange.levelCount = 1;
+        iv.subresourceRange.baseArrayLayer = 0;
+        iv.subresourceRange.layerCount = 1;
+        if (vkCreateImageView(vk_->device(), &iv, nullptr, &t.view) != VK_SUCCESS)
+        {
+            throw std::runtime_error("vkCreateImageView failed for post color target");
+        }
+
+        VkAttachmentDescription color_att{};
+        color_att.format = format;
+        color_att.samples = VK_SAMPLE_COUNT_1_BIT;
+        color_att.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        color_att.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        color_att.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        color_att.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        color_att.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        color_att.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+        VkAttachmentReference color_ref{};
+        color_ref.attachment = 0;
+        color_ref.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+        VkSubpassDescription sub{};
+        sub.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+        sub.colorAttachmentCount = 1;
+        sub.pColorAttachments = &color_ref;
+
+        VkSubpassDependency deps[2]{};
+        deps[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+        deps[0].dstSubpass = 0;
+        deps[0].srcStageMask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        deps[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        deps[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
+        deps[1].srcSubpass = 0;
+        deps[1].dstSubpass = VK_SUBPASS_EXTERNAL;
+        deps[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        deps[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        deps[1].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        deps[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+        VkRenderPassCreateInfo rp{};
+        rp.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+        rp.attachmentCount = 1;
+        rp.pAttachments = &color_att;
+        rp.subpassCount = 1;
+        rp.pSubpasses = &sub;
+        rp.dependencyCount = 2;
+        rp.pDependencies = deps;
+        if (vkCreateRenderPass(vk_->device(), &rp, nullptr, &t.render_pass) != VK_SUCCESS)
+        {
+            throw std::runtime_error("vkCreateRenderPass failed for post color target");
+        }
+
+        VkFramebufferCreateInfo fb{};
+        fb.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        fb.renderPass = t.render_pass;
+        fb.attachmentCount = 1;
+        fb.pAttachments = &t.view;
+        fb.width = w;
+        fb.height = h;
+        fb.layers = 1;
+        if (vkCreateFramebuffer(vk_->device(), &fb, nullptr, &t.framebuffer) != VK_SUCCESS)
+        {
+            throw std::runtime_error("vkCreateFramebuffer failed for post color target");
+        }
+        if (&t == &post_target_a_) post_target_a_layout_ = VK_IMAGE_LAYOUT_UNDEFINED;
+        if (&t == &post_target_b_) post_target_b_layout_ = VK_IMAGE_LAYOUT_UNDEFINED;
+    }
+
+    void create_gbuffer_target(uint32_t w, uint32_t h)
+    {
+        destroy_gbuffer_target();
+        if (!vk_ || vk_->device() == VK_NULL_HANDLE) throw std::runtime_error("Vulkan device unavailable");
+        if (depth_target_.view == VK_NULL_HANDLE || depth_target_.format == VK_FORMAT_UNDEFINED)
+        {
+            throw std::runtime_error("Depth target must be created before gbuffer target");
+        }
+
+        gbuffer_target_.w = w;
+        gbuffer_target_.h = h;
+        const VkFormat color_fmt = choose_gbuffer_format();
+
+        for (auto& att : gbuffer_target_.colors)
+        {
+            att.format = color_fmt;
+
+            VkImageCreateInfo ici{};
+            ici.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+            ici.imageType = VK_IMAGE_TYPE_2D;
+            ici.extent.width = w;
+            ici.extent.height = h;
+            ici.extent.depth = 1;
+            ici.mipLevels = 1;
+            ici.arrayLayers = 1;
+            ici.format = att.format;
+            ici.tiling = VK_IMAGE_TILING_OPTIMAL;
+            ici.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            ici.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+            ici.samples = VK_SAMPLE_COUNT_1_BIT;
+            ici.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+            if (vkCreateImage(vk_->device(), &ici, nullptr, &att.image) != VK_SUCCESS)
+            {
+                throw std::runtime_error("vkCreateImage failed for gbuffer attachment");
+            }
+
+            VkMemoryRequirements req{};
+            vkGetImageMemoryRequirements(vk_->device(), att.image, &req);
+
+            VkMemoryAllocateInfo mai{};
+            mai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+            mai.allocationSize = req.size;
+            mai.memoryTypeIndex = shs::vk_find_memory_type(
+                vk_->physical_device(),
+                req.memoryTypeBits,
+                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+            if (mai.memoryTypeIndex == UINT32_MAX)
+            {
+                throw std::runtime_error("No compatible memory type for gbuffer attachment");
+            }
+            if (vkAllocateMemory(vk_->device(), &mai, nullptr, &att.memory) != VK_SUCCESS)
+            {
+                throw std::runtime_error("vkAllocateMemory failed for gbuffer attachment");
+            }
+            if (vkBindImageMemory(vk_->device(), att.image, att.memory, 0) != VK_SUCCESS)
+            {
+                throw std::runtime_error("vkBindImageMemory failed for gbuffer attachment");
+            }
+
+            VkImageViewCreateInfo iv{};
+            iv.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+            iv.image = att.image;
+            iv.viewType = VK_IMAGE_VIEW_TYPE_2D;
+            iv.format = att.format;
+            iv.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            iv.subresourceRange.baseMipLevel = 0;
+            iv.subresourceRange.levelCount = 1;
+            iv.subresourceRange.baseArrayLayer = 0;
+            iv.subresourceRange.layerCount = 1;
+            if (vkCreateImageView(vk_->device(), &iv, nullptr, &att.view) != VK_SUCCESS)
+            {
+                throw std::runtime_error("vkCreateImageView failed for gbuffer attachment");
+            }
+        }
+
+        std::array<VkAttachmentDescription, 5> attachments{};
+        for (uint32_t i = 0; i < 4; ++i)
+        {
+            attachments[i].format = gbuffer_target_.colors[i].format;
+            attachments[i].samples = VK_SAMPLE_COUNT_1_BIT;
+            attachments[i].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+            attachments[i].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+            attachments[i].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+            attachments[i].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+            attachments[i].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            attachments[i].finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        }
+        attachments[4].format = depth_target_.format;
+        attachments[4].samples = VK_SAMPLE_COUNT_1_BIT;
+        attachments[4].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        attachments[4].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        attachments[4].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        attachments[4].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        attachments[4].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        attachments[4].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+
+        std::array<VkAttachmentReference, 4> color_refs{};
+        for (uint32_t i = 0; i < 4; ++i)
+        {
+            color_refs[i].attachment = i;
+            color_refs[i].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        }
+        VkAttachmentReference depth_ref{};
+        depth_ref.attachment = 4;
+        depth_ref.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+        VkSubpassDescription sub{};
+        sub.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+        sub.colorAttachmentCount = static_cast<uint32_t>(color_refs.size());
+        sub.pColorAttachments = color_refs.data();
+        sub.pDepthStencilAttachment = &depth_ref;
+
+        VkSubpassDependency deps[2]{};
+        deps[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+        deps[0].dstSubpass = 0;
+        deps[0].srcStageMask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        deps[0].dstStageMask =
+            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
+            VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+            VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+        deps[0].dstAccessMask =
+            VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+            VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+
+        deps[1].srcSubpass = 0;
+        deps[1].dstSubpass = VK_SUBPASS_EXTERNAL;
+        deps[1].srcStageMask =
+            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
+            VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+            VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+        deps[1].srcAccessMask =
+            VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+            VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        deps[1].dstStageMask =
+            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+        deps[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+        VkRenderPassCreateInfo rp{};
+        rp.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+        rp.attachmentCount = static_cast<uint32_t>(attachments.size());
+        rp.pAttachments = attachments.data();
+        rp.subpassCount = 1;
+        rp.pSubpasses = &sub;
+        rp.dependencyCount = 2;
+        rp.pDependencies = deps;
+        if (vkCreateRenderPass(vk_->device(), &rp, nullptr, &gbuffer_target_.render_pass) != VK_SUCCESS)
+        {
+            throw std::runtime_error("vkCreateRenderPass failed for gbuffer target");
+        }
+
+        std::array<VkImageView, 5> views = {
+            gbuffer_target_.colors[0].view,
+            gbuffer_target_.colors[1].view,
+            gbuffer_target_.colors[2].view,
+            gbuffer_target_.colors[3].view,
+            depth_target_.view
+        };
+
+        VkFramebufferCreateInfo fb{};
+        fb.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        fb.renderPass = gbuffer_target_.render_pass;
+        fb.attachmentCount = static_cast<uint32_t>(views.size());
+        fb.pAttachments = views.data();
+        fb.width = w;
+        fb.height = h;
+        fb.layers = 1;
+        if (vkCreateFramebuffer(vk_->device(), &fb, nullptr, &gbuffer_target_.framebuffer) != VK_SUCCESS)
+        {
+            throw std::runtime_error("vkCreateFramebuffer failed for gbuffer target");
+        }
     }
 
     void create_depth_target(uint32_t w, uint32_t h)
@@ -1847,15 +4374,14 @@ private:
             VK_IMAGE_VIEW_TYPE_2D_ARRAY);
     }
 
-    void create_or_resize_tile_buffers(uint32_t tiles_x, uint32_t tiles_y)
+    void create_or_resize_tile_buffers(const shs::RenderPathLightGridRuntimeLayout& layout)
     {
         const VkMemoryPropertyFlags host_flags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-        const VkDeviceSize tile_count = static_cast<VkDeviceSize>(tiles_x) * static_cast<VkDeviceSize>(tiles_y);
-        const VkDeviceSize cluster_count = tile_count * static_cast<VkDeviceSize>(kClusterZSlices);
-        const VkDeviceSize list_count = std::max(tile_count, cluster_count);
-        const VkDeviceSize counts_size = list_count * sizeof(uint32_t);
-        const VkDeviceSize indices_size = counts_size * kMaxLightsPerTile;
-        const VkDeviceSize depth_ranges_size = tile_count * sizeof(glm::vec2);
+        const shs::RenderPathLightGridBufferSizes sizes =
+            shs::make_render_path_light_grid_buffer_sizes(layout, kMaxLightsPerTile);
+        const VkDeviceSize counts_size = static_cast<VkDeviceSize>(sizes.counts_bytes);
+        const VkDeviceSize indices_size = static_cast<VkDeviceSize>(sizes.indices_bytes);
+        const VkDeviceSize depth_ranges_size = static_cast<VkDeviceSize>(sizes.depth_ranges_bytes);
 
         for (FrameResources& fr : frame_resources_)
         {
@@ -1892,73 +4418,20 @@ private:
 
         if (global_set_layout_ == VK_NULL_HANDLE)
         {
-            VkDescriptorSetLayoutBinding b[10]{};
-
-            b[0].binding = 0;
-            b[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-            b[0].descriptorCount = 1;
-            b[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
-
-            for (uint32_t i = 1; i < 5; ++i)
+            if (!shs::vk_create_render_path_global_descriptor_set_layout(vk_->device(), &global_set_layout_))
             {
-                b[i].binding = i;
-                b[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-                b[i].descriptorCount = 1;
-                b[i].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
-            }
-            b[5].binding = 5;
-            b[5].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            b[5].descriptorCount = 1;
-            b[5].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-
-            b[6].binding = 6;
-            b[6].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            b[6].descriptorCount = 1;
-            b[6].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-
-            b[7].binding = 7;
-            b[7].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            b[7].descriptorCount = 1;
-            b[7].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-
-            b[8].binding = 8;
-            b[8].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            b[8].descriptorCount = 1;
-            b[8].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-
-            b[9].binding = 9;
-            b[9].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-            b[9].descriptorCount = 1;
-            b[9].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-
-            VkDescriptorSetLayoutCreateInfo ci{};
-            ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-            ci.bindingCount = 10;
-            ci.pBindings = b;
-            if (vkCreateDescriptorSetLayout(vk_->device(), &ci, nullptr, &global_set_layout_) != VK_SUCCESS)
-            {
-                throw std::runtime_error("vkCreateDescriptorSetLayout failed");
+                throw std::runtime_error("vkCreateDescriptorSetLayout failed (render-path global)");
             }
         }
 
         if (descriptor_pool_ == VK_NULL_HANDLE)
         {
-            VkDescriptorPoolSize sizes[3]{};
-            sizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-            sizes[0].descriptorCount = kWorkerPoolRingSize;
-            sizes[1].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-            sizes[1].descriptorCount = 5u * kWorkerPoolRingSize;
-            sizes[2].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            sizes[2].descriptorCount = 4u * kWorkerPoolRingSize;
-
-            VkDescriptorPoolCreateInfo ci{};
-            ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-            ci.maxSets = kWorkerPoolRingSize;
-            ci.poolSizeCount = 3;
-            ci.pPoolSizes = sizes;
-            if (vkCreateDescriptorPool(vk_->device(), &ci, nullptr, &descriptor_pool_) != VK_SUCCESS)
+            if (!shs::vk_create_render_path_global_descriptor_pool(
+                    vk_->device(),
+                    static_cast<uint32_t>(kWorkerPoolRingSize),
+                    &descriptor_pool_))
             {
-                throw std::runtime_error("vkCreateDescriptorPool failed");
+                throw std::runtime_error("vkCreateDescriptorPool failed (render-path global)");
             }
         }
 
@@ -1978,105 +4451,184 @@ private:
                 frame_resources_.at_slot(i).global_set = sets[i];
             }
         }
+
+        if (deferred_set_layout_ == VK_NULL_HANDLE)
+        {
+            VkDescriptorSetLayoutBinding bindings[7]{};
+            for (uint32_t i = 0; i < 7; ++i)
+            {
+                bindings[i].binding = i;
+                bindings[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                bindings[i].descriptorCount = 1;
+                bindings[i].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+            }
+
+            VkDescriptorSetLayoutCreateInfo lci{};
+            lci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+            lci.bindingCount = 7;
+            lci.pBindings = bindings;
+            if (vkCreateDescriptorSetLayout(vk_->device(), &lci, nullptr, &deferred_set_layout_) != VK_SUCCESS)
+            {
+                throw std::runtime_error("vkCreateDescriptorSetLayout failed (deferred gbuffer set)");
+            }
+        }
+
+        if (deferred_descriptor_pool_ == VK_NULL_HANDLE)
+        {
+            VkDescriptorPoolSize pool_size{};
+            pool_size.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            pool_size.descriptorCount = 21u;
+
+            VkDescriptorPoolCreateInfo pci{};
+            pci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+            pci.maxSets = 3u;
+            pci.poolSizeCount = 1u;
+            pci.pPoolSizes = &pool_size;
+            if (vkCreateDescriptorPool(vk_->device(), &pci, nullptr, &deferred_descriptor_pool_) != VK_SUCCESS)
+            {
+                throw std::runtime_error("vkCreateDescriptorPool failed (deferred gbuffer set)");
+            }
+        }
+
+        if (deferred_set_ == VK_NULL_HANDLE ||
+            deferred_post_a_set_ == VK_NULL_HANDLE ||
+            deferred_post_b_set_ == VK_NULL_HANDLE)
+        {
+            std::array<VkDescriptorSetLayout, 3> set_layouts = {
+                deferred_set_layout_,
+                deferred_set_layout_,
+                deferred_set_layout_
+            };
+            VkDescriptorSetAllocateInfo ai{};
+            ai.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+            ai.descriptorPool = deferred_descriptor_pool_;
+            ai.descriptorSetCount = static_cast<uint32_t>(set_layouts.size());
+            ai.pSetLayouts = set_layouts.data();
+            std::array<VkDescriptorSet, 3> sets{};
+            if (vkAllocateDescriptorSets(vk_->device(), &ai, sets.data()) != VK_SUCCESS)
+            {
+                throw std::runtime_error("vkAllocateDescriptorSets failed (deferred gbuffer set)");
+            }
+            deferred_set_ = sets[0];
+            deferred_post_a_set_ = sets[1];
+            deferred_post_b_set_ = sets[2];
+        }
     }
 
     void update_global_descriptor_sets()
     {
-        VkDescriptorImageInfo depth_info{};
-        depth_info.sampler = depth_sampler_;
-        depth_info.imageView = depth_target_.view;
-        depth_info.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-
-        VkDescriptorImageInfo sun_shadow_info{};
-        sun_shadow_info.sampler = depth_sampler_;
-        sun_shadow_info.imageView = sun_shadow_target_.sampled_view;
-        sun_shadow_info.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-
-        VkDescriptorImageInfo local_shadow_info{};
-        local_shadow_info.sampler = depth_sampler_;
-        local_shadow_info.imageView = local_shadow_target_.sampled_view;
-        local_shadow_info.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-
-        VkDescriptorImageInfo point_shadow_info{};
-        point_shadow_info.sampler = depth_sampler_;
-        point_shadow_info.imageView = local_shadow_target_.sampled_view;
-        point_shadow_info.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-
         for (FrameResources& fr : frame_resources_)
         {
             if (fr.global_set == VK_NULL_HANDLE) continue;
 
-            VkDescriptorBufferInfo camera_info{};
-            camera_info.buffer = fr.camera_buffer.buffer;
-            camera_info.offset = 0;
-            camera_info.range = sizeof(CameraUBO);
+            shs::VkRenderPathGlobalDescriptorFrameData frame_desc{};
+            frame_desc.dst_set = fr.global_set;
+            frame_desc.camera_buffer = fr.camera_buffer.buffer;
+            frame_desc.camera_range = sizeof(CameraUBO);
+            frame_desc.lights_buffer = fr.light_buffer.buffer;
+            frame_desc.lights_range = static_cast<VkDeviceSize>(kMaxLights) * sizeof(shs::CullingLightGPU);
+            frame_desc.tile_counts_buffer = fr.tile_counts_buffer.buffer;
+            frame_desc.tile_counts_range = fr.tile_counts_buffer.size;
+            frame_desc.tile_indices_buffer = fr.tile_indices_buffer.buffer;
+            frame_desc.tile_indices_range = fr.tile_indices_buffer.size;
+            frame_desc.tile_depth_ranges_buffer = fr.tile_depth_ranges_buffer.buffer;
+            frame_desc.tile_depth_ranges_range = fr.tile_depth_ranges_buffer.size;
+            frame_desc.shadow_lights_buffer = fr.shadow_light_buffer.buffer;
+            frame_desc.shadow_lights_range = static_cast<VkDeviceSize>(kMaxLights) * sizeof(ShadowLightGPU);
+            frame_desc.sampler = depth_sampler_;
+            frame_desc.depth_view = depth_target_.view;
+            frame_desc.sun_shadow_view = sun_shadow_target_.sampled_view;
+            frame_desc.local_shadow_view = local_shadow_target_.sampled_view;
+            frame_desc.point_shadow_view = local_shadow_target_.sampled_view;
 
-            VkDescriptorBufferInfo light_info{};
-            light_info.buffer = fr.light_buffer.buffer;
-            light_info.offset = 0;
-            light_info.range = static_cast<VkDeviceSize>(kMaxLights) * sizeof(shs::CullingLightGPU);
-
-            VkDescriptorBufferInfo tile_counts_info{};
-            tile_counts_info.buffer = fr.tile_counts_buffer.buffer;
-            tile_counts_info.offset = 0;
-            tile_counts_info.range = fr.tile_counts_buffer.size;
-
-            VkDescriptorBufferInfo tile_indices_info{};
-            tile_indices_info.buffer = fr.tile_indices_buffer.buffer;
-            tile_indices_info.offset = 0;
-            tile_indices_info.range = fr.tile_indices_buffer.size;
-
-            VkDescriptorBufferInfo tile_depth_ranges_info{};
-            tile_depth_ranges_info.buffer = fr.tile_depth_ranges_buffer.buffer;
-            tile_depth_ranges_info.offset = 0;
-            tile_depth_ranges_info.range = fr.tile_depth_ranges_buffer.size;
-
-            VkDescriptorBufferInfo shadow_light_info{};
-            shadow_light_info.buffer = fr.shadow_light_buffer.buffer;
-            shadow_light_info.offset = 0;
-            shadow_light_info.range = static_cast<VkDeviceSize>(kMaxLights) * sizeof(ShadowLightGPU);
-
-            VkWriteDescriptorSet w[10]{};
-            for (int i = 0; i < 10; ++i)
+            if (!shs::vk_update_render_path_global_descriptor_set(vk_->device(), frame_desc))
             {
-                w[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                w[i].dstSet = fr.global_set;
-                w[i].dstBinding = static_cast<uint32_t>(i);
-                w[i].descriptorCount = 1;
+                throw std::runtime_error("vkUpdateDescriptorSets failed (render-path global)");
+            }
+        }
+    }
+
+    void update_deferred_descriptor_set()
+    {
+        if (!vk_ || vk_->device() == VK_NULL_HANDLE) return;
+        if (deferred_set_ == VK_NULL_HANDLE ||
+            deferred_post_a_set_ == VK_NULL_HANDLE ||
+            deferred_post_b_set_ == VK_NULL_HANDLE ||
+            depth_sampler_ == VK_NULL_HANDLE)
+        {
+            return;
+        }
+        if (gbuffer_target_.colors[0].view == VK_NULL_HANDLE ||
+            gbuffer_target_.colors[1].view == VK_NULL_HANDLE ||
+            gbuffer_target_.colors[2].view == VK_NULL_HANDLE ||
+            gbuffer_target_.colors[3].view == VK_NULL_HANDLE ||
+            ao_target_.view == VK_NULL_HANDLE ||
+            post_target_a_.view == VK_NULL_HANDLE ||
+            post_target_b_.view == VK_NULL_HANDLE)
+        {
+            return;
+        }
+
+        const VkImageView history_view = shs::vk_render_path_history_color_view(temporal_resources_);
+        const VkImageView history_fallback_view =
+            (history_view != VK_NULL_HANDLE) ? history_view : post_target_a_.view;
+
+        const auto update_one_set = [&](VkDescriptorSet set, VkImageView post_input_view) {
+            VkDescriptorImageInfo infos[7]{};
+            for (uint32_t i = 0; i < 4; ++i)
+            {
+                infos[i].sampler = depth_sampler_;
+                infos[i].imageView = gbuffer_target_.colors[i].view;
+                infos[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            }
+            infos[4].sampler = depth_sampler_;
+            infos[4].imageView = history_fallback_view;
+            infos[4].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            infos[5].sampler = depth_sampler_;
+            infos[5].imageView = ao_target_.view;
+            infos[5].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            infos[6].sampler = depth_sampler_;
+            infos[6].imageView = post_input_view;
+            infos[6].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+            std::array<VkWriteDescriptorSet, 7> writes{};
+            for (uint32_t i = 0; i < 7; ++i)
+            {
+                writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                writes[i].dstSet = set;
+                writes[i].dstBinding = i;
+                writes[i].descriptorCount = 1;
+                writes[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                writes[i].pImageInfo = &infos[i];
             }
 
-            w[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-            w[0].pBufferInfo = &camera_info;
+            vkUpdateDescriptorSets(
+                vk_->device(),
+                static_cast<uint32_t>(writes.size()),
+                writes.data(),
+                0,
+                nullptr);
+        };
 
-            w[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-            w[1].pBufferInfo = &light_info;
+        update_one_set(deferred_set_, history_fallback_view);
+        update_one_set(deferred_post_a_set_, post_target_a_.view);
+        update_one_set(deferred_post_b_set_, post_target_b_.view);
+    }
 
-            w[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-            w[2].pBufferInfo = &tile_counts_info;
+    VkDescriptorSet post_source_descriptor_set_from_context(
+        const shs::VkRenderPathPassExecutionContext<shs::VulkanRenderBackend::FrameInfo>& ctx) const
+    {
+        if (ctx.post_color_source == 1u) return deferred_post_a_set_;
+        if (ctx.post_color_source == 2u) return deferred_post_b_set_;
+        return VK_NULL_HANDLE;
+    }
 
-            w[3].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-            w[3].pBufferInfo = &tile_indices_info;
-
-            w[4].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-            w[4].pBufferInfo = &tile_depth_ranges_info;
-
-            w[5].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            w[5].pImageInfo = &depth_info;
-
-            w[6].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            w[6].pImageInfo = &sun_shadow_info;
-
-            w[7].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            w[7].pImageInfo = &local_shadow_info;
-
-            w[8].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            w[8].pImageInfo = &point_shadow_info;
-
-            w[9].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-            w[9].pBufferInfo = &shadow_light_info;
-
-            vkUpdateDescriptorSets(vk_->device(), 10, w, 0, nullptr);
-        }
+    VkImageView post_source_view_from_context(
+        const shs::VkRenderPathPassExecutionContext<shs::VulkanRenderBackend::FrameInfo>& ctx) const
+    {
+        if (ctx.post_color_source == 1u) return post_target_a_.view;
+        if (ctx.post_color_source == 2u) return post_target_b_.view;
+        return VK_NULL_HANDLE;
     }
 
     void destroy_pipelines()
@@ -2106,6 +4658,16 @@ private:
         destroy_pipeline(scene_pipeline_);
         destroy_pipeline(scene_wire_pipeline_);
         destroy_layout(scene_pipeline_layout_);
+        destroy_pipeline(gbuffer_pipeline_);
+        destroy_layout(gbuffer_pipeline_layout_);
+        destroy_pipeline(ssao_pipeline_);
+        destroy_layout(ssao_pipeline_layout_);
+        destroy_pipeline(deferred_lighting_post_pipeline_);
+        destroy_pipeline(deferred_lighting_pipeline_);
+        destroy_pipeline(motion_blur_pipeline_);
+        destroy_pipeline(motion_blur_scene_pipeline_);
+        destroy_pipeline(dof_pipeline_);
+        destroy_layout(deferred_lighting_pipeline_layout_);
 
         destroy_pipeline(depth_reduce_pipeline_);
         destroy_pipeline(compute_pipeline_);
@@ -2114,7 +4676,7 @@ private:
         pipeline_gen_ = 0;
     }
 
-    void create_pipelines(bool force)
+    void create_pipelines(bool force, const char* reason = "runtime")
     {
         if (!force && scene_pipeline_ != VK_NULL_HANDLE && pipeline_gen_ == vk_->swapchain_generation()) return;
 
@@ -2123,12 +4685,24 @@ private:
         const std::vector<char> shadow_vs_code = shs::vk_read_binary_file(SHS_VK_FP_SHADOW_VERT_SPV);
         const std::vector<char> scene_vs_code = shs::vk_read_binary_file(SHS_VK_FP_SCENE_VERT_SPV);
         const std::vector<char> scene_fs_code = shs::vk_read_binary_file(SHS_VK_FP_SCENE_FRAG_SPV);
+        const std::vector<char> gbuffer_fs_code = shs::vk_read_binary_file(SHS_VK_FP_GBUFFER_FRAG_SPV);
+        const std::vector<char> deferred_vs_code = shs::vk_read_binary_file(SHS_VK_FP_DEFERRED_VERT_SPV);
+        const std::vector<char> ssao_fs_code = shs::vk_read_binary_file(SHS_VK_FP_SSAO_FRAG_SPV);
+        const std::vector<char> deferred_fs_code = shs::vk_read_binary_file(SHS_VK_FP_DEFERRED_FRAG_SPV);
+        const std::vector<char> motion_blur_fs_code = shs::vk_read_binary_file(SHS_VK_FP_MOTION_BLUR_FRAG_SPV);
+        const std::vector<char> dof_fs_code = shs::vk_read_binary_file(SHS_VK_FP_DOF_FRAG_SPV);
         const std::vector<char> depth_reduce_cs_code = shs::vk_read_binary_file(SHS_VK_FP_DEPTH_REDUCE_COMP_SPV);
         const std::vector<char> cull_cs_code = shs::vk_read_binary_file(SHS_VK_FP_LIGHT_CULL_COMP_SPV);
 
         VkShaderModule shadow_vs = shs::vk_create_shader_module(vk_->device(), shadow_vs_code);
         VkShaderModule scene_vs = shs::vk_create_shader_module(vk_->device(), scene_vs_code);
         VkShaderModule scene_fs = shs::vk_create_shader_module(vk_->device(), scene_fs_code);
+        VkShaderModule gbuffer_fs = shs::vk_create_shader_module(vk_->device(), gbuffer_fs_code);
+        VkShaderModule deferred_vs = shs::vk_create_shader_module(vk_->device(), deferred_vs_code);
+        VkShaderModule ssao_fs = shs::vk_create_shader_module(vk_->device(), ssao_fs_code);
+        VkShaderModule deferred_fs = shs::vk_create_shader_module(vk_->device(), deferred_fs_code);
+        VkShaderModule motion_blur_fs = shs::vk_create_shader_module(vk_->device(), motion_blur_fs_code);
+        VkShaderModule dof_fs = shs::vk_create_shader_module(vk_->device(), dof_fs_code);
         VkShaderModule depth_reduce_cs = shs::vk_create_shader_module(vk_->device(), depth_reduce_cs_code);
         VkShaderModule cull_cs = shs::vk_create_shader_module(vk_->device(), cull_cs_code);
 
@@ -2136,6 +4710,12 @@ private:
             if (shadow_vs != VK_NULL_HANDLE) vkDestroyShaderModule(vk_->device(), shadow_vs, nullptr);
             if (scene_vs != VK_NULL_HANDLE) vkDestroyShaderModule(vk_->device(), scene_vs, nullptr);
             if (scene_fs != VK_NULL_HANDLE) vkDestroyShaderModule(vk_->device(), scene_fs, nullptr);
+            if (gbuffer_fs != VK_NULL_HANDLE) vkDestroyShaderModule(vk_->device(), gbuffer_fs, nullptr);
+            if (deferred_vs != VK_NULL_HANDLE) vkDestroyShaderModule(vk_->device(), deferred_vs, nullptr);
+            if (ssao_fs != VK_NULL_HANDLE) vkDestroyShaderModule(vk_->device(), ssao_fs, nullptr);
+            if (deferred_fs != VK_NULL_HANDLE) vkDestroyShaderModule(vk_->device(), deferred_fs, nullptr);
+            if (motion_blur_fs != VK_NULL_HANDLE) vkDestroyShaderModule(vk_->device(), motion_blur_fs, nullptr);
+            if (dof_fs != VK_NULL_HANDLE) vkDestroyShaderModule(vk_->device(), dof_fs, nullptr);
             if (depth_reduce_cs != VK_NULL_HANDLE) vkDestroyShaderModule(vk_->device(), depth_reduce_cs, nullptr);
             if (cull_cs != VK_NULL_HANDLE) vkDestroyShaderModule(vk_->device(), cull_cs, nullptr);
         };
@@ -2175,6 +4755,27 @@ private:
         {
             cleanup_modules();
             throw std::runtime_error("vkCreatePipelineLayout failed (scene)");
+        }
+        if (vkCreatePipelineLayout(vk_->device(), &pli, nullptr, &gbuffer_pipeline_layout_) != VK_SUCCESS)
+        {
+            cleanup_modules();
+            throw std::runtime_error("vkCreatePipelineLayout failed (gbuffer)");
+        }
+
+        std::array<VkDescriptorSetLayout, 2> deferred_set_layouts = {global_set_layout_, deferred_set_layout_};
+        VkPipelineLayoutCreateInfo dli{};
+        dli.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        dli.setLayoutCount = static_cast<uint32_t>(deferred_set_layouts.size());
+        dli.pSetLayouts = deferred_set_layouts.data();
+        if (vkCreatePipelineLayout(vk_->device(), &dli, nullptr, &ssao_pipeline_layout_) != VK_SUCCESS)
+        {
+            cleanup_modules();
+            throw std::runtime_error("vkCreatePipelineLayout failed (ssao)");
+        }
+        if (vkCreatePipelineLayout(vk_->device(), &dli, nullptr, &deferred_lighting_pipeline_layout_) != VK_SUCCESS)
+        {
+            cleanup_modules();
+            throw std::runtime_error("vkCreatePipelineLayout failed (deferred)");
         }
 
         VkPipelineLayoutCreateInfo cli{};
@@ -2345,6 +4946,168 @@ private:
             throw std::runtime_error("vkCreateGraphicsPipelines failed (scene)");
         }
 
+        VkPipelineShaderStageCreateInfo gbuffer_stages[2]{};
+        gbuffer_stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        gbuffer_stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+        gbuffer_stages[0].module = scene_vs;
+        gbuffer_stages[0].pName = "main";
+        gbuffer_stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        gbuffer_stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+        gbuffer_stages[1].module = gbuffer_fs;
+        gbuffer_stages[1].pName = "main";
+
+        std::array<VkPipelineColorBlendAttachmentState, 4> gbuffer_cba{};
+        for (auto& a : gbuffer_cba)
+        {
+            a = cba;
+        }
+        VkPipelineColorBlendStateCreateInfo gbuffer_cb{};
+        gbuffer_cb.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+        gbuffer_cb.attachmentCount = static_cast<uint32_t>(gbuffer_cba.size());
+        gbuffer_cb.pAttachments = gbuffer_cba.data();
+
+        VkGraphicsPipelineCreateInfo gp_gbuffer = gp_scene;
+        gp_gbuffer.pStages = gbuffer_stages;
+        gp_gbuffer.pColorBlendState = &gbuffer_cb;
+        gp_gbuffer.pDepthStencilState = &ds_depth;
+        gp_gbuffer.layout = gbuffer_pipeline_layout_;
+        gp_gbuffer.renderPass = gbuffer_target_.render_pass;
+        if (vkCreateGraphicsPipelines(vk_->device(), VK_NULL_HANDLE, 1, &gp_gbuffer, nullptr, &gbuffer_pipeline_) != VK_SUCCESS)
+        {
+            cleanup_modules();
+            throw std::runtime_error("vkCreateGraphicsPipelines failed (gbuffer)");
+        }
+
+        VkPipelineShaderStageCreateInfo ssao_stages[2]{};
+        ssao_stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        ssao_stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+        ssao_stages[0].module = deferred_vs;
+        ssao_stages[0].pName = "main";
+        ssao_stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        ssao_stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+        ssao_stages[1].module = ssao_fs;
+        ssao_stages[1].pName = "main";
+
+        VkPipelineShaderStageCreateInfo deferred_stages[2]{};
+        deferred_stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        deferred_stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+        deferred_stages[0].module = deferred_vs;
+        deferred_stages[0].pName = "main";
+        deferred_stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        deferred_stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+        deferred_stages[1].module = deferred_fs;
+        deferred_stages[1].pName = "main";
+
+        VkPipelineVertexInputStateCreateInfo vi_fullscreen{};
+        vi_fullscreen.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+
+        VkPipelineInputAssemblyStateCreateInfo ia_fullscreen{};
+        ia_fullscreen.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+        ia_fullscreen.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+
+        VkPipelineDepthStencilStateCreateInfo ds_deferred{};
+        ds_deferred.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+        ds_deferred.depthTestEnable = VK_FALSE;
+        ds_deferred.depthWriteEnable = VK_FALSE;
+        ds_deferred.depthCompareOp = VK_COMPARE_OP_ALWAYS;
+
+        VkGraphicsPipelineCreateInfo gp_ssao{};
+        gp_ssao.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+        gp_ssao.stageCount = 2;
+        gp_ssao.pStages = ssao_stages;
+        gp_ssao.pVertexInputState = &vi_fullscreen;
+        gp_ssao.pInputAssemblyState = &ia_fullscreen;
+        gp_ssao.pViewportState = &vp;
+        gp_ssao.pRasterizationState = &rs;
+        gp_ssao.pMultisampleState = &ms;
+        gp_ssao.pDepthStencilState = &ds_deferred;
+        gp_ssao.pColorBlendState = &cb;
+        gp_ssao.pDynamicState = &dyn;
+        gp_ssao.layout = ssao_pipeline_layout_;
+        gp_ssao.renderPass = ao_target_.render_pass;
+        gp_ssao.subpass = 0;
+        if (vkCreateGraphicsPipelines(vk_->device(), VK_NULL_HANDLE, 1, &gp_ssao, nullptr, &ssao_pipeline_) != VK_SUCCESS)
+        {
+            cleanup_modules();
+            throw std::runtime_error("vkCreateGraphicsPipelines failed (ssao)");
+        }
+
+        VkGraphicsPipelineCreateInfo gp_deferred{};
+        gp_deferred.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+        gp_deferred.stageCount = 2;
+        gp_deferred.pStages = deferred_stages;
+        gp_deferred.pVertexInputState = &vi_fullscreen;
+        gp_deferred.pInputAssemblyState = &ia_fullscreen;
+        gp_deferred.pViewportState = &vp;
+        gp_deferred.pRasterizationState = &rs;
+        gp_deferred.pMultisampleState = &ms;
+        gp_deferred.pDepthStencilState = &ds_deferred;
+        gp_deferred.pColorBlendState = &cb;
+        gp_deferred.pDynamicState = &dyn;
+        gp_deferred.layout = deferred_lighting_pipeline_layout_;
+        gp_deferred.renderPass = vk_->render_pass();
+        gp_deferred.subpass = 0;
+        if (vkCreateGraphicsPipelines(vk_->device(), VK_NULL_HANDLE, 1, &gp_deferred, nullptr, &deferred_lighting_pipeline_) != VK_SUCCESS)
+        {
+            cleanup_modules();
+            throw std::runtime_error("vkCreateGraphicsPipelines failed (deferred)");
+        }
+
+        VkGraphicsPipelineCreateInfo gp_deferred_post = gp_deferred;
+        gp_deferred_post.renderPass = post_target_a_.render_pass;
+        if (vkCreateGraphicsPipelines(vk_->device(), VK_NULL_HANDLE, 1, &gp_deferred_post, nullptr, &deferred_lighting_post_pipeline_) != VK_SUCCESS)
+        {
+            cleanup_modules();
+            throw std::runtime_error("vkCreateGraphicsPipelines failed (deferred post)");
+        }
+
+        VkPipelineShaderStageCreateInfo motion_blur_stages[2]{};
+        motion_blur_stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        motion_blur_stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+        motion_blur_stages[0].module = deferred_vs;
+        motion_blur_stages[0].pName = "main";
+        motion_blur_stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        motion_blur_stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+        motion_blur_stages[1].module = motion_blur_fs;
+        motion_blur_stages[1].pName = "main";
+
+        VkGraphicsPipelineCreateInfo gp_motion_blur = gp_deferred;
+        gp_motion_blur.pStages = motion_blur_stages;
+        gp_motion_blur.renderPass = post_target_b_.render_pass;
+        if (vkCreateGraphicsPipelines(vk_->device(), VK_NULL_HANDLE, 1, &gp_motion_blur, nullptr, &motion_blur_pipeline_) != VK_SUCCESS)
+        {
+            cleanup_modules();
+            throw std::runtime_error("vkCreateGraphicsPipelines failed (motion blur)");
+        }
+
+        VkGraphicsPipelineCreateInfo gp_motion_blur_scene = gp_deferred;
+        gp_motion_blur_scene.pStages = motion_blur_stages;
+        gp_motion_blur_scene.renderPass = vk_->render_pass();
+        if (vkCreateGraphicsPipelines(vk_->device(), VK_NULL_HANDLE, 1, &gp_motion_blur_scene, nullptr, &motion_blur_scene_pipeline_) != VK_SUCCESS)
+        {
+            cleanup_modules();
+            throw std::runtime_error("vkCreateGraphicsPipelines failed (motion blur scene)");
+        }
+
+        VkPipelineShaderStageCreateInfo dof_stages[2]{};
+        dof_stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        dof_stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+        dof_stages[0].module = deferred_vs;
+        dof_stages[0].pName = "main";
+        dof_stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        dof_stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+        dof_stages[1].module = dof_fs;
+        dof_stages[1].pName = "main";
+
+        VkGraphicsPipelineCreateInfo gp_dof = gp_deferred;
+        gp_dof.pStages = dof_stages;
+        gp_dof.renderPass = vk_->render_pass();
+        if (vkCreateGraphicsPipelines(vk_->device(), VK_NULL_HANDLE, 1, &gp_dof, nullptr, &dof_pipeline_) != VK_SUCCESS)
+        {
+            cleanup_modules();
+            throw std::runtime_error("vkCreateGraphicsPipelines failed (dof)");
+        }
+
         VkPipelineInputAssemblyStateCreateInfo ia_lines = ia;
         ia_lines.topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
 
@@ -2383,44 +5146,229 @@ private:
 
         cleanup_modules();
         pipeline_gen_ = vk_->swapchain_generation();
+        ++pipeline_rebuild_count_;
+        pipeline_last_rebuild_reason_ = (reason && *reason) ? reason : "runtime";
+    }
+
+    shs::RenderPathLightGridRuntimeLayout make_active_light_grid_runtime_layout(uint32_t frame_w, uint32_t frame_h) const
+    {
+        return shs::make_render_path_light_grid_runtime_layout(
+            render_path_executor_.active_plan(),
+            render_path_executor_.active_recipe(),
+            render_path_executor_.active_resource_plan(),
+            frame_w,
+            frame_h);
     }
 
     void ensure_render_targets(uint32_t w, uint32_t h)
     {
         if (w == 0 || h == 0) return;
-        if (depth_target_.w == w && depth_target_.h == h && tile_w_ == ((w + kTileSize - 1) / kTileSize) && tile_h_ == ((h + kTileSize - 1) / kTileSize))
+
+        const VkFormat swapchain_fmt = vk_->swapchain_format();
+
+        const shs::RenderPathLightGridRuntimeLayout desired_layout =
+            make_active_light_grid_runtime_layout(w, h);
+
+        const bool extent_matches =
+            depth_target_.w == w &&
+            depth_target_.h == h &&
+            gbuffer_target_.w == w &&
+            gbuffer_target_.h == h &&
+            ao_target_.w == w &&
+            ao_target_.h == h &&
+            post_target_a_.w == w &&
+            post_target_a_.h == h &&
+            post_target_b_.w == w &&
+            post_target_b_.h == h;
+        const bool format_matches =
+            post_target_a_.format == swapchain_fmt &&
+            post_target_b_.format == swapchain_fmt;
+        const bool temporal_matches = shs::vk_render_path_temporal_resources_allocation_equal(
+            temporal_resources_,
+            render_path_executor_.active_resource_plan(),
+            w,
+            h,
+            swapchain_fmt);
+        const bool light_grid_matches =
+            shs::light_grid_runtime_layout_allocation_equal(light_grid_layout_, desired_layout);
+
+        if (extent_matches &&
+            format_matches &&
+            temporal_matches &&
+            light_grid_matches)
         {
             return;
         }
-
+        ++render_target_rebuild_count_;
+        if (!extent_matches) render_target_last_rebuild_reason_ = "extent";
+        else if (!format_matches) render_target_last_rebuild_reason_ = "format";
+        else if (!temporal_matches) render_target_last_rebuild_reason_ = "temporal";
+        else if (!light_grid_matches) render_target_last_rebuild_reason_ = "light-grid";
+        else render_target_last_rebuild_reason_ = "runtime";
         create_depth_target(w, h);
+        create_gbuffer_target(w, h);
+        create_ao_target(w, h);
+        create_post_color_target(post_target_a_, w, h, swapchain_fmt);
+        create_post_color_target(post_target_b_, w, h, swapchain_fmt);
+        if (!shs::vk_ensure_render_path_temporal_resources(
+                vk_->device(),
+                vk_->physical_device(),
+                render_path_executor_.active_resource_plan(),
+                w,
+                h,
+                swapchain_fmt,
+                temporal_resources_))
+        {
+            throw std::runtime_error("Failed to ensure temporal history resources");
+        }
         ensure_shadow_targets();
-        tile_w_ = (w + kTileSize - 1) / kTileSize;
-        tile_h_ = (h + kTileSize - 1) / kTileSize;
-        create_or_resize_tile_buffers(tile_w_, tile_h_);
+        light_grid_layout_ = desired_layout;
+        light_tile_size_ = light_grid_layout_.tile_size;
+        cluster_z_slices_ = light_grid_layout_.cluster_z_slices;
+        tile_w_ = light_grid_layout_.tile_count_x;
+        tile_h_ = light_grid_layout_.tile_count_y;
+        create_or_resize_tile_buffers(light_grid_layout_);
+        update_deferred_descriptor_set();
         update_global_descriptor_sets();
-        create_pipelines(true);
+        create_pipelines(true, "targets-recreated");
+    }
+
+    void refresh_active_composition_recipe()
+    {
+        const shs::RenderPathPreset active_path = shs::render_path_preset_for_mode(active_technique_);
+        if (!composition_cycle_order_.empty())
+        {
+            size_t any_match = composition_cycle_order_.size();
+            for (size_t i = 0; i < composition_cycle_order_.size(); ++i)
+            {
+                const auto& c = composition_cycle_order_[i];
+                if (c.path_preset == active_path && c.technique_preset == render_technique_preset_)
+                {
+                    if (any_match == composition_cycle_order_.size()) any_match = i;
+                    if (c.post_stack == shs::RenderCompositionPostStackPreset::Default)
+                    {
+                        active_composition_index_ = i;
+                        active_composition_recipe_ = c;
+                        return;
+                    }
+                }
+            }
+            if (any_match < composition_cycle_order_.size())
+            {
+                active_composition_index_ = any_match;
+                active_composition_recipe_ = composition_cycle_order_[any_match];
+                return;
+            }
+        }
+        active_composition_recipe_ = shs::make_builtin_render_composition_recipe(
+            active_path,
+            render_technique_preset_,
+            "composition_vk");
+    }
+
+    void apply_composition_post_stack_state()
+    {
+        const shs::RenderCompositionPostStackState stack =
+            shs::resolve_render_composition_post_stack_state(
+                active_composition_recipe_.path_preset,
+                active_composition_recipe_.post_stack);
+        composition_ssao_enabled_ = stack.enable_ssao;
+        composition_taa_enabled_ = stack.enable_taa;
+        composition_motion_blur_enabled_ = stack.enable_motion_blur;
+        composition_depth_of_field_enabled_ = stack.enable_depth_of_field;
+    }
+
+    bool active_ssao_pass_enabled() const
+    {
+        return path_has_ssao_pass_ && composition_ssao_enabled_;
+    }
+
+    bool active_taa_pass_enabled() const
+    {
+        return path_has_taa_pass_ && composition_taa_enabled_;
+    }
+
+    bool active_motion_blur_pass_enabled() const
+    {
+        return path_has_motion_blur_pass_ && composition_motion_blur_enabled_;
+    }
+
+    bool active_depth_of_field_pass_enabled() const
+    {
+        return path_has_depth_of_field_pass_ && composition_depth_of_field_enabled_;
+    }
+
+    void apply_render_technique_preset(
+        shs::RenderTechniquePreset preset,
+        bool refresh_composition = true)
+    {
+        render_technique_preset_ = preset;
+        render_technique_recipe_ = shs::make_builtin_render_technique_recipe(
+            render_technique_preset_,
+            "render_tech_vk");
+        shading_variant_ = shs::render_technique_shader_variant(render_technique_preset_);
+        tonemap_exposure_ = render_technique_recipe_.tonemap_exposure;
+        tonemap_gamma_ = render_technique_recipe_.tonemap_gamma;
+        if (refresh_composition)
+        {
+            refresh_active_composition_recipe();
+        }
+    }
+
+    size_t find_composition_index(
+        shs::RenderPathPreset path_preset,
+        shs::RenderTechniquePreset technique_preset) const
+    {
+        for (size_t i = 0; i < composition_cycle_order_.size(); ++i)
+        {
+            const auto& c = composition_cycle_order_[i];
+            if (c.path_preset == path_preset && c.technique_preset == technique_preset)
+            {
+                return i;
+            }
+        }
+        return 0u;
+    }
+
+    bool apply_render_composition_by_index(size_t index)
+    {
+        if (composition_cycle_order_.empty()) return false;
+        active_composition_index_ = index % composition_cycle_order_.size();
+        const shs::RenderCompositionRecipe& composition = composition_cycle_order_[active_composition_index_];
+
+        apply_render_technique_preset(composition.technique_preset, false);
+        const shs::RenderCompositionResolved resolved =
+            shs::resolve_builtin_render_composition_recipe(
+                composition,
+                shs::RenderBackendType::Vulkan,
+                "render_path_vk",
+                "render_tech_vk");
+        const bool plan_valid =
+            render_path_executor_.apply_recipe(resolved.path_recipe, ctx_, &pass_contract_registry_);
+        const bool ok = consume_active_render_path_apply_result(plan_valid);
+        if (ok)
+        {
+            active_composition_index_ = index % composition_cycle_order_.size();
+            active_composition_recipe_ = composition;
+        }
+        else
+        {
+            refresh_active_composition_recipe();
+        }
+        apply_composition_post_stack_state();
+        return ok;
     }
 
     void apply_technique_profile(shs::TechniqueMode mode, const shs::TechniqueProfile& profile)
     {
         active_technique_ = mode;
-        const auto& modes = known_technique_modes();
-        for (size_t i = 0; i < modes.size(); ++i)
-        {
-            if (modes[i] == mode)
-            {
-                technique_cycle_index_ = i;
-                break;
-            }
-        }
 
-        profile_depth_prepass_enabled_ = profile_has_pass(profile, "depth_prepass");
+        profile_depth_prepass_enabled_ = profile_has_pass(profile, shs::PassId::DepthPrepass);
         enable_light_culling_ =
-            profile_has_pass(profile, "light_culling") ||
-            profile_has_pass(profile, "cluster_light_assign");
+            profile_has_pass(profile, shs::PassId::LightCulling) ||
+            profile_has_pass(profile, shs::PassId::ClusterLightAssign);
 
-        shs::LightCullingMode mode_hint = default_culling_mode_for_technique(mode);
+        shs::LightCullingMode mode_hint = shs::default_light_culling_mode_for_mode(mode);
         if (!enable_light_culling_)
         {
             mode_hint = shs::LightCullingMode::None;
@@ -2428,18 +5376,35 @@ private:
         culling_mode_ = mode_hint;
 
         const bool has_forward_lighting =
-            profile_has_pass(profile, "pbr_forward") ||
-            profile_has_pass(profile, "pbr_forward_plus") ||
-            profile_has_pass(profile, "pbr_forward_clustered");
+            profile_has_pass(profile, shs::PassId::PBRForward) ||
+            profile_has_pass(profile, shs::PassId::PBRForwardPlus) ||
+            profile_has_pass(profile, shs::PassId::PBRForwardClustered);
         const bool has_deferred_lighting =
-            profile_has_pass(profile, "deferred_lighting") ||
-            profile_has_pass(profile, "deferred_lighting_tiled");
-        enable_scene_pass_ = has_forward_lighting || has_deferred_lighting || profile_has_pass(profile, "gbuffer");
-        if (!enable_scene_pass_) enable_scene_pass_ = true;
+            profile_has_pass(profile, shs::PassId::DeferredLighting) ||
+            profile_has_pass(profile, shs::PassId::DeferredLightingTiled);
+        const bool has_gbuffer = profile_has_pass(profile, shs::PassId::GBuffer);
+        path_has_ssao_pass_ = profile_has_pass(profile, shs::PassId::SSAO);
+        path_has_motion_blur_pass_ = profile_has_pass(profile, shs::PassId::MotionBlur);
+        path_has_depth_of_field_pass_ = profile_has_pass(profile, shs::PassId::DepthOfField);
+        path_has_taa_pass_ = profile_has_pass(profile, shs::PassId::TAA);
+        enable_scene_pass_ = has_forward_lighting;
+        if (!has_forward_lighting && !has_deferred_lighting && !has_gbuffer)
+        {
+            enable_scene_pass_ = true;
+        }
+
+        temporal_settings_.accumulation_enabled = path_has_taa_pass_;
+        temporal_settings_.jitter_enabled = path_has_taa_pass_;
+        if (!path_has_taa_pass_)
+        {
+            shs::vk_render_path_invalidate_history_color(temporal_resources_);
+        }
 
         refresh_depth_prepass_state();
         use_forward_plus_ = (culling_mode_ != shs::LightCullingMode::None);
         technique_switch_accum_sec_ = 0.0f;
+        refresh_active_composition_recipe();
+        apply_composition_post_stack_state();
     }
 
     void apply_technique_mode(shs::TechniqueMode mode)
@@ -2450,109 +5415,331 @@ private:
 
     void init_render_path_registry()
     {
-        render_path_registry_.clear();
-        render_path_cycle_order_.clear();
-
-        const auto& modes = known_technique_modes();
-        render_path_cycle_order_.reserve(modes.size());
-        for (const shs::TechniqueMode mode : modes)
+        pass_contract_registry_ =
+            shs::make_standard_pass_contract_registry_for_backend(shs::RenderBackendType::Vulkan);
+        pass_contract_registry_sw_ =
+            shs::make_standard_pass_contract_registry_for_backend(shs::RenderBackendType::Software);
+        if (pass_contract_registry_.ids().empty())
         {
-            shs::RenderPathRecipe recipe = make_default_stress_vk_recipe(mode);
-            const std::string id = recipe.name;
-            (void)render_path_registry_.register_recipe(std::move(recipe));
-            render_path_cycle_order_.push_back(id);
+            std::fprintf(stderr, "[render-path][stress][error] Standard pass contract registry is empty.\n");
+        }
+        if (pass_contract_registry_sw_.ids().empty())
+        {
+            std::fprintf(stderr, "[render-path][stress][error] Software pass contract registry is empty.\n");
+        }
+
+        const bool ok = render_path_executor_.register_builtin_presets(
+            shs::RenderBackendType::Vulkan,
+            "render_path_vk");
+        if (!ok)
+        {
+            std::fprintf(stderr, "[render-path][stress][error] Failed to register one or more builtin presets.\n");
+        }
+
+        build_frame_pass_dispatcher();
+        pass_dispatch_warning_emitted_ = false;
+    }
+
+    void refresh_semantic_debug_targets()
+    {
+        semantic_debug_targets_ = shs::collect_render_path_visual_debug_semantics(
+            render_path_executor_.active_resource_plan());
+        if (semantic_debug_targets_.empty())
+        {
+            semantic_debug_enabled_ = false;
+            semantic_debug_index_ = 0u;
+            active_semantic_debug_ = shs::PassSemantic::Unknown;
+            return;
+        }
+
+        if (!semantic_debug_enabled_ || active_semantic_debug_ == shs::PassSemantic::Unknown)
+        {
+            semantic_debug_index_ = 0u;
+            active_semantic_debug_ = semantic_debug_targets_[0];
+            return;
+        }
+
+        for (size_t i = 0; i < semantic_debug_targets_.size(); ++i)
+        {
+            if (semantic_debug_targets_[i] == active_semantic_debug_)
+            {
+                semantic_debug_index_ = i;
+                return;
+            }
+        }
+
+        semantic_debug_index_ = 0u;
+        active_semantic_debug_ = semantic_debug_targets_[0];
+    }
+
+    void cycle_semantic_debug_target()
+    {
+        refresh_semantic_debug_targets();
+        if (semantic_debug_targets_.empty())
+        {
+            std::fprintf(stderr, "[render-path][debug] Semantic debug target unavailable for current path.\n");
+            return;
+        }
+
+        if (!semantic_debug_enabled_)
+        {
+            semantic_debug_enabled_ = true;
+            semantic_debug_index_ = 0u;
+            active_semantic_debug_ = semantic_debug_targets_[semantic_debug_index_];
+        }
+        else
+        {
+            const size_t next = semantic_debug_index_ + 1u;
+            if (next >= semantic_debug_targets_.size())
+            {
+                semantic_debug_enabled_ = false;
+                semantic_debug_index_ = 0u;
+                active_semantic_debug_ = shs::PassSemantic::Unknown;
+            }
+            else
+            {
+                semantic_debug_index_ = next;
+                active_semantic_debug_ = semantic_debug_targets_[semantic_debug_index_];
+            }
+        }
+
+        const char* state = semantic_debug_enabled_ ? "ON" : "OFF";
+        const char* semantic_name = semantic_debug_enabled_
+            ? shs::pass_semantic_name(active_semantic_debug_)
+            : "none";
+        std::fprintf(stderr, "[render-path][debug] Semantic debug: %s (%s)\n", state, semantic_name);
+    }
+
+    void cycle_framebuffer_debug_target()
+    {
+        constexpr std::array<FramebufferDebugPreset, 15> kCycle = {
+            FramebufferDebugPreset::FinalComposite,
+            FramebufferDebugPreset::Albedo,
+            FramebufferDebugPreset::Normal,
+            FramebufferDebugPreset::Material,
+            FramebufferDebugPreset::Depth,
+            FramebufferDebugPreset::AmbientOcclusion,
+            FramebufferDebugPreset::LightGrid,
+            FramebufferDebugPreset::LightClusters,
+            FramebufferDebugPreset::Shadow,
+            FramebufferDebugPreset::ColorHDR,
+            FramebufferDebugPreset::ColorLDR,
+            FramebufferDebugPreset::Motion,
+            FramebufferDebugPreset::DoFCircleOfConfusion,
+            FramebufferDebugPreset::DoFBlur,
+            FramebufferDebugPreset::DoFFactor
+        };
+
+        auto cycle_index = [&](FramebufferDebugPreset preset) -> int {
+            for (size_t i = 0; i < kCycle.size(); ++i)
+            {
+                if (kCycle[i] == preset) return static_cast<int>(i);
+            }
+            return -1;
+        };
+
+        int idx = cycle_index(framebuffer_debug_preset_);
+        if (idx < 0)
+        {
+            idx = 0;
+        }
+        const size_t next = (static_cast<size_t>(idx) + 1u) % kCycle.size();
+        framebuffer_debug_preset_ = kCycle[next];
+
+        const bool enabled = framebuffer_debug_preset_ != FramebufferDebugPreset::FinalComposite;
+        const bool needs_motion = framebuffer_debug_preset_requires_motion_pass(framebuffer_debug_preset_);
+        const bool needs_dof = framebuffer_debug_preset_requires_dof_pass(framebuffer_debug_preset_);
+        bool supported =
+            (!needs_motion || active_motion_blur_pass_enabled()) &&
+            (!needs_dof || active_depth_of_field_pass_enabled());
+        bool auto_switched_path = false;
+
+        if (enabled && !supported && needs_dof && !active_depth_of_field_pass_enabled())
+        {
+            const size_t deferred_index = find_composition_index(
+                shs::RenderPathPreset::Deferred,
+                render_technique_preset_);
+            if (apply_render_composition_by_index(deferred_index))
+            {
+                auto_switched_path = true;
+            }
+            else
+            {
+                const size_t tiled_index = find_composition_index(
+                    shs::RenderPathPreset::TiledDeferred,
+                    render_technique_preset_);
+                if (apply_render_composition_by_index(tiled_index))
+                {
+                    auto_switched_path = true;
+                }
+            }
+
+            supported =
+                (!needs_motion || active_motion_blur_pass_enabled()) &&
+                (!needs_dof || active_depth_of_field_pass_enabled());
+        }
+
+        const char* state = enabled ? "ON" : "OFF";
+        const char* status = enabled ? (supported ? "ready" : "missing-pass") : "idle";
+        std::fprintf(
+            stderr,
+            "[render-path][debug] Framebuffer debug (F5): %s (%s, %s)\n",
+            state,
+            framebuffer_debug_preset_name(framebuffer_debug_preset_),
+            status);
+        if (auto_switched_path)
+        {
+            std::fprintf(
+                stderr,
+                "[render-path][debug] Auto-switched to DoF-capable composition: %s\n",
+                active_composition_recipe_.name.c_str());
         }
     }
 
-    bool apply_render_path_recipe_by_index(size_t index)
+    uint32_t active_semantic_debug_mode() const
     {
-        if (render_path_cycle_order_.empty())
+        const uint32_t preset_mode = semantic_debug_mode_for_framebuffer_preset(framebuffer_debug_preset_);
+        if (preset_mode != 0u)
         {
-            render_path_plan_valid_ = false;
-            render_path_recipe_ = shs::RenderPathRecipe{};
-            render_path_plan_ = shs::RenderPathExecutionPlan{};
-            apply_technique_mode(shs::TechniqueMode::ForwardPlus);
-            return false;
+            return preset_mode;
         }
-
-        render_path_cycle_index_ = index % render_path_cycle_order_.size();
-        const std::string& recipe_id = render_path_cycle_order_[render_path_cycle_index_];
-        const shs::RenderPathRecipe* recipe = render_path_registry_.find_recipe(recipe_id);
-        if (!recipe)
+        if (semantic_debug_enabled_)
         {
-            std::fprintf(stderr, "[render-path][stress][error] Missing recipe id '%s'.\n", recipe_id.c_str());
-            render_path_plan_valid_ = false;
-            render_path_recipe_ = shs::RenderPathRecipe{};
-            render_path_plan_ = shs::RenderPathExecutionPlan{};
-            apply_technique_mode(shs::TechniqueMode::ForwardPlus);
-            return false;
+            return semantic_debug_mode_for_semantic(active_semantic_debug_);
         }
+        return 0u;
+    }
 
-        render_path_recipe_ = *recipe;
-        const shs::RenderPathCompiler compiler{};
-        render_path_plan_ = compiler.compile(render_path_recipe_, ctx_, nullptr);
+    bool consume_active_render_path_apply_result(bool plan_valid)
+    {
+        const shs::RenderPathExecutionPlan& plan = render_path_executor_.active_plan();
+        const shs::RenderPathRecipe& recipe = render_path_executor_.active_recipe();
+        const shs::RenderPathResourcePlan& resource_plan = render_path_executor_.active_resource_plan();
+        const shs::RenderPathBarrierPlan& barrier_plan = render_path_executor_.active_barrier_plan();
 
-        for (const auto& w : render_path_plan_.warnings)
+        for (const auto& w : plan.warnings)
         {
             std::fprintf(stderr, "[render-path][stress][warn] %s\n", w.c_str());
         }
-        for (const auto& e : render_path_plan_.errors)
+        for (const auto& e : plan.errors)
         {
             std::fprintf(stderr, "[render-path][stress][error] %s\n", e.c_str());
         }
+        for (const auto& w : resource_plan.warnings)
+        {
+            std::fprintf(stderr, "[render-path][stress][resource-warn] %s\n", w.c_str());
+        }
+        for (const auto& e : resource_plan.errors)
+        {
+            std::fprintf(stderr, "[render-path][stress][resource-error] %s\n", e.c_str());
+        }
+        for (const auto& w : barrier_plan.warnings)
+        {
+            std::fprintf(stderr, "[render-path][stress][barrier-warn] %s\n", w.c_str());
+        }
+        for (const auto& e : barrier_plan.errors)
+        {
+            std::fprintf(stderr, "[render-path][stress][barrier-error] %s\n", e.c_str());
+        }
+        pass_dispatch_warning_emitted_ = false;
+        refresh_semantic_debug_targets();
 
-        render_path_plan_valid_ = render_path_plan_.valid;
-        if (!render_path_plan_valid_)
+        light_tile_size_ = std::max(1u, recipe.light_tile_size);
+        cluster_z_slices_ = std::max(1u, recipe.cluster_z_slices);
+        if (const auto* grid = shs::find_render_path_resource_by_semantic(resource_plan, shs::PassSemantic::LightGrid))
+        {
+            light_tile_size_ = std::max(1u, grid->tile_size);
+        }
+        if (const auto* clusters = shs::find_render_path_resource_by_semantic(resource_plan, shs::PassSemantic::LightClusters))
+        {
+            cluster_z_slices_ = std::max(1u, clusters->layers);
+        }
+        barrier_edge_count_ = static_cast<uint32_t>(barrier_plan.edges.size());
+        barrier_memory_edge_count_ = shs::render_path_barrier_memory_edge_count(barrier_plan);
+        barrier_layout_edge_count_ = shs::render_path_barrier_layout_transition_count(barrier_plan);
+        barrier_alias_class_count_ = static_cast<uint32_t>(barrier_plan.alias_classes.size());
+        barrier_alias_slot_count_ = shs::render_path_alias_slot_count(barrier_plan);
+
+        if (!plan_valid)
         {
             std::fprintf(
                 stderr,
                 "[render-path][stress] Recipe '%s' invalid. Falling back to default technique profile.\n",
-                render_path_recipe_.name.c_str());
-            apply_technique_mode(render_path_recipe_.technique_mode);
+                recipe.name.c_str());
+            apply_technique_mode(recipe.technique_mode);
             return false;
         }
 
-        const shs::TechniqueProfile profile = shs::make_technique_profile(render_path_plan_);
-        apply_technique_profile(render_path_plan_.technique_mode, profile);
-        enable_scene_occlusion_ = render_path_plan_.runtime_state.view_occlusion_enabled;
-        enable_light_occlusion_ = render_path_plan_.runtime_state.shadow_occlusion_enabled;
-        shadow_settings_.enable = render_path_plan_.runtime_state.enable_shadows;
+        const shs::TechniqueProfile profile = shs::make_technique_profile(plan);
+        apply_technique_profile(plan.technique_mode, profile);
+        enable_scene_occlusion_ = plan.runtime_state.view_occlusion_enabled;
+        enable_light_occlusion_ = plan.runtime_state.shadow_occlusion_enabled;
+        shadow_settings_.enable = plan.runtime_state.enable_shadows;
 
         std::fprintf(
             stderr,
-            "[render-path][stress] Applied recipe '%s' (%s), passes:%zu.\n",
-            render_path_plan_.recipe_name.c_str(),
-            render_path_plan_valid_ ? "valid" : "invalid",
-            render_path_plan_.pass_chain.size());
+            "[render-path][stress] Applied recipe '%s' (%s), passes:%zu, barriers:%u(mem:%u layout:%u), alias-class:%u slots:%u.\n",
+            plan.recipe_name.c_str(),
+            plan_valid ? "valid" : "invalid",
+            plan.pass_chain.size(),
+            barrier_edge_count_,
+            barrier_memory_edge_count_,
+            barrier_layout_edge_count_,
+            barrier_alias_class_count_,
+            barrier_alias_slot_count_);
         return true;
+    }
+
+    bool apply_render_path_recipe_by_index(size_t index)
+    {
+        if (!render_path_executor_.has_recipes())
+        {
+            apply_technique_mode(shs::TechniqueMode::Deferred);
+            return false;
+        }
+
+        const bool plan_valid = render_path_executor_.apply_index(index, ctx_, &pass_contract_registry_);
+        return consume_active_render_path_apply_result(plan_valid);
     }
 
     void cycle_render_path_recipe()
     {
-        if (render_path_cycle_order_.empty()) return;
-        render_path_cycle_index_ = (render_path_cycle_index_ + 1u) % render_path_cycle_order_.size();
-        (void)apply_render_path_recipe_by_index(render_path_cycle_index_);
+        if (!render_path_executor_.has_recipes()) return;
+        (void)apply_render_path_recipe_by_index(render_path_executor_.active_index() + 1u);
     }
 
     void cycle_lighting_technique()
     {
-        lighting_technique_ = next_lighting_technique(lighting_technique_);
+        apply_render_technique_preset(
+            shs::next_render_technique_preset(render_technique_preset_));
+        technique_switch_accum_sec_ = 0.0f;
+    }
+
+    void cycle_render_composition_recipe()
+    {
+        if (composition_cycle_order_.empty()) return;
+        (void)apply_render_composition_by_index(active_composition_index_ + 1u);
     }
 
     void configure_render_path_defaults()
     {
         init_render_path_registry();
-        const auto& modes = known_technique_modes();
-        size_t preferred_index = 0u;
-        for (size_t i = 0; i < modes.size(); ++i)
+        composition_cycle_order_ = shs::make_phase_d_render_composition_recipes("composition_vk");
+        if (!composition_cycle_order_.empty())
         {
-            if (modes[i] == shs::TechniqueMode::ForwardPlus)
-            {
-                preferred_index = i;
-                break;
-            }
+            const size_t preferred_comp = find_composition_index(
+                shs::RenderPathPreset::Deferred,
+                render_technique_preset_);
+            (void)apply_render_composition_by_index(preferred_comp);
+            print_composition_catalog();
+            return;
         }
-        (void)apply_render_path_recipe_by_index(preferred_index);
+
+        apply_render_technique_preset(render_technique_preset_);
+        const size_t preferred_path =
+            render_path_executor_.find_recipe_index_by_mode(shs::TechniqueMode::Deferred);
+        (void)apply_render_path_recipe_by_index(preferred_path);
+        print_composition_catalog();
     }
 
     void refresh_depth_prepass_state()
@@ -2586,7 +5773,7 @@ private:
         uint32_t list_count = tile_w_ * tile_h_;
         if (culling_mode_ == shs::LightCullingMode::Clustered)
         {
-            list_count *= kClusterZSlices;
+            list_count *= cluster_z_slices_;
         }
         const uint32_t capacity = static_cast<uint32_t>(tile_counts_buffer.size / sizeof(uint32_t));
         list_count = std::min(list_count, capacity);
@@ -2835,19 +6022,43 @@ private:
 
         const glm::vec3 cam_pos = camera_.pos;
         camera_ubo_.view = camera_.view_matrix();
-        camera_ubo_.proj = shs::perspective_lh_no(glm::radians(62.0f), aspect, 0.1f, 260.0f);
+        const glm::mat4 base_proj = shs::perspective_lh_no(glm::radians(62.0f), aspect, kDemoNearZ, kDemoFarZ);
+        temporal_state_.frame_index = ctx_.frame_index;
+        temporal_state_.previous_view_proj = temporal_state_.current_view_proj;
+        const bool temporal_active =
+            active_taa_pass_enabled() &&
+            temporal_settings_.accumulation_enabled &&
+            supports_swapchain_history_copy();
+        temporal_state_.jitter_ndc = (temporal_settings_.jitter_enabled && temporal_active)
+            ? shs::compute_taa_jitter_ndc(temporal_state_.frame_index, w, h, temporal_settings_.jitter_scale)
+            : glm::vec2(0.0f);
+        temporal_state_.jitter_pixels = glm::vec2(
+            0.5f * temporal_state_.jitter_ndc.x * static_cast<float>(w),
+            0.5f * temporal_state_.jitter_ndc.y * static_cast<float>(h));
+        camera_ubo_.proj = shs::add_projection_jitter_ndc(base_proj, temporal_state_.jitter_ndc);
         camera_ubo_.view_proj = camera_ubo_.proj * camera_ubo_.view;
+        temporal_state_.current_view_proj = camera_ubo_.view_proj;
         camera_ubo_.camera_pos_time = glm::vec4(cam_pos, t);
         camera_ubo_.sun_dir_intensity = glm::vec4(glm::normalize(glm::vec3(-0.35f, -1.0f, -0.18f)), 1.45f);
         camera_ubo_.screen_tile_lightcount = glm::uvec4(w, h, tile_w_, active_light_count_);
-        camera_ubo_.params = glm::uvec4(tile_h_, kMaxLightsPerTile, kTileSize, static_cast<uint32_t>(culling_mode_));
+        camera_ubo_.params = glm::uvec4(tile_h_, kMaxLightsPerTile, light_tile_size_, static_cast<uint32_t>(culling_mode_));
+        const uint32_t semantic_debug_mode = active_semantic_debug_mode();
+        const uint32_t semantic_debug_id =
+            (semantic_debug_mode_for_framebuffer_preset(framebuffer_debug_preset_) != 0u)
+                ? semantic_debug_mode
+                : static_cast<uint32_t>(active_semantic_debug_);
         camera_ubo_.culling_params = glm::uvec4(
-            kClusterZSlices,
-            static_cast<uint32_t>(lighting_technique_),
-            0u,
-            0u);
-        camera_ubo_.depth_params = glm::vec4(0.1f, 260.0f, 0.0f, 0.0f);
-        camera_ubo_.exposure_gamma = glm::vec4(1.4f, 2.2f, 0.0f, 0.0f);
+            cluster_z_slices_,
+            shading_variant_,
+            semantic_debug_mode,
+            semantic_debug_id);
+        camera_ubo_.depth_params = glm::vec4(kDemoNearZ, kDemoFarZ, 0.0f, 0.0f);
+        camera_ubo_.exposure_gamma = glm::vec4(tonemap_exposure_, tonemap_gamma_, 0.0f, 0.0f);
+        camera_ubo_.temporal_params = glm::vec4(
+            temporal_active ? 1.0f : 0.0f,
+            (temporal_active && shs::vk_render_path_history_color_valid(temporal_resources_)) ? 1.0f : 0.0f,
+            std::clamp(temporal_settings_.history_blend, 0.0f, 1.0f),
+            0.0f);
         // Keep directional shadow optional and subtle in this stress demo
         // so local-light behavior remains readable.
         const float dir_shadow_strength =
@@ -3399,6 +6610,64 @@ private:
         bi.clearValueCount = vk_->has_depth_attachment() ? 2u : 1u;
         bi.pClearValues = clear;
         vkCmdBeginRenderPass(cmd, &bi, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+    }
+
+    void begin_render_pass_gbuffer(VkCommandBuffer cmd)
+    {
+        if (gbuffer_target_.render_pass == VK_NULL_HANDLE || gbuffer_target_.framebuffer == VK_NULL_HANDLE) return;
+
+        std::array<VkClearValue, 5> clear{};
+        for (uint32_t i = 0; i < 4; ++i)
+        {
+            clear[i].color = {{0.0f, 0.0f, 0.0f, 0.0f}};
+        }
+        clear[4].depthStencil = {1.0f, 0};
+
+        VkRenderPassBeginInfo bi{};
+        bi.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+        bi.renderPass = gbuffer_target_.render_pass;
+        bi.framebuffer = gbuffer_target_.framebuffer;
+        bi.renderArea.offset = {0, 0};
+        bi.renderArea.extent = {gbuffer_target_.w, gbuffer_target_.h};
+        bi.clearValueCount = static_cast<uint32_t>(clear.size());
+        bi.pClearValues = clear.data();
+        vkCmdBeginRenderPass(cmd, &bi, VK_SUBPASS_CONTENTS_INLINE);
+    }
+
+    void begin_render_pass_ssao(VkCommandBuffer cmd)
+    {
+        if (ao_target_.render_pass == VK_NULL_HANDLE || ao_target_.framebuffer == VK_NULL_HANDLE) return;
+
+        VkClearValue clear{};
+        clear.color = {{1.0f, 1.0f, 1.0f, 1.0f}};
+
+        VkRenderPassBeginInfo bi{};
+        bi.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+        bi.renderPass = ao_target_.render_pass;
+        bi.framebuffer = ao_target_.framebuffer;
+        bi.renderArea.offset = {0, 0};
+        bi.renderArea.extent = {ao_target_.w, ao_target_.h};
+        bi.clearValueCount = 1;
+        bi.pClearValues = &clear;
+        vkCmdBeginRenderPass(cmd, &bi, VK_SUBPASS_CONTENTS_INLINE);
+    }
+
+    void begin_render_pass_post(VkCommandBuffer cmd, const PostColorTarget& target)
+    {
+        if (target.render_pass == VK_NULL_HANDLE || target.framebuffer == VK_NULL_HANDLE) return;
+
+        VkClearValue clear{};
+        clear.color = {{0.03f, 0.035f, 0.045f, 1.0f}};
+
+        VkRenderPassBeginInfo bi{};
+        bi.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+        bi.renderPass = target.render_pass;
+        bi.framebuffer = target.framebuffer;
+        bi.renderArea.offset = {0, 0};
+        bi.renderArea.extent = {target.w, target.h};
+        bi.clearValueCount = 1;
+        bi.pClearValues = &clear;
+        vkCmdBeginRenderPass(cmd, &bi, VK_SUBPASS_CONTENTS_INLINE);
     }
 
     void set_viewport_scissor(VkCommandBuffer cmd, uint32_t w, uint32_t h, bool flip_y)
@@ -3966,6 +7235,393 @@ private:
             nullptr);
     }
 
+    shs::PassId resolve_compiled_pass_kind(const shs::RenderPathCompiledPass& pass) const
+    {
+        return shs::pass_id_is_standard(pass.pass_id) ? pass.pass_id : shs::parse_pass_id(pass.id);
+    }
+
+    bool emit_graph_barrier_from_edge(VkCommandBuffer cmd, const shs::RenderPathBarrierEdge& edge)
+    {
+        if (cmd == VK_NULL_HANDLE) return false;
+        if (!edge.requires_memory_barrier) return false;
+        const shs::VkRenderPathBarrierTemplate barrier =
+            shs::vk_make_render_path_barrier_template(edge);
+        if (!barrier.valid) return false;
+        cmd_memory_barrier(
+            cmd,
+            barrier.src_stage,
+            barrier.src_access,
+            barrier.dst_stage,
+            barrier.dst_access);
+        ++frame_graph_barrier_edges_emitted_;
+        return true;
+    }
+
+    bool emit_graph_barriers_for_semantics(
+        VkCommandBuffer cmd,
+        shs::PassId from_pass_kind,
+        std::initializer_list<shs::PassSemantic> semantics,
+        shs::PassId to_pass_kind = shs::PassId::Unknown)
+    {
+        const shs::RenderPathBarrierPlan& plan = render_path_executor_.active_barrier_plan();
+        bool emitted_any = false;
+        for (const shs::PassSemantic semantic : semantics)
+        {
+            const shs::RenderPathBarrierEdge* edge = shs::find_render_path_barrier_edge(
+                plan,
+                semantic,
+                from_pass_kind,
+                to_pass_kind);
+            if (!edge) continue;
+            if (emit_graph_barrier_from_edge(cmd, *edge))
+            {
+                emitted_any = true;
+            }
+        }
+        return emitted_any;
+    }
+
+    bool emit_graph_barrier_depth_to_light_culling(VkCommandBuffer cmd)
+    {
+        const shs::RenderPathBarrierPlan& plan = render_path_executor_.active_barrier_plan();
+        const shs::RenderPathBarrierEdge* edge = shs::find_render_path_barrier_edge(
+            plan,
+            shs::PassSemantic::Depth,
+            shs::PassId::Unknown,
+            shs::PassId::LightCulling);
+        if (!edge)
+        {
+            ++frame_graph_barrier_fallback_count_;
+            return false;
+        }
+        if (!emit_graph_barrier_from_edge(cmd, *edge))
+        {
+            ++frame_graph_barrier_fallback_count_;
+            return false;
+        }
+        return true;
+    }
+
+    bool emit_graph_barrier_gbuffer_to_consumers(VkCommandBuffer cmd)
+    {
+        if (emit_graph_barriers_for_semantics(
+                cmd,
+                shs::PassId::GBuffer,
+                {
+                    shs::PassSemantic::Depth,
+                    shs::PassSemantic::Albedo,
+                    shs::PassSemantic::Normal,
+                    shs::PassSemantic::Material}))
+        {
+            return true;
+        }
+        ++frame_graph_barrier_fallback_count_;
+        return false;
+    }
+
+    bool emit_graph_barrier_ssao_to_consumer(VkCommandBuffer cmd)
+    {
+        if (emit_graph_barriers_for_semantics(
+                cmd,
+                shs::PassId::SSAO,
+                {shs::PassSemantic::AmbientOcclusion}))
+        {
+            return true;
+        }
+        ++frame_graph_barrier_fallback_count_;
+        return false;
+    }
+
+    bool emit_graph_barrier_deferred_to_consumer(VkCommandBuffer cmd, shs::PassId deferred_pass_kind)
+    {
+        if (!shs::pass_id_is_standard(deferred_pass_kind))
+        {
+            ++frame_graph_barrier_fallback_count_;
+            return false;
+        }
+        if (emit_graph_barriers_for_semantics(
+                cmd,
+                deferred_pass_kind,
+                {
+                    shs::PassSemantic::ColorHDR,
+                    shs::PassSemantic::MotionVectors}))
+        {
+            return true;
+        }
+        ++frame_graph_barrier_fallback_count_;
+        return false;
+    }
+
+    bool emit_graph_barrier_motion_blur_to_consumer(VkCommandBuffer cmd)
+    {
+        if (emit_graph_barriers_for_semantics(
+                cmd,
+                shs::PassId::MotionBlur,
+                {shs::PassSemantic::ColorLDR},
+                shs::PassId::DepthOfField))
+        {
+            return true;
+        }
+        ++frame_graph_barrier_fallback_count_;
+        return false;
+    }
+
+    bool emit_graph_barrier_light_culling_to_consumer(VkCommandBuffer cmd)
+    {
+        const shs::RenderPathBarrierPlan& plan = render_path_executor_.active_barrier_plan();
+        const shs::RenderPathBarrierEdge* edge = shs::find_render_path_barrier_edge(
+            plan,
+            shs::PassSemantic::LightGrid,
+            shs::PassId::LightCulling,
+            shs::PassId::Unknown);
+        if (!edge)
+        {
+            edge = shs::find_render_path_barrier_edge(
+                plan,
+                shs::PassSemantic::LightIndexList,
+                shs::PassId::LightCulling,
+                shs::PassId::Unknown);
+        }
+        if (!edge)
+        {
+            ++frame_graph_barrier_fallback_count_;
+            return false;
+        }
+        if (!emit_graph_barrier_from_edge(cmd, *edge))
+        {
+            ++frame_graph_barrier_fallback_count_;
+            return false;
+        }
+        return true;
+    }
+
+    bool supports_swapchain_history_copy() const
+    {
+        if (!vk_) return false;
+        return shs::vk_render_path_supports_swapchain_history_copy(vk_->swapchain_usage_flags());
+    }
+
+    bool prepare_post_source_from_scene_color(
+        shs::VkRenderPathPassExecutionContext<shs::VulkanRenderBackend::FrameInfo>& ctx)
+    {
+        if (!ctx.fi) return false;
+        if (ctx.post_color_valid) return true;
+        if (!ctx.scene_pass_executed) return false;
+        if (post_target_a_.image == VK_NULL_HANDLE || post_target_a_.view == VK_NULL_HANDLE) return false;
+        if (!supports_swapchain_history_copy())
+        {
+            if (!post_color_copy_support_warning_emitted_)
+            {
+                std::fprintf(
+                    stderr,
+                    "[render-path][post] Disabled scene-color copy: swapchain image does not support TRANSFER_SRC usage.\n");
+                post_color_copy_support_warning_emitted_ = true;
+            }
+            return false;
+        }
+
+        const VkImage swapchain_image = vk_->swapchain_image(ctx.fi->image_index);
+        if (swapchain_image == VK_NULL_HANDLE) return false;
+
+        const uint32_t copy_w = std::min(ctx.fi->extent.width, post_target_a_.w);
+        const uint32_t copy_h = std::min(ctx.fi->extent.height, post_target_a_.h);
+        if (copy_w == 0 || copy_h == 0) return false;
+
+        VkAccessFlags post_src_access = 0u;
+        VkPipelineStageFlags post_src_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        if (post_target_a_layout_ == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+        {
+            post_src_access = VK_ACCESS_SHADER_READ_BIT;
+            post_src_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        }
+        else if (post_target_a_layout_ == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
+        {
+            post_src_access = VK_ACCESS_TRANSFER_WRITE_BIT;
+            post_src_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        }
+
+        if (!shs::vk_render_path_record_swapchain_copy_to_shader_read_image(
+                ctx.fi->cmd,
+                swapchain_image,
+                ctx.fi->extent,
+                post_target_a_.image,
+                VkExtent2D{copy_w, copy_h},
+                post_target_a_layout_,
+                post_src_access,
+                post_src_stage))
+        {
+            return false;
+        }
+        post_target_a_layout_ = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+        ctx.post_color_valid = true;
+        ctx.post_color_source = 1u;
+        return true;
+    }
+
+    void ensure_history_color_shader_read_layout(VkCommandBuffer cmd)
+    {
+        shs::vk_render_path_ensure_history_color_shader_read_layout(cmd, temporal_resources_);
+    }
+
+    void record_history_color_copy(VkCommandBuffer cmd, const shs::VulkanRenderBackend::FrameInfo& fi)
+    {
+        if (!active_taa_pass_enabled()) return;
+        if (!temporal_settings_.accumulation_enabled) return;
+        if (!supports_swapchain_history_copy())
+        {
+            if (!temporal_resources_.history_copy_support_warning_emitted)
+            {
+                std::fprintf(
+                    stderr,
+                    "[render-path][temporal] Disabled: swapchain image does not support TRANSFER_SRC usage.\n");
+                temporal_resources_.history_copy_support_warning_emitted = true;
+            }
+            return;
+        }
+        if (shs::vk_render_path_history_color_view(temporal_resources_) == VK_NULL_HANDLE) return;
+        const VkImage swapchain_image = vk_->swapchain_image(fi.image_index);
+        if (swapchain_image == VK_NULL_HANDLE) return;
+        (void)shs::vk_render_path_record_history_color_copy(
+            cmd,
+            swapchain_image,
+            fi.extent,
+            temporal_resources_);
+    }
+
+    bool ensure_phase_f_snapshot_readback_buffer(uint32_t w, uint32_t h, VkFormat format)
+    {
+        if (!phase_f_config_.enabled) return false;
+        if (w == 0u || h == 0u) return false;
+        if (!phase_f_swapchain_snapshot_supported_format(format))
+        {
+            return false;
+        }
+
+        const VkDeviceSize desired_bytes = static_cast<VkDeviceSize>(w) * static_cast<VkDeviceSize>(h) * 4u;
+        if (phase_f_snapshot_readback_buffer_.buffer != VK_NULL_HANDLE &&
+            phase_f_snapshot_readback_buffer_.size == desired_bytes &&
+            phase_f_snapshot_readback_w_ == w &&
+            phase_f_snapshot_readback_h_ == h &&
+            phase_f_snapshot_readback_format_ == format)
+        {
+            return true;
+        }
+
+        const VkMemoryPropertyFlags host_flags =
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+        create_buffer(
+            desired_bytes,
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+            host_flags,
+            phase_f_snapshot_readback_buffer_,
+            true);
+        phase_f_snapshot_readback_w_ = w;
+        phase_f_snapshot_readback_h_ = h;
+        phase_f_snapshot_readback_format_ = format;
+        return phase_f_snapshot_readback_buffer_.mapped != nullptr;
+    }
+
+    bool record_phase_f_snapshot_copy(VkCommandBuffer cmd, const shs::VulkanRenderBackend::FrameInfo& fi)
+    {
+        if (!phase_f_snapshot_request_armed_) return false;
+        if (phase_f_snapshot_copy_submitted_) return true;
+        if (!phase_f_config_.enabled) return false;
+        if (!supports_swapchain_history_copy())
+        {
+            phase_f_snapshot_failed_ = true;
+            phase_f_snapshot_request_armed_ = false;
+            std::fprintf(stderr, "[phase-f] Snapshot skipped: swapchain transfer-src unsupported.\n");
+            phase_f_write_json_line(
+                "{\"event\":\"snapshot_result\",\"ok\":false,\"entry\":" +
+                std::to_string(phase_f_active_entry_slot_ + 1u) +
+                ",\"path\":\"" + phase_f_snapshot_path_ + "\",\"reason\":\"swapchain_transfer_src_unsupported\"}");
+            return false;
+        }
+
+        const VkFormat swapchain_format = vk_->swapchain_format();
+        if (!ensure_phase_f_snapshot_readback_buffer(fi.extent.width, fi.extent.height, swapchain_format))
+        {
+            phase_f_snapshot_failed_ = true;
+            phase_f_snapshot_request_armed_ = false;
+            std::fprintf(stderr, "[phase-f] Snapshot skipped: unsupported format/readback buffer setup failed.\n");
+            phase_f_write_json_line(
+                "{\"event\":\"snapshot_result\",\"ok\":false,\"entry\":" +
+                std::to_string(phase_f_active_entry_slot_ + 1u) +
+                ",\"path\":\"" + phase_f_snapshot_path_ + "\",\"reason\":\"readback_buffer_setup_failed\"}");
+            return false;
+        }
+
+        const VkImage swapchain_image = vk_->swapchain_image(fi.image_index);
+        if (swapchain_image == VK_NULL_HANDLE)
+        {
+            phase_f_snapshot_failed_ = true;
+            phase_f_snapshot_request_armed_ = false;
+            return false;
+        }
+
+        if (!shs::vk_render_path_record_swapchain_copy_to_host_buffer(
+                cmd,
+                swapchain_image,
+                fi.extent,
+                phase_f_snapshot_readback_buffer_.buffer))
+        {
+            phase_f_snapshot_failed_ = true;
+            phase_f_snapshot_request_armed_ = false;
+            phase_f_write_json_line(
+                "{\"event\":\"snapshot_result\",\"ok\":false,\"entry\":" +
+                std::to_string(phase_f_active_entry_slot_ + 1u) +
+                ",\"path\":\"" + phase_f_snapshot_path_ + "\",\"reason\":\"copy_failed\"}");
+            return false;
+        }
+
+        phase_f_snapshot_copy_submitted_ = true;
+        return true;
+    }
+
+    bool write_phase_f_snapshot_from_readback()
+    {
+        if (!phase_f_snapshot_copy_submitted_) return false;
+        if (!phase_f_snapshot_request_armed_) return false;
+        if (phase_f_snapshot_path_.empty()) return false;
+        if (phase_f_snapshot_readback_buffer_.mapped == nullptr) return false;
+        if (phase_f_snapshot_readback_w_ == 0u || phase_f_snapshot_readback_h_ == 0u) return false;
+
+        std::ofstream out(phase_f_snapshot_path_, std::ios::binary);
+        if (!out) return false;
+        out << "P6\n" << phase_f_snapshot_readback_w_ << " " << phase_f_snapshot_readback_h_ << "\n255\n";
+
+        const uint8_t* src = reinterpret_cast<const uint8_t*>(phase_f_snapshot_readback_buffer_.mapped);
+        const size_t row_stride = static_cast<size_t>(phase_f_snapshot_readback_w_) * 4u;
+        for (uint32_t y = 0; y < phase_f_snapshot_readback_h_; ++y)
+        {
+            const uint8_t* row = src + static_cast<size_t>(y) * row_stride;
+            for (uint32_t x = 0; x < phase_f_snapshot_readback_w_; ++x)
+            {
+                const uint8_t* px = row + static_cast<size_t>(x) * 4u;
+                char rgb[3]{};
+                switch (phase_f_snapshot_readback_format_)
+                {
+                    case VK_FORMAT_B8G8R8A8_UNORM:
+                    case VK_FORMAT_B8G8R8A8_SRGB:
+                        rgb[0] = static_cast<char>(px[2]);
+                        rgb[1] = static_cast<char>(px[1]);
+                        rgb[2] = static_cast<char>(px[0]);
+                        break;
+                    case VK_FORMAT_R8G8B8A8_UNORM:
+                    case VK_FORMAT_R8G8B8A8_SRGB:
+                    default:
+                        rgb[0] = static_cast<char>(px[0]);
+                        rgb[1] = static_cast<char>(px[1]);
+                        rgb[2] = static_cast<char>(px[2]);
+                        break;
+                }
+                out.write(rgb, 3);
+            }
+        }
+        return out.good();
+    }
+
     bool gpu_light_culler_enabled() const
     {
         return
@@ -3989,6 +7645,607 @@ private:
         if (fr.tile_indices_buffer.mapped && fr.tile_indices_buffer.size > 0)
         {
             std::memset(fr.tile_indices_buffer.mapped, 0, static_cast<size_t>(fr.tile_indices_buffer.size));
+        }
+    }
+
+    using FramePassExecutionContext =
+        shs::VkRenderPathPassExecutionContext<shs::VulkanRenderBackend::FrameInfo>;
+
+    shs::RenderPathExecutionPlan make_active_frame_execution_plan() const
+    {
+        const shs::RenderPathExecutionPlan& active_plan = render_path_executor_.active_plan();
+        if (render_path_executor_.active_plan_valid() && !active_plan.pass_chain.empty())
+        {
+            return active_plan;
+        }
+
+        shs::RenderPathExecutionPlan fallback{};
+        fallback.recipe_name = std::string("fallback_") + shs::technique_mode_name(active_technique_);
+        fallback.backend = shs::RenderBackendType::Vulkan;
+        fallback.technique_mode = active_technique_;
+        fallback.valid = true;
+
+        const shs::TechniqueProfile profile = shs::make_default_technique_profile(active_technique_);
+        fallback.pass_chain.reserve(profile.passes.size());
+        for (const auto& p : profile.passes)
+        {
+            fallback.pass_chain.push_back(shs::RenderPathCompiledPass{p.id, p.pass_id, p.required});
+        }
+        return fallback;
+    }
+
+    void draw_scene_clear_only(VkCommandBuffer cmd, const shs::VulkanRenderBackend::FrameInfo& fi, uint32_t frame_slot)
+    {
+        VkClearValue clear[2]{};
+        clear[0].color = {{0.03f, 0.035f, 0.045f, 1.0f}};
+        clear[1].depthStencil = {1.0f, 0};
+
+        VkRenderPassBeginInfo rp{};
+        rp.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+        rp.renderPass = fi.render_pass;
+        rp.framebuffer = fi.framebuffer;
+        rp.renderArea.offset = {0, 0};
+        rp.renderArea.extent = fi.extent;
+        rp.clearValueCount = vk_->has_depth_attachment() ? 2u : 1u;
+        rp.pClearValues = clear;
+        vkCmdBeginRenderPass(cmd, &rp, VK_SUBPASS_CONTENTS_INLINE);
+        draw_light_volumes_debug(cmd, scene_pipeline_layout_, frame_slot);
+        vkCmdEndRenderPass(cmd);
+    }
+
+    bool execute_pass_shadow_map(FramePassExecutionContext& ctx, const shs::RenderPathCompiledPass& pass)
+    {
+        return shs::vk_execute_shadow_map_pass(
+            ctx,
+            pass,
+            [this](VkCommandBuffer cmd) {
+                record_shadow_passes(cmd);
+            },
+            [this](
+                VkCommandBuffer cmd,
+                VkPipelineStageFlags src_stage,
+                VkAccessFlags src_access,
+                VkPipelineStageFlags dst_stage,
+                VkAccessFlags dst_access) {
+                cmd_memory_barrier(cmd, src_stage, src_access, dst_stage, dst_access);
+            });
+    }
+
+    bool execute_pass_depth_prepass(FramePassExecutionContext& ctx, const shs::RenderPathCompiledPass& pass)
+    {
+        return shs::vk_execute_depth_prepass_pass(
+            ctx,
+            pass,
+            depth_target_.render_pass,
+            depth_target_.framebuffer,
+            depth_target_.w,
+            depth_target_.h,
+            [this](VkCommandBuffer cmd) {
+                begin_render_pass_depth(cmd);
+            },
+            [this](VkCommandBuffer cmd, uint32_t frame_slot) {
+                record_inline_depth(
+                    cmd,
+                    depth_pipeline_,
+                    depth_pipeline_layout_,
+                    depth_target_.w,
+                    depth_target_.h,
+                    frame_slot);
+            });
+    }
+
+    bool execute_pass_light_culling(FramePassExecutionContext& ctx, const shs::RenderPathCompiledPass& pass)
+    {
+        const bool use_depth_range_reduction = (culling_mode_ == shs::LightCullingMode::TiledDepthRange);
+        const uint32_t dispatch_z = (culling_mode_ == shs::LightCullingMode::Clustered) ? cluster_z_slices_ : 1u;
+
+        return shs::vk_execute_light_culling_pass(
+            ctx,
+            pass,
+            use_depth_range_reduction,
+            dispatch_z,
+            [this](uint32_t frame_slot) {
+                clear_light_grid_cpu_buffers(frame_slot);
+            },
+            [this](
+                VkCommandBuffer cmd,
+                VkPipelineStageFlags src_stage,
+                VkAccessFlags src_access,
+                VkPipelineStageFlags dst_stage,
+                VkAccessFlags dst_access) {
+                const bool depth_to_compute =
+                    (dst_stage & VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT) != 0 &&
+                    (src_stage & (VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT |
+                                  VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+                                  VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT)) != 0;
+                const bool compute_to_fragment =
+                    (src_stage & VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT) != 0 &&
+                    (dst_stage & VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT) != 0;
+
+                if (depth_to_compute)
+                {
+                    if (emit_graph_barrier_depth_to_light_culling(cmd)) return;
+                }
+                if (compute_to_fragment)
+                {
+                    if (emit_graph_barrier_light_culling_to_consumer(cmd)) return;
+                }
+                cmd_memory_barrier(cmd, src_stage, src_access, dst_stage, dst_access);
+            },
+            [this](VkCommandBuffer cmd, VkDescriptorSet global_set) {
+                vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, depth_reduce_pipeline_);
+                vkCmdBindDescriptorSets(
+                    cmd,
+                    VK_PIPELINE_BIND_POINT_COMPUTE,
+                    compute_pipeline_layout_,
+                    0,
+                    1,
+                    &global_set,
+                    0,
+                    nullptr);
+                vkCmdDispatch(cmd, tile_w_, tile_h_, 1);
+            },
+            [this](VkCommandBuffer cmd, VkDescriptorSet global_set, uint32_t z) {
+                vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, compute_pipeline_);
+                vkCmdBindDescriptorSets(
+                    cmd,
+                    VK_PIPELINE_BIND_POINT_COMPUTE,
+                    compute_pipeline_layout_,
+                    0,
+                    1,
+                    &global_set,
+                    0,
+                    nullptr);
+                vkCmdDispatch(cmd, tile_w_, tile_h_, z);
+            });
+    }
+
+    bool execute_pass_scene(FramePassExecutionContext& ctx, const shs::RenderPathCompiledPass& pass)
+    {
+        return shs::vk_execute_scene_pass(
+            ctx,
+            pass,
+            [this]() {
+                return vk_->has_depth_attachment();
+            },
+            [this](VkCommandBuffer cmd, const shs::VulkanRenderBackend::FrameInfo& fi) {
+                begin_render_pass_scene(cmd, fi);
+            },
+            [this](VkCommandBuffer cmd, uint32_t frame_slot, uint32_t w, uint32_t h) {
+                record_inline_scene(
+                    cmd,
+                    scene_pipeline_,
+                    scene_pipeline_layout_,
+                    w,
+                    h,
+                    frame_slot);
+            },
+            [this](VkCommandBuffer cmd, uint32_t frame_slot) {
+                draw_light_volumes_debug(cmd, scene_pipeline_layout_, frame_slot);
+            });
+    }
+
+    bool execute_pass_gbuffer(FramePassExecutionContext& ctx, const shs::RenderPathCompiledPass& pass)
+    {
+        const bool gbuffer_ready =
+            gbuffer_target_.render_pass != VK_NULL_HANDLE &&
+            gbuffer_target_.framebuffer != VK_NULL_HANDLE &&
+            gbuffer_pipeline_ != VK_NULL_HANDLE &&
+            gbuffer_pipeline_layout_ != VK_NULL_HANDLE;
+
+        return shs::vk_execute_gbuffer_pass(
+            ctx,
+            pass,
+            gbuffer_ready,
+            [this](VkCommandBuffer cmd) {
+                begin_render_pass_gbuffer(cmd);
+            },
+            [this](VkCommandBuffer cmd, uint32_t frame_slot) {
+                record_inline_scene(
+                    cmd,
+                    gbuffer_pipeline_,
+                    gbuffer_pipeline_layout_,
+                    gbuffer_target_.w,
+                    gbuffer_target_.h,
+                    frame_slot);
+            },
+            [this](
+                VkCommandBuffer cmd,
+                VkPipelineStageFlags src_stage,
+                VkAccessFlags src_access,
+                VkPipelineStageFlags dst_stage,
+                VkAccessFlags dst_access) {
+                const bool gbuffer_to_shader_read =
+                    (src_stage &
+                     (VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
+                      VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+                      VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT)) != 0 &&
+                    (dst_stage &
+                     (VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
+                      VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT)) != 0;
+                if (gbuffer_to_shader_read)
+                {
+                    if (emit_graph_barrier_gbuffer_to_consumers(cmd)) return;
+                }
+                cmd_memory_barrier(cmd, src_stage, src_access, dst_stage, dst_access);
+            });
+    }
+
+    bool execute_pass_ssao(FramePassExecutionContext& ctx, const shs::RenderPathCompiledPass& pass)
+    {
+        (void)pass;
+        if (!ctx.fi) return false;
+        if (ctx.ssao_pass_executed) return true;
+        if (!ctx.gbuffer_pass_executed) return false;
+
+        if (!active_ssao_pass_enabled())
+        {
+            if (ao_target_.render_pass != VK_NULL_HANDLE && ao_target_.framebuffer != VK_NULL_HANDLE)
+            {
+                // Keep AO neutral when disabled so deferred shading remains stable.
+                begin_render_pass_ssao(ctx.fi->cmd);
+                vkCmdEndRenderPass(ctx.fi->cmd);
+                if (!emit_graph_barrier_ssao_to_consumer(ctx.fi->cmd))
+                {
+                    cmd_memory_barrier(
+                        ctx.fi->cmd,
+                        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                        VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                        VK_ACCESS_SHADER_READ_BIT);
+                }
+            }
+            return true;
+        }
+
+        const bool ssao_ready =
+            ao_target_.render_pass != VK_NULL_HANDLE &&
+            ao_target_.framebuffer != VK_NULL_HANDLE &&
+            ssao_pipeline_ != VK_NULL_HANDLE &&
+            ssao_pipeline_layout_ != VK_NULL_HANDLE &&
+            deferred_set_ != VK_NULL_HANDLE &&
+            ctx.global_set != VK_NULL_HANDLE;
+        if (!ssao_ready) return false;
+
+        begin_render_pass_ssao(ctx.fi->cmd);
+        set_viewport_scissor(ctx.fi->cmd, ao_target_.w, ao_target_.h, true);
+        vkCmdBindPipeline(ctx.fi->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, ssao_pipeline_);
+        VkDescriptorSet sets[2] = {ctx.global_set, deferred_set_};
+        vkCmdBindDescriptorSets(
+            ctx.fi->cmd,
+            VK_PIPELINE_BIND_POINT_GRAPHICS,
+            ssao_pipeline_layout_,
+            0,
+            2,
+            sets,
+            0,
+            nullptr);
+        vkCmdDraw(ctx.fi->cmd, 3, 1, 0, 0);
+        vkCmdEndRenderPass(ctx.fi->cmd);
+
+        if (!emit_graph_barrier_ssao_to_consumer(ctx.fi->cmd))
+        {
+            cmd_memory_barrier(
+                ctx.fi->cmd,
+                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                VK_ACCESS_SHADER_READ_BIT);
+        }
+
+        ctx.ssao_pass_executed = true;
+        return true;
+    }
+
+    bool execute_pass_deferred_lighting(FramePassExecutionContext& ctx, const shs::RenderPathCompiledPass& pass)
+    {
+        if (!ctx.fi) return false;
+        if (ctx.deferred_lighting_pass_executed) return true;
+        const shs::PassId deferred_pass_kind = resolve_compiled_pass_kind(pass);
+
+        const bool chain_post =
+            ctx.has_motion_blur_pass ||
+            ctx.has_depth_of_field_pass;
+
+        const bool deferred_ready_swapchain =
+            deferred_lighting_pipeline_ != VK_NULL_HANDLE &&
+            deferred_lighting_pipeline_layout_ != VK_NULL_HANDLE &&
+            deferred_set_ != VK_NULL_HANDLE &&
+            ctx.global_set != VK_NULL_HANDLE;
+        const bool deferred_ready_post =
+            deferred_lighting_post_pipeline_ != VK_NULL_HANDLE &&
+            deferred_lighting_pipeline_layout_ != VK_NULL_HANDLE &&
+            deferred_set_ != VK_NULL_HANDLE &&
+            ctx.global_set != VK_NULL_HANDLE &&
+            post_target_a_.render_pass != VK_NULL_HANDLE &&
+            post_target_a_.framebuffer != VK_NULL_HANDLE;
+
+        if (chain_post)
+        {
+            if (!deferred_ready_post) return false;
+            begin_render_pass_post(ctx.fi->cmd, post_target_a_);
+            set_viewport_scissor(ctx.fi->cmd, post_target_a_.w, post_target_a_.h, true);
+            vkCmdBindPipeline(ctx.fi->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, deferred_lighting_post_pipeline_);
+            VkDescriptorSet sets[2] = {ctx.global_set, deferred_set_};
+            vkCmdBindDescriptorSets(
+                ctx.fi->cmd,
+                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                deferred_lighting_pipeline_layout_,
+                0,
+                2,
+                sets,
+                0,
+                nullptr);
+            vkCmdDraw(ctx.fi->cmd, 3, 1, 0, 0);
+            draw_light_volumes_debug(ctx.fi->cmd, scene_pipeline_layout_, ctx.frame_slot);
+            vkCmdEndRenderPass(ctx.fi->cmd);
+            post_target_a_layout_ = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+            if (!emit_graph_barrier_deferred_to_consumer(ctx.fi->cmd, deferred_pass_kind))
+            {
+                cmd_memory_barrier(
+                    ctx.fi->cmd,
+                    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                    VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                    VK_ACCESS_SHADER_READ_BIT);
+            }
+
+            ctx.post_color_valid = true;
+            ctx.post_color_source = 1u;
+        }
+        else
+        {
+            if (!deferred_ready_swapchain) return false;
+            VkClearValue clear[2]{};
+            clear[0].color = {{0.03f, 0.035f, 0.045f, 1.0f}};
+            clear[1].depthStencil = {1.0f, 0};
+
+            VkRenderPassBeginInfo rp{};
+            rp.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+            rp.renderPass = ctx.fi->render_pass;
+            rp.framebuffer = ctx.fi->framebuffer;
+            rp.renderArea.offset = {0, 0};
+            rp.renderArea.extent = ctx.fi->extent;
+            rp.clearValueCount = vk_->has_depth_attachment() ? 2u : 1u;
+            rp.pClearValues = clear;
+            vkCmdBeginRenderPass(ctx.fi->cmd, &rp, VK_SUBPASS_CONTENTS_INLINE);
+
+            set_viewport_scissor(ctx.fi->cmd, ctx.fi->extent.width, ctx.fi->extent.height, true);
+            vkCmdBindPipeline(ctx.fi->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, deferred_lighting_pipeline_);
+            VkDescriptorSet sets[2] = {ctx.global_set, deferred_set_};
+            vkCmdBindDescriptorSets(
+                ctx.fi->cmd,
+                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                deferred_lighting_pipeline_layout_,
+                0,
+                2,
+                sets,
+                0,
+                nullptr);
+            vkCmdDraw(ctx.fi->cmd, 3, 1, 0, 0);
+            draw_light_volumes_debug(ctx.fi->cmd, scene_pipeline_layout_, ctx.frame_slot);
+            vkCmdEndRenderPass(ctx.fi->cmd);
+            ctx.scene_pass_executed = true;
+        }
+
+        ctx.deferred_lighting_pass_executed = true;
+        return true;
+    }
+
+    bool execute_pass_motion_blur(FramePassExecutionContext& ctx, const shs::RenderPathCompiledPass& pass)
+    {
+        (void)pass;
+        if (!ctx.fi) return false;
+        if (ctx.motion_blur_pass_executed) return true;
+        if (!active_motion_blur_pass_enabled()) return true;
+        if (!ctx.post_color_valid)
+        {
+            if (!prepare_post_source_from_scene_color(ctx)) return true;
+            if (!ctx.post_color_valid) return true;
+        }
+
+        const VkDescriptorSet post_set = post_source_descriptor_set_from_context(ctx);
+        if (post_set == VK_NULL_HANDLE) return false;
+
+        const bool output_to_post = ctx.has_depth_of_field_pass;
+        VkPipeline pipe = output_to_post ? motion_blur_pipeline_ : motion_blur_scene_pipeline_;
+        if (pipe == VK_NULL_HANDLE || deferred_lighting_pipeline_layout_ == VK_NULL_HANDLE || ctx.global_set == VK_NULL_HANDLE)
+        {
+            return false;
+        }
+
+        if (output_to_post)
+        {
+            if (post_target_b_.render_pass == VK_NULL_HANDLE || post_target_b_.framebuffer == VK_NULL_HANDLE) return false;
+            begin_render_pass_post(ctx.fi->cmd, post_target_b_);
+            set_viewport_scissor(ctx.fi->cmd, post_target_b_.w, post_target_b_.h, true);
+        }
+        else
+        {
+            VkClearValue clear[2]{};
+            clear[0].color = {{0.03f, 0.035f, 0.045f, 1.0f}};
+            clear[1].depthStencil = {1.0f, 0};
+
+            VkRenderPassBeginInfo rp{};
+            rp.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+            rp.renderPass = ctx.fi->render_pass;
+            rp.framebuffer = ctx.fi->framebuffer;
+            rp.renderArea.offset = {0, 0};
+            rp.renderArea.extent = ctx.fi->extent;
+            rp.clearValueCount = vk_->has_depth_attachment() ? 2u : 1u;
+            rp.pClearValues = clear;
+            vkCmdBeginRenderPass(ctx.fi->cmd, &rp, VK_SUBPASS_CONTENTS_INLINE);
+            set_viewport_scissor(ctx.fi->cmd, ctx.fi->extent.width, ctx.fi->extent.height, true);
+        }
+
+        vkCmdBindPipeline(ctx.fi->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe);
+        VkDescriptorSet sets[2] = {ctx.global_set, post_set};
+        vkCmdBindDescriptorSets(
+            ctx.fi->cmd,
+            VK_PIPELINE_BIND_POINT_GRAPHICS,
+            deferred_lighting_pipeline_layout_,
+            0,
+            2,
+            sets,
+            0,
+            nullptr);
+        vkCmdDraw(ctx.fi->cmd, 3, 1, 0, 0);
+        vkCmdEndRenderPass(ctx.fi->cmd);
+
+        if (output_to_post)
+        {
+            post_target_b_layout_ = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            if (!emit_graph_barrier_motion_blur_to_consumer(ctx.fi->cmd))
+            {
+                cmd_memory_barrier(
+                    ctx.fi->cmd,
+                    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                    VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                    VK_ACCESS_SHADER_READ_BIT);
+            }
+            ctx.post_color_valid = true;
+            ctx.post_color_source = 2u;
+        }
+        else
+        {
+            ctx.post_color_valid = false;
+            ctx.post_color_source = 0u;
+            ctx.scene_pass_executed = true;
+        }
+
+        ctx.motion_blur_pass_executed = true;
+        return true;
+    }
+
+    bool execute_pass_depth_of_field(FramePassExecutionContext& ctx, const shs::RenderPathCompiledPass& pass)
+    {
+        (void)pass;
+        if (!ctx.fi) return false;
+        if (ctx.depth_of_field_pass_executed) return true;
+        if (!active_depth_of_field_pass_enabled()) return true;
+        if (!ctx.post_color_valid)
+        {
+            if (!prepare_post_source_from_scene_color(ctx)) return true;
+            if (!ctx.post_color_valid) return true;
+        }
+
+        if (dof_pipeline_ == VK_NULL_HANDLE || deferred_lighting_pipeline_layout_ == VK_NULL_HANDLE ||
+            ctx.global_set == VK_NULL_HANDLE)
+        {
+            return false;
+        }
+
+        const VkDescriptorSet post_set = post_source_descriptor_set_from_context(ctx);
+        if (post_set == VK_NULL_HANDLE) return false;
+
+        VkClearValue clear[2]{};
+        clear[0].color = {{0.03f, 0.035f, 0.045f, 1.0f}};
+        clear[1].depthStencil = {1.0f, 0};
+
+        VkRenderPassBeginInfo rp{};
+        rp.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+        rp.renderPass = ctx.fi->render_pass;
+        rp.framebuffer = ctx.fi->framebuffer;
+        rp.renderArea.offset = {0, 0};
+        rp.renderArea.extent = ctx.fi->extent;
+        rp.clearValueCount = vk_->has_depth_attachment() ? 2u : 1u;
+        rp.pClearValues = clear;
+        vkCmdBeginRenderPass(ctx.fi->cmd, &rp, VK_SUBPASS_CONTENTS_INLINE);
+
+        set_viewport_scissor(ctx.fi->cmd, ctx.fi->extent.width, ctx.fi->extent.height, true);
+        vkCmdBindPipeline(ctx.fi->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, dof_pipeline_);
+        VkDescriptorSet sets[2] = {ctx.global_set, post_set};
+        vkCmdBindDescriptorSets(
+            ctx.fi->cmd,
+            VK_PIPELINE_BIND_POINT_GRAPHICS,
+            deferred_lighting_pipeline_layout_,
+            0,
+            2,
+            sets,
+            0,
+            nullptr);
+        vkCmdDraw(ctx.fi->cmd, 3, 1, 0, 0);
+        vkCmdEndRenderPass(ctx.fi->cmd);
+
+        ctx.post_color_valid = false;
+        ctx.post_color_source = 0u;
+        ctx.scene_pass_executed = true;
+        ctx.depth_of_field_pass_executed = true;
+        return true;
+    }
+
+    bool execute_pass_taa(FramePassExecutionContext& ctx, const shs::RenderPathCompiledPass& pass)
+    {
+        (void)pass;
+        if (!active_taa_pass_enabled()) return true;
+        ctx.taa_pass_executed = true;
+        return true;
+    }
+
+    bool execute_pass_noop(FramePassExecutionContext& ctx, const shs::RenderPathCompiledPass& pass)
+    {
+        (void)ctx;
+        (void)pass;
+        return true;
+    }
+
+    void build_frame_pass_dispatcher()
+    {
+        const auto wrap = [this](auto&& fn) {
+            return [this, fn = std::forward<decltype(fn)>(fn)](
+                       FramePassExecutionContext& c,
+                       const shs::RenderPathCompiledPass& p) mutable {
+                return execute_profiled_pass_handler(c, p, fn);
+            };
+        };
+
+        shs::StandardRenderPathPassHandlers<FramePassExecutionContext> handlers{};
+        handlers.shadow_map = wrap([this](FramePassExecutionContext& c, const shs::RenderPathCompiledPass& p) {
+            return execute_pass_shadow_map(c, p);
+        });
+        handlers.depth_prepass = wrap([this](FramePassExecutionContext& c, const shs::RenderPathCompiledPass& p) {
+            return execute_pass_depth_prepass(c, p);
+        });
+        handlers.light_culling = wrap([this](FramePassExecutionContext& c, const shs::RenderPathCompiledPass& p) {
+            return execute_pass_light_culling(c, p);
+        });
+        handlers.cluster_build = wrap([this](FramePassExecutionContext& c, const shs::RenderPathCompiledPass& p) {
+            return execute_pass_noop(c, p);
+        });
+        handlers.scene_forward = wrap([this](FramePassExecutionContext& c, const shs::RenderPathCompiledPass& p) {
+            return execute_pass_scene(c, p);
+        });
+        handlers.gbuffer = wrap([this](FramePassExecutionContext& c, const shs::RenderPathCompiledPass& p) {
+            return execute_pass_gbuffer(c, p);
+        });
+        handlers.ssao = wrap([this](FramePassExecutionContext& c, const shs::RenderPathCompiledPass& p) {
+            return execute_pass_ssao(c, p);
+        });
+        handlers.deferred_lighting = wrap([this](FramePassExecutionContext& c, const shs::RenderPathCompiledPass& p) {
+            return execute_pass_deferred_lighting(c, p);
+        });
+        handlers.tonemap = wrap([this](FramePassExecutionContext& c, const shs::RenderPathCompiledPass& p) {
+            return execute_pass_noop(c, p);
+        });
+        handlers.taa = wrap([this](FramePassExecutionContext& c, const shs::RenderPathCompiledPass& p) {
+            return execute_pass_taa(c, p);
+        });
+        handlers.motion_blur = wrap([this](FramePassExecutionContext& c, const shs::RenderPathCompiledPass& p) {
+            return execute_pass_motion_blur(c, p);
+        });
+        handlers.depth_of_field = wrap([this](FramePassExecutionContext& c, const shs::RenderPathCompiledPass& p) {
+            return execute_pass_depth_of_field(c, p);
+        });
+        handlers.fallback_noop = wrap([this](FramePassExecutionContext& c, const shs::RenderPathCompiledPass& p) {
+            return execute_pass_noop(c, p);
+        });
+
+        const bool ok = shs::register_standard_render_path_handlers(frame_pass_dispatcher_, handlers);
+        if (!ok)
+        {
+            std::fprintf(stderr, "[render-path][dispatch][error] Failed to register standard pass handlers.\n");
         }
     }
 
@@ -4020,11 +8277,19 @@ private:
         {
             throw std::runtime_error("Frame descriptor set unavailable");
         }
+        collect_gpu_pass_timing_results(frame_slot);
+
+        const uint64_t current_swapchain_gen = vk_->swapchain_generation();
+        if (observed_swapchain_generation_ != current_swapchain_gen)
+        {
+            ++swapchain_generation_change_count_;
+            observed_swapchain_generation_ = current_swapchain_gen;
+        }
 
         ensure_render_targets(fi.extent.width, fi.extent.height);
         if (pipeline_gen_ != vk_->swapchain_generation())
         {
-            create_pipelines(true);
+            create_pipelines(true, "swapchain-generation");
         }
         update_culling_debug_stats(frame_slot);
 
@@ -4078,132 +8343,81 @@ private:
         {
             throw std::runtime_error("vkBeginCommandBuffer failed");
         }
+        begin_gpu_pass_timing_recording(fi.cmd, frame_slot);
+        ensure_history_color_shader_read_layout(fi.cmd);
 
-        record_shadow_passes(fi.cmd);
+        const shs::RenderPathExecutionPlan plan = make_active_frame_execution_plan();
+        frame_graph_barrier_edges_emitted_ = 0u;
+        frame_graph_barrier_fallback_count_ = 0u;
+        const auto plan_has_pass = [&plan](shs::PassId pass_id) -> bool {
+            for (const auto& p : plan.pass_chain)
+            {
+                if (p.pass_id == pass_id) return true;
+                if (shs::parse_pass_id(p.id) == pass_id) return true;
+            }
+            return false;
+        };
+        FramePassExecutionContext pass_ctx{};
+        pass_ctx.fi = &fi;
+        pass_ctx.frame_slot = frame_slot;
+        pass_ctx.global_set = global_set;
+        pass_ctx.depth_secondaries = &depth_secondaries;
+        pass_ctx.scene_secondaries = &scene_secondaries;
+        pass_ctx.depth_prepass_enabled = enable_depth_prepass_;
+        pass_ctx.scene_enabled = enable_scene_pass_;
+        pass_ctx.light_culling_enabled = enable_light_culling_;
+        pass_ctx.gpu_light_culler_enabled = gpu_light_culler_enabled();
+        pass_ctx.has_motion_blur_pass =
+            plan_has_pass(shs::PassId::MotionBlur) && active_motion_blur_pass_enabled();
+        pass_ctx.has_depth_of_field_pass =
+            plan_has_pass(shs::PassId::DepthOfField) && active_depth_of_field_pass_enabled();
+        pass_ctx.post_color_valid = false;
+        pass_ctx.post_color_source = 0u;
 
-        cmd_memory_barrier(
-            fi.cmd,
-            VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
-            VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-            VK_ACCESS_SHADER_READ_BIT);
-
-        if (enable_depth_prepass_)
+        shs::RenderPathPassDispatchResult dispatch_result{};
+        const bool dispatch_ok = frame_pass_dispatcher_.execute(plan, pass_ctx, &dispatch_result);
+        finalize_gpu_pass_timing_recording(frame_slot);
+        dispatch_total_cpu_ms_ = dispatch_result.total_cpu_ms;
+        dispatch_slowest_pass_cpu_ms_ = dispatch_result.slowest_cpu_ms;
+        dispatch_slowest_pass_id_ = dispatch_result.slowest_pass_id;
+        if (!dispatch_result.warnings.empty() && !pass_dispatch_warning_emitted_)
         {
-            if (!depth_secondaries.empty())
+            for (const auto& w : dispatch_result.warnings)
             {
-                begin_render_pass_depth(fi.cmd);
-                vkCmdExecuteCommands(fi.cmd, static_cast<uint32_t>(depth_secondaries.size()), depth_secondaries.data());
-                vkCmdEndRenderPass(fi.cmd);
+                std::fprintf(stderr, "[render-path][dispatch][warn] %s\n", w.c_str());
             }
-            else
-            {
-                VkClearValue clear{};
-                clear.depthStencil = {1.0f, 0};
-                VkRenderPassBeginInfo rp{};
-                rp.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-                rp.renderPass = depth_target_.render_pass;
-                rp.framebuffer = depth_target_.framebuffer;
-                rp.renderArea.offset = {0, 0};
-                rp.renderArea.extent = {depth_target_.w, depth_target_.h};
-                rp.clearValueCount = 1;
-                rp.pClearValues = &clear;
-                vkCmdBeginRenderPass(fi.cmd, &rp, VK_SUBPASS_CONTENTS_INLINE);
-                record_inline_depth(fi.cmd, depth_pipeline_, depth_pipeline_layout_, depth_target_.w, depth_target_.h, frame_slot);
-                vkCmdEndRenderPass(fi.cmd);
-            }
+            pass_dispatch_warning_emitted_ = true;
+        }
+        if (!dispatch_ok || !dispatch_result.errors.empty())
+        {
+            const std::string err = dispatch_result.errors.empty()
+                ? std::string("Render-path pass dispatch failed.")
+                : dispatch_result.errors.front();
+            throw std::runtime_error(err);
         }
 
-        if (gpu_light_culler_enabled())
+        frame_gbuffer_pass_executed_ = pass_ctx.gbuffer_pass_executed;
+        frame_ssao_pass_executed_ = pass_ctx.ssao_pass_executed;
+        frame_deferred_lighting_pass_executed_ = pass_ctx.deferred_lighting_pass_executed;
+        frame_motion_blur_pass_executed_ = pass_ctx.motion_blur_pass_executed;
+        frame_depth_of_field_pass_executed_ = pass_ctx.depth_of_field_pass_executed;
+        frame_taa_pass_executed_ = pass_ctx.taa_pass_executed;
+        frame_deferred_emulated_scene_pass_ = pass_ctx.deferred_emulated_scene_pass;
+        if (frame_deferred_emulated_scene_pass_ && !deferred_emulation_warning_emitted_)
         {
-            cmd_memory_barrier(
-                fi.cmd,
-                enable_depth_prepass_
-                    ? (VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT)
-                    : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                enable_depth_prepass_ ? VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT : (VkAccessFlags)0,
-                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
-
-            if (culling_mode_ == shs::LightCullingMode::TiledDepthRange)
-            {
-                vkCmdBindPipeline(fi.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, depth_reduce_pipeline_);
-                vkCmdBindDescriptorSets(fi.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, compute_pipeline_layout_, 0, 1, &global_set, 0, nullptr);
-                vkCmdDispatch(fi.cmd, tile_w_, tile_h_, 1);
-
-                cmd_memory_barrier(
-                    fi.cmd,
-                    VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                    VK_ACCESS_SHADER_WRITE_BIT,
-                    VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                    VK_ACCESS_SHADER_READ_BIT);
-            }
-
-            vkCmdBindPipeline(fi.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, compute_pipeline_);
-            vkCmdBindDescriptorSets(fi.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, compute_pipeline_layout_, 0, 1, &global_set, 0, nullptr);
-            const uint32_t dispatch_z = (culling_mode_ == shs::LightCullingMode::Clustered) ? kClusterZSlices : 1u;
-            vkCmdDispatch(fi.cmd, tile_w_, tile_h_, dispatch_z);
-
-            cmd_memory_barrier(
-                fi.cmd,
-                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                VK_ACCESS_SHADER_WRITE_BIT,
-                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-                VK_ACCESS_SHADER_READ_BIT);
-        }
-        else if (enable_light_culling_)
-        {
-            clear_light_grid_cpu_buffers(frame_slot);
+            std::fprintf(
+                stderr,
+                "[render-path][deferred][warn] Deferred pass chain is active, but lighting is currently emulated via scene pass.\n");
+            deferred_emulation_warning_emitted_ = true;
         }
 
-        if (enable_scene_pass_)
+        if (!pass_ctx.scene_pass_executed)
         {
-            if (!scene_secondaries.empty())
-            {
-                begin_render_pass_scene(fi.cmd, fi);
-                vkCmdExecuteCommands(fi.cmd, static_cast<uint32_t>(scene_secondaries.size()), scene_secondaries.data());
-                draw_light_volumes_debug(fi.cmd, scene_pipeline_layout_, frame_slot);
-                vkCmdEndRenderPass(fi.cmd);
-            }
-            else
-            {
-                VkClearValue clear[2]{};
-                clear[0].color = {{0.03f, 0.035f, 0.045f, 1.0f}};
-                clear[1].depthStencil = {1.0f, 0};
-
-                VkRenderPassBeginInfo rp{};
-                rp.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-                rp.renderPass = fi.render_pass;
-                rp.framebuffer = fi.framebuffer;
-                rp.renderArea.offset = {0, 0};
-                rp.renderArea.extent = fi.extent;
-                rp.clearValueCount = vk_->has_depth_attachment() ? 2u : 1u;
-                rp.pClearValues = clear;
-
-                vkCmdBeginRenderPass(fi.cmd, &rp, VK_SUBPASS_CONTENTS_INLINE);
-                record_inline_scene(fi.cmd, scene_pipeline_, scene_pipeline_layout_, fi.extent.width, fi.extent.height, frame_slot);
-                draw_light_volumes_debug(fi.cmd, scene_pipeline_layout_, frame_slot);
-                vkCmdEndRenderPass(fi.cmd);
-            }
+            draw_scene_clear_only(fi.cmd, fi, frame_slot);
         }
-        else
-        {
-            VkClearValue clear[2]{};
-            clear[0].color = {{0.03f, 0.035f, 0.045f, 1.0f}};
-            clear[1].depthStencil = {1.0f, 0};
 
-            VkRenderPassBeginInfo rp{};
-            rp.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-            rp.renderPass = fi.render_pass;
-            rp.framebuffer = fi.framebuffer;
-            rp.renderArea.offset = {0, 0};
-            rp.renderArea.extent = fi.extent;
-            rp.clearValueCount = vk_->has_depth_attachment() ? 2u : 1u;
-            rp.pClearValues = clear;
-            vkCmdBeginRenderPass(fi.cmd, &rp, VK_SUBPASS_CONTENTS_INLINE);
-            draw_light_volumes_debug(fi.cmd, scene_pipeline_layout_, frame_slot);
-            vkCmdEndRenderPass(fi.cmd);
-        }
+        record_history_color_copy(fi.cmd, fi);
+        (void)record_phase_f_snapshot_copy(fi.cmd, fi);
 
         if (vkEndCommandBuffer(fi.cmd) != VK_SUCCESS)
         {
@@ -4211,39 +8425,187 @@ private:
         }
 
         vk_->end_frame(fi);
+        if (phase_f_snapshot_copy_submitted_)
+        {
+            vk_->wait_idle();
+            const bool wrote = write_phase_f_snapshot_from_readback();
+            if (!wrote)
+            {
+                phase_f_snapshot_failed_ = true;
+                std::fprintf(stderr, "[phase-f] Snapshot write failed: %s\n", phase_f_snapshot_path_.c_str());
+                phase_f_write_json_line(
+                    "{\"event\":\"snapshot_result\",\"ok\":false,\"entry\":" +
+                    std::to_string(phase_f_active_entry_slot_ + 1u) +
+                    ",\"path\":\"" + phase_f_snapshot_path_ + "\"}");
+            }
+            else
+            {
+                phase_f_snapshot_completed_ = true;
+                std::fprintf(stderr, "[phase-f] Snapshot saved: %s\n", phase_f_snapshot_path_.c_str());
+                phase_f_write_json_line(
+                    "{\"event\":\"snapshot_result\",\"ok\":true,\"entry\":" +
+                    std::to_string(phase_f_active_entry_slot_ + 1u) +
+                    ",\"path\":\"" + phase_f_snapshot_path_ + "\"}");
+            }
+            phase_f_snapshot_copy_submitted_ = false;
+            phase_f_snapshot_request_armed_ = false;
+        }
         ctx_.frame_index++;
     }
 
     void update_window_title(float avg_ms)
     {
         const char* mode_name = shs::technique_mode_name(active_technique_);
-        const char* light_tech_name = lighting_technique_name(lighting_technique_);
-        const char* recipe_name = render_path_recipe_.name.empty() ? "n/a" : render_path_recipe_.name.c_str();
-        const char* recipe_status = render_path_plan_valid_ ? "OK" : "Fallback";
+        const char* light_tech_name = lighting_technique_name(render_technique_preset_);
+        const char* composition_name = active_composition_recipe_.name.empty()
+            ? "n/a"
+            : active_composition_recipe_.name.c_str();
+        const char* post_stack_name =
+            shs::render_composition_post_stack_preset_name(active_composition_recipe_.post_stack);
+        const shs::RenderPathRecipe& active_recipe = render_path_executor_.active_recipe();
+        const shs::RenderPathResourcePlan& resource_plan = render_path_executor_.active_resource_plan();
+        const char* recipe_name = active_recipe.name.empty() ? "n/a" : active_recipe.name.c_str();
+        const char* recipe_status = render_path_executor_.active_plan_valid() ? "OK" : "Fallback";
         const char* cull_name = shs::light_culling_mode_name(culling_mode_);
         const char* culler_backend = vulkan_culler_backend_name(vulkan_culler_backend_);
         const char* rec_mode = use_multithread_recording_ ? "MT-secondary" : "inline";
         const float switch_in = auto_cycle_technique_ ? std::max(0.0f, kTechniqueSwitchPeriodSec - technique_switch_accum_sec_) : 0.0f;
+        const size_t comp_total = composition_cycle_order_.size();
+        const size_t comp_slot = (comp_total > 0u) ? (active_composition_index_ % comp_total) + 1u : 0u;
+        const char* phase_f_state = "off";
+        if (phase_f_config_.enabled)
+        {
+            switch (phase_f_stage_)
+            {
+                case PhaseFBenchmarkStage::Warmup: phase_f_state = "warmup"; break;
+                case PhaseFBenchmarkStage::Sample: phase_f_state = "sample"; break;
+                case PhaseFBenchmarkStage::AwaitSnapshot: phase_f_state = "snapshot"; break;
+                case PhaseFBenchmarkStage::Disabled:
+                default: phase_f_state = phase_f_finished_ ? "done" : "idle"; break;
+            }
+        }
+        const size_t phase_f_total = phase_f_plan_indices_.size();
+        const size_t phase_f_slot =
+            (phase_f_total > 0u && phase_f_active_entry_slot_ < phase_f_total) ? (phase_f_active_entry_slot_ + 1u) : 0u;
+        const char* phase_g_state = "off";
+        if (phase_g_config_.enabled)
+        {
+            if (phase_g_state_.finished) phase_g_state = "done";
+            else if (phase_g_state_.started) phase_g_state = "run";
+            else phase_g_state = "idle";
+        }
         const double avg_refs = (cull_debug_list_count_ > 0)
             ? static_cast<double>(cull_debug_total_refs_) / static_cast<double>(cull_debug_list_count_)
             : 0.0;
         const uint32_t visible_draws = visible_instance_count_ + (floor_visible_ ? 1u : 0u);
         const uint32_t total_draws = static_cast<uint32_t>(instances_.size()) + 1u;
         const uint32_t culled_total = (active_light_count_ > visible_light_count_) ? (active_light_count_ - visible_light_count_) : 0u;
+        const bool framebuffer_debug_enabled = framebuffer_debug_preset_ != FramebufferDebugPreset::FinalComposite;
+        const bool framebuffer_debug_supported =
+            (!framebuffer_debug_preset_requires_motion_pass(framebuffer_debug_preset_) || active_motion_blur_pass_enabled()) &&
+            (!framebuffer_debug_preset_requires_dof_pass(framebuffer_debug_preset_) || active_depth_of_field_pass_enabled());
+        const char* framebuffer_debug_state = framebuffer_debug_enabled ? "on" : "off";
+        const char* framebuffer_debug_name = framebuffer_debug_preset_name(framebuffer_debug_preset_);
+        const char* framebuffer_debug_availability = framebuffer_debug_enabled
+            ? (framebuffer_debug_supported ? "ready" : "missing")
+            : "idle";
+        const bool semantic_debug_has_resource = semantic_debug_enabled_ &&
+            (shs::find_render_path_resource_by_semantic(resource_plan, active_semantic_debug_) != nullptr);
+        const char* semantic_debug_state = semantic_debug_enabled_ ? "on" : "off";
+        const char* semantic_debug_name = semantic_debug_enabled_
+            ? shs::pass_semantic_name(active_semantic_debug_)
+            : "none";
+        const char* semantic_debug_availability = semantic_debug_enabled_
+            ? (semantic_debug_has_resource ? "ready" : "missing")
+            : (semantic_debug_targets_.empty() ? "n/a" : "idle");
+        const bool deferred_mode =
+            (active_technique_ == shs::TechniqueMode::Deferred) ||
+            (active_technique_ == shs::TechniqueMode::TiledDeferred);
+        const char* deferred_state = deferred_mode
+            ? (frame_deferred_emulated_scene_pass_ ? "emul" : "native")
+            : "n/a";
+        const bool temporal_copy_supported = supports_swapchain_history_copy();
+        const bool temporal_enabled = active_taa_pass_enabled() && temporal_settings_.accumulation_enabled;
+        const char* temporal_jitter_state = temporal_enabled
+            ? (temporal_copy_supported ? "on" : "fallback")
+            : "off";
+        const char* taa_state = frame_taa_pass_executed_ ? "on" : "off";
+        const char* dispatch_slowest_pass_name =
+            dispatch_slowest_pass_id_.empty() ? "n/a" : dispatch_slowest_pass_id_.c_str();
+        const char* gpu_slowest_pass_name =
+            gpu_pass_slowest_id_.empty() ? "n/a" : gpu_pass_slowest_id_.c_str();
+        const char* gpu_timing_state =
+            gpu_pass_timing_state_.empty() ? "n/a" : gpu_pass_timing_state_.c_str();
+        const double gpu_total_ms = gpu_pass_timing_valid_ ? gpu_pass_total_ms_ : 0.0;
+        const double gpu_slowest_ms = gpu_pass_timing_valid_ ? gpu_pass_slowest_ms_ : 0.0;
+        const char* target_rebuild_reason =
+            render_target_last_rebuild_reason_.empty() ? "none" : render_target_last_rebuild_reason_.c_str();
+        const char* pipeline_rebuild_reason =
+            pipeline_last_rebuild_reason_.empty() ? "none" : pipeline_last_rebuild_reason_.c_str();
 
-        char title[768];
+        char title[1024];
         std::snprintf(
             title,
             sizeof(title),
-            "%s | light:%s | rpath:%s(%s) mode:%s | cull:%s(%s) | rec:%s | lights:%u/%u[p:%u s:%u r:%u t:%u] | lvol:%s occ:%s/%s lobj:%s culled:%u[f:%u o:%u p:%u] | shad:sun:%s(%.2f) spot:%u point:%u | cfg:orb%.2f h%.1f r%.2f i%.2f | draws:%u/%u | tile:%ux%u | refs:%llu avg:%.1f max:%u nz:%u/%u | lightsw:%s %.1fs | %.2f ms",
+            "%s | comp:%s[%zu/%zu] pst:%s pf:%s[%zu/%zu] pg:%s[c:%llu] | light:%s exp:%.2f g:%.2f | rpath:%s(%s) mode:%s def:%s[g:%s a:%s l:%s t:%s m:%s d:%s] | tmp:%s j(%.3f,%.3f) | dbg:F5 %s/%s(%s) F8 %s/%s(%s) | cull:%s(%s) | rec:%s rsrc:%zu bind:%zu br:%u/%u lay:%u alias:%u/%u gbr:%u fb:%u cpu:%.2fms slow:%s %.2f gpu:%s %.2f slow:%s %.2f s:%u r:%u | rb:t%llu(%s) p%llu(%s) sg:%llu | lights:%u/%u[p:%u s:%u r:%u t:%u] | lvol:%s occ:%s/%s lobj:%s culled:%u[f:%u o:%u p:%u] | shad:sun:%s(%.2f) spot:%u point:%u | cfg:orb%.2f h%.1f r%.2f i%.2f | draws:%u/%u | tile:%ux%u sz:%u z:%u | refs:%llu avg:%.1f max:%u nz:%u/%u | lightsw:%s %.1fs | %.2f ms",
             kAppName,
+            composition_name,
+            comp_slot,
+            comp_total,
+            post_stack_name,
+            phase_f_state,
+            phase_f_slot,
+            phase_f_total,
+            phase_g_state,
+            static_cast<unsigned long long>(phase_g_state_.cycles),
             light_tech_name,
+            tonemap_exposure_,
+            tonemap_gamma_,
             recipe_name,
             recipe_status,
             mode_name,
+            deferred_state,
+            frame_gbuffer_pass_executed_ ? "on" : "off",
+            frame_ssao_pass_executed_ ? "on" : "off",
+            frame_deferred_lighting_pass_executed_ ? "on" : "off",
+            taa_state,
+            frame_motion_blur_pass_executed_ ? "on" : "off",
+            frame_depth_of_field_pass_executed_ ? "on" : "off",
+            temporal_jitter_state,
+            temporal_state_.jitter_ndc.x,
+            temporal_state_.jitter_ndc.y,
+            framebuffer_debug_state,
+            framebuffer_debug_name,
+            framebuffer_debug_availability,
+            semantic_debug_state,
+            semantic_debug_name,
+            semantic_debug_availability,
             cull_name,
             culler_backend,
             rec_mode,
+            resource_plan.resources.size(),
+            resource_plan.pass_bindings.size(),
+            barrier_edge_count_,
+            barrier_memory_edge_count_,
+            barrier_layout_edge_count_,
+            barrier_alias_class_count_,
+            barrier_alias_slot_count_,
+            frame_graph_barrier_edges_emitted_,
+            frame_graph_barrier_fallback_count_,
+            dispatch_total_cpu_ms_,
+            dispatch_slowest_pass_name,
+            dispatch_slowest_pass_cpu_ms_,
+            gpu_timing_state,
+            gpu_total_ms,
+            gpu_slowest_pass_name,
+            gpu_slowest_ms,
+            gpu_pass_sample_count_,
+            gpu_pass_rejected_sample_count_,
+            static_cast<unsigned long long>(render_target_rebuild_count_),
+            target_rebuild_reason,
+            static_cast<unsigned long long>(pipeline_rebuild_count_),
+            pipeline_rebuild_reason,
+            static_cast<unsigned long long>(swapchain_generation_change_count_),
             visible_light_count_,
             active_light_count_,
             point_count_active_,
@@ -4270,6 +8632,8 @@ private:
             total_draws,
             tile_w_,
             tile_h_,
+            light_tile_size_,
+            cluster_z_slices_,
             static_cast<unsigned long long>(cull_debug_total_refs_),
             avg_refs,
             cull_debug_max_list_size_,
@@ -4341,17 +8705,19 @@ private:
                     use_multithread_recording_ = !use_multithread_recording_;
                     break;
                 case SDLK_F2:
-                    if ((e.key.keysym.mod & KMOD_SHIFT) != 0)
-                    {
-                        cycle_lighting_technique();
-                    }
-                    else
-                    {
-                        cycle_render_path_recipe();
-                    }
+                    cycle_render_path_recipe();
                     break;
                 case SDLK_TAB:
                     cycle_render_path_recipe();
+                    break;
+                case SDLK_F3:
+                    cycle_render_composition_recipe();
+                    break;
+                case SDLK_F4:
+                    cycle_lighting_technique();
+                    break;
+                case SDLK_F5:
+                    cycle_framebuffer_debug_target();
                     break;
                 case SDLK_F6:
                     vulkan_culler_backend_ =
@@ -4361,6 +8727,34 @@ private:
                     break;
                 case SDLK_F7:
                     show_light_volumes_debug_ = !show_light_volumes_debug_;
+                    break;
+                case SDLK_F8:
+                    cycle_semantic_debug_target();
+                    break;
+                case SDLK_F9:
+                    if (!active_taa_pass_enabled())
+                    {
+                        std::fprintf(
+                            stderr,
+                            "[render-path][temporal] Active composition has TAA disabled.\n");
+                        break;
+                    }
+                    temporal_settings_.accumulation_enabled = !temporal_settings_.accumulation_enabled;
+                    temporal_settings_.jitter_enabled = temporal_settings_.accumulation_enabled;
+                    std::fprintf(
+                        stderr,
+                        "[render-path][temporal] Accumulation+jitter: %s\n",
+                        temporal_settings_.accumulation_enabled ? "ON" : "OFF");
+                    if (temporal_settings_.accumulation_enabled && !supports_swapchain_history_copy())
+                    {
+                        std::fprintf(
+                            stderr,
+                            "[render-path][temporal] Warning: swapchain transfer-src unsupported, temporal history copy disabled.\n");
+                    }
+                    break;
+                case SDLK_F10:
+                    print_controls();
+                    print_composition_catalog();
                     break;
                 case SDLK_F11:
                     auto_cycle_technique_ = !auto_cycle_technique_;
@@ -4376,22 +8770,22 @@ private:
                     light_orbit_scale_ = std::clamp(light_orbit_scale_ + 0.10f, 0.35f, 2.50f);
                     break;
                 case SDLK_3:
-                    light_height_bias_ = std::clamp(light_height_bias_ - 0.50f, -8.0f, 12.0f);
+                    light_height_bias_ = std::clamp(light_height_bias_ - 0.25f, -3.0f, 6.0f);
                     break;
                 case SDLK_4:
-                    light_height_bias_ = std::clamp(light_height_bias_ + 0.50f, -8.0f, 12.0f);
+                    light_height_bias_ = std::clamp(light_height_bias_ + 0.25f, -3.0f, 6.0f);
                     break;
                 case SDLK_5:
-                    light_range_scale_ = std::clamp(light_range_scale_ - 0.10f, 0.35f, 2.50f);
+                    light_range_scale_ = std::clamp(light_range_scale_ - 0.10f, 0.50f, 2.00f);
                     break;
                 case SDLK_6:
-                    light_range_scale_ = std::clamp(light_range_scale_ + 0.10f, 0.35f, 2.50f);
+                    light_range_scale_ = std::clamp(light_range_scale_ + 0.10f, 0.50f, 2.00f);
                     break;
                 case SDLK_7:
-                    light_intensity_scale_ = std::clamp(light_intensity_scale_ - 0.10f, 0.15f, 3.00f);
+                    light_intensity_scale_ = std::clamp(light_intensity_scale_ - 0.10f, 0.30f, 2.50f);
                     break;
                 case SDLK_8:
-                    light_intensity_scale_ = std::clamp(light_intensity_scale_ + 0.10f, 0.15f, 3.00f);
+                    light_intensity_scale_ = std::clamp(light_intensity_scale_ + 0.10f, 0.30f, 2.50f);
                     break;
                 case SDLK_9:
                     sun_shadow_strength_ = std::clamp(sun_shadow_strength_ - 0.05f, 0.0f, 1.0f);
@@ -4466,6 +8860,8 @@ private:
 
             const float frame_ms = std::chrono::duration<float, std::milli>(cpu_t1 - cpu_t0).count();
             ema_ms = glm::mix(ema_ms, frame_ms, 0.08f);
+            phase_f_step_after_frame(frame_ms, ema_ms);
+            phase_g_step_after_frame(frame_ms, ema_ms, dt);
 
             if (std::chrono::duration<float>(now - title_t0).count() >= 0.20f)
             {
@@ -4487,13 +8883,13 @@ private:
     {
         shs::LightType type = shs::LightType::Point;
         float angle0 = 0.0f;
-        float orbit_radius = 10.0f;
-        float height = 6.0f;
+        float orbit_radius = 6.0f;
+        float height = 2.6f;
         float speed = 1.0f;
-        float range = 6.0f;
+        float range = 4.8f;
         float phase = 0.0f;
         glm::vec3 color{1.0f};
-        float intensity = 2.0f;
+        float intensity = 6.0f;
         shs::LightAttenuationModel attenuation_model = shs::LightAttenuationModel::Smooth;
         float attenuation_power = 1.0f;
         float attenuation_bias = 0.05f;
@@ -4594,11 +8990,24 @@ private:
 
     CameraUBO camera_ubo_{};
     DepthTarget depth_target_{};
+    GBufferTarget gbuffer_target_{};
+    AmbientOcclusionTarget ao_target_{};
+    PostColorTarget post_target_a_{};
+    PostColorTarget post_target_b_{};
+    shs::VkRenderPathTemporalResources temporal_resources_{};
+    VkImageLayout post_target_a_layout_ = VK_IMAGE_LAYOUT_UNDEFINED;
+    VkImageLayout post_target_b_layout_ = VK_IMAGE_LAYOUT_UNDEFINED;
+    bool post_color_copy_support_warning_emitted_ = false;
     LayeredDepthTarget sun_shadow_target_{};
     LayeredDepthTarget local_shadow_target_{};
 
     VkDescriptorSetLayout global_set_layout_ = VK_NULL_HANDLE;
     VkDescriptorPool descriptor_pool_ = VK_NULL_HANDLE;
+    VkDescriptorSetLayout deferred_set_layout_ = VK_NULL_HANDLE;
+    VkDescriptorPool deferred_descriptor_pool_ = VK_NULL_HANDLE;
+    VkDescriptorSet deferred_set_ = VK_NULL_HANDLE;
+    VkDescriptorSet deferred_post_a_set_ = VK_NULL_HANDLE;
+    VkDescriptorSet deferred_post_b_set_ = VK_NULL_HANDLE;
     VkSampler depth_sampler_ = VK_NULL_HANDLE;
 
     VkPipelineLayout shadow_pipeline_layout_ = VK_NULL_HANDLE;
@@ -4608,11 +9017,27 @@ private:
     VkPipelineLayout scene_pipeline_layout_ = VK_NULL_HANDLE;
     VkPipeline scene_pipeline_ = VK_NULL_HANDLE;
     VkPipeline scene_wire_pipeline_ = VK_NULL_HANDLE;
+    VkPipelineLayout gbuffer_pipeline_layout_ = VK_NULL_HANDLE;
+    VkPipeline gbuffer_pipeline_ = VK_NULL_HANDLE;
+    VkPipelineLayout ssao_pipeline_layout_ = VK_NULL_HANDLE;
+    VkPipeline ssao_pipeline_ = VK_NULL_HANDLE;
+    VkPipelineLayout deferred_lighting_pipeline_layout_ = VK_NULL_HANDLE;
+    VkPipeline deferred_lighting_pipeline_ = VK_NULL_HANDLE;
+    VkPipeline deferred_lighting_post_pipeline_ = VK_NULL_HANDLE;
+    VkPipeline motion_blur_pipeline_ = VK_NULL_HANDLE;
+    VkPipeline motion_blur_scene_pipeline_ = VK_NULL_HANDLE;
+    VkPipeline dof_pipeline_ = VK_NULL_HANDLE;
     VkPipelineLayout compute_pipeline_layout_ = VK_NULL_HANDLE;
     VkPipeline depth_reduce_pipeline_ = VK_NULL_HANDLE;
     VkPipeline compute_pipeline_ = VK_NULL_HANDLE;
 
     uint64_t pipeline_gen_ = 0;
+    uint64_t observed_swapchain_generation_ = 0;
+    uint64_t swapchain_generation_change_count_ = 0;
+    uint64_t render_target_rebuild_count_ = 0;
+    uint64_t pipeline_rebuild_count_ = 0;
+    std::string render_target_last_rebuild_reason_{"init"};
+    std::string pipeline_last_rebuild_reason_{"init"};
     uint32_t tile_w_ = 0;
     uint32_t tile_h_ = 0;
     uint32_t active_light_count_ = kDefaultLightCount;
@@ -4641,25 +9066,111 @@ private:
     float sun_shadow_strength_ = 0.0f;
     bool use_forward_plus_ = true;
     shs::LightCullingMode culling_mode_ = shs::LightCullingMode::Tiled;
+    uint32_t light_tile_size_ = kDefaultTileSize;
+    uint32_t cluster_z_slices_ = kDefaultClusterZSlices;
+    shs::RenderPathLightGridRuntimeLayout light_grid_layout_{};
     shs::ShadowCompositionSettings shadow_settings_ = shs::make_default_shadow_composition_settings();
     VulkanCullerBackend vulkan_culler_backend_ = VulkanCullerBackend::GpuCompute;
     bool profile_depth_prepass_enabled_ = true;
     bool enable_depth_prepass_ = true;
     bool enable_light_culling_ = true;
     bool enable_scene_pass_ = true;
+    bool frame_gbuffer_pass_executed_ = false;
+    bool frame_ssao_pass_executed_ = false;
+    bool frame_deferred_lighting_pass_executed_ = false;
+    bool frame_motion_blur_pass_executed_ = false;
+    bool frame_depth_of_field_pass_executed_ = false;
+    bool frame_taa_pass_executed_ = false;
+    bool frame_deferred_emulated_scene_pass_ = false;
+    bool deferred_emulation_warning_emitted_ = false;
+    FramebufferDebugPreset framebuffer_debug_preset_ = FramebufferDebugPreset::FinalComposite;
+    bool semantic_debug_enabled_ = false;
+    shs::PassSemantic active_semantic_debug_ = shs::PassSemantic::Unknown;
+    size_t semantic_debug_index_ = 0u;
+    std::vector<shs::PassSemantic> semantic_debug_targets_{};
     uint64_t cull_debug_total_refs_ = 0;
     uint32_t cull_debug_non_empty_lists_ = 0;
     uint32_t cull_debug_list_count_ = 0;
     uint32_t cull_debug_max_list_size_ = 0;
-    shs::RenderPathRegistry render_path_registry_{};
-    std::vector<std::string> render_path_cycle_order_{};
-    shs::RenderPathRecipe render_path_recipe_{};
-    shs::RenderPathExecutionPlan render_path_plan_{};
-    bool render_path_plan_valid_ = false;
-    size_t render_path_cycle_index_ = 0;
-    LightingTechnique lighting_technique_ = LightingTechnique::PBR;
-    shs::TechniqueMode active_technique_ = shs::TechniqueMode::ForwardPlus;
-    size_t technique_cycle_index_ = 1;
+    uint32_t barrier_edge_count_ = 0u;
+    uint32_t barrier_memory_edge_count_ = 0u;
+    uint32_t barrier_layout_edge_count_ = 0u;
+    uint32_t barrier_alias_class_count_ = 0u;
+    uint32_t barrier_alias_slot_count_ = 0u;
+    uint32_t frame_graph_barrier_edges_emitted_ = 0u;
+    uint32_t frame_graph_barrier_fallback_count_ = 0u;
+    shs::RenderPathExecutor render_path_executor_{};
+    shs::PassFactoryRegistry pass_contract_registry_{};
+    shs::PassFactoryRegistry pass_contract_registry_sw_{};
+    shs::RenderPathPassDispatcher<FramePassExecutionContext> frame_pass_dispatcher_{};
+    bool pass_dispatch_warning_emitted_ = false;
+    double dispatch_total_cpu_ms_ = 0.0;
+    double dispatch_slowest_pass_cpu_ms_ = 0.0;
+    std::string dispatch_slowest_pass_id_{};
+    std::array<VkQueryPool, kWorkerPoolRingSize> gpu_pass_query_pools_{};
+    std::array<GpuPassTimestampFrameState, kWorkerPoolRingSize> gpu_pass_timestamp_frames_{};
+    bool gpu_pass_timestamps_supported_ = false;
+    float gpu_timestamp_period_ns_ = 0.0f;
+    bool gpu_pass_timestamp_recording_active_ = false;
+    uint32_t gpu_pass_timestamp_record_frame_slot_ = 0u;
+    uint32_t gpu_pass_query_cursor_ = 0u;
+    double gpu_pass_total_ms_ = 0.0;
+    double gpu_pass_slowest_ms_ = 0.0;
+    std::string gpu_pass_slowest_id_{};
+    bool gpu_pass_timing_valid_ = false;
+    uint32_t gpu_pass_sample_count_ = 0u;
+    uint32_t gpu_pass_rejected_sample_count_ = 0u;
+    std::string gpu_pass_timing_state_{"disabled"};
+    PhaseFBenchmarkConfig phase_f_config_{};
+    std::ofstream phase_f_metrics_stream_{};
+    std::vector<size_t> phase_f_plan_indices_{};
+    PhaseFBenchmarkStage phase_f_stage_ = PhaseFBenchmarkStage::Disabled;
+    size_t phase_f_active_entry_slot_ = 0u;
+    size_t phase_f_active_composition_index_ = 0u;
+    size_t phase_f_entries_processed_ = 0u;
+    bool phase_f_finished_ = false;
+    uint32_t phase_f_stage_frame_counter_ = 0u;
+    PhaseFBenchmarkAccumulator phase_f_accumulator_{};
+    uint64_t phase_f_rebuild_target_start_ = 0u;
+    uint64_t phase_f_rebuild_pipeline_start_ = 0u;
+    uint64_t phase_f_swapchain_gen_start_ = 0u;
+    bool phase_f_snapshot_request_armed_ = false;
+    bool phase_f_snapshot_copy_submitted_ = false;
+    bool phase_f_snapshot_completed_ = false;
+    bool phase_f_snapshot_failed_ = false;
+    std::string phase_f_snapshot_path_{};
+    GpuBuffer phase_f_snapshot_readback_buffer_{};
+    uint32_t phase_f_snapshot_readback_w_ = 0u;
+    uint32_t phase_f_snapshot_readback_h_ = 0u;
+    VkFormat phase_f_snapshot_readback_format_ = VK_FORMAT_UNDEFINED;
+    PhaseGSoakConfig phase_g_config_{};
+    std::ofstream phase_g_metrics_stream_{};
+    PhaseGSoakState phase_g_state_{};
+    PhaseIParityConfig phase_i_config_{};
+    shs::RenderTechniquePreset render_technique_preset_ = shs::RenderTechniquePreset::PBR;
+    shs::RenderTechniqueRecipe render_technique_recipe_ = shs::make_builtin_render_technique_recipe(
+        shs::RenderTechniquePreset::PBR,
+        "render_tech_vk");
+    shs::RenderCompositionRecipe active_composition_recipe_ = shs::make_builtin_render_composition_recipe(
+        shs::RenderPathPreset::Deferred,
+        shs::RenderTechniquePreset::PBR,
+        "composition_vk");
+    std::vector<shs::RenderCompositionRecipe> composition_cycle_order_{};
+    size_t active_composition_index_ = 0u;
+    uint32_t shading_variant_ = shs::render_technique_shader_variant(shs::RenderTechniquePreset::PBR);
+    float tonemap_exposure_ = 1.40f;
+    float tonemap_gamma_ = 2.20f;
+    shs::TechniqueMode active_technique_ = shs::TechniqueMode::Deferred;
+    bool path_has_ssao_pass_ = false;
+    bool path_has_taa_pass_ = false;
+    bool path_has_motion_blur_pass_ = false;
+    bool path_has_depth_of_field_pass_ = false;
+    bool composition_ssao_enabled_ = true;
+    bool composition_taa_enabled_ = true;
+    bool composition_motion_blur_enabled_ = true;
+    bool composition_depth_of_field_enabled_ = true;
+    shs::RenderPathTemporalSettings temporal_settings_{};
+    shs::RenderPathTemporalFrameState temporal_state_{};
     float technique_switch_accum_sec_ = 0.0f;
     bool auto_cycle_technique_ = false;
     bool use_multithread_recording_ = false;

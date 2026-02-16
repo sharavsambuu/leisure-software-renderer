@@ -16,6 +16,7 @@
 #include <shs/app/camera_sync.hpp>
 #include <shs/camera/follow_camera.hpp>
 #include <shs/core/context.hpp>
+#include <shs/frame/technique_mode.hpp>
 #include <shs/frame/frame_params.hpp>
 #include <shs/gfx/rt_registry.hpp>
 #include <shs/gfx/rt_shadow.hpp>
@@ -24,6 +25,9 @@
 #include <shs/logic/fsm.hpp>
 #include <shs/pipeline/pass_adapters.hpp>
 #include <shs/pipeline/pluggable_pipeline.hpp>
+#include <shs/pipeline/render_composition_presets.hpp>
+#include <shs/pipeline/render_path_executor.hpp>
+#include <shs/pipeline/render_technique_presets.hpp>
 #include <shs/platform/sdl/sdl_runtime.hpp>
 #include <shs/rhi/backend/backend_factory.hpp>
 #include <shs/resources/loaders/primitive_import.hpp>
@@ -618,7 +622,7 @@ int main()
     const shs::RTHandle rt_shafts_tmp_h = rtr.reg<shs::RTHandle>(&shafts_tmp_rt);
     const shs::RTHandle rt_motion_blur_tmp_h = rtr.reg<shs::RTHandle>(&motion_blur_tmp_rt);
 
-    // Render pass дараалал: shadow map -> forward shading -> tonemap.
+    // Pass registry-г shared pass adapter factory-аар байгуулна.
     const shs::PassFactoryRegistry pass_registry = shs::make_standard_pass_factory_registry(
         rt_shadow_h,
         rt_hdr_h,
@@ -627,13 +631,11 @@ int main()
         rt_shafts_tmp_h,
         rt_motion_blur_tmp_h
     );
-    pipeline.add_pass_from_registry(pass_registry, "shadow_map");
-    pipeline.add_pass_from_registry(pass_registry, "pbr_forward");
-    pipeline.add_pass_from_registry(pass_registry, "tonemap");
-    pipeline.add_pass_from_registry(pass_registry, "light_shafts");
-    pipeline.add_pass_from_registry(pass_registry, "motion_blur");
-    pipeline.set_strict_graph_validation(true);
-    render_systems.add_system<shs::PipelineRenderSystem>(&pipeline);
+    shs::RenderPathExecutor render_path_executor{};
+    std::vector<std::string> render_path_missing_passes{};
+    std::string render_path_name = "fallback_forward";
+    bool render_path_plan_valid = false;
+    bool render_path_configured = false;
 
     shs::Scene scene{};
     scene.resources = &resources;
@@ -728,6 +730,156 @@ int main()
     fp.technique.active_modes_mask = shs::technique_mode_mask_all();
     fp.technique.depth_prepass = false;
     fp.technique.light_culling = false;
+    shs::RenderTechniquePreset render_technique_preset =
+        shs::render_technique_preset_from_shading_model(fp.shading_model);
+    shs::RenderTechniqueRecipe render_technique_recipe =
+        shs::make_builtin_render_technique_recipe(render_technique_preset, "composition_sw");
+    shs::RenderCompositionRecipe active_composition_recipe =
+        shs::make_builtin_render_composition_recipe(
+            shs::render_path_preset_for_mode(fp.technique.mode),
+            render_technique_preset,
+            "composition_sw");
+    std::vector<shs::RenderCompositionRecipe> composition_cycle_order{};
+    size_t active_composition_index = 0u;
+
+    const auto apply_render_technique_preset = [&](shs::RenderTechniquePreset preset)
+    {
+        render_technique_preset = preset;
+        render_technique_recipe =
+            shs::make_builtin_render_technique_recipe(render_technique_preset, "composition_sw");
+        fp.shading_model = render_technique_recipe.shading_model;
+        fp.pass.tonemap.exposure = render_technique_recipe.tonemap_exposure;
+        fp.pass.tonemap.gamma = render_technique_recipe.tonemap_gamma;
+    };
+    apply_render_technique_preset(render_technique_preset);
+
+    const auto technique_uses_light_culling = [](shs::TechniqueMode mode) -> bool
+    {
+        return mode == shs::TechniqueMode::ForwardPlus ||
+               mode == shs::TechniqueMode::TiledDeferred ||
+               mode == shs::TechniqueMode::ClusteredForward;
+    };
+
+    const auto plan_has_pass = [](const shs::RenderPathExecutionPlan& plan, const char* pass_id) -> bool
+    {
+        if (!pass_id || pass_id[0] == '\0') return false;
+        for (const auto& e : plan.pass_chain)
+        {
+            if (e.id == pass_id) return true;
+        }
+        return false;
+    };
+
+    auto apply_fallback_technique_pipeline = [&](const char* fallback_tag) -> bool
+    {
+        render_path_missing_passes.clear();
+        render_path_configured =
+            pipeline.configure_for_technique(pass_registry, fp.technique.mode, &render_path_missing_passes);
+        pipeline.set_strict_graph_validation(true);
+        render_path_plan_valid = false;
+        render_path_name = std::string(fallback_tag ? fallback_tag : "fallback")
+            + "_"
+            + shs::technique_mode_name(fp.technique.mode);
+        fp.technique.depth_prepass = (fp.technique.mode != shs::TechniqueMode::Forward);
+        fp.technique.light_culling = technique_uses_light_culling(fp.technique.mode);
+        fp.pass.light_shafts.enable = false;
+        return render_path_configured;
+    };
+
+    auto apply_render_path_index = [&](size_t index) -> bool
+    {
+        if (!render_path_executor.has_recipes()) return false;
+
+        render_path_plan_valid = render_path_executor.apply_index(index, ctx, &pass_registry);
+        const shs::RenderPathRecipe& recipe = render_path_executor.active_recipe();
+        const shs::RenderPathExecutionPlan& plan = render_path_executor.active_plan();
+        render_path_name = recipe.name.empty() ? std::string("unnamed_path") : recipe.name;
+
+        if (plan.pass_chain.empty())
+        {
+            return false;
+        }
+
+        fp.technique.mode = plan.technique_mode;
+        fp.technique.active_modes_mask = shs::technique_mode_mask_all();
+        fp.technique.tile_size = std::max(1u, recipe.light_tile_size);
+        fp.technique.depth_prepass = plan_has_pass(plan, "depth_prepass");
+        fp.technique.light_culling = technique_uses_light_culling(plan.technique_mode);
+        fp.pass.shadow.enable = recipe.wants_shadows && recipe.runtime_defaults.enable_shadows;
+        fp.pass.light_shafts.enable = false;
+        if (!plan_has_pass(plan, "motion_blur"))
+        {
+            fp.pass.motion_blur.enable = false;
+        }
+
+        render_path_missing_passes.clear();
+        render_path_configured =
+            pipeline.configure_from_render_path_plan(pass_registry, plan, &render_path_missing_passes);
+        pipeline.set_strict_graph_validation(recipe.strict_validation);
+        return render_path_plan_valid && render_path_configured;
+    };
+
+    auto refresh_active_composition_recipe = [&]()
+    {
+        const shs::RenderPathPreset active_path_preset =
+            shs::render_path_preset_for_mode(fp.technique.mode);
+        active_composition_recipe = shs::make_builtin_render_composition_recipe(
+            active_path_preset,
+            render_technique_preset,
+            "composition_sw");
+        for (size_t i = 0; i < composition_cycle_order.size(); ++i)
+        {
+            const auto& c = composition_cycle_order[i];
+            if (c.path_preset == active_path_preset && c.technique_preset == render_technique_preset)
+            {
+                active_composition_index = i;
+                active_composition_recipe = c;
+                break;
+            }
+        }
+    };
+
+    auto apply_render_composition_by_index = [&](size_t index) -> bool
+    {
+        if (composition_cycle_order.empty() || !render_path_executor.has_recipes()) return false;
+        const size_t resolved = index % composition_cycle_order.size();
+        const shs::RenderCompositionRecipe& composition = composition_cycle_order[resolved];
+        const size_t path_index = render_path_executor.find_recipe_index_by_mode(
+            shs::render_path_preset_mode(composition.path_preset));
+        apply_render_technique_preset(composition.technique_preset);
+        if (!apply_render_path_index(path_index))
+        {
+            refresh_active_composition_recipe();
+            return false;
+        }
+
+        active_composition_index = resolved;
+        active_composition_recipe = composition;
+        return true;
+    };
+
+    const bool have_builtin_paths =
+        render_path_executor.register_builtin_presets(shs::RenderBackendType::Software, "sw_path");
+    composition_cycle_order = shs::make_default_render_composition_recipes("composition_sw");
+    if (!have_builtin_paths || !render_path_executor.has_recipes())
+    {
+        std::fprintf(stderr, "[shs] Render-path presets unavailable for software backend. Falling back.\n");
+        (void)apply_fallback_technique_pipeline("fallback");
+    }
+    else
+    {
+        const size_t preferred_index =
+            render_path_executor.find_recipe_index_by_mode(fp.technique.mode);
+        if (!apply_render_path_index(preferred_index))
+        {
+            std::fprintf(stderr,
+                "[shs] Render-path compile/config failed for '%s'. Falling back to profile.\n",
+                render_path_name.c_str());
+            (void)apply_fallback_technique_pipeline("fallback");
+        }
+    }
+    refresh_active_composition_recipe();
+    render_systems.add_system<shs::PipelineRenderSystem>(&pipeline);
 
     shs::CameraRig cam{};
     cam.pos = glm::vec3(0.0f, 6.0f, -16.0f);
@@ -770,6 +922,11 @@ int main()
         chase_forward = world_forward_from_visual_yaw(subaru_init->tr.rot_euler.y, SUBARU_VISUAL_FORWARD_AXIS);
     }
 
+    std::printf(
+        "Controls: LMB/RMB drag look, WASD+QE move, Shift boost | "
+        "F1 debug view, F2 cycle render path, F3 cycle composition, F4 cycle shading, "
+        "M motion blur, F5 sky, F6 follow camera\n");
+
     bool running = true;
     auto prev = std::chrono::steady_clock::now();
     float time_s = 0.0f;
@@ -799,15 +956,46 @@ int main()
             const int next = (((int)fp.debug_view) + 1) % 4;
             fp.debug_view = (shs::DebugViewMode)next;
         }
+        // F2: render-path preset cycle.
+        if (pin.cycle_cull_mode)
+        {
+            if (render_path_executor.has_recipes())
+            {
+                if (!apply_render_path_index(render_path_executor.active_index() + 1u))
+                {
+                    std::fprintf(stderr,
+                        "[shs] Render-path cycle failed for '%s'. Falling back.\n",
+                        render_path_name.c_str());
+                    (void)apply_fallback_technique_pipeline("fallback");
+                }
+            }
+            else
+            {
+                (void)apply_fallback_technique_pipeline("fallback");
+            }
+            refresh_active_composition_recipe();
+        }
+        // F3: explicit composition cycle (path + technique).
+        if (pin.toggle_front_face)
+        {
+            if (composition_cycle_order.empty() || !render_path_executor.has_recipes())
+            {
+                std::fprintf(stderr, "[shs] Render composition cycle unavailable.\n");
+            }
+            else if (!apply_render_composition_by_index(active_composition_index + 1u))
+            {
+                std::fprintf(stderr, "[shs] Render composition cycle failed. Falling back.\n");
+                (void)apply_fallback_technique_pipeline("fallback");
+                refresh_active_composition_recipe();
+            }
+        }
         // F4: PBR <-> BlinnPhong солих.
         if (pin.toggle_shading_model)
         {
-            fp.shading_model = (fp.shading_model == shs::ShadingModel::PBRMetalRough)
-                ? shs::ShadingModel::BlinnPhong
-                : shs::ShadingModel::PBRMetalRough;
+            apply_render_technique_preset(
+                shs::next_render_technique_preset(render_technique_preset));
+            refresh_active_composition_recipe();
         }
-        // L: light shafts on/off.
-        if (pin.toggle_light_shafts) fp.pass.light_shafts.enable = !fp.pass.light_shafts.enable;
         // M: motion blur on/off.
         if (pin.toggle_motion_blur) fp.pass.motion_blur.enable = !fp.pass.motion_blur.enable;
         // F5: cubemap/procedural sky солих.
@@ -981,26 +1169,35 @@ int main()
         {
             const int fps = (int)std::lround((float)frames / fps_accum);
             const auto& graph_rep = pipeline.execution_report();
+            const size_t comp_total = composition_cycle_order.size();
+            const size_t comp_slot = comp_total > 0u
+                ? ((active_composition_index % comp_total) + 1u)
+                : 0u;
             std::string title = "HelloPassBasics | FPS: " + std::to_string(fps)
                 + " | backend: " + std::string(ctx.active_backend_name())
+                + " | path[F2]: " + render_path_name
+                + " | mode: " + shs::technique_mode_name(fp.technique.mode)
+                + " | comp[F3]: " + active_composition_recipe.name
+                + "(" + std::to_string((unsigned long long)comp_slot)
+                + "/" + std::to_string((unsigned long long)comp_total) + ")"
+                + " | path_state: " + ((render_path_plan_valid && render_path_configured) ? "ok" : "fallback")
+                + " | missing: " + std::to_string((unsigned long long)render_path_missing_passes.size())
                 + " | dbg[F1]: " + std::to_string((int)fp.debug_view)
                 + " | shade[F4]: " + (fp.shading_model == shs::ShadingModel::PBRMetalRough ? "PBR" : "Blinn")
                 + " | sky[F5]: " + (use_cubemap_sky ? "cubemap" : "procedural")
                 + " | follow[F6]: " + (follow_camera ? "on" : "off")
                 + " | ai: " + std::string(subaru_ai.state_name())
                 + "(" + std::to_string((int)std::lround(subaru_ai.state_progress() * 100.0f)) + "%)"
-                + " | shafts[L]: " + (fp.pass.light_shafts.enable ? "on" : "off")
                 + " | mblur[M]: " + (fp.pass.motion_blur.enable ? "on" : "off")
                 + " | graph: " + (graph_rep.valid ? "ok" : "err")
                 + "(w" + std::to_string((unsigned long long)graph_rep.warnings.size())
                 + "/e" + std::to_string((unsigned long long)graph_rep.errors.size()) + ")"
                 + " | logic: " + std::to_string((int)std::lround(logic_ms_accum / std::max(1, frames))) + "ms"
                 + " | render: " + std::to_string((int)std::lround(render_ms_accum / std::max(1, frames))) + "ms"
-                + " | pass(s/p/t/l/m): "
+                + " | pass(s/p/t/m): "
                 + std::to_string((int)std::lround(ctx.debug.ms_shadow)) + "/"
                 + std::to_string((int)std::lround(ctx.debug.ms_pbr)) + "/"
                 + std::to_string((int)std::lround(ctx.debug.ms_tonemap)) + "/"
-                + std::to_string((int)std::lround(ctx.debug.ms_shafts)) + "/"
                 + std::to_string((int)std::lround(ctx.debug.ms_motion_blur)) + "ms"
                 + " | vk-like(sub/task/stall): "
                 + std::to_string((unsigned long long)ctx.debug.vk_like_submissions) + "/"

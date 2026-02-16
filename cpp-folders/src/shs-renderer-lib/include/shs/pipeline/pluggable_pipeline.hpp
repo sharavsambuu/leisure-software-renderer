@@ -15,13 +15,14 @@
 #include <utility>
 #include <vector>
 #include <array>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <chrono>
-#include <cstring>
 #include <sstream>
 
 #include "shs/pipeline/frame_graph.hpp"
+#include "shs/pipeline/pass_id.hpp"
 #include "shs/pipeline/pass_registry.hpp"
 #include "shs/pipeline/render_path_compiler.hpp"
 #include "shs/pipeline/render_pass.hpp"
@@ -60,6 +61,15 @@ namespace shs
             return true;
         }
 
+        bool add_pass_from_registry(const PassFactoryRegistry& registry, PassId id)
+        {
+            if (!pass_id_is_standard(id)) return false;
+            auto pass = registry.create(id);
+            if (!pass) return false;
+            add_pass_instance(std::move(pass));
+            return true;
+        }
+
         bool configure_for_technique(const PassFactoryRegistry& registry, TechniqueMode mode, std::vector<std::string>* out_missing_ids = nullptr)
         {
             const TechniqueProfile profile = make_default_technique_profile(mode);
@@ -75,17 +85,19 @@ namespace shs
             bool ok = true;
             for (const auto& e : profile.passes)
             {
-                auto p = registry.create(e.id);
+                const PassId pass_id = pass_id_is_standard(e.pass_id) ? e.pass_id : parse_pass_id(e.id);
+                const std::string missing_id = pass_id_is_standard(pass_id) ? pass_id_string(pass_id) : e.id;
+                auto p = pass_id_is_standard(pass_id) ? registry.create(pass_id) : registry.create(e.id);
                 if (!p)
                 {
                     if (e.required) ok = false;
-                    if (out_missing_ids) out_missing_ids->push_back(e.id);
+                    if (out_missing_ids) out_missing_ids->push_back(missing_id);
                     continue;
                 }
                 if (!p->supports_technique_mode(profile.mode))
                 {
                     if (e.required) ok = false;
-                    if (out_missing_ids) out_missing_ids->push_back(e.id);
+                    if (out_missing_ids) out_missing_ids->push_back(missing_id);
                     continue;
                 }
                 add_pass_instance(std::move(p));
@@ -105,17 +117,19 @@ namespace shs
             bool ok = plan.valid;
             for (const auto& entry : plan.pass_chain)
             {
-                auto p = registry.create(entry.id);
+                const PassId pass_id = pass_id_is_standard(entry.pass_id) ? entry.pass_id : parse_pass_id(entry.id);
+                const std::string missing_id = pass_id_is_standard(pass_id) ? pass_id_string(pass_id) : entry.id;
+                auto p = pass_id_is_standard(pass_id) ? registry.create(pass_id) : registry.create(entry.id);
                 if (!p)
                 {
                     if (entry.required) ok = false;
-                    if (out_missing_ids) out_missing_ids->push_back(entry.id);
+                    if (out_missing_ids) out_missing_ids->push_back(missing_id);
                     continue;
                 }
                 if (!p->supports_technique_mode(plan.technique_mode))
                 {
                     if (entry.required) ok = false;
-                    if (out_missing_ids) out_missing_ids->push_back(entry.id);
+                    if (out_missing_ids) out_missing_ids->push_back(missing_id);
                     continue;
                 }
                 add_pass_instance(std::move(p));
@@ -155,7 +169,40 @@ namespace shs
             return nullptr;
         }
 
+        IRenderPass* find(PassId pass_id)
+        {
+            if (!pass_id_is_standard(pass_id)) return nullptr;
+            for (auto& p : passes_)
+            {
+                if (!p || !p->id()) continue;
+                if (parse_pass_id(p->id()) == pass_id) return p.get();
+            }
+            return nullptr;
+        }
+
+        const IRenderPass* find(PassId pass_id) const
+        {
+            if (!pass_id_is_standard(pass_id)) return nullptr;
+            for (const auto& p : passes_)
+            {
+                if (!p || !p->id()) continue;
+                if (parse_pass_id(p->id()) == pass_id) return p.get();
+            }
+            return nullptr;
+        }
+
         bool set_enabled(const std::string& pass_id, bool enabled)
+        {
+            if (auto* p = find(pass_id))
+            {
+                p->set_enabled(enabled);
+                graph_dirty_ = true;
+                return true;
+            }
+            return false;
+        }
+
+        bool set_enabled(PassId pass_id, bool enabled)
         {
             if (auto* p = find(pass_id))
             {
@@ -309,16 +356,17 @@ namespace shs
                 }
 
                 const char* id = p->id();
+                const PassId pass_id = parse_pass_id(id ? id : "");
                 auto run_pass = [&ctx, &scene, &fp_eval, &rtr, p, id]() {
                     const auto t0 = std::chrono::steady_clock::now();
                     p->execute(ctx, scene, fp_eval, rtr);
                     const float ms = std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - t0).count();
-                    if (!id) return;
-                    if (std::strcmp(id, "shadow_map") == 0) ctx.debug.ms_shadow = ms;
-                    else if (std::strcmp(id, "pbr_forward") == 0 || std::strcmp(id, "pbr_forward_plus") == 0) ctx.debug.ms_pbr = ms;
-                    else if (std::strcmp(id, "tonemap") == 0) ctx.debug.ms_tonemap = ms;
-                    else if (std::strcmp(id, "light_shafts") == 0) ctx.debug.ms_shafts = ms;
-                    else if (std::strcmp(id, "motion_blur") == 0) ctx.debug.ms_motion_blur = ms;
+                    const PassId pid = parse_pass_id(id ? id : "");
+                    if (pid == PassId::ShadowMap) ctx.debug.ms_shadow = ms;
+                    else if (pid == PassId::PBRForward || pid == PassId::PBRForwardPlus || pid == PassId::PBRForwardClustered) ctx.debug.ms_pbr = ms;
+                    else if (pid == PassId::Tonemap) ctx.debug.ms_tonemap = ms;
+                    else if (id && std::string_view(id) == "light_shafts") ctx.debug.ms_shafts = ms;
+                    else if (pid == PassId::MotionBlur) ctx.debug.ms_motion_blur = ms;
                 };
 
                 if (emulate_vk)
@@ -326,7 +374,7 @@ namespace shs
                     VulkanLikeSubmission sub{};
                     sub.queue = p->preferred_queue();
                     sub.allow_parallel_tasks = fp_eval.hybrid.emulate_parallel_recording;
-                    sub.label = id ? id : "unnamed";
+                    sub.label = pass_id_is_standard(pass_id) ? pass_id_name(pass_id) : (id ? id : "unnamed");
                     sub.tasks.push_back(VulkanLikeTask{sub.label, run_pass});
 
                     const size_t qi = (size_t)sub.queue;
@@ -537,7 +585,7 @@ namespace shs
                 (void)push_contract_issue(report, oss.str(), true);
             }
 
-            std::unordered_set<PassSemantic, PassSemanticHash> produced_semantics{};
+            std::unordered_map<PassSemantic, PassSemanticRef, PassSemanticHash> produced_semantics{};
             const bool light_culling_enabled =
                 fp.technique.light_culling ||
                 fp.technique.mode == TechniqueMode::ForwardPlus ||
@@ -600,13 +648,39 @@ namespace shs
 
                 for (const PassSemanticRef& sref : contract.semantics)
                 {
-                    if (contract_reads_semantic(sref) && produced_semantics.find(sref.semantic) == produced_semantics.end())
+                    if (!contract_reads_semantic(sref)) continue;
+
+                    const auto it_produced = produced_semantics.find(sref.semantic);
+                    if (it_produced == produced_semantics.end())
                     {
                         std::ostringstream oss;
                         oss << "Pass '" << id << "' reads semantic '" << pass_semantic_name(sref.semantic)
                             << "' without an earlier producer in this pipeline.";
                         if (!sref.alias.empty()) oss << " Alias='" << sref.alias << "'.";
                         (void)push_contract_issue(report, oss.str(), false);
+                        continue;
+                    }
+
+                    const PassSemanticRef& prod = it_produced->second;
+                    if (prod.space != sref.space || prod.encoding != sref.encoding)
+                    {
+                        std::ostringstream oss;
+                        oss << "Pass '" << id << "' reads semantic '" << pass_semantic_name(sref.semantic)
+                            << "' with representation mismatch. Produced("
+                            << pass_semantic_space_name(prod.space) << ", "
+                            << pass_semantic_encoding_name(prod.encoding) << ") vs Read("
+                            << pass_semantic_space_name(sref.space) << ", "
+                            << pass_semantic_encoding_name(sref.encoding) << ").";
+                        (void)push_contract_issue(report, oss.str(), true);
+                    }
+                    if (prod.lifetime != sref.lifetime)
+                    {
+                        std::ostringstream oss;
+                        oss << "Pass '" << id << "' reads semantic '" << pass_semantic_name(sref.semantic)
+                            << "' with lifetime mismatch. Produced("
+                            << pass_semantic_lifetime_name(prod.lifetime) << ") vs Read("
+                            << pass_semantic_lifetime_name(sref.lifetime) << ").";
+                        (void)push_contract_issue(report, oss.str(), true);
                     }
                 }
 
@@ -614,7 +688,7 @@ namespace shs
                 {
                     if (contract_writes_semantic(sref))
                     {
-                        produced_semantics.insert(sref.semantic);
+                        produced_semantics[sref.semantic] = sref;
                     }
                 }
             }

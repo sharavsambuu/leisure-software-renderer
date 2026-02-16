@@ -9,7 +9,7 @@ layout(set = 0, binding = 0) uniform CameraUBO
     vec4 sun_dir_intensity;
     uvec4 screen_tile_lightcount; // x: width, y: height, z: tiles_x, w: light_count
     uvec4 params;                 // x: tiles_y, y: max_per_tile, z: tile_size, w: culling_mode
-    uvec4 culling_params;         // x: cluster_z_slices
+    uvec4 culling_params;         // x: cluster_z_slices, y: lighting_technique, z: semantic_debug_mode, w: semantic_id
     vec4 depth_params;            // x: near, y: far
     vec4 exposure_gamma;          // x: exposure, y: gamma
     mat4 sun_shadow_view_proj;

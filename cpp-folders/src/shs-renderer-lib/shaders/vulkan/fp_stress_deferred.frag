@@ -20,6 +20,7 @@ layout(set = 0, binding = 0) uniform CameraUBO
     mat4 sun_shadow_view_proj;
     vec4 sun_shadow_params;       // x: strength, y: bias_const, z: bias_slope, w: pcf_radius
     vec4 sun_shadow_filter;       // x: pcf_step, y: enabled
+    vec4 temporal_params;         // x: temporal_enable, y: history_valid, z: history_blend
 } ubo;
 
 struct ShadowLightGPU
@@ -54,16 +55,12 @@ layout(set = 0, binding = 9, std430) readonly buffer ShadowBuffer
     ShadowLightGPU shadow_lights[];
 } shadow_buffer;
 
-layout(push_constant) uniform DrawPush
-{
-    mat4 model;
-    vec4 base_color;
-    vec4 material_params; // x: metallic, y: roughness, z: ao
-} pc;
-
-layout(location = 0) in vec3 v_world_pos;
-layout(location = 1) in vec3 v_normal_ws;
-layout(location = 2) in vec3 v_base_color;
+layout(set = 1, binding = 0) uniform sampler2D u_gbuffer_albedo;
+layout(set = 1, binding = 1) uniform sampler2D u_gbuffer_normal;
+layout(set = 1, binding = 2) uniform sampler2D u_gbuffer_material;
+layout(set = 1, binding = 3) uniform sampler2D u_gbuffer_world_pos;
+layout(set = 1, binding = 4) uniform sampler2D u_history_color;
+layout(set = 1, binding = 5) uniform sampler2D u_ssao;
 
 layout(location = 0) out vec4 out_color;
 
@@ -251,13 +248,13 @@ float sample_shadow_pcf_2d_array(
     return (cnt > 0.0) ? (lit / cnt) : 1.0;
 }
 
-float eval_directional_shadow(vec3 N, vec3 L)
+float eval_directional_shadow(vec3 world_pos, vec3 N, vec3 L)
 {
     if (ubo.sun_shadow_filter.y < 0.5) return 1.0;
 
     vec2 uv = vec2(0.0);
     float z01 = 0.0;
-    if (!project_shadow_uvz(ubo.sun_shadow_view_proj, v_world_pos, uv, z01)) return 1.0;
+    if (!project_shadow_uvz(ubo.sun_shadow_view_proj, world_pos, uv, z01)) return 1.0;
     if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 || z01 <= 0.0 || z01 >= 1.0) return 1.0;
 
     int radius = int(max(0.0, ubo.sun_shadow_params.w));
@@ -280,12 +277,12 @@ void point_shadow_face_uv(vec3 dir, out uint face, out vec2 uv, out float view_d
         view_depth_major = ad.x;
         if (dir.x >= 0.0)
         {
-            face = 0u; // +X
+            face = 0u;
             uv = vec2(-dir.z, -dir.y) / ad.x;
         }
         else
         {
-            face = 1u; // -X
+            face = 1u;
             uv = vec2(dir.z, -dir.y) / ad.x;
         }
     }
@@ -294,12 +291,12 @@ void point_shadow_face_uv(vec3 dir, out uint face, out vec2 uv, out float view_d
         view_depth_major = ad.y;
         if (dir.y >= 0.0)
         {
-            face = 2u; // +Y
+            face = 2u;
             uv = vec2(dir.x, dir.z) / ad.y;
         }
         else
         {
-            face = 3u; // -Y
+            face = 3u;
             uv = vec2(dir.x, -dir.z) / ad.y;
         }
     }
@@ -308,12 +305,12 @@ void point_shadow_face_uv(vec3 dir, out uint face, out vec2 uv, out float view_d
         view_depth_major = ad.z;
         if (dir.z >= 0.0)
         {
-            face = 4u; // +Z
+            face = 4u;
             uv = vec2(dir.x, -dir.y) / ad.z;
         }
         else
         {
-            face = 5u; // -Z
+            face = 5u;
             uv = vec2(-dir.x, -dir.y) / ad.z;
         }
     }
@@ -321,7 +318,7 @@ void point_shadow_face_uv(vec3 dir, out uint face, out vec2 uv, out float view_d
     uv = uv * 0.5 + 0.5;
 }
 
-float eval_local_shadow(uint idx, vec3 N, vec3 L)
+float eval_local_shadow(uint idx, vec3 world_pos, vec3 N, vec3 L)
 {
     CullingLightGPU light = light_buffer.lights[idx];
     if ((light.type_shape_flags.z & SHS_LIGHT_FLAG_AFFECTS_SHADOWS) == 0u) return 1.0;
@@ -341,7 +338,7 @@ float eval_local_shadow(uint idx, vec3 N, vec3 L)
     {
         vec2 uv = vec2(0.0);
         float z01 = 0.0;
-        if (!project_shadow_uvz(s.light_view_proj, v_world_pos, uv, z01)) return 1.0;
+        if (!project_shadow_uvz(s.light_view_proj, world_pos, uv, z01)) return 1.0;
         if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 || z01 <= 0.0 || z01 >= 1.0) return 1.0;
         float layer = float(s.meta.y);
         float vis = sample_shadow_pcf_2d_array(u_local_shadow_map, uv, layer, z01 - bias, radius, pcf_step);
@@ -350,7 +347,7 @@ float eval_local_shadow(uint idx, vec3 N, vec3 L)
 
     if (tech == SHADOW_TECH_POINT)
     {
-        vec3 rel = v_world_pos - s.position_range.xyz;
+        vec3 rel = world_pos - s.position_range.xyz;
         float rel_len = length(rel);
         float range = max(s.position_range.w, 0.1);
         if (rel_len <= 1e-4 || rel_len >= range) return 1.0;
@@ -387,7 +384,7 @@ float eval_local_shadow(uint idx, vec3 N, vec3 L)
     return 1.0;
 }
 
-vec3 eval_local_light(uint idx, vec3 N, vec3 V, vec3 albedo, float metallic, float roughness, uint lighting_technique)
+vec3 eval_local_light(uint idx, vec3 world_pos, vec3 N, vec3 V, vec3 albedo, float metallic, float roughness, uint lighting_technique)
 {
     CullingLightGPU light = light_buffer.lights[idx];
     uint light_type = light.type_shape_flags.x;
@@ -404,7 +401,7 @@ vec3 eval_local_light(uint idx, vec3 N, vec3 V, vec3 albedo, float metallic, flo
 
     vec3 light_sample_pos = light.position_range.xyz;
     float range = max(light.position_range.w, 0.001);
-    vec3 local_to_light = light_sample_pos - v_world_pos;
+    vec3 local_to_light = light_sample_pos - world_pos;
     float dist = length(local_to_light);
     float rect_forward = 0.0;
 
@@ -415,10 +412,8 @@ vec3 eval_local_light(uint idx, vec3 N, vec3 V, vec3 albedo, float metallic, flo
         vec3 emit_dir = normalize(light.direction_spot.xyz);
         float hx = max(light.up_shape_x.w, 1e-4);
         float hy = max(light.shape_attenuation.x, 1e-4);
-        vec3 rel = v_world_pos - light.position_range.xyz;
+        vec3 rel = world_pos - light.position_range.xyz;
 
-        // Keep rect-area influence in front of the emitter and inside its
-        // rounded prism distance bound (rect face dilated by range).
         rect_forward = dot(rel, emit_dir);
         if (rect_forward <= 1e-4 || rect_forward >= range) return vec3(0.0);
 
@@ -433,7 +428,7 @@ vec3 eval_local_light(uint idx, vec3 N, vec3 V, vec3 albedo, float metallic, flo
         if (rounded_prism_dist >= range) return vec3(0.0);
 
         light_sample_pos = light.position_range.xyz + right * x + up * y;
-        local_to_light = light_sample_pos - v_world_pos;
+        local_to_light = light_sample_pos - world_pos;
         dist = length(local_to_light);
     }
     else if (light_type == SHS_LIGHT_TYPE_TUBE_AREA)
@@ -444,9 +439,9 @@ vec3 eval_local_light(uint idx, vec3 N, vec3 V, vec3 albedo, float metallic, flo
         vec3 p1 = light.position_range.xyz + axis * half_len;
         vec3 seg = p1 - p0;
         float seg_len2 = max(dot(seg, seg), 1e-6);
-        float u = clamp(dot(v_world_pos - p0, seg) / seg_len2, 0.0, 1.0);
+        float u = clamp(dot(world_pos - p0, seg) / seg_len2, 0.0, 1.0);
         light_sample_pos = p0 + seg * u;
-        local_to_light = light_sample_pos - v_world_pos;
+        local_to_light = light_sample_pos - world_pos;
         dist = length(local_to_light);
     }
 
@@ -486,7 +481,7 @@ vec3 eval_local_light(uint idx, vec3 N, vec3 V, vec3 albedo, float metallic, flo
         atten *= mix(0.65, 1.0, edge_soften);
     }
 
-    float shadow_vis = eval_local_shadow(idx, N, L);
+    float shadow_vis = eval_local_shadow(idx, world_pos, N, L);
     vec3 radiance = light.color_intensity.rgb * light.color_intensity.a * atten * shadow_vis;
     return eval_light_technique(lighting_technique, N, V, L, radiance, albedo, metallic, roughness);
 }
@@ -503,26 +498,37 @@ uint cluster_slice_from_view_depth(float view_depth, uint z_slices)
 
 void main()
 {
-    // material_params.w > 0.5 => unlit debug geometry (light volume visualization).
-    if (pc.material_params.w > 0.5)
+    vec2 inv_size = vec2(
+        1.0 / max(float(ubo.screen_tile_lightcount.x), 1.0),
+        1.0 / max(float(ubo.screen_tile_lightcount.y), 1.0));
+    vec2 uv = clamp(gl_FragCoord.xy * inv_size, vec2(0.0), vec2(1.0));
+
+    vec4 g_albedo = texture(u_gbuffer_albedo, uv);
+    vec4 g_normal = texture(u_gbuffer_normal, uv);
+    vec4 g_material = texture(u_gbuffer_material, uv);
+    vec4 g_world = texture(u_gbuffer_world_pos, uv);
+
+    if (g_world.w < 0.5)
     {
-        out_color = vec4(clamp(pc.base_color.rgb, vec3(0.0), vec3(1.0)), 1.0);
+        out_color = vec4(0.03, 0.035, 0.045, 1.0);
         return;
     }
 
-    vec3 albedo = v_base_color;
-    float metallic = clamp(pc.material_params.x, 0.0, 1.0);
-    float roughness = clamp(pc.material_params.y, 0.04, 1.0);
-    float ao = clamp(pc.material_params.z, 0.0, 1.0);
+    vec3 world_pos = g_world.xyz;
+    vec3 albedo = clamp(g_albedo.rgb, vec3(0.0), vec3(1.0));
+    vec3 N = normalize(g_normal.xyz);
+    float metallic = clamp(g_material.x, 0.0, 1.0);
+    float roughness = clamp(g_material.y, 0.04, 1.0);
+    float ao_material = clamp(g_material.z, 0.0, 1.0);
+    float ao_ssao = clamp(texture(u_ssao, uv).r, 0.0, 1.0);
+    float ao = clamp(ao_material * ao_ssao, 0.0, 1.0);
     uint lighting_technique = ubo.culling_params.y;
     uint semantic_debug = ubo.culling_params.z;
-
-    vec3 N = normalize(v_normal_ws);
-    vec3 V = normalize(ubo.camera_pos_time.xyz - v_world_pos);
+    vec3 V = normalize(ubo.camera_pos_time.xyz - world_pos);
 
     if (semantic_debug == SEMDBG_ALBEDO)
     {
-        out_color = vec4(clamp(albedo, vec3(0.0), vec3(1.0)), 1.0);
+        out_color = vec4(albedo, 1.0);
         return;
     }
     if (semantic_debug == SEMDBG_NORMAL)
@@ -534,7 +540,7 @@ void main()
     {
         float near_z = max(ubo.depth_params.x, 0.001);
         float far_z = max(ubo.depth_params.y, near_z + 0.01);
-        float view_z = max(near_z, (ubo.view * vec4(v_world_pos, 1.0)).z);
+        float view_z = max(near_z, (ubo.view * vec4(world_pos, 1.0)).z);
         float linear01 = clamp((view_z - near_z) / max(far_z - near_z, 1e-6), 0.0, 1.0);
         float v = 1.0 - linear01;
         out_color = vec4(vec3(v), 1.0);
@@ -542,7 +548,7 @@ void main()
     }
     if (semantic_debug == SEMDBG_MATERIAL)
     {
-        out_color = vec4(metallic, roughness, ao, 1.0);
+        out_color = vec4(metallic, roughness, ao_material, 1.0);
         return;
     }
     if (semantic_debug == SEMDBG_AO)
@@ -552,7 +558,6 @@ void main()
     }
     if (semantic_debug == SEMDBG_MOTION)
     {
-        // Motion vectors are not produced in this demo yet; keep a neutral marker.
         out_color = vec4(0.5, 0.5, 0.5, 1.0);
         return;
     }
@@ -573,7 +578,7 @@ void main()
         if (culling_mode == 3u)
         {
             uint z_slices = max(ubo.culling_params.x, 1u);
-            float view_depth = max(0.001, (ubo.view * vec4(v_world_pos, 1.0)).z);
+            float view_depth = max(0.001, (ubo.view * vec4(world_pos, 1.0)).z);
             uint zi = cluster_slice_from_view_depth(view_depth, z_slices);
             list_id = (zi * tiles_y + tile.y) * tiles_x + tile.x;
         }
@@ -587,7 +592,7 @@ void main()
     }
 
     vec3 Ld = normalize(-ubo.sun_dir_intensity.xyz);
-    float sun_vis = eval_directional_shadow(N, Ld);
+    float sun_vis = eval_directional_shadow(world_pos, N, Ld);
     if (semantic_debug == SEMDBG_SHADOW)
     {
         out_color = vec4(vec3(sun_vis), 1.0);
@@ -616,21 +621,18 @@ void main()
         if (culling_mode == 3u)
         {
             uint z_slices = max(ubo.culling_params.x, 1u);
-            // SHS uses LH view space (+Z forward), so use +view.z for slice mapping.
-            float view_depth = max(0.001, (ubo.view * vec4(v_world_pos, 1.0)).z);
+            float view_depth = max(0.001, (ubo.view * vec4(world_pos, 1.0)).z);
             uint zi = cluster_slice_from_view_depth(view_depth, z_slices);
             list_id = (zi * tiles_y + tile.y) * tiles_x + tile.x;
         }
         uint count = min(tile_counts[list_id], max_per_tile);
         uint base = list_id * max_per_tile;
-        // If tile list saturates, fall back to full light loop to avoid blocky popping
-        // from truncated tile lists in high-density stress scenarios.
         if (count >= max_per_tile)
         {
-                for (uint i = 0u; i < light_count; ++i)
-                {
-                    color += eval_local_light(i, N, V, albedo, metallic, roughness, lighting_technique);
-                }
+            for (uint i = 0u; i < light_count; ++i)
+            {
+                color += eval_local_light(i, world_pos, N, V, albedo, metallic, roughness, lighting_technique);
+            }
         }
         else
         {
@@ -638,7 +640,7 @@ void main()
             {
                 uint idx = tile_indices[base + i];
                 if (idx >= light_count) continue;
-                color += eval_local_light(idx, N, V, albedo, metallic, roughness, lighting_technique);
+                color += eval_local_light(idx, world_pos, N, V, albedo, metallic, roughness, lighting_technique);
             }
         }
     }
@@ -646,7 +648,7 @@ void main()
     {
         for (uint i = 0u; i < light_count; ++i)
         {
-            color += eval_local_light(i, N, V, albedo, metallic, roughness, lighting_technique);
+            color += eval_local_light(i, world_pos, N, V, albedo, metallic, roughness, lighting_technique);
         }
     }
 
@@ -661,6 +663,12 @@ void main()
     float inv_gamma = 1.0 / max(ubo.exposure_gamma.y, 0.001);
     vec3 mapped = (color * exposure) / (vec3(1.0) + color * exposure);
     mapped = pow(mapped, vec3(inv_gamma));
+    if (ubo.temporal_params.x > 0.5 && ubo.temporal_params.y > 0.5)
+    {
+        vec3 history = texture(u_history_color, uv).rgb;
+        float blend = clamp(ubo.temporal_params.z, 0.0, 0.95);
+        mapped = mix(mapped, history, blend);
+    }
     if (semantic_debug == SEMDBG_COLOR_LDR)
     {
         out_color = vec4(clamp(mapped, vec3(0.0), vec3(1.0)), 1.0);

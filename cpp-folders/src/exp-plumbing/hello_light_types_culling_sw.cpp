@@ -16,6 +16,7 @@
 #include <shs/camera/camera_math.hpp>
 #include <shs/camera/convention.hpp>
 #include <shs/core/context.hpp>
+#include <shs/core/units.hpp>
 #include <shs/geometry/culling_software.hpp>
 #include <shs/geometry/culling_runtime.hpp>
 #include <shs/geometry/jolt_culling.hpp>
@@ -46,11 +47,13 @@ constexpr int kLightOccH = 180;
 constexpr uint32_t kMaxLightsPerObject = kLightSelectionCapacity;
 constexpr uint32_t kLightBinTileSize = 32u;
 constexpr uint32_t kLightClusterDepthSlices = 16u;
-constexpr float kCameraNear = 0.1f;
-constexpr float kCameraFar = 1000.0f;
+constexpr float kCameraNear = 0.05f;
+constexpr float kCameraFar = 300.0f;
 constexpr float kAmbientBase = 0.22f;
 constexpr float kAmbientHemi = 0.12f;
 constexpr bool kLightOcclusionDefault = false;
+constexpr float kDemoFloorHalfExtentM = 24.0f * units::meter;
+constexpr float kDemoFloorVisualSizeM = 48.0f * units::meter;
 
 struct ShapeInstance
 {
@@ -69,10 +72,10 @@ struct ShapeInstance
 
 struct FreeCamera
 {
-    glm::vec3 pos{0.0f, 14.0f, -28.0f};
+    glm::vec3 pos{0.0f, 4.2f, -15.5f};
     float yaw = glm::half_pi<float>();
-    float pitch = -0.25f;
-    float move_speed = 20.0f;
+    float pitch = -0.18f;
+    float move_speed = 7.0f;
     float look_speed = 0.003f;
     static constexpr float kMouseSpikeThreshold = 180.0f;
     static constexpr float kMouseDeltaClamp = 70.0f;
@@ -595,8 +598,8 @@ int main()
 
     {
         ShapeInstance floor{};
-        floor.shape.shape = jolt::make_box(glm::vec3(90.0f, 0.1f, 90.0f));
-        floor.base_pos = glm::vec3(0.0f, -0.2f, 0.0f);
+        floor.shape.shape = jolt::make_box(glm::vec3(kDemoFloorHalfExtentM, 0.12f * units::meter, kDemoFloorHalfExtentM));
+        floor.base_pos = glm::vec3(0.0f, -0.12f * units::meter, 0.0f);
         floor.base_rot = glm::vec3(0.0f);
         floor.model = compose_model(floor.base_pos, floor.base_rot);
         floor.shape.transform = jolt::to_jph(floor.model);
@@ -605,7 +608,7 @@ int main()
         floor.animated = false;
 
         floor.mesh_index = static_cast<uint32_t>(mesh_library.size());
-        mesh_library.push_back(make_tessellated_floor_mesh(90.0f, 80));
+        mesh_library.push_back(make_tessellated_floor_mesh(kDemoFloorVisualSizeM, 64));
         mesh_local_aabbs.push_back(compute_local_aabb_from_debug_mesh(mesh_library.back()));
         instances.push_back(floor);
     }
@@ -629,11 +632,11 @@ int main()
     const int layer_count = 2;
     const int rows_per_layer = 6;
     const int cols_per_row = 8;
-    const float col_spacing_x = 5.1f;
-    const float row_spacing_z = 4.8f;
-    const float layer_spacing_z = 19.0f;
-    const float base_y = 1.3f;
-    const float layer_y_step = 0.85f;
+    const float col_spacing_x = 2.6f * units::meter;
+    const float row_spacing_z = 2.4f * units::meter;
+    const float layer_spacing_z = 9.0f * units::meter;
+    const float base_y = 0.9f * units::meter;
+    const float layer_y_step = 0.55f * units::meter;
 
     for (int layer = 0; layer < layer_count; ++layer)
     {
@@ -647,7 +650,7 @@ int main()
                 const uint32_t logical_idx =
                     static_cast<uint32_t>(layer * rows_per_layer * cols_per_row + row * cols_per_row + col);
                 const DemoShapeKind kind = shape_kinds[(logical_idx * 7u + 3u) % shape_kinds.size()];
-                const float scale = 0.58f + 0.90f * pseudo_random01(logical_idx * 1664525u + 1013904223u);
+                const float scale = 0.42f + 0.52f * pseudo_random01(logical_idx * 1664525u + 1013904223u);
 
                 ShapeInstance inst{};
                 inst.shape.shape = make_scaled_demo_shape(kind, scale);
@@ -657,16 +660,16 @@ int main()
 
                 inst.base_pos = glm::vec3(
                     (-0.5f * static_cast<float>(cols_per_row - 1) + static_cast<float>(col)) * col_spacing_x + zig,
-                    base_y + layer_y_step * static_cast<float>(layer) + 0.22f * static_cast<float>(col % 3),
+                    base_y + layer_y_step * static_cast<float>(layer) + 0.18f * units::meter * static_cast<float>(col % 3),
                     row_z);
                 inst.base_rot = glm::vec3(
                     0.21f * pseudo_random01(logical_idx * 279470273u + 1u),
                     0.35f * pseudo_random01(logical_idx * 2246822519u + 7u),
                     0.19f * pseudo_random01(logical_idx * 3266489917u + 11u));
                 inst.angular_vel = glm::vec3(
-                    0.16f + 0.20f * pseudo_random01(logical_idx * 747796405u + 13u),
-                    0.14f + 0.24f * pseudo_random01(logical_idx * 2891336453u + 17u),
-                    0.12f + 0.18f * pseudo_random01(logical_idx * 1181783497u + 19u));
+                    0.10f + 0.14f * pseudo_random01(logical_idx * 747796405u + 13u),
+                    0.09f + 0.16f * pseudo_random01(logical_idx * 2891336453u + 17u),
+                    0.08f + 0.12f * pseudo_random01(logical_idx * 1181783497u + 19u));
                 inst.model = compose_model(inst.base_pos, inst.base_rot);
                 inst.shape.transform = jolt::to_jph(inst.model);
                 inst.shape.stable_id = next_shape_id++;
@@ -688,7 +691,7 @@ int main()
 
     const AABB dynamic_scene_bounds = compute_scene_bounds(instances, mesh_local_aabbs, true);
     const glm::vec3 dynamic_center = dynamic_scene_bounds.center();
-    const glm::vec3 dynamic_extent = glm::max(dynamic_scene_bounds.extent(), glm::vec3(10.0f));
+    const glm::vec3 dynamic_extent = glm::max(dynamic_scene_bounds.extent(), glm::vec3(6.0f * units::meter));
 
     const PointLightModel point_model{};
     const SpotLightModel spot_model{};
@@ -736,35 +739,37 @@ int main()
             light.props.color = light_palette[(light_index * 3u + type_i) % light_palette.size()] * (0.82f + 0.30f * r0);
             light.props.flags = LightFlagsDefault;
 
-            switch (light.model->type())
-            {
+                switch (light.model->type())
+                {
                 case LightType::Point:
-                    light.props.range = 8.5f + 5.0f * r1;
-                    light.props.intensity = 1.9f + 1.1f * r2;
+                    light.props.range = 3.5f * units::meter + (2.0f * units::meter) * r1;
+                    light.props.intensity = 2.0f + 1.0f * r2;
                     light.props.attenuation_model = LightAttenuationModel::Smooth;
                     light.props.attenuation_power = 1.25f;
                     break;
                 case LightType::Spot:
-                    light.props.range = 11.0f + 6.0f * r1;
-                    light.props.intensity = 2.3f + 1.4f * r2;
-                    light.props.inner_angle_rad = glm::radians(11.0f + 8.0f * r3);
-                    light.props.outer_angle_rad = light.props.inner_angle_rad + glm::radians(10.0f + 14.0f * r4);
+                    light.props.range = 5.0f * units::meter + (3.0f * units::meter) * r1;
+                    light.props.intensity = 2.6f + 1.2f * r2;
+                    light.props.inner_angle_rad = glm::radians(12.0f + 8.0f * r3);
+                    light.props.outer_angle_rad = light.props.inner_angle_rad + glm::radians(8.0f + 12.0f * r4);
                     light.props.attenuation_model = LightAttenuationModel::Smooth;
                     light.props.attenuation_power = 1.30f;
                     break;
                 case LightType::RectArea:
-                    light.props.range = 12.0f + 7.0f * r1;
-                    light.props.intensity = 1.6f + 1.0f * r2;
-                    light.props.rect_half_extents = glm::vec2(0.65f + 0.65f * r3, 0.35f + 0.45f * r4);
+                    light.props.range = 4.5f * units::meter + (2.5f * units::meter) * r1;
+                    light.props.intensity = 1.9f + 0.8f * r2;
+                    light.props.rect_half_extents = glm::vec2(
+                        0.45f * units::meter + (0.50f * units::meter) * r3,
+                        0.25f * units::meter + (0.30f * units::meter) * r4);
                     light.props.attenuation_model = LightAttenuationModel::InverseSquare;
                     light.props.attenuation_bias = 0.16f;
                     light.props.attenuation_power = 1.0f;
                     break;
                 case LightType::TubeArea:
-                    light.props.range = 11.0f + 6.0f * r1;
-                    light.props.intensity = 1.7f + 1.1f * r2;
-                    light.props.tube_half_length = 0.95f + 1.00f * r3;
-                    light.props.tube_radius = 0.20f + 0.25f * r4;
+                    light.props.range = 4.0f * units::meter + (2.8f * units::meter) * r1;
+                    light.props.intensity = 2.0f + 0.9f * r2;
+                    light.props.tube_half_length = 0.55f * units::meter + (0.60f * units::meter) * r3;
+                    light.props.tube_radius = 0.10f * units::meter + (0.18f * units::meter) * r4;
                     light.props.attenuation_model = LightAttenuationModel::InverseSquare;
                     light.props.attenuation_bias = 0.14f;
                     light.props.attenuation_power = 1.0f;
@@ -774,22 +779,22 @@ int main()
             }
 
             light.motion.orbit_center = dynamic_center + glm::vec3(
-                (r0 - 0.5f) * dynamic_extent.x * 0.75f,
-                2.4f + 3.4f * r1,
-                (r2 - 0.5f) * dynamic_extent.z * 0.75f);
+                (r0 - 0.5f) * dynamic_extent.x * 0.50f,
+                1.5f * units::meter + (1.8f * units::meter) * r1,
+                (r2 - 0.5f) * dynamic_extent.z * 0.50f);
             light.motion.aim_center = dynamic_center + glm::vec3(
-                (r3 - 0.5f) * dynamic_extent.x * 0.35f,
-                1.2f + 1.2f * r4,
-                (r5 - 0.5f) * dynamic_extent.z * 0.35f);
+                (r3 - 0.5f) * dynamic_extent.x * 0.25f,
+                0.9f * units::meter + (0.7f * units::meter) * r4,
+                (r5 - 0.5f) * dynamic_extent.z * 0.25f);
             light.motion.orbit_axis = normalize_or(glm::vec3(r2 - 0.5f, 1.0f, r3 - 0.5f), glm::vec3(0.0f, 1.0f, 0.0f));
             light.motion.radial_axis = normalize_or(glm::vec3(r4 - 0.5f, 0.2f * (r0 - 0.5f), r5 - 0.5f), glm::vec3(1.0f, 0.0f, 0.0f));
-            light.motion.orbit_radius = 3.8f + 7.2f * r4;
-            light.motion.orbit_speed = 0.22f + 0.88f * r5;
+            light.motion.orbit_radius = 1.4f * units::meter + (3.5f * units::meter) * r4;
+            light.motion.orbit_speed = 0.25f + 0.65f * r5;
             light.motion.orbit_phase = glm::two_pi<float>() * r3;
-            light.motion.vertical_amplitude = 0.4f + 1.6f * r2;
-            light.motion.vertical_speed = 0.8f + 1.4f * r1;
-            light.motion.direction_lead = 0.18f + 0.54f * r0;
-            light.motion.vertical_aim_bias = -0.08f - 0.18f * r5;
+            light.motion.vertical_amplitude = 0.15f * units::meter + (0.55f * units::meter) * r2;
+            light.motion.vertical_speed = 0.7f + 1.1f * r1;
+            light.motion.direction_lead = 0.12f + 0.28f * r0;
+            light.motion.vertical_aim_bias = -0.04f * units::meter - (0.10f * units::meter) * r5;
 
             update_light_motion(light, 0.0f);
             light.volume_model = light.model->volume_model_matrix(light.props);

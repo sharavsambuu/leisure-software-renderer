@@ -10,6 +10,7 @@
 
 
 #include <string>
+#include <memory>
 #include <unordered_set>
 #include <vector>
 
@@ -35,6 +36,7 @@ namespace shs
     struct RenderPathCompiledPass
     {
         std::string id{};
+        PassId pass_id = PassId::Unknown;
         bool required = true;
     };
 
@@ -57,7 +59,7 @@ namespace shs
         profile.mode = plan.technique_mode;
         for (const auto& pass : plan.pass_chain)
         {
-            profile.passes.push_back(TechniquePassEntry{pass.id, pass.required});
+            profile.passes.push_back(TechniquePassEntry{pass.id, pass.pass_id, pass.required});
         }
         return profile;
     }
@@ -132,6 +134,12 @@ namespace shs
             const bool requires_occlusion = view_requires_occlusion || shadow_requires_occlusion;
             const bool allows_occlusion = view_allows_occlusion || shadow_allows_occlusion;
 
+            const auto resolve_entry_pass_id = [](const RenderPathPassEntry& entry) -> PassId
+            {
+                if (pass_id_is_standard(entry.pass_id)) return entry.pass_id;
+                return parse_pass_id(entry.id);
+            };
+
             if (rules_.require_occlusion_support_for_occlusion_culling)
             {
                 if (requires_occlusion && !caps.supports_occlusion_query)
@@ -146,26 +154,26 @@ namespace shs
                 }
             }
 
-            auto recipe_has_pass = [&recipe](const char* pass_id) -> bool
+            auto recipe_has_pass = [&recipe, &resolve_entry_pass_id](PassId pass_id) -> bool
             {
-                if (!pass_id || pass_id[0] == '\0') return false;
+                if (!pass_id_is_standard(pass_id)) return false;
                 for (const auto& entry : recipe.pass_chain)
                 {
-                    if (entry.id == pass_id) return true;
+                    if (resolve_entry_pass_id(entry) == pass_id) return true;
                 }
                 return false;
             };
 
             if (rules_.require_shadow_map_pass_when_shadows_enabled &&
                 recipe.wants_shadows &&
-                !recipe_has_pass("shadow_map"))
+                !recipe_has_pass(PassId::ShadowMap))
             {
                 push_error("Recipe enables shadows but pass chain has no 'shadow_map' pass.");
             }
 
             if (rules_.require_depth_prepass_for_occlusion &&
                 requires_occlusion &&
-                !recipe_has_pass("depth_prepass"))
+                !recipe_has_pass(PassId::DepthPrepass))
             {
                 push_error("Recipe requires occlusion culling but pass chain has no 'depth_prepass' pass.");
             }
@@ -175,29 +183,90 @@ namespace shs
             {
                 if (entry.id.empty())
                 {
-                    if (entry.required) push_error("Pass entry has empty id and is marked required.");
-                    else push_warning("Skipping optional pass entry with empty id.");
-                    continue;
+                    if (!pass_id_is_standard(entry.pass_id))
+                    {
+                        if (entry.required) push_error("Pass entry has empty id and is marked required.");
+                        else push_warning("Skipping optional pass entry with empty id.");
+                        continue;
+                    }
                 }
 
-                const auto insert_result = seen_pass_ids.insert(entry.id);
+                const PassId entry_pass_id = resolve_entry_pass_id(entry);
+                if (pass_id_is_standard(entry.pass_id) && !entry.id.empty())
+                {
+                    const PassId parsed_from_text = parse_pass_id(entry.id);
+                    if (pass_id_is_standard(parsed_from_text) && parsed_from_text != entry.pass_id)
+                    {
+                        push_warning(
+                            "Pass entry textual id '" + entry.id +
+                            "' does not match typed id '" + pass_id_string(entry.pass_id) +
+                            "'. Typed id is used.");
+                    }
+                }
+                const std::string canonical_id =
+                    pass_id_is_standard(entry_pass_id) ? pass_id_string(entry_pass_id) : entry.id;
+
+                const auto insert_result = seen_pass_ids.insert(canonical_id);
                 if (!insert_result.second)
                 {
-                    const std::string msg = "Duplicate pass id in recipe: '" + entry.id + "'.";
+                    const std::string msg = "Duplicate pass id in recipe: '" + canonical_id + "'.";
                     if (rules_.reject_duplicate_pass_ids) push_error(msg);
                     else push_warning(msg);
                     continue;
                 }
 
-                if (pass_registry && !pass_registry->has(entry.id))
+                if (!pass_registry)
                 {
-                    const std::string msg = "Pass id '" + entry.id + "' is not registered in PassFactoryRegistry.";
+                    plan.pass_chain.push_back(RenderPathCompiledPass{canonical_id, entry_pass_id, entry.required});
+                    continue;
+                }
+
+                const bool has_registered_pass =
+                    pass_id_is_standard(entry_pass_id)
+                        ? pass_registry->has(entry_pass_id)
+                        : pass_registry->has(canonical_id);
+                if (!has_registered_pass)
+                {
+                    const std::string msg = "Pass id '" + canonical_id + "' is not registered in PassFactoryRegistry.";
                     if (entry.required && rules_.reject_unknown_required_passes) push_error(msg);
                     else push_warning(msg);
                     continue;
                 }
 
-                plan.pass_chain.push_back(RenderPathCompiledPass{entry.id, entry.required});
+                std::unique_ptr<IRenderPass> pass_instance =
+                    pass_id_is_standard(entry_pass_id)
+                        ? pass_registry->create(entry_pass_id)
+                        : pass_registry->create(canonical_id);
+                if (!pass_instance)
+                {
+                    const std::string msg =
+                        "Pass id '" + canonical_id + "' is registered but factory returned null.";
+                    if (entry.required && rules_.reject_unknown_required_passes) push_error(msg);
+                    else push_warning(msg);
+                    continue;
+                }
+
+                if (!pass_instance->supports_backend(recipe.backend))
+                {
+                    const std::string msg =
+                        "Pass id '" + canonical_id + "' does not support backend '" +
+                        std::string(render_backend_type_name(recipe.backend)) + "'.";
+                    if (entry.required) push_error(msg);
+                    else push_warning(msg);
+                    continue;
+                }
+
+                if (!pass_instance->supports_technique_mode(recipe.technique_mode))
+                {
+                    const std::string msg =
+                        "Pass id '" + canonical_id + "' does not support technique mode '" +
+                        std::string(technique_mode_name(recipe.technique_mode)) + "'.";
+                    if (entry.required) push_error(msg);
+                    else push_warning(msg);
+                    continue;
+                }
+
+                plan.pass_chain.push_back(RenderPathCompiledPass{canonical_id, entry_pass_id, entry.required});
             }
 
             if (plan.pass_chain.empty() && rules_.reject_empty_pass_chain)

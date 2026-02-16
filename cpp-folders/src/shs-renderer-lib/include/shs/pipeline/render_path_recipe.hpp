@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "shs/frame/technique_mode.hpp"
+#include "shs/pipeline/pass_id.hpp"
 #include "shs/pipeline/render_path_runtime_state.hpp"
 #include "shs/rhi/core/backend.hpp"
 
@@ -89,8 +90,18 @@ namespace shs
     struct RenderPathPassEntry
     {
         std::string id{};
+        PassId pass_id = PassId::Unknown;
         bool required = true;
     };
+
+    inline RenderPathPassEntry make_render_path_pass_entry(PassId pass_id, bool required)
+    {
+        RenderPathPassEntry out{};
+        out.id = pass_id_string(pass_id);
+        out.pass_id = pass_id;
+        out.required = required;
+        return out;
+    }
 
     struct RenderPathRecipe
     {
@@ -105,6 +116,10 @@ namespace shs
 
         std::vector<RenderPathPassEntry> pass_chain{};
         RenderPathRuntimeState runtime_defaults{};
+
+        // Resource-layout knobs that should come from recipe/preset instead of demo constants.
+        uint32_t light_tile_size = 16u;
+        uint32_t cluster_z_slices = 16u;
 
         bool wants_shadows = true;
         bool strict_validation = true;
@@ -131,12 +146,12 @@ namespace shs
             recipe.render_technique = RenderPathRenderingTechnique::ForwardPlus;
             recipe.technique_mode = TechniqueMode::ForwardPlus;
             recipe.pass_chain = {
-                {"shadow_map", true},
-                {"depth_prepass", false},
-                {"light_culling", false},
-                {"pbr_forward_plus", true},
-                {"tonemap", true},
-                {"motion_blur", false}
+                make_render_path_pass_entry(PassId::ShadowMap, true),
+                make_render_path_pass_entry(PassId::DepthPrepass, false),
+                make_render_path_pass_entry(PassId::LightCulling, false),
+                make_render_path_pass_entry(PassId::PBRForwardPlus, true),
+                make_render_path_pass_entry(PassId::Tonemap, true),
+                make_render_path_pass_entry(PassId::MotionBlur, false)
             };
         }
         else
@@ -145,13 +160,12 @@ namespace shs
             recipe.render_technique = RenderPathRenderingTechnique::ForwardLit;
             recipe.technique_mode = TechniqueMode::Forward;
             recipe.pass_chain = {
-                {"shadow_map", true},
-                {"pbr_forward", true},
-                {"tonemap", true},
-                {"motion_blur", false}
+                make_render_path_pass_entry(PassId::ShadowMap, true),
+                make_render_path_pass_entry(PassId::PBRForward, true),
+                make_render_path_pass_entry(PassId::Tonemap, true),
+                make_render_path_pass_entry(PassId::MotionBlur, false)
             };
         }
         return recipe;
     }
 }
-

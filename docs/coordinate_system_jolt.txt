@@ -84,3 +84,23 @@ ConvexHull vertices:
 
 Scale:
     Both systems use identical units. No scale factor needed.
+
+
+=======================================================================
+Runtime Unit Convention (SHS + Jolt)
+=======================================================================
+
+Base runtime units:
+    distance = meter
+    mass     = kilogram
+    time     = second
+    angle    = radian
+
+Gravity in SHS world (+Y up):
+    (0, -9.81, 0) m/s^2
+
+Canonical unit constants/helpers:
+    cpp-folders/src/shs-renderer-lib/include/shs/core/units.hpp
+
+See also:
+    docs/units-convention.md

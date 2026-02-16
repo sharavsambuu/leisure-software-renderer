@@ -20,8 +20,8 @@ namespace shs
     class MoveCommand final : public ICommand
     {
     public:
-        MoveCommand(glm::vec3 local_dir, float units_per_sec)
-            : local_dir_(local_dir), speed_(units_per_sec)
+        MoveCommand(glm::vec3 local_dir, float meters_per_sec)
+            : local_dir_(local_dir), speed_mps_(meters_per_sec)
         {}
 
         void execute(CommandContext& ctx) override
@@ -31,12 +31,12 @@ namespace shs
             const glm::vec3 right = cam.right();
             const glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
             const glm::vec3 world_delta = right * local_dir_.x + up * local_dir_.y + fwd * local_dir_.z;
-            cam.pos += world_delta * (speed_ * ctx.dt);
+            cam.pos += world_delta * (speed_mps_ * ctx.dt);
         }
 
     private:
         glm::vec3 local_dir_{};
-        float speed_ = 0.0f;
+        float speed_mps_ = 0.0f;
     };
 
     class LookCommand final : public ICommand
@@ -87,4 +87,3 @@ namespace shs
         }
     };
 }
-

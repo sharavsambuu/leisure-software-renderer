@@ -31,6 +31,7 @@
 #include <Jolt/Physics/Collision/Shape/ConvexHullShape.h>
 #include <Jolt/Physics/Collision/Shape/TaperedCapsuleShape.h>
 
+#include "shs/core/units.hpp"
 #include "shs/geometry/jolt_adapter.hpp"
 #include "shs/resources/mesh.hpp"
 
@@ -39,6 +40,8 @@ namespace shs { struct SpotLight; struct RectAreaLight; struct TubeAreaLight; }
 
 namespace shs::jolt
 {
+    inline constexpr float kMinShapeExtentMeters = units::millimeter;
+
     // =========================================================================
     //  Basic shape factories
     //  Parameters are in SHS LH space. Shape intrinsic geometry is
@@ -47,37 +50,37 @@ namespace shs::jolt
 
     inline JPH::ShapeRefC make_sphere(float radius)
     {
-        return new JPH::SphereShape(std::max(radius, 0.001f));
+        return new JPH::SphereShape(std::max(radius, kMinShapeExtentMeters));
     }
 
     inline JPH::ShapeRefC make_box(const glm::vec3& half_extents)
     {
         return new JPH::BoxShape(JPH::Vec3(
-            std::max(half_extents.x, 0.001f),
-            std::max(half_extents.y, 0.001f),
-            std::max(half_extents.z, 0.001f)));
+            std::max(half_extents.x, kMinShapeExtentMeters),
+            std::max(half_extents.y, kMinShapeExtentMeters),
+            std::max(half_extents.z, kMinShapeExtentMeters)));
     }
 
     inline JPH::ShapeRefC make_capsule(float half_height, float radius)
     {
         return new JPH::CapsuleShape(
-            std::max(half_height, 0.001f),
-            std::max(radius, 0.001f));
+            std::max(half_height, kMinShapeExtentMeters),
+            std::max(radius, kMinShapeExtentMeters));
     }
 
     inline JPH::ShapeRefC make_cylinder(float half_height, float radius)
     {
         return new JPH::CylinderShape(
-            std::max(half_height, 0.001f),
-            std::max(radius, 0.001f));
+            std::max(half_height, kMinShapeExtentMeters),
+            std::max(radius, kMinShapeExtentMeters));
     }
 
     inline JPH::ShapeRefC make_tapered_capsule(float half_height, float top_radius, float bottom_radius)
     {
         JPH::TaperedCapsuleShapeSettings settings(
-            std::max(half_height, 0.001f),
-            std::max(top_radius, 0.001f),
-            std::max(bottom_radius, 0.001f));
+            std::max(half_height, kMinShapeExtentMeters),
+            std::max(top_radius, kMinShapeExtentMeters),
+            std::max(bottom_radius, kMinShapeExtentMeters));
         auto result = settings.Create();
         if (result.HasError())
         {
@@ -123,7 +126,7 @@ namespace shs::jolt
     /// Point light → sphere of given range.
     inline JPH::ShapeRefC make_point_light_volume(float range)
     {
-        return make_sphere(std::max(range, 0.001f));
+        return make_sphere(std::max(range, kMinShapeExtentMeters));
     }
 
     /// Spot light → cone-like convex hull approximation.
@@ -131,7 +134,7 @@ namespace shs::jolt
     /// to be rotated by the light's orientation at the call site.
     inline JPH::ShapeRefC make_spot_light_volume(float range, float outer_angle_rad, uint32_t segments = 12)
     {
-        const float r = std::max(range, 0.001f);
+        const float r = std::max(range, kMinShapeExtentMeters);
         const float half_angle = std::clamp(outer_angle_rad, 0.01f, glm::half_pi<float>() - 0.01f);
         const float base_radius = r * std::tan(half_angle);
 
@@ -160,17 +163,17 @@ namespace shs::jolt
     inline JPH::ShapeRefC make_rect_area_light_volume(const glm::vec2& half_extents, float range)
     {
         return make_box(glm::vec3(
-            std::max(half_extents.x, 0.001f),
-            std::max(half_extents.y, 0.001f),
-            std::max(range, 0.001f) * 0.5f));
+            std::max(half_extents.x, kMinShapeExtentMeters),
+            std::max(half_extents.y, kMinShapeExtentMeters),
+            std::max(range, kMinShapeExtentMeters) * 0.5f));
     }
 
     /// Tube area light → capsule.
     inline JPH::ShapeRefC make_tube_area_light_volume(float half_length, float radius)
     {
         return make_capsule(
-            std::max(half_length, 0.001f),
-            std::max(radius, 0.001f));
+            std::max(half_length, kMinShapeExtentMeters),
+            std::max(radius, kMinShapeExtentMeters));
     }
 
 

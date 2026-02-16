@@ -32,6 +32,11 @@ This minimizes semantic drift in:
 - Jolt -> SHS only via adapter APIs (`shs::jolt::to_glm(...)`)
 - avoid direct shading math on `JPH::Vec3`/`JPH::Mat44`
 
+4. Unit boundaries must stay explicit.
+- SHS and Jolt both use SI-style runtime units (`meter`, `kilogram`, `second`, `radian`)
+- unit scale is `1:1` across the adapter boundary
+- avoid per-demo ad-hoc unit scaling in Jolt integration code
+
 ## 3) Canonical Direction Semantics
 
 Standard name:

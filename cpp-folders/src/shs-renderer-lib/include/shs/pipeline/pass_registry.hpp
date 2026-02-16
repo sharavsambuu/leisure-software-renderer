@@ -16,6 +16,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "shs/pipeline/pass_id.hpp"
 #include "shs/pipeline/render_pass.hpp"
 
 namespace shs
@@ -32,9 +33,21 @@ namespace shs
             return true;
         }
 
+        bool register_factory(PassId id, Factory factory)
+        {
+            if (!pass_id_is_standard(id)) return false;
+            return register_factory(pass_id_name(id), std::move(factory));
+        }
+
         bool has(const std::string& id) const
         {
             return factories_.find(id) != factories_.end();
+        }
+
+        bool has(PassId id) const
+        {
+            if (!pass_id_is_standard(id)) return false;
+            return has(pass_id_string(id));
         }
 
         std::unique_ptr<IRenderPass> create(const std::string& id) const
@@ -42,6 +55,12 @@ namespace shs
             auto it = factories_.find(id);
             if (it == factories_.end() || !it->second) return nullptr;
             return it->second();
+        }
+
+        std::unique_ptr<IRenderPass> create(PassId id) const
+        {
+            if (!pass_id_is_standard(id)) return nullptr;
+            return create(pass_id_string(id));
         }
 
         std::vector<std::string> ids() const

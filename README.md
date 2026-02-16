@@ -25,7 +25,6 @@
         - submit them parallel rasterizer job system
     
 
-
 # About
 
     I'm just learning about software renderer and shaders in my freetime.
@@ -263,6 +262,7 @@
 <p><img width="1200" height="900" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/light-types-debug.png"></p>
 <p><img width="1200" height="900" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/light-types-lit.png"></p>
 <p><img width="1300" height="700" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/rendering-path-forward-plus.png"></p>
+<p><img width="1300" height="700" src="https://raw.githubusercontent.com/sharavsambuu/leisure-software-renderer/master/images/compositional-render-path-final.png"></p>
 
 
 

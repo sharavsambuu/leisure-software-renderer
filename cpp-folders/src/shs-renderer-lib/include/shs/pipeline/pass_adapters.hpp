@@ -651,18 +651,56 @@ namespace shs
                 technique_mode_bit(TechniqueMode::Deferred) |
                 technique_mode_bit(TechniqueMode::TiledDeferred);
             c.semantics = {
-                write_semantic(PassSemantic::GBufferA, ContractDomain::Software, "gbuffer_a"),
-                write_semantic(PassSemantic::GBufferB, ContractDomain::Software, "gbuffer_b"),
-                write_semantic(PassSemantic::GBufferC, ContractDomain::Software, "gbuffer_c")
+                write_semantic(PassSemantic::Albedo, ContractDomain::Software, "albedo"),
+                write_semantic(PassSemantic::Normal, ContractDomain::Software, "normal"),
+                write_semantic(PassSemantic::Material, ContractDomain::Software, "material")
             };
             return c;
         }
         PassIODesc describe_io() const override
         {
             PassIODesc io{};
-            io.write(make_named_resource_ref("technique.gbuffer_a", PassResourceType::Temp, PassResourceDomain::Software));
-            io.write(make_named_resource_ref("technique.gbuffer_b", PassResourceType::Temp, PassResourceDomain::Software));
-            io.write(make_named_resource_ref("technique.gbuffer_c", PassResourceType::Temp, PassResourceDomain::Software));
+            io.write(make_named_resource_ref("technique.albedo", PassResourceType::Temp, PassResourceDomain::Software));
+            io.write(make_named_resource_ref("technique.normal", PassResourceType::Temp, PassResourceDomain::Software));
+            io.write(make_named_resource_ref("technique.material", PassResourceType::Temp, PassResourceDomain::Software));
+            return io;
+        }
+
+        void execute(Context& ctx, const Scene& scene, const FrameParams& fp, RTRegistry& rtr) override
+        {
+            (void)ctx;
+            (void)scene;
+            (void)fp;
+            (void)rtr;
+        }
+    };
+
+    class PassSSAOAdapter final : public IRenderPass
+    {
+    public:
+        const char* id() const override { return "ssao"; }
+        RenderBackendType preferred_backend() const override { return RenderBackendType::Software; }
+        bool supports_backend(RenderBackendType backend) const override { return backend == RenderBackendType::Software; }
+        TechniquePassContract describe_contract() const override
+        {
+            TechniquePassContract c{};
+            c.role = TechniquePassRole::PostProcess;
+            c.supported_modes_mask =
+                technique_mode_bit(TechniqueMode::Deferred) |
+                technique_mode_bit(TechniqueMode::TiledDeferred);
+            c.semantics = {
+                read_semantic(PassSemantic::Depth, ContractDomain::Software, "depth"),
+                read_semantic(PassSemantic::Normal, ContractDomain::Software, "normal"),
+                write_semantic(PassSemantic::AmbientOcclusion, ContractDomain::Software, "ao")
+            };
+            return c;
+        }
+        PassIODesc describe_io() const override
+        {
+            PassIODesc io{};
+            io.read(make_named_resource_ref("technique.depth_prepass", PassResourceType::Temp, PassResourceDomain::Software));
+            io.read(make_named_resource_ref("technique.normal", PassResourceType::Temp, PassResourceDomain::Software));
+            io.write(make_named_resource_ref("technique.ao", PassResourceType::Temp, PassResourceDomain::Software));
             return io;
         }
 
@@ -692,9 +730,10 @@ namespace shs
             c.supported_modes_mask = technique_mode_bit(TechniqueMode::Deferred);
             c.semantics = {
                 read_semantic(PassSemantic::ShadowMap, ContractDomain::Software, "shadow"),
-                read_semantic(PassSemantic::GBufferA, ContractDomain::Software, "gbuffer_a"),
-                read_semantic(PassSemantic::GBufferB, ContractDomain::Software, "gbuffer_b"),
-                read_semantic(PassSemantic::GBufferC, ContractDomain::Software, "gbuffer_c"),
+                read_semantic(PassSemantic::Albedo, ContractDomain::Software, "albedo"),
+                read_semantic(PassSemantic::Normal, ContractDomain::Software, "normal"),
+                read_semantic(PassSemantic::Material, ContractDomain::Software, "material"),
+                read_semantic(PassSemantic::AmbientOcclusion, ContractDomain::Software, "ao"),
                 write_semantic(PassSemantic::ColorHDR, ContractDomain::Software, "hdr"),
                 write_semantic(PassSemantic::MotionVectors, ContractDomain::Software, "motion")
             };
@@ -704,9 +743,10 @@ namespace shs
         {
             PassIODesc io{};
             io.read(make_rt_resource_ref(rt_shadow_, PassResourceType::Shadow, "shadow", PassResourceDomain::Software));
-            io.read(make_named_resource_ref("technique.gbuffer_a", PassResourceType::Temp, PassResourceDomain::Software));
-            io.read(make_named_resource_ref("technique.gbuffer_b", PassResourceType::Temp, PassResourceDomain::Software));
-            io.read(make_named_resource_ref("technique.gbuffer_c", PassResourceType::Temp, PassResourceDomain::Software));
+            io.read(make_named_resource_ref("technique.albedo", PassResourceType::Temp, PassResourceDomain::Software));
+            io.read(make_named_resource_ref("technique.normal", PassResourceType::Temp, PassResourceDomain::Software));
+            io.read(make_named_resource_ref("technique.material", PassResourceType::Temp, PassResourceDomain::Software));
+            io.read(make_named_resource_ref("technique.ao", PassResourceType::Temp, PassResourceDomain::Software));
             io.write(make_rt_resource_ref(rt_hdr_, PassResourceType::ColorHDR, "hdr", PassResourceDomain::Software));
             io.write(make_rt_resource_ref(static_cast<const RTHandle&>(rt_motion_), PassResourceType::Motion, "motion", PassResourceDomain::Software));
             return io;
@@ -750,9 +790,10 @@ namespace shs
             c.requires_light_culling = true;
             c.semantics = {
                 read_semantic(PassSemantic::ShadowMap, ContractDomain::Software, "shadow"),
-                read_semantic(PassSemantic::GBufferA, ContractDomain::Software, "gbuffer_a"),
-                read_semantic(PassSemantic::GBufferB, ContractDomain::Software, "gbuffer_b"),
-                read_semantic(PassSemantic::GBufferC, ContractDomain::Software, "gbuffer_c"),
+                read_semantic(PassSemantic::Albedo, ContractDomain::Software, "albedo"),
+                read_semantic(PassSemantic::Normal, ContractDomain::Software, "normal"),
+                read_semantic(PassSemantic::Material, ContractDomain::Software, "material"),
+                read_semantic(PassSemantic::AmbientOcclusion, ContractDomain::Software, "ao"),
                 read_semantic(PassSemantic::Depth, ContractDomain::Software, "depth"),
                 read_semantic(PassSemantic::LightGrid, ContractDomain::Software, "light_grid"),
                 read_semantic(PassSemantic::LightIndexList, ContractDomain::Software, "light_index_list"),
@@ -765,9 +806,10 @@ namespace shs
         {
             PassIODesc io{};
             io.read(make_rt_resource_ref(rt_shadow_, PassResourceType::Shadow, "shadow", PassResourceDomain::Software));
-            io.read(make_named_resource_ref("technique.gbuffer_a", PassResourceType::Temp, PassResourceDomain::Software));
-            io.read(make_named_resource_ref("technique.gbuffer_b", PassResourceType::Temp, PassResourceDomain::Software));
-            io.read(make_named_resource_ref("technique.gbuffer_c", PassResourceType::Temp, PassResourceDomain::Software));
+            io.read(make_named_resource_ref("technique.albedo", PassResourceType::Temp, PassResourceDomain::Software));
+            io.read(make_named_resource_ref("technique.normal", PassResourceType::Temp, PassResourceDomain::Software));
+            io.read(make_named_resource_ref("technique.material", PassResourceType::Temp, PassResourceDomain::Software));
+            io.read(make_named_resource_ref("technique.ao", PassResourceType::Temp, PassResourceDomain::Software));
             io.read(make_named_resource_ref("technique.depth_prepass", PassResourceType::Temp, PassResourceDomain::Software));
             io.read(make_named_resource_ref("technique.light_grid", PassResourceType::Temp, PassResourceDomain::Software));
             io.read(make_named_resource_ref("technique.light_index_list", PassResourceType::Temp, PassResourceDomain::Software));
@@ -1151,6 +1193,143 @@ namespace shs
         PassMotionBlur pass_{};
     };
 
+    class PassDepthOfFieldAdapter final : public IRenderPass
+    {
+    public:
+        const char* id() const override { return "depth_of_field"; }
+        RenderBackendType preferred_backend() const override { return RenderBackendType::Software; }
+        bool supports_backend(RenderBackendType backend) const override { return backend == RenderBackendType::Software; }
+        TechniquePassContract describe_contract() const override
+        {
+            TechniquePassContract c{};
+            c.role = TechniquePassRole::PostProcess;
+            c.supported_modes_mask =
+                technique_mode_bit(TechniqueMode::Deferred) |
+                technique_mode_bit(TechniqueMode::TiledDeferred);
+            c.semantics = {
+                read_write_semantic(PassSemantic::ColorLDR, ContractDomain::Software, "ldr"),
+                read_semantic(PassSemantic::Depth, ContractDomain::Software, "depth")
+            };
+            return c;
+        }
+        PassIODesc describe_io() const override
+        {
+            PassIODesc io{};
+            io.read_write(make_named_resource_ref("technique.ldr", PassResourceType::ColorLDR, PassResourceDomain::Software));
+            io.read(make_named_resource_ref("technique.depth_prepass", PassResourceType::Temp, PassResourceDomain::Software));
+            return io;
+        }
+
+        void execute(Context& ctx, const Scene& scene, const FrameParams& fp, RTRegistry& rtr) override
+        {
+            (void)ctx;
+            (void)scene;
+            (void)fp;
+            (void)rtr;
+        }
+    };
+
+    class PassTemporalAAAdapter final : public IRenderPass
+    {
+    public:
+        explicit PassTemporalAAAdapter(RTHandle rt_ldr_inout)
+            : rt_ldr_(rt_ldr_inout)
+        {}
+
+        const char* id() const override { return "taa"; }
+        RenderBackendType preferred_backend() const override { return RenderBackendType::Software; }
+        bool supports_backend(RenderBackendType backend) const override { return backend == RenderBackendType::Software; }
+        TechniquePassContract describe_contract() const override
+        {
+            TechniquePassContract c{};
+            c.role = TechniquePassRole::PostProcess;
+            c.supported_modes_mask = technique_mode_mask_all();
+            c.semantics = {
+                read_write_semantic(PassSemantic::ColorLDR, ContractDomain::Software, "ldr"),
+                read_semantic(PassSemantic::HistoryColor, ContractDomain::Software, "history_in"),
+                write_semantic(PassSemantic::HistoryColor, ContractDomain::Software, "history_out")
+            };
+            return c;
+        }
+        PassIODesc describe_io() const override
+        {
+            PassIODesc io{};
+            io.read_write(make_rt_resource_ref(rt_ldr_, PassResourceType::ColorLDR, "ldr", PassResourceDomain::Software));
+            io.read(make_named_resource_ref("technique.history_color", PassResourceType::Temp, PassResourceDomain::Software));
+            io.write(make_named_resource_ref("technique.history_color", PassResourceType::Temp, PassResourceDomain::Software));
+            return io;
+        }
+
+        void reset_history(Context& ctx, RTRegistry& rtr) override
+        {
+            (void)ctx;
+            (void)rtr;
+            history_.clear();
+            history_w_ = 0;
+            history_h_ = 0;
+            history_valid_ = false;
+        }
+
+        void execute(Context& ctx, const Scene& scene, const FrameParams& fp, RTRegistry& rtr) override
+        {
+            (void)ctx;
+            (void)scene;
+            (void)fp;
+            auto* ldr = static_cast<RT_ColorLDR*>(rtr.get(rt_ldr_));
+            if (!ldr || ldr->w <= 0 || ldr->h <= 0) return;
+
+            const int w = ldr->w;
+            const int h = ldr->h;
+            const size_t count = static_cast<size_t>(w) * static_cast<size_t>(h);
+            if (history_w_ != w || history_h_ != h || history_.size() != count)
+            {
+                history_.assign(count, Color{0, 0, 0, 255});
+                history_w_ = w;
+                history_h_ = h;
+                history_valid_ = false;
+            }
+
+            const float blend = 0.12f;
+            const float keep = 1.0f - blend;
+            if (!history_valid_)
+            {
+                for (size_t i = 0; i < count; ++i)
+                {
+                    history_[i] = ldr->color.data[i];
+                }
+                history_valid_ = true;
+                return;
+            }
+
+            for (size_t i = 0; i < count; ++i)
+            {
+                const Color cur = ldr->color.data[i];
+                const Color prev = history_[i];
+
+                auto lerp_chan = [keep, blend](uint8_t a, uint8_t b) -> uint8_t {
+                    const float v = keep * static_cast<float>(a) + blend * static_cast<float>(b);
+                    const int iv = static_cast<int>(v + 0.5f);
+                    return static_cast<uint8_t>(std::clamp(iv, 0, 255));
+                };
+
+                Color out{};
+                out.r = lerp_chan(cur.r, prev.r);
+                out.g = lerp_chan(cur.g, prev.g);
+                out.b = lerp_chan(cur.b, prev.b);
+                out.a = cur.a;
+                ldr->color.data[i] = out;
+                history_[i] = out;
+            }
+        }
+
+    private:
+        RTHandle rt_ldr_{};
+        std::vector<Color> history_{};
+        int history_w_ = 0;
+        int history_h_ = 0;
+        bool history_valid_ = false;
+    };
+
     inline PassFactoryRegistry make_standard_pass_factory_registry(
         RT_Shadow rt_shadow,
         RTHandle rt_hdr,
@@ -1161,47 +1340,56 @@ namespace shs
     )
     {
         PassFactoryRegistry reg{};
-        reg.register_factory("shadow_map", [=]() {
+        reg.register_factory(PassId::ShadowMap, [=]() {
             return std::make_unique<PassShadowMapAdapter>(rt_shadow);
         });
-        reg.register_factory("pbr_forward", [=]() {
+        reg.register_factory(PassId::PBRForward, [=]() {
             return std::make_unique<PassPBRForwardAdapter>(rt_hdr, rt_motion, RTHandle{rt_shadow.id});
         });
-        reg.register_factory("depth_prepass", [=]() {
+        reg.register_factory(PassId::DepthPrepass, [=]() {
             return std::make_unique<PassDepthPrepassAdapter>(rt_motion);
         });
-        reg.register_factory("light_culling", [=]() {
+        reg.register_factory(PassId::LightCulling, [=]() {
             return std::make_unique<PassLightCullingAdapter>(rt_motion);
         });
-        reg.register_factory("cluster_build", [=]() {
+        reg.register_factory(PassId::ClusterBuild, [=]() {
             return std::make_unique<PassClusterBuildAdapter>(rt_motion);
         });
-        reg.register_factory("cluster_light_assign", [=]() {
+        reg.register_factory(PassId::ClusterLightAssign, [=]() {
             return std::make_unique<PassClusterLightAssignAdapter>(rt_motion);
         });
-        reg.register_factory("pbr_forward_plus", [=]() {
+        reg.register_factory(PassId::PBRForwardPlus, [=]() {
             return std::make_unique<PassPBRForwardPlusAdapter>(rt_hdr, rt_motion, RTHandle{rt_shadow.id});
         });
-        reg.register_factory("pbr_forward_clustered", [=]() {
+        reg.register_factory(PassId::PBRForwardClustered, [=]() {
             return std::make_unique<PassPBRForwardClusteredAdapter>(rt_hdr, rt_motion, RTHandle{rt_shadow.id});
         });
-        reg.register_factory("gbuffer", [=]() {
+        reg.register_factory(PassId::GBuffer, [=]() {
             return std::make_unique<PassGBufferAdapter>();
         });
-        reg.register_factory("deferred_lighting", [=]() {
+        reg.register_factory(PassId::SSAO, [=]() {
+            return std::make_unique<PassSSAOAdapter>();
+        });
+        reg.register_factory(PassId::DeferredLighting, [=]() {
             return std::make_unique<PassDeferredLightingAdapter>(rt_hdr, rt_motion, RTHandle{rt_shadow.id});
         });
-        reg.register_factory("deferred_lighting_tiled", [=]() {
+        reg.register_factory(PassId::DeferredLightingTiled, [=]() {
             return std::make_unique<PassDeferredLightingTiledAdapter>(rt_hdr, rt_motion, RTHandle{rt_shadow.id});
         });
-        reg.register_factory("tonemap", [=]() {
+        reg.register_factory(PassId::Tonemap, [=]() {
             return std::make_unique<PassTonemapAdapter>(rt_hdr, rt_ldr);
         });
         reg.register_factory("light_shafts", [=]() {
             return std::make_unique<PassLightShaftsAdapter>(rt_ldr, rt_motion, rt_shafts_tmp);
         });
-        reg.register_factory("motion_blur", [=]() {
+        reg.register_factory(PassId::MotionBlur, [=]() {
             return std::make_unique<PassMotionBlurAdapter>(rt_ldr, rt_motion, rt_motion_blur_tmp);
+        });
+        reg.register_factory(PassId::DepthOfField, [=]() {
+            return std::make_unique<PassDepthOfFieldAdapter>();
+        });
+        reg.register_factory(PassId::TAA, [=]() {
+            return std::make_unique<PassTemporalAAAdapter>(rt_ldr);
         });
         return reg;
     }

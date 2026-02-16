@@ -13,14 +13,25 @@
 #include <vector>
 
 #include "shs/frame/technique_mode.hpp"
+#include "shs/pipeline/pass_id.hpp"
 
 namespace shs
 {
     struct TechniquePassEntry
     {
         std::string id{};
+        PassId pass_id = PassId::Unknown;
         bool required = true;
     };
+
+    inline TechniquePassEntry make_technique_pass_entry(PassId pass_id, bool required)
+    {
+        TechniquePassEntry out{};
+        out.id = pass_id_string(pass_id);
+        out.pass_id = pass_id;
+        out.required = required;
+        return out;
+    }
 
     struct TechniqueProfile
     {
@@ -38,51 +49,57 @@ namespace shs
         {
             case TechniqueMode::Forward:
                 p.passes = {
-                    {"shadow_map", false},
-                    {"pbr_forward", true},
-                    {"tonemap", true},
-                    {"motion_blur", false}
+                    make_technique_pass_entry(PassId::ShadowMap, false),
+                    make_technique_pass_entry(PassId::PBRForward, true),
+                    make_technique_pass_entry(PassId::Tonemap, true),
+                    make_technique_pass_entry(PassId::MotionBlur, false)
                 };
                 break;
             case TechniqueMode::ForwardPlus:
                 p.passes = {
-                    {"shadow_map", false},
-                    {"depth_prepass", false},
-                    {"light_culling", false},
-                    {"pbr_forward_plus", true},
-                    {"tonemap", true},
-                    {"motion_blur", false}
+                    make_technique_pass_entry(PassId::ShadowMap, false),
+                    make_technique_pass_entry(PassId::DepthPrepass, false),
+                    make_technique_pass_entry(PassId::LightCulling, false),
+                    make_technique_pass_entry(PassId::PBRForwardPlus, true),
+                    make_technique_pass_entry(PassId::Tonemap, true),
+                    make_technique_pass_entry(PassId::MotionBlur, false)
                 };
                 break;
             case TechniqueMode::Deferred:
                 p.passes = {
-                    {"shadow_map", false},
-                    {"gbuffer", false},
-                    {"deferred_lighting", false},
-                    {"tonemap", true},
-                    {"motion_blur", false}
+                    make_technique_pass_entry(PassId::ShadowMap, false),
+                    make_technique_pass_entry(PassId::GBuffer, false),
+                    make_technique_pass_entry(PassId::SSAO, false),
+                    make_technique_pass_entry(PassId::DeferredLighting, false),
+                    make_technique_pass_entry(PassId::Tonemap, true),
+                    make_technique_pass_entry(PassId::TAA, false),
+                    make_technique_pass_entry(PassId::MotionBlur, false),
+                    make_technique_pass_entry(PassId::DepthOfField, false)
                 };
                 break;
             case TechniqueMode::TiledDeferred:
                 p.passes = {
-                    {"shadow_map", false},
-                    {"depth_prepass", false},
-                    {"gbuffer", false},
-                    {"light_culling", false},
-                    {"deferred_lighting_tiled", false},
-                    {"tonemap", true},
-                    {"motion_blur", false}
+                    make_technique_pass_entry(PassId::ShadowMap, false),
+                    make_technique_pass_entry(PassId::DepthPrepass, false),
+                    make_technique_pass_entry(PassId::GBuffer, false),
+                    make_technique_pass_entry(PassId::SSAO, false),
+                    make_technique_pass_entry(PassId::LightCulling, false),
+                    make_technique_pass_entry(PassId::DeferredLightingTiled, false),
+                    make_technique_pass_entry(PassId::Tonemap, true),
+                    make_technique_pass_entry(PassId::TAA, false),
+                    make_technique_pass_entry(PassId::MotionBlur, false),
+                    make_technique_pass_entry(PassId::DepthOfField, false)
                 };
                 break;
             case TechniqueMode::ClusteredForward:
                 p.passes = {
-                    {"shadow_map", false},
-                    {"depth_prepass", false},
-                    {"cluster_build", false},
-                    {"cluster_light_assign", false},
-                    {"pbr_forward_clustered", false},
-                    {"tonemap", true},
-                    {"motion_blur", false}
+                    make_technique_pass_entry(PassId::ShadowMap, false),
+                    make_technique_pass_entry(PassId::DepthPrepass, false),
+                    make_technique_pass_entry(PassId::ClusterBuild, false),
+                    make_technique_pass_entry(PassId::ClusterLightAssign, false),
+                    make_technique_pass_entry(PassId::PBRForwardClustered, false),
+                    make_technique_pass_entry(PassId::Tonemap, true),
+                    make_technique_pass_entry(PassId::MotionBlur, false)
                 };
                 break;
         }

@@ -238,9 +238,9 @@ int main(int argc, char* argv[])
         shs::RTHandle{}
     );
     shs::PluggablePipeline pipeline{};
-    (void)pipeline.add_pass_from_registry(pass_registry, "shadow_map");
-    (void)pipeline.add_pass_from_registry(pass_registry, "pbr_forward");
-    (void)pipeline.add_pass_from_registry(pass_registry, "tonemap");
+    (void)pipeline.add_pass_from_registry(pass_registry, shs::PassId::ShadowMap);
+    (void)pipeline.add_pass_from_registry(pass_registry, shs::PassId::PBRForward);
+    (void)pipeline.add_pass_from_registry(pass_registry, shs::PassId::Tonemap);
     (void)pipeline.add_pass_from_registry(pass_registry, "light_shafts");
     pipeline.set_strict_graph_validation(true);
 

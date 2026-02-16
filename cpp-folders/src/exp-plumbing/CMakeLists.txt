@@ -98,6 +98,12 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
     set(VK_PB_FXAA_FRAG "${VK_DEFAULT_SHADER_DIR}/pb_fxaa.frag")
     set(VK_FP_SCENE_VERT "${VK_DEFAULT_SHADER_DIR}/fp_stress_scene.vert")
     set(VK_FP_SCENE_FRAG "${VK_DEFAULT_SHADER_DIR}/fp_stress_scene.frag")
+    set(VK_FP_GBUFFER_FRAG "${VK_DEFAULT_SHADER_DIR}/fp_stress_gbuffer.frag")
+    set(VK_FP_DEFERRED_VERT "${VK_DEFAULT_SHADER_DIR}/fp_stress_deferred.vert")
+    set(VK_FP_SSAO_FRAG "${VK_DEFAULT_SHADER_DIR}/fp_stress_ssao.frag")
+    set(VK_FP_DEFERRED_FRAG "${VK_DEFAULT_SHADER_DIR}/fp_stress_deferred.frag")
+    set(VK_FP_MOTION_BLUR_FRAG "${VK_DEFAULT_SHADER_DIR}/fp_stress_motion_blur.frag")
+    set(VK_FP_DOF_FRAG "${VK_DEFAULT_SHADER_DIR}/fp_stress_dof.frag")
     set(VK_FP_SHADOW_VERT "${VK_DEFAULT_SHADER_DIR}/fp_stress_shadow.vert")
     set(VK_FP_LIGHT_CULL_COMP "${VK_DEFAULT_SHADER_DIR}/fp_stress_light_cull.comp")
     set(VK_FP_DEPTH_REDUCE_COMP "${VK_DEFAULT_SHADER_DIR}/fp_stress_depth_reduce.comp")
@@ -114,6 +120,12 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
     set(VK_PB_FXAA_FRAG_SPV "${VK_TRI_OUT_DIR}/pb_fxaa.frag.spv")
     set(VK_FP_SCENE_VERT_SPV "${VK_TRI_OUT_DIR}/fp_stress_scene.vert.spv")
     set(VK_FP_SCENE_FRAG_SPV "${VK_TRI_OUT_DIR}/fp_stress_scene.frag.spv")
+    set(VK_FP_GBUFFER_FRAG_SPV "${VK_TRI_OUT_DIR}/fp_stress_gbuffer.frag.spv")
+    set(VK_FP_DEFERRED_VERT_SPV "${VK_TRI_OUT_DIR}/fp_stress_deferred.vert.spv")
+    set(VK_FP_SSAO_FRAG_SPV "${VK_TRI_OUT_DIR}/fp_stress_ssao.frag.spv")
+    set(VK_FP_DEFERRED_FRAG_SPV "${VK_TRI_OUT_DIR}/fp_stress_deferred.frag.spv")
+    set(VK_FP_MOTION_BLUR_FRAG_SPV "${VK_TRI_OUT_DIR}/fp_stress_motion_blur.frag.spv")
+    set(VK_FP_DOF_FRAG_SPV "${VK_TRI_OUT_DIR}/fp_stress_dof.frag.spv")
     set(VK_FP_SHADOW_VERT_SPV "${VK_TRI_OUT_DIR}/fp_stress_shadow.vert.spv")
     set(VK_FP_LIGHT_CULL_COMP_SPV "${VK_TRI_OUT_DIR}/fp_stress_light_cull.comp.spv")
     set(VK_FP_DEPTH_REDUCE_COMP_SPV "${VK_TRI_OUT_DIR}/fp_stress_depth_reduce.comp.spv")
@@ -247,6 +259,46 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
         VERBATIM
     )
     add_custom_command(
+        OUTPUT "${VK_FP_GBUFFER_FRAG_SPV}"
+        COMMAND ${GLSLANG_VALIDATOR} -V "${VK_FP_GBUFFER_FRAG}" -o "${VK_FP_GBUFFER_FRAG_SPV}"
+        DEPENDS "${VK_FP_GBUFFER_FRAG}"
+        VERBATIM
+    )
+    add_custom_command(
+        OUTPUT "${VK_FP_DEFERRED_VERT_SPV}"
+        COMMAND ${GLSLANG_VALIDATOR} -V "${VK_FP_DEFERRED_VERT}" -o "${VK_FP_DEFERRED_VERT_SPV}"
+        DEPENDS "${VK_FP_DEFERRED_VERT}"
+        VERBATIM
+    )
+    add_custom_command(
+        OUTPUT "${VK_FP_SSAO_FRAG_SPV}"
+        COMMAND ${GLSLANG_VALIDATOR} -V "${VK_FP_SSAO_FRAG}" -o "${VK_FP_SSAO_FRAG_SPV}"
+        DEPENDS "${VK_FP_SSAO_FRAG}"
+        VERBATIM
+    )
+    add_custom_command(
+        OUTPUT "${VK_FP_DEFERRED_FRAG_SPV}"
+        COMMAND ${GLSLANG_VALIDATOR} -V "${VK_FP_DEFERRED_FRAG}" -o "${VK_FP_DEFERRED_FRAG_SPV}"
+        DEPENDS
+            "${VK_FP_DEFERRED_FRAG}"
+            "${VK_COMMON_LIGHT_CONSTANTS}"
+            "${VK_COMMON_LIGHT_MATH}"
+            "${VK_COMMON_CULLING_LIGHT_STRUCT}"
+        VERBATIM
+    )
+    add_custom_command(
+        OUTPUT "${VK_FP_MOTION_BLUR_FRAG_SPV}"
+        COMMAND ${GLSLANG_VALIDATOR} -V "${VK_FP_MOTION_BLUR_FRAG}" -o "${VK_FP_MOTION_BLUR_FRAG_SPV}"
+        DEPENDS "${VK_FP_MOTION_BLUR_FRAG}"
+        VERBATIM
+    )
+    add_custom_command(
+        OUTPUT "${VK_FP_DOF_FRAG_SPV}"
+        COMMAND ${GLSLANG_VALIDATOR} -V "${VK_FP_DOF_FRAG}" -o "${VK_FP_DOF_FRAG_SPV}"
+        DEPENDS "${VK_FP_DOF_FRAG}"
+        VERBATIM
+    )
+    add_custom_command(
         OUTPUT "${VK_FP_SHADOW_VERT_SPV}"
         COMMAND ${GLSLANG_VALIDATOR} -V "${VK_FP_SHADOW_VERT}" -o "${VK_FP_SHADOW_VERT_SPV}"
         DEPENDS "${VK_FP_SHADOW_VERT}"
@@ -299,6 +351,12 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
         DEPENDS
             "${VK_FP_SCENE_VERT_SPV}"
             "${VK_FP_SCENE_FRAG_SPV}"
+            "${VK_FP_GBUFFER_FRAG_SPV}"
+            "${VK_FP_DEFERRED_VERT_SPV}"
+            "${VK_FP_SSAO_FRAG_SPV}"
+            "${VK_FP_DEFERRED_FRAG_SPV}"
+            "${VK_FP_MOTION_BLUR_FRAG_SPV}"
+            "${VK_FP_DOF_FRAG_SPV}"
             "${VK_FP_SHADOW_VERT_SPV}"
             "${VK_FP_LIGHT_CULL_COMP_SPV}"
             "${VK_FP_DEPTH_REDUCE_COMP_SPV}"
@@ -350,6 +408,12 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
     target_compile_definitions(HelloRenderingPaths PRIVATE
         SHS_VK_FP_SCENE_VERT_SPV="${VK_FP_SCENE_VERT_SPV}"
         SHS_VK_FP_SCENE_FRAG_SPV="${VK_FP_SCENE_FRAG_SPV}"
+        SHS_VK_FP_GBUFFER_FRAG_SPV="${VK_FP_GBUFFER_FRAG_SPV}"
+        SHS_VK_FP_DEFERRED_VERT_SPV="${VK_FP_DEFERRED_VERT_SPV}"
+        SHS_VK_FP_SSAO_FRAG_SPV="${VK_FP_SSAO_FRAG_SPV}"
+        SHS_VK_FP_DEFERRED_FRAG_SPV="${VK_FP_DEFERRED_FRAG_SPV}"
+        SHS_VK_FP_MOTION_BLUR_FRAG_SPV="${VK_FP_MOTION_BLUR_FRAG_SPV}"
+        SHS_VK_FP_DOF_FRAG_SPV="${VK_FP_DOF_FRAG_SPV}"
         SHS_VK_FP_SHADOW_VERT_SPV="${VK_FP_SHADOW_VERT_SPV}"
         SHS_VK_FP_LIGHT_CULL_COMP_SPV="${VK_FP_LIGHT_CULL_COMP_SPV}"
         SHS_VK_FP_DEPTH_REDUCE_COMP_SPV="${VK_FP_DEPTH_REDUCE_COMP_SPV}"

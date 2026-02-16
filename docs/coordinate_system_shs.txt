@@ -86,3 +86,16 @@ GLM usage:
     All matrices are column-major (GLM default).
     glm::perspectiveLH_NO for left-handed + NDC [-1..+1] z-range.
     glm::lookAtLH for left-handed view matrix.
+
+
+Units Convention:
+    distance = meter
+    mass     = kilogram
+    time     = second
+    angle    = radian
+
+Gravity (world, +Y up):
+    (0, -9.81, 0) m/s^2
+
+See also:
+    docs/units-convention.md

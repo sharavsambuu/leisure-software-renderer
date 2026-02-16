@@ -1140,6 +1140,10 @@ namespace shs
             {
                 usage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
             }
+            if ((sc.caps.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_SRC_BIT) != 0)
+            {
+                usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+            }
             sci.imageUsage = usage;
             if (*qf_.graphics != *qf_.present)
             {

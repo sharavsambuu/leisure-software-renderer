@@ -11,6 +11,87 @@ This document is the implementation plan for the next phase:
 
 The goal is to compose these dimensions dynamically via recipes/configuration, without hardcoding each permutation into separate demos.
 
+## 0) Current Status Snapshot (2026-02-16)
+
+Progress already made:
+
+- `HelloRenderingPaths` exists as the current integration demo.
+- `HelloPassBasics` software demo now also uses shared render-path recipe execution
+  (preset registration + compile + plan-driven pipeline configure + runtime `F2` cycling).
+- `hello_soft_shadow_culling_sw` now also runs on shared software render-path executor presets
+  with runtime `F2` cycling and fallback-to-safe-default behavior.
+- Core render-path demo controls are aligned for composition workflows:
+  - `F2`: cycle render path
+  - `F3`: cycle composition (`path + technique`)
+  - `F4`: cycle technique
+- `HelloRenderingPaths` now applies shared rendering-technique presets (`PBR`/`Blinn`)
+  via reusable composition helpers instead of demo-local lighting-technique enum switching.
+- `HelloRenderingPaths` now supports explicit runtime composition cycling (`F3`) over
+  combined presets `{render path + rendering technique}`.
+- Shared composition headers now exist:
+  - `cpp-folders/src/shs-renderer-lib/include/shs/pipeline/render_technique_presets.hpp`
+  - `cpp-folders/src/shs-renderer-lib/include/shs/pipeline/render_composition_presets.hpp`
+- Runtime render-path cycling is active across:
+  - `Forward`
+  - `ForwardPlus`
+  - `Deferred`
+  - `TiledDeferred`
+  - `ClusteredForward`
+- Path-driven culling behavior is active (manual culling overrides removed).
+- Light debug wireframe visualization is still available.
+- Lighting technique toggle in this demo is now constrained to `PBR` and `Blinn`.
+- Built-in render-path preset construction and runtime path selection were moved into shared pipeline headers:
+  - `cpp-folders/src/shs-renderer-lib/include/shs/pipeline/render_path_presets.hpp`
+  - `cpp-folders/src/shs-renderer-lib/include/shs/pipeline/render_path_executor.hpp`
+- Standard pass-contract lookup/registry is now shared in pipeline header:
+  - `cpp-folders/src/shs-renderer-lib/include/shs/pipeline/pass_contract_registry.hpp`
+- Resource-layout planning from pass/resource contracts is now in shared pipeline header:
+  - `cpp-folders/src/shs-renderer-lib/include/shs/pipeline/render_path_resource_plan.hpp`
+- Runtime light-grid/tile allocation layout helper is now shared in:
+  - `cpp-folders/src/shs-renderer-lib/include/shs/pipeline/render_path_runtime_layout.hpp`
+- Vulkan render-path global descriptor contract helper is now shared in:
+  - `cpp-folders/src/shs-renderer-lib/include/shs/rhi/drivers/vulkan/vk_render_path_descriptors.hpp`
+- Render-path pass-chain dispatcher is now shared in:
+  - `cpp-folders/src/shs-renderer-lib/include/shs/pipeline/render_path_pass_dispatch.hpp`
+- `HelloRenderingPaths` now consumes that shared preset/executor layer instead of local mode/recipe builders.
+- `HelloRenderingPaths` now compiles recipes using a shared pass-contract registry
+  (instead of demo-local fallback contract assumptions).
+- `HelloRenderingPaths` now reads recipe-driven resource knobs for tile/cluster sizing
+  (`light_tile_size`, `cluster_z_slices`) instead of fixed constants.
+- `HelloRenderingPaths` now allocates tile/light-grid buffers from shared runtime layout
+  derived from active recipe + resource plan instead of local size math.
+- `HelloRenderingPaths` now uses shared Vulkan descriptor helpers for:
+  - global set layout creation
+  - descriptor pool sizing/creation
+  - per-frame descriptor updates
+- `HelloRenderingPaths` now executes pass order through shared plan-driven dispatcher
+  (required/optional pass handling is no longer hardcoded in `draw_frame`).
+- legacy pass-semantic compatibility aliases (`GBufferA/B/C`) were removed from core semantics;
+  deferred resource contracts now use explicit semantic names.
+- standard pass IDs are now typed in core (`PassId`) for recipe/profile/plan/dispatch consistency.
+
+Current limitation:
+
+- Render-path pass body implementations are still partially demo-owned (Vulkan command recording internals),
+  so composition is plan-driven but not fully backend-module-owned yet.
+
+Compositional readiness gauge (for quick session handoff):
+
+- `L0`: demo-local path switching only
+- `L1`: shared recipe/preset/executor
+- `L2`: shared pass-contract + resource-plan compilation
+- `L3`: shared runtime allocation/layout + shared descriptor contract helpers
+- `L4`: pass execution/wiring is library-owned (demo is thin host only)
+
+Current status: `L4` for pass-chain orchestration (dispatcher + plan-driven execution order),
+with pass body implementations still partially demo-owned.
+
+Companion handoff draft for next sessions:
+
+- `docs/render-path-core-draft-and-state.md`
+- `docs/modern-rendering-maturity-roadmap.md`
+- `docs/custom-render-path-and-technique-extension-guide.md`
+
 ## 1) Why This Phase
 
 Most required building blocks already exist:
@@ -375,3 +456,15 @@ Start with Phase 1 + Phase 2 for lowest risk:
 - Keep current behavior 1:1 during migration
 
 This gives a robust base to scale into more combinations safely.
+
+## 16) Modern Maturity Planning (Approved)
+
+The next-stage maturity plan is now tracked in:
+
+- `docs/modern-rendering-maturity-roadmap.md`
+
+That roadmap defines:
+
+- architecture-level maturity goals
+- phase gates (`Deferred baseline -> module parity -> temporal core -> post stack -> backend robustness`)
+- concrete exit criteria for claiming modern rendering maturity

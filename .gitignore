@@ -14,6 +14,10 @@
 build/
 bin/
 obj/
+artifacts/
+core
+core.*
+*.core
 
 # Temporary Cleanup Scripts
 cleanup_*.py
@@ -28,3 +32,15 @@ build.sh
 run_make_target.sh
 run_verify.sh
 build_sw_demo.bat
+
+# Phase Benchmark/Soak Helpers and Artifacts
+run_phase_*.sh
+run_phase_*.py
+run_phase_*.bat
+phase_*.sh
+phase_*.py
+phase_*.bat
+phase_*.log
+phase_*.json
+phase_*.csv
+phase_*.txt

@@ -177,6 +177,18 @@ Priority order for the next backend phase:
 Render-path composition alignment (now that light/culling stability is stronger):
 
 7. Introduce a reusable render-path interface contract and wrap current Forward/Forward+ path as baseline.
+   - Status: baseline shared preset + runtime selector exists in
+     `render_path_presets.hpp` + `render_path_executor.hpp` and is consumed by `HelloRenderingPaths`.
+   - Status update: shared resource-plan compiler exists in
+     `render_path_resource_plan.hpp`, and `HelloRenderingPaths` consumes recipe-driven tile/cluster sizing.
+   - Status update: shared standard pass-contract lookup/registry exists in
+     `pass_contract_registry.hpp`, and `HelloRenderingPaths` now compiles recipe plans against it.
+   - Status update: shared runtime light-grid allocation layout exists in
+     `render_path_runtime_layout.hpp`, and `HelloRenderingPaths` now allocates tile/light-grid buffers from it.
+   - Status update: shared Vulkan render-path global descriptor contract exists in
+     `vk_render_path_descriptors.hpp`, and `HelloRenderingPaths` now reuses it for set layout/pool/update wiring.
+   - Status update: shared pass-chain dispatcher exists in
+     `render_path_pass_dispatch.hpp`, and `HelloRenderingPaths` now executes per-frame pass order from active plan.
 8. Add a second algorithm path (Deferred + light accumulation) reusing the same scene/light/culling inputs.
 9. Add runtime path switching and path-aware telemetry for consistent A/B comparison.
 10. Refactor common passes (depth/shadow/light-cull/debug) into reusable path modules.
@@ -184,3 +196,5 @@ Render-path composition alignment (now that light/culling stability is stronger)
 Related plan:
 
 - `docs/dynamic-render-path-composition-plan.md`
+- `docs/render-path-core-draft-and-state.md`
+- `docs/modern-rendering-maturity-roadmap.md`
