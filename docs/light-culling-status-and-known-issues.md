@@ -1,63 +1,56 @@
-# Light Culling Status and Known Issues
+# Light Culling Status and Notes
 
-Last updated: 2026-02-15
+Last updated: 2026-02-16
 
-## Current Integration Status
+## 1) Scope
 
-### Jolt-based light culling paths
+This document summarizes the status of culling integration based on Jolt shape/volume primitives.
 
-- `shs-renderer-lib/include/shs/lighting/jolt_light_culling.hpp`
-  - `cull_lights_tiled(...)`
-  - `cull_lights_tiled_depth01_range(...)`
-  - `cull_lights_tiled_view_depth_range(...)`
-  - `cull_lights_clustered(...)`
-- `shs-renderer-lib/include/shs/pipeline/pass_adapters.hpp`
-  - local lights are converted to `SceneShape` via `append_local_light_shapes_from_set(...)`
-  - per-tile classification runs through `classify_vs_cell(...)` on Jolt-backed `SceneShape`
+## 2) Current Status (Completed)
 
-### Non-Jolt light culling paths
+The core Jolt shape/volume-based culling functionality is considered complete for the current renderer phase.
 
-- `exp-plumbing/hello_forward_plus_stress_vulkan.cpp` GPU compute path
-  - packs lights into `CullingLightGPU` via `make_*_culling_light(...)`
-  - uses screen-space + depth-range + sphere/proxy tests in compute shaders
-  - does **not** classify Jolt `SceneShape` directly in compute
+Completed baseline set:
 
-## Important Clarification
+- `SceneShape` representation backed by `jolt_shapes`
+- View frustum culling flow
+- Shadow frustum culling flow
+- View occlusion culling (runtime toggle)
+- Shadow occlusion culling (runtime toggle, default OFF)
+- Culling statistics and debug AABB overlay validation flow
 
-It is not accurate to say that **all** light culling in the repository is Jolt-based today.
+## 3) Important Clarification
 
-- CPU/pluggable pipeline culling path: mostly Jolt-based.
-- Vulkan Forward+/stress compute culling path: custom GPU culler (non-Jolt).
+Not every light-culling path in the repository is strictly Jolt-based.
 
-## Known Issue: Tiled and Tiled-Depth Culling
+- CPU/pluggable paths: mostly Jolt shape/volume based
+- Some Vulkan compute stress/demo paths: custom GPU culling logic
 
-Status: **Open**
+This is an intentional architecture choice, not necessarily a conflict.
 
-Affected combinations (confirmed):
+## 4) Stable Default Configuration
 
-- `TechniqueMode::ForwardPlus` with `LightCullingMode::Tiled`
-- `TechniqueMode::TiledDeferred` with `LightCullingMode::TiledDepthRange`
+Current recommended stable defaults:
 
-Observed behavior:
+- View occlusion: ON
+- Shadow occlusion: OFF
+- Shadow frustum culling: ON
 
-- visible instability / incorrect light assignment in tiles
-- clustered and other combinations look comparatively stable
+This setup reduces visual popping and query-related instability.
 
-Recent fixes already applied:
+## 5) Archived Issue Notes
 
-- depth semantics and naming cleanup (`depth01` vs linear view depth)
-- exact LH_NO perspective conversion for CPU clustered slice depth mapping
-- conservative near-plane fallback in GPU light screen projection
+There were earlier observations of instability around tiled/tiled-depth culling paths.
+For this phase closure, those observations are not treated as blocking for the Jolt shape/volume culling milestone.
 
-Even after these fixes, the issue persists and needs a deeper pass.
+If those paths are actively resumed, continue tracking in separate focused issues.
 
-## Suggested Next Investigation (when resumed)
+## 6) Connection To The Next Phase
 
-1. Add debug visualization of tile list occupancy and per-tile depth ranges in screen space.
-2. Capture and compare CPU reference culling vs GPU tile output for the same camera/light frame.
-3. Validate frag-space tile indexing against compute tile indexing under Y-flip and viewport setup.
-4. Add a deterministic regression scene with fixed camera, fixed seeds, and golden tile-count snapshots.
+Next major goal:
 
-## Related Notes
+- dynamic compositional and configurable render paths
 
-- See `/docs/lighting-space-integration-notes.md` for SHS-space vs Jolt-space lighting/shadow conventions and a mismatch prevention checklist.
+Plan document:
+
+- `docs/dynamic-render-path-composition-plan.md`

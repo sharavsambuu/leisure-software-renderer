@@ -2,20 +2,13 @@
 # Tasks to mess around in the near future
 
     Dynamic compositional and configurable renderer path combinations
-      Tunable combinations -> 
-        Different Light Volumes      x 
-        Different Culling Techniques x 
-        Different Rendering          x 
+      Tunable combinations ->
+        Different Light Volumes      x
+        Different Culling Techniques x
+        Different Rendering          x
         Different Passes
 
-    Use Jolt Physics and primitive shape volume definitions for
-      - Physics
-      - Light Culling
-      - Frustum Culling + Occlusion Culling
-    Prevents to duplicate same abstractions on different parts
-
-    Once the dynamic compositional lightening renderer solved, maybe try to estimate
-    multi bounce global illuminations through many preplaced virtual point lights
+    Once the dynamic compositional lightening renderer solved, maybe I might try to estimate or approximate global illuminations through multi bounce many preplaced virtual point lights.
 
 
     Revive Lockless job system experiments
@@ -79,12 +72,6 @@
       - Transparency
       - Python port using PyGame or PySDL2
 
-
-# Current Notes
-
-    Light culling integration status and known issue tracking:
-      - docs/light-culling-status-and-known-issues.md
-    
     Cool things would be nice to try out
       - Lens Flare
       - Depth of field
