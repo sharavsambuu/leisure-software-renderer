@@ -15,8 +15,8 @@ build/
 bin/
 obj/
 artifacts/
-core
-core.*
+/core
+/core.*
 *.core
 
 # Python Cache/Bytecode
