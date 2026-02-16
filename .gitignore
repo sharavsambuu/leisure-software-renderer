@@ -19,6 +19,15 @@ core
 core.*
 *.core
 
+# Python Cache/Bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
 # Temporary Cleanup Scripts
 cleanup_*.py
 cleanup_*.sh

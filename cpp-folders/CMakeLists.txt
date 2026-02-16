@@ -5,6 +5,20 @@ project("leisure-software-renderer")
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Keep MSVC runtime selection consistent across all targets (including Jolt).
+# This avoids LNK2038 / LNK2005 mismatches when Jolt is built as /MT[d]
+# while app targets are /MD[d] (or vice versa).
+if(MSVC)
+    option(SHS_USE_STATIC_MSVC_RUNTIME "Use static MSVC runtime (/MT,/MTd) for all targets" OFF)
+    if(SHS_USE_STATIC_MSVC_RUNTIME)
+        set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>" CACHE STRING "" FORCE)
+        set(USE_STATIC_MSVC_RUNTIME_LIBRARY ON CACHE BOOL "" FORCE)
+    else()
+        set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL" CACHE STRING "" FORCE)
+        set(USE_STATIC_MSVC_RUNTIME_LIBRARY OFF CACHE BOOL "" FORCE)
+    endif()
+endif()
+
 
 FIND_PACKAGE(Threads COMPONENTS REQUIRED)
 
