@@ -169,13 +169,25 @@ struct FreeCamera
     float pitch = -0.25f;
     float move_speed = 20.0f;
     float look_speed = 0.003f;
+    static constexpr float kMouseSpikeThreshold = 240.0f;
+    static constexpr float kMouseDeltaClamp = 90.0f;
 
     void update(const PlatformInputState& input, float dt)
     {
-        if (input.right_mouse_down)
+        if (input.right_mouse_down || input.left_mouse_down)
         {
-            yaw -= input.mouse_dx * look_speed;
-            pitch -= input.mouse_dy * look_speed;
+            float mdx = input.mouse_dx;
+            float mdy = input.mouse_dy;
+            // WSL2 relative-mode occasionally reports large one-frame spikes.
+            if (std::abs(mdx) > kMouseSpikeThreshold || std::abs(mdy) > kMouseSpikeThreshold)
+            {
+                mdx = 0.0f;
+                mdy = 0.0f;
+            }
+            mdx = std::clamp(mdx, -kMouseDeltaClamp, kMouseDeltaClamp);
+            mdy = std::clamp(mdy, -kMouseDeltaClamp, kMouseDeltaClamp);
+            yaw -= mdx * look_speed;
+            pitch -= mdy * look_speed;
             pitch = std::clamp(pitch, -glm::half_pi<float>() + 0.01f, glm::half_pi<float>() - 0.01f);
         }
 
@@ -1713,17 +1725,33 @@ private:
                 out.mouse_dx += static_cast<float>(e.motion.xrel);
                 out.mouse_dy += static_cast<float>(e.motion.yrel);
             }
+            if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_RIGHT) mouse_right_held_ = true;
+            if (e.type == SDL_MOUSEBUTTONUP && e.button.button == SDL_BUTTON_RIGHT) mouse_right_held_ = false;
+            if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) mouse_left_held_ = true;
+            if (e.type == SDL_MOUSEBUTTONUP && e.button.button == SDL_BUTTON_LEFT) mouse_left_held_ = false;
 
             if (e.type == SDL_WINDOWEVENT &&
                 (e.window.event == SDL_WINDOWEVENT_SIZE_CHANGED || e.window.event == SDL_WINDOWEVENT_RESIZED))
             {
                 if (vk_) vk_->request_resize(e.window.data1, e.window.data2);
             }
+            if (e.type == SDL_WINDOWEVENT && e.window.event == SDL_WINDOWEVENT_FOCUS_LOST)
+            {
+                mouse_right_held_ = false;
+                mouse_left_held_ = false;
+            }
         }
 
-        uint32_t ms = SDL_GetMouseState(nullptr, nullptr);
-        out.right_mouse_down = (ms & SDL_BUTTON(SDL_BUTTON_RIGHT)) != 0;
-        out.left_mouse_down = (ms & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
+        const uint32_t ms = SDL_GetMouseState(nullptr, nullptr);
+        if ((ms & SDL_BUTTON(SDL_BUTTON_RIGHT)) != 0) mouse_right_held_ = true;
+        if ((ms & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0) mouse_left_held_ = true;
+        if (!relative_mouse_mode_)
+        {
+            if ((ms & SDL_BUTTON(SDL_BUTTON_RIGHT)) == 0) mouse_right_held_ = false;
+            if ((ms & SDL_BUTTON(SDL_BUTTON_LEFT)) == 0) mouse_left_held_ = false;
+        }
+        out.right_mouse_down = mouse_right_held_;
+        out.left_mouse_down = mouse_left_held_;
 
         const uint8_t* ks = SDL_GetKeyboardState(nullptr);
         out.forward = ks[SDL_SCANCODE_W] != 0;
@@ -1734,7 +1762,14 @@ private:
         out.ascend = ks[SDL_SCANCODE_E] != 0;
         out.boost = ks[SDL_SCANCODE_LSHIFT] != 0;
 
-        SDL_SetRelativeMouseMode(out.right_mouse_down ? SDL_TRUE : SDL_FALSE);
+        const bool look_drag = out.right_mouse_down || out.left_mouse_down;
+        if (look_drag != relative_mouse_mode_)
+        {
+            relative_mouse_mode_ = look_drag;
+            SDL_SetRelativeMouseMode(relative_mouse_mode_ ? SDL_TRUE : SDL_FALSE);
+            out.mouse_dx = 0.0f;
+            out.mouse_dy = 0.0f;
+        }
         return !out.quit;
     }
 
@@ -2769,7 +2804,7 @@ private:
 
     void main_loop()
     {
-        std::printf("Controls: RMB look, WASD+QE move, Shift boost, B toggle AABB, L toggle debug/lit, F1 toggle MT-secondary recording, F2 toggle occlusion\n");
+        std::printf("Controls: LMB/RMB drag look, WASD+QE move, Shift boost, B toggle AABB, L toggle debug/lit, F1 toggle MT-secondary recording, F2 toggle occlusion\n");
 
         bool running = true;
         auto t0 = std::chrono::steady_clock::now();
@@ -3009,6 +3044,9 @@ private:
     bool use_multithread_recording_ = false;
     bool used_secondary_this_frame_ = false;
     bool enable_occlusion_ = true;
+    bool relative_mouse_mode_ = false;
+    bool mouse_right_held_ = false;
+    bool mouse_left_held_ = false;
     bool apply_occlusion_this_frame_ = false;
     uint32_t occlusion_warmup_frames_ = 0;
     bool camera_prev_valid_ = false;

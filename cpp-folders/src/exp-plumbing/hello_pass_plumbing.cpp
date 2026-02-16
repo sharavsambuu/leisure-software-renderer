@@ -300,15 +300,12 @@ int main(int argc, char* argv[])
         shs::PlatformInputState pin{};
         if (!runtime.pump_input(pin)) break;
 
-        if (pin.right_mouse_down)
+        const uint32_t mouse_state = SDL_GetMouseState(nullptr, nullptr);
+        const bool right_mouse_held = (mouse_state & SDL_BUTTON(SDL_BUTTON_RIGHT)) != 0;
+        if (right_mouse_held != mouse_look_active)
         {
-            mouse_look_active = true;
-            runtime.set_relative_mouse_mode(true);
-        }
-        if (pin.right_mouse_up)
-        {
-            mouse_look_active = false;
-            runtime.set_relative_mouse_mode(false);
+            mouse_look_active = right_mouse_held;
+            runtime.set_relative_mouse_mode(mouse_look_active);
         }
 
         if (pin.quit)

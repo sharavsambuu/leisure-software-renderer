@@ -55,11 +55,22 @@ struct FreeCamera {
     float pitch = -0.25f;
     float move_speed = 20.0f;
     float look_speed = 0.003f;
+    static constexpr float kMouseSpikeThreshold = 240.0f;
+    static constexpr float kMouseDeltaClamp = 90.0f;
 
     void update(const PlatformInputState& input, float dt) {
-        if (input.right_mouse_down) {
-            yaw -= input.mouse_dx * look_speed;
-            pitch -= input.mouse_dy * look_speed;
+        if (input.right_mouse_down || input.left_mouse_down) {
+            float mdx = input.mouse_dx;
+            float mdy = input.mouse_dy;
+            // WSL2 relative-mode occasionally reports large one-frame spikes.
+            if (std::abs(mdx) > kMouseSpikeThreshold || std::abs(mdy) > kMouseSpikeThreshold) {
+                mdx = 0.0f;
+                mdy = 0.0f;
+            }
+            mdx = std::clamp(mdx, -kMouseDeltaClamp, kMouseDeltaClamp);
+            mdy = std::clamp(mdy, -kMouseDeltaClamp, kMouseDeltaClamp);
+            yaw -= mdx * look_speed;
+            pitch -= mdy * look_speed;
             pitch = std::clamp(pitch, -glm::half_pi<float>() + 0.01f, glm::half_pi<float>() - 0.01f);
         }
 
@@ -429,7 +440,8 @@ int main() {
     bool show_aabb_debug = false;
     bool render_lit_surfaces = false;
     bool enable_occlusion = true;
-    std::printf("Controls: RMB look, WASD+QE move, Shift boost, B toggle AABB, L toggle debug/lit, F2 toggle occlusion\n");
+    bool mouse_drag_held = false;
+    std::printf("Controls: LMB/RMB drag look, WASD+QE move, Shift boost, B toggle AABB, L toggle debug/lit, F2 toggle occlusion\n");
 
     auto start_time = std::chrono::steady_clock::now();
     auto last_time = start_time;
@@ -446,6 +458,13 @@ int main() {
         if (input.toggle_bot) show_aabb_debug = !show_aabb_debug;
         if (input.toggle_light_shafts) render_lit_surfaces = !render_lit_surfaces;
         if (input.cycle_cull_mode) enable_occlusion = !enable_occlusion;
+        const bool look_drag = input.right_mouse_down || input.left_mouse_down;
+        if (look_drag != mouse_drag_held) {
+            mouse_drag_held = look_drag;
+            runtime.set_relative_mouse_mode(mouse_drag_held);
+            input.mouse_dx = 0.0f;
+            input.mouse_dy = 0.0f;
+        }
 
         camera.update(input, dt);
 
@@ -599,6 +618,7 @@ int main() {
     }
 
     std::printf("\n");
+    runtime.set_relative_mouse_mode(false);
     shs::jolt::shutdown_jolt();
     return 0;
 }

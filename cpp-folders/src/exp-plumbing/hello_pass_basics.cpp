@@ -832,18 +832,14 @@ int main()
             }
         }
 
-        // Товчлууруудын hold төлөв.
-        if (pin.left_mouse_down) left_mouse_held = true;
-        if (pin.left_mouse_up) left_mouse_held = false;
-        if (pin.right_mouse_down)
+        // Mouse hold төлөвийг SDL-ээс шууд уншиж drag-look/relative mode-ыг тогтвортой болгоно.
+        const uint32_t mouse_state = SDL_GetMouseState(nullptr, nullptr);
+        left_mouse_held = (mouse_state & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
+        const bool right_now = (mouse_state & SDL_BUTTON(SDL_BUTTON_RIGHT)) != 0;
+        if (right_now != right_mouse_held)
         {
-            right_mouse_held = true;
-            runtime.set_relative_mouse_mode(true);
-        }
-        if (pin.right_mouse_up)
-        {
-            right_mouse_held = false;
-            runtime.set_relative_mouse_mode(false);
+            right_mouse_held = right_now;
+            runtime.set_relative_mouse_mode(right_mouse_held);
         }
         drag_look = left_mouse_held || right_mouse_held;
 
