@@ -75,8 +75,6 @@ const uint SHADOW_TECH_POINT = 3u;
 const uint SHADOW_TECH_AREA_PROXY = 4u;
 const uint LIGHT_TECH_PBR = 0u;
 const uint LIGHT_TECH_BLINN = 1u;
-const uint LIGHT_TECH_LAMBERT = 2u;
-const uint LIGHT_TECH_TOON = 3u;
 
 float distribution_ggx(vec3 N, vec3 H, float roughness)
 {
@@ -145,31 +143,6 @@ vec3 eval_blinn_phong_light(vec3 N, vec3 V, vec3 L, vec3 radiance, vec3 albedo, 
     return radiance * ((albedo / PI) * NdotL + spec_color * spec * spec_strength);
 }
 
-vec3 eval_lambert_light(vec3 N, vec3 L, vec3 radiance, vec3 albedo)
-{
-    float NdotL = max(dot(N, L), 0.0);
-    if (NdotL <= 0.0) return vec3(0.0);
-    return (albedo / PI) * radiance * NdotL;
-}
-
-vec3 eval_toon_light(vec3 N, vec3 V, vec3 L, vec3 radiance, vec3 albedo, float metallic, float roughness)
-{
-    float NdotL = max(dot(N, L), 0.0);
-    if (NdotL <= 0.0) return vec3(0.0);
-
-    float bands = 4.0;
-    float stepped = floor(NdotL * bands) / max(bands - 1.0, 1.0);
-    vec3 diffuse = albedo * mix(0.20, 1.0, stepped);
-
-    vec3 H = normalize(V + L);
-    float toon_shine = mix(18.0, 80.0, 1.0 - clamp(roughness, 0.0, 1.0));
-    float raw_spec = pow(max(dot(N, H), 0.0), toon_shine);
-    float spec_step = step(0.55, raw_spec) * 0.35;
-    vec3 spec_color = mix(vec3(0.08), albedo, clamp(metallic, 0.0, 1.0) * 0.4);
-
-    return radiance * (diffuse + spec_color * spec_step);
-}
-
 vec3 eval_light_technique(
     uint lighting_technique,
     vec3 N,
@@ -183,14 +156,6 @@ vec3 eval_light_technique(
     if (lighting_technique == LIGHT_TECH_BLINN)
     {
         return eval_blinn_phong_light(N, V, L, radiance, albedo, metallic, roughness);
-    }
-    if (lighting_technique == LIGHT_TECH_LAMBERT)
-    {
-        return eval_lambert_light(N, L, radiance, albedo);
-    }
-    if (lighting_technique == LIGHT_TECH_TOON)
-    {
-        return eval_toon_light(N, V, L, radiance, albedo, metallic, roughness);
     }
     return eval_pbr_light(N, V, L, radiance, albedo, metallic, roughness);
 }
@@ -534,10 +499,7 @@ void main()
     vec3 N = normalize(v_normal_ws);
     vec3 V = normalize(ubo.camera_pos_time.xyz - v_world_pos);
 
-    float ambient_base = 0.035;
-    if (lighting_technique == LIGHT_TECH_LAMBERT) ambient_base = 0.050;
-    else if (lighting_technique == LIGHT_TECH_TOON) ambient_base = 0.042;
-    vec3 color = albedo * ambient_base * ao;
+    vec3 color = albedo * 0.035 * ao;
 
     vec3 Ld = normalize(-ubo.sun_dir_intensity.xyz);
     vec3 sun_radiance = vec3(1.0, 0.97, 0.92) * max(ubo.sun_dir_intensity.w, 0.0);

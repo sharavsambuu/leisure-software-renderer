@@ -288,9 +288,7 @@ enum class VulkanCullerBackend : uint8_t
 enum class LightingTechnique : uint32_t
 {
     PBR = 0u,
-    BlinnPhong = 1u,
-    Lambert = 2u,
-    Toon = 3u
+    BlinnPhong = 1u
 };
 
 const char* lighting_technique_name(LightingTechnique tech)
@@ -299,8 +297,6 @@ const char* lighting_technique_name(LightingTechnique tech)
     {
         case LightingTechnique::PBR: return "pbr";
         case LightingTechnique::BlinnPhong: return "blinn";
-        case LightingTechnique::Lambert: return "lambert";
-        case LightingTechnique::Toon: return "toon";
     }
     return "pbr";
 }
@@ -437,10 +433,6 @@ LightingTechnique next_lighting_technique(LightingTechnique tech)
         case LightingTechnique::PBR:
             return LightingTechnique::BlinnPhong;
         case LightingTechnique::BlinnPhong:
-            return LightingTechnique::Lambert;
-        case LightingTechnique::Lambert:
-            return LightingTechnique::Toon;
-        case LightingTechnique::Toon:
         default:
             return LightingTechnique::PBR;
     }
@@ -552,14 +544,10 @@ private:
         std::fprintf(stderr, "  Esc        : quit\n");
         std::fprintf(stderr, "  F1         : toggle recording mode (inline / MT-secondary)\n");
         std::fprintf(stderr, "  F2         : cycle rendering path (Forward/Forward+/Deferred/TiledDeferred/ClusteredForward)\n");
-        std::fprintf(stderr, "  Shift+F2   : cycle lighting technique (PBR/Blinn/Lambert/Toon)\n");
+        std::fprintf(stderr, "  Shift+F2   : cycle lighting technique (PBR/Blinn)\n");
         std::fprintf(stderr, "  Tab        : cycle rendering path (alias)\n");
-        std::fprintf(stderr, "  F5         : toggle shadows\n");
         std::fprintf(stderr, "  F6         : toggle Vulkan culler backend (gpu / disabled)\n");
         std::fprintf(stderr, "  F7         : toggle light debug wireframe draw\n");
-        std::fprintf(stderr, "  F8         : toggle scene occlusion culling\n");
-        std::fprintf(stderr, "  F9         : toggle light occlusion culling\n");
-        std::fprintf(stderr, "  F10        : cycle light-object prefilter (None/Sphere/Volume)\n");
         std::fprintf(stderr, "  F11        : toggle auto lighting-technique switching\n");
         std::fprintf(stderr, "  F12        : toggle directional (sun) shadow contribution\n");
         std::fprintf(stderr, "  Drag LMB/RMB: free-look camera (WSL spike-filtered)\n");
@@ -2989,7 +2977,39 @@ private:
             const float orbit_r = std::max(2.0f, la.orbit_radius * light_orbit_scale_);
             const float y = (la.height + light_height_bias_) + std::sin(a * 1.7f + la.phase) * 1.2f;
             const glm::vec3 p(std::cos(a) * orbit_r, y, std::sin(a) * orbit_r);
-            const float tuned_range = std::max(0.75f, la.range * light_range_scale_);
+            float shape_range = la.range;
+            switch (la.type)
+            {
+                case shs::LightType::RectArea:
+                {
+                    const float hx = std::max(0.10f, la.shape_params.x);
+                    const float hy = std::max(0.10f, la.shape_params.y);
+                    // Keep rect-area depth comparable to panel footprint.
+                    shape_range = std::max(0.90f, std::max(hx, hy) * 2.25f);
+                    break;
+                }
+                case shs::LightType::TubeArea:
+                {
+                    const float half_len = std::max(0.10f, la.shape_params.x);
+                    const float radius = std::max(0.05f, la.shape_params.y);
+                    // Capsule influence radius should stay tied to tube dimensions.
+                    shape_range = std::max(0.90f, (half_len + radius) * 2.00f);
+                    break;
+                }
+                case shs::LightType::Spot:
+                {
+                    // Keep cone depth in a practical range for scene readability.
+                    shape_range = std::clamp(la.range, 2.20f, 7.50f);
+                    break;
+                }
+                case shs::LightType::Point:
+                default:
+                {
+                    shape_range = std::clamp(la.range, 1.20f, 6.80f);
+                    break;
+                }
+            }
+            const float tuned_range = std::max(0.60f, shape_range * light_range_scale_);
             const float tuned_intensity = std::max(0.0f, la.intensity * light_intensity_scale_);
 
             switch (la.type)
@@ -3241,7 +3261,7 @@ private:
                             l.common.position_ws,
                             l.axis_ws,
                             l.half_length,
-                            l.radius);
+                            l.common.range);
                         const glm::vec3 c = glm::clamp(l.common.color * 1.05f, glm::vec3(0.05f), glm::vec3(1.0f));
                         d.color = glm::vec4(c, 1.0f);
                         light_volume_debug_draws_.push_back(d);
@@ -3534,8 +3554,7 @@ private:
 
     glm::mat4 make_point_volume_debug_model(const glm::vec3& pos_ws, float range) const
     {
-        // Draw compact light proxy meshes (not full influence volumes).
-        const float r = std::clamp(range * 0.080f, 0.34f, 1.05f);
+        const float r = std::max(range, 0.10f);
         // Source sphere mesh radius is 0.5, so multiply by 2*r for target radius r.
         return glm::translate(glm::mat4(1.0f), pos_ws) * glm::scale(glm::mat4(1.0f), glm::vec3(r * 2.0f));
     }
@@ -3547,11 +3566,9 @@ private:
         float outer_angle_rad) const
     {
         const glm::vec3 dir = shs::normalize_or(dir_ws, glm::vec3(0.0f, -1.0f, 0.0f));
-        const float h = std::clamp(range * 0.16f, 1.05f, 2.05f);
-        const float base_radius = std::clamp(
-            std::tan(std::max(outer_angle_rad, glm::radians(3.0f))) * h * 0.85f,
-            0.22f,
-            1.10f);
+        const float h = std::max(range, 0.25f);
+        const float base_radius =
+            std::tan(std::max(outer_angle_rad, glm::radians(3.0f))) * h;
 
         glm::vec3 bx{};
         glm::vec3 by{};
@@ -3568,7 +3585,7 @@ private:
         const glm::vec3& right_ws,
         float half_x,
         float half_y,
-        float /*range*/) const
+        float range) const
     {
         glm::vec3 fwd = shs::normalize_or(dir_ws, glm::vec3(0.0f, -1.0f, 0.0f));
         glm::vec3 right = right_ws - fwd * glm::dot(right_ws, fwd);
@@ -3576,10 +3593,13 @@ private:
         glm::vec3 up = shs::normalize_or(glm::cross(fwd, right), glm::vec3(0.0f, 1.0f, 0.0f));
         right = shs::normalize_or(glm::cross(up, fwd), right);
 
-        const float ex = std::clamp(half_x * 0.95f, 0.44f, 1.60f);
-        const float ey = std::clamp(half_y * 0.95f, 0.44f, 1.60f);
-        const float ez = 0.22f;
-        const glm::vec3 center = pos_ws;
+        // Shader influence is a forward rounded-prism bound:
+        // x/y expand by +range beyond panel half extents, z spans [0, range].
+        // Source box mesh is centered and unit-sized, so scale by 2x half-extents.
+        const float ex = std::max((half_x + range) * 2.0f, 0.10f);
+        const float ey = std::max((half_y + range) * 2.0f, 0.10f);
+        const float ez = std::max(range, 0.10f);
+        const glm::vec3 center = pos_ws + fwd * (range * 0.5f);
         return model_from_basis_and_scale(center, right, up, fwd, glm::vec3(ex, ey, ez));
     }
 
@@ -3587,16 +3607,18 @@ private:
         const glm::vec3& pos_ws,
         const glm::vec3& axis_ws,
         float half_length,
-        float radius) const
+        float range) const
     {
         glm::vec3 axis = shs::normalize_or(axis_ws, glm::vec3(1.0f, 0.0f, 0.0f));
         glm::vec3 up_hint = safe_perp_axis(axis);
         glm::vec3 up = shs::normalize_or(glm::cross(axis, up_hint), glm::vec3(0.0f, 1.0f, 0.0f));
         glm::vec3 side = shs::normalize_or(glm::cross(up, axis), glm::vec3(0.0f, 0.0f, 1.0f));
 
-        const float ex = std::clamp(half_length * 1.10f, 0.52f, 1.85f);
-        const float ey = std::clamp(radius * 2.10f, 0.22f, 0.72f);
-        const float ez = std::clamp(radius * 2.10f, 0.22f, 0.72f);
+        // Shader influence is a capsule around segment [ -half_length, +half_length ]
+        // with capsule radius == range.
+        const float ex = std::max((half_length + range) * 2.0f, 0.10f);
+        const float ey = std::max(range * 2.0f, 0.10f);
+        const float ez = std::max(range * 2.0f, 0.10f);
         return model_from_basis_and_scale(pos_ws, axis, up, side, glm::vec3(ex, ey, ez));
     }
 
@@ -4331,9 +4353,6 @@ private:
                 case SDLK_TAB:
                     cycle_render_path_recipe();
                     break;
-                case SDLK_F5:
-                    shadow_settings_.enable = !shadow_settings_.enable;
-                    break;
                 case SDLK_F6:
                     vulkan_culler_backend_ =
                         (vulkan_culler_backend_ == VulkanCullerBackend::GpuCompute)
@@ -4342,15 +4361,6 @@ private:
                     break;
                 case SDLK_F7:
                     show_light_volumes_debug_ = !show_light_volumes_debug_;
-                    break;
-                case SDLK_F8:
-                    enable_scene_occlusion_ = !enable_scene_occlusion_;
-                    break;
-                case SDLK_F9:
-                    enable_light_occlusion_ = !enable_light_occlusion_;
-                    break;
-                case SDLK_F10:
-                    light_object_cull_mode_ = shs::next_light_object_cull_mode(light_object_cull_mode_);
                     break;
                 case SDLK_F11:
                     auto_cycle_technique_ = !auto_cycle_technique_;
