@@ -40,6 +40,9 @@
 #include <shs/lighting/light_runtime.hpp>
 #include <shs/lighting/light_set.hpp>
 #include <shs/lighting/shadow_technique.hpp>
+#include <shs/pipeline/render_path_compiler.hpp>
+#include <shs/pipeline/render_path_recipe.hpp>
+#include <shs/pipeline/render_path_registry.hpp>
 #include <shs/pipeline/technique_profile.hpp>
 #include <shs/resources/loaders/primitive_import.hpp>
 #include <shs/resources/resource_registry.hpp>
@@ -72,11 +75,7 @@ constexpr uint32_t kMaxPointShadowLights = 2;
 constexpr uint32_t kPointShadowFaceCount = 6;
 constexpr uint32_t kMaxLocalShadowLayers = kMaxSpotShadowMaps + (kMaxPointShadowLights * kPointShadowFaceCount);
 constexpr uint32_t kWorkerPoolRingSize = 2;
-#if defined(SHS_FP_SHADOW_SHOWCASE)
-constexpr const char* kAppName = "HelloVulkanShadowTechniques";
-#else
-constexpr const char* kAppName = "HelloForwardPlusStressVulkan";
-#endif
+constexpr const char* kAppName = "HelloRenderingPaths";
 
 struct Vertex
 {
@@ -106,7 +105,7 @@ struct alignas(16) CameraUBO
     glm::vec4 sun_dir_intensity{0.0f, -1.0f, 0.0f, 1.0f};
     glm::uvec4 screen_tile_lightcount{0u}; // x: width, y: height, z: tiles_x, w: light_count
     glm::uvec4 params{0u};                  // x: tiles_y, y: max_per_tile, z: tile_size, w: culling_mode
-    glm::uvec4 culling_params{0u};          // x: cluster_z_slices
+    glm::uvec4 culling_params{0u};          // x: cluster_z_slices, y: lighting_technique
     glm::vec4 depth_params{0.1f, 260.0f, 0.0f, 0.0f}; // x: near, y: far
     glm::vec4 exposure_gamma{1.0f, 2.2f, 0.0f, 0.0f};
     glm::mat4 sun_shadow_view_proj{1.0f};
@@ -286,6 +285,26 @@ enum class VulkanCullerBackend : uint8_t
     Disabled = 1
 };
 
+enum class LightingTechnique : uint32_t
+{
+    PBR = 0u,
+    BlinnPhong = 1u,
+    Lambert = 2u,
+    Toon = 3u
+};
+
+const char* lighting_technique_name(LightingTechnique tech)
+{
+    switch (tech)
+    {
+        case LightingTechnique::PBR: return "pbr";
+        case LightingTechnique::BlinnPhong: return "blinn";
+        case LightingTechnique::Lambert: return "lambert";
+        case LightingTechnique::Toon: return "toon";
+    }
+    return "pbr";
+}
+
 const char* vulkan_culler_backend_name(VulkanCullerBackend backend)
 {
     switch (backend)
@@ -367,10 +386,70 @@ shs::LightCullingMode default_culling_mode_for_technique(shs::TechniqueMode mode
     }
 }
 
-class HelloForwardPlusStressVulkanApp
+shs::RenderPathRenderingTechnique default_render_path_technique_for_mode(shs::TechniqueMode mode)
+{
+    switch (mode)
+    {
+        case shs::TechniqueMode::Forward:
+            return shs::RenderPathRenderingTechnique::ForwardLit;
+        case shs::TechniqueMode::ForwardPlus:
+        case shs::TechniqueMode::ClusteredForward:
+            return shs::RenderPathRenderingTechnique::ForwardPlus;
+        case shs::TechniqueMode::Deferred:
+        case shs::TechniqueMode::TiledDeferred:
+            return shs::RenderPathRenderingTechnique::Deferred;
+        default:
+            return shs::RenderPathRenderingTechnique::ForwardPlus;
+    }
+}
+
+shs::RenderPathRecipe make_default_stress_vk_recipe(shs::TechniqueMode mode)
+{
+    shs::RenderPathRecipe recipe{};
+    recipe.name = std::string("stress_vk_") + shs::technique_mode_name(mode);
+    recipe.backend = shs::RenderBackendType::Vulkan;
+    recipe.light_volume_provider = shs::RenderPathLightVolumeProvider::JoltShapeVolumes;
+    recipe.view_culling = shs::RenderPathCullingMode::FrustumAndOptionalOcclusion;
+    recipe.shadow_culling = shs::RenderPathCullingMode::FrustumAndOptionalOcclusion;
+    recipe.render_technique = default_render_path_technique_for_mode(mode);
+    recipe.technique_mode = mode;
+    recipe.runtime_defaults.view_occlusion_enabled = true;
+    recipe.runtime_defaults.shadow_occlusion_enabled = false;
+    recipe.runtime_defaults.debug_aabb = false;
+    recipe.runtime_defaults.lit_mode = true;
+    recipe.runtime_defaults.enable_shadows = true;
+    recipe.wants_shadows = true;
+    recipe.strict_validation = true;
+
+    const shs::TechniqueProfile profile = shs::make_default_technique_profile(mode);
+    recipe.pass_chain.reserve(profile.passes.size());
+    for (const auto& p : profile.passes)
+    {
+        recipe.pass_chain.push_back(shs::RenderPathPassEntry{p.id, p.required});
+    }
+    return recipe;
+}
+
+LightingTechnique next_lighting_technique(LightingTechnique tech)
+{
+    switch (tech)
+    {
+        case LightingTechnique::PBR:
+            return LightingTechnique::BlinnPhong;
+        case LightingTechnique::BlinnPhong:
+            return LightingTechnique::Lambert;
+        case LightingTechnique::Lambert:
+            return LightingTechnique::Toon;
+        case LightingTechnique::Toon:
+        default:
+            return LightingTechnique::PBR;
+    }
+}
+
+class HelloRenderingPathsApp
 {
 public:
-    ~HelloForwardPlusStressVulkanApp()
+    ~HelloRenderingPathsApp()
     {
         cleanup();
     }
@@ -472,16 +551,16 @@ private:
         std::fprintf(stderr, "\n[%s] Controls\n", kAppName);
         std::fprintf(stderr, "  Esc        : quit\n");
         std::fprintf(stderr, "  F1         : toggle recording mode (inline / MT-secondary)\n");
-        std::fprintf(stderr, "  F2         : cycle technique mode\n");
-        std::fprintf(stderr, "  F3         : cycle light culling override (None/Tiled/TiledDepth/Clustered)\n");
-        std::fprintf(stderr, "  F4         : clear culling override (use technique default)\n");
+        std::fprintf(stderr, "  F2         : cycle rendering path (Forward/Forward+/Deferred/TiledDeferred/ClusteredForward)\n");
+        std::fprintf(stderr, "  Shift+F2   : cycle lighting technique (PBR/Blinn/Lambert/Toon)\n");
+        std::fprintf(stderr, "  Tab        : cycle rendering path (alias)\n");
         std::fprintf(stderr, "  F5         : toggle shadows\n");
         std::fprintf(stderr, "  F6         : toggle Vulkan culler backend (gpu / disabled)\n");
         std::fprintf(stderr, "  F7         : toggle light debug wireframe draw\n");
         std::fprintf(stderr, "  F8         : toggle scene occlusion culling\n");
         std::fprintf(stderr, "  F9         : toggle light occlusion culling\n");
         std::fprintf(stderr, "  F10        : cycle light-object prefilter (None/Sphere/Volume)\n");
-        std::fprintf(stderr, "  F11        : toggle auto technique switching\n");
+        std::fprintf(stderr, "  F11        : toggle auto lighting-technique switching\n");
         std::fprintf(stderr, "  F12        : toggle directional (sun) shadow contribution\n");
         std::fprintf(stderr, "  Drag LMB/RMB: free-look camera (WSL spike-filtered)\n");
         std::fprintf(stderr, "  W/A/S/D + Q/E: move camera, Shift: boost\n");
@@ -492,7 +571,7 @@ private:
         std::fprintf(stderr, "  9/0        : sun shadow strength -/+ (when F12 is on)\n");
         std::fprintf(stderr, "  R          : reset light tuning\n");
         std::fprintf(stderr, "  +/-        : decrease/increase active light count\n");
-        std::fprintf(stderr, "  Title bar  : shows mode, culling stack, rejections, and frame ms\n\n");
+        std::fprintf(stderr, "  Title bar  : shows lighting-technique, render-path, culling mode, rejections, and frame ms\n\n");
     }
 
     void init_sdl()
@@ -1101,7 +1180,7 @@ private:
         shadow_settings_.budget.max_rect_area = 0u;
         shadow_settings_.budget.max_tube_area = 0u;
 
-        apply_technique_mode(shs::TechniqueMode::ForwardPlus);
+        configure_render_path_defaults();
     }
 
     void configure_vulkan_culler_backend_from_env()
@@ -2335,7 +2414,7 @@ private:
         create_pipelines(true);
     }
 
-    void apply_technique_mode(shs::TechniqueMode mode)
+    void apply_technique_profile(shs::TechniqueMode mode, const shs::TechniqueProfile& profile)
     {
         active_technique_ = mode;
         const auto& modes = known_technique_modes();
@@ -2347,7 +2426,6 @@ private:
                 break;
             }
         }
-        const shs::TechniqueProfile profile = shs::make_default_technique_profile(mode);
 
         profile_depth_prepass_enabled_ = profile_has_pass(profile, "depth_prepass");
         enable_light_culling_ =
@@ -2358,10 +2436,6 @@ private:
         if (!enable_light_culling_)
         {
             mode_hint = shs::LightCullingMode::None;
-        }
-        else if (manual_culling_override_)
-        {
-            mode_hint = manual_culling_mode_;
         }
         culling_mode_ = mode_hint;
 
@@ -2380,50 +2454,117 @@ private:
         technique_switch_accum_sec_ = 0.0f;
     }
 
-    void cycle_technique_mode()
+    void apply_technique_mode(shs::TechniqueMode mode)
     {
+        const shs::TechniqueProfile profile = shs::make_default_technique_profile(mode);
+        apply_technique_profile(mode, profile);
+    }
+
+    void init_render_path_registry()
+    {
+        render_path_registry_.clear();
+        render_path_cycle_order_.clear();
+
         const auto& modes = known_technique_modes();
-        if (modes.empty()) return;
-        technique_cycle_index_ = (technique_cycle_index_ + 1u) % modes.size();
-        apply_technique_mode(modes[technique_cycle_index_]);
+        render_path_cycle_order_.reserve(modes.size());
+        for (const shs::TechniqueMode mode : modes)
+        {
+            shs::RenderPathRecipe recipe = make_default_stress_vk_recipe(mode);
+            const std::string id = recipe.name;
+            (void)render_path_registry_.register_recipe(std::move(recipe));
+            render_path_cycle_order_.push_back(id);
+        }
     }
 
-    void cycle_culling_override_mode()
+    bool apply_render_path_recipe_by_index(size_t index)
     {
-        if (!manual_culling_override_)
+        if (render_path_cycle_order_.empty())
         {
-            manual_culling_override_ = true;
-            manual_culling_mode_ = culling_mode_;
+            render_path_plan_valid_ = false;
+            render_path_recipe_ = shs::RenderPathRecipe{};
+            render_path_plan_ = shs::RenderPathExecutionPlan{};
+            apply_technique_mode(shs::TechniqueMode::ForwardPlus);
+            return false;
         }
 
-        switch (manual_culling_mode_)
+        render_path_cycle_index_ = index % render_path_cycle_order_.size();
+        const std::string& recipe_id = render_path_cycle_order_[render_path_cycle_index_];
+        const shs::RenderPathRecipe* recipe = render_path_registry_.find_recipe(recipe_id);
+        if (!recipe)
         {
-            case shs::LightCullingMode::None:
-                manual_culling_mode_ = shs::LightCullingMode::Tiled;
-                break;
-            case shs::LightCullingMode::Tiled:
-                manual_culling_mode_ = shs::LightCullingMode::TiledDepthRange;
-                break;
-            case shs::LightCullingMode::TiledDepthRange:
-                manual_culling_mode_ = shs::LightCullingMode::Clustered;
-                break;
-            case shs::LightCullingMode::Clustered:
-            default:
-                manual_culling_mode_ = shs::LightCullingMode::None;
-                break;
+            std::fprintf(stderr, "[render-path][stress][error] Missing recipe id '%s'.\n", recipe_id.c_str());
+            render_path_plan_valid_ = false;
+            render_path_recipe_ = shs::RenderPathRecipe{};
+            render_path_plan_ = shs::RenderPathExecutionPlan{};
+            apply_technique_mode(shs::TechniqueMode::ForwardPlus);
+            return false;
         }
 
-        culling_mode_ = enable_light_culling_ ? manual_culling_mode_ : shs::LightCullingMode::None;
-        refresh_depth_prepass_state();
+        render_path_recipe_ = *recipe;
+        const shs::RenderPathCompiler compiler{};
+        render_path_plan_ = compiler.compile(render_path_recipe_, ctx_, nullptr);
+
+        for (const auto& w : render_path_plan_.warnings)
+        {
+            std::fprintf(stderr, "[render-path][stress][warn] %s\n", w.c_str());
+        }
+        for (const auto& e : render_path_plan_.errors)
+        {
+            std::fprintf(stderr, "[render-path][stress][error] %s\n", e.c_str());
+        }
+
+        render_path_plan_valid_ = render_path_plan_.valid;
+        if (!render_path_plan_valid_)
+        {
+            std::fprintf(
+                stderr,
+                "[render-path][stress] Recipe '%s' invalid. Falling back to default technique profile.\n",
+                render_path_recipe_.name.c_str());
+            apply_technique_mode(render_path_recipe_.technique_mode);
+            return false;
+        }
+
+        const shs::TechniqueProfile profile = shs::make_technique_profile(render_path_plan_);
+        apply_technique_profile(render_path_plan_.technique_mode, profile);
+        enable_scene_occlusion_ = render_path_plan_.runtime_state.view_occlusion_enabled;
+        enable_light_occlusion_ = render_path_plan_.runtime_state.shadow_occlusion_enabled;
+        shadow_settings_.enable = render_path_plan_.runtime_state.enable_shadows;
+
+        std::fprintf(
+            stderr,
+            "[render-path][stress] Applied recipe '%s' (%s), passes:%zu.\n",
+            render_path_plan_.recipe_name.c_str(),
+            render_path_plan_valid_ ? "valid" : "invalid",
+            render_path_plan_.pass_chain.size());
+        return true;
     }
 
-    void clear_culling_override_mode()
+    void cycle_render_path_recipe()
     {
-        manual_culling_override_ = false;
-        culling_mode_ = enable_light_culling_ ?
-            default_culling_mode_for_technique(active_technique_) :
-            shs::LightCullingMode::None;
-        refresh_depth_prepass_state();
+        if (render_path_cycle_order_.empty()) return;
+        render_path_cycle_index_ = (render_path_cycle_index_ + 1u) % render_path_cycle_order_.size();
+        (void)apply_render_path_recipe_by_index(render_path_cycle_index_);
+    }
+
+    void cycle_lighting_technique()
+    {
+        lighting_technique_ = next_lighting_technique(lighting_technique_);
+    }
+
+    void configure_render_path_defaults()
+    {
+        init_render_path_registry();
+        const auto& modes = known_technique_modes();
+        size_t preferred_index = 0u;
+        for (size_t i = 0; i < modes.size(); ++i)
+        {
+            if (modes[i] == shs::TechniqueMode::ForwardPlus)
+            {
+                preferred_index = i;
+                break;
+            }
+        }
+        (void)apply_render_path_recipe_by_index(preferred_index);
     }
 
     void refresh_depth_prepass_state()
@@ -2712,7 +2853,11 @@ private:
         camera_ubo_.sun_dir_intensity = glm::vec4(glm::normalize(glm::vec3(-0.35f, -1.0f, -0.18f)), 1.45f);
         camera_ubo_.screen_tile_lightcount = glm::uvec4(w, h, tile_w_, active_light_count_);
         camera_ubo_.params = glm::uvec4(tile_h_, kMaxLightsPerTile, kTileSize, static_cast<uint32_t>(culling_mode_));
-        camera_ubo_.culling_params = glm::uvec4(kClusterZSlices, 0u, 0u, 0u);
+        camera_ubo_.culling_params = glm::uvec4(
+            kClusterZSlices,
+            static_cast<uint32_t>(lighting_technique_),
+            0u,
+            0u);
         camera_ubo_.depth_params = glm::vec4(0.1f, 260.0f, 0.0f, 0.0f);
         camera_ubo_.exposure_gamma = glm::vec4(1.4f, 2.2f, 0.0f, 0.0f);
         // Keep directional shadow optional and subtle in this stress demo
@@ -4050,8 +4195,10 @@ private:
     void update_window_title(float avg_ms)
     {
         const char* mode_name = shs::technique_mode_name(active_technique_);
+        const char* light_tech_name = lighting_technique_name(lighting_technique_);
+        const char* recipe_name = render_path_recipe_.name.empty() ? "n/a" : render_path_recipe_.name.c_str();
+        const char* recipe_status = render_path_plan_valid_ ? "OK" : "Fallback";
         const char* cull_name = shs::light_culling_mode_name(culling_mode_);
-        const char* cull_src = manual_culling_override_ ? "manual" : "tech";
         const char* culler_backend = vulkan_culler_backend_name(vulkan_culler_backend_);
         const char* rec_mode = use_multithread_recording_ ? "MT-secondary" : "inline";
         const float switch_in = auto_cycle_technique_ ? std::max(0.0f, kTechniqueSwitchPeriodSec - technique_switch_accum_sec_) : 0.0f;
@@ -4062,15 +4209,17 @@ private:
         const uint32_t total_draws = static_cast<uint32_t>(instances_.size()) + 1u;
         const uint32_t culled_total = (active_light_count_ > visible_light_count_) ? (active_light_count_ - visible_light_count_) : 0u;
 
-        char title[640];
+        char title[768];
         std::snprintf(
             title,
             sizeof(title),
-            "%s | mode:%s | cull:%s(%s/%s) | rec:%s | lights:%u/%u[p:%u s:%u r:%u t:%u] | lvol:%s occ:%s/%s lobj:%s culled:%u[f:%u o:%u p:%u] | shad:sun:%s(%.2f) spot:%u point:%u | cfg:orb%.2f h%.1f r%.2f i%.2f | draws:%u/%u | tile:%ux%u | refs:%llu avg:%.1f max:%u nz:%u/%u | techsw:%s %.1fs | %.2f ms",
+            "%s | light:%s | rpath:%s(%s) mode:%s | cull:%s(%s) | rec:%s | lights:%u/%u[p:%u s:%u r:%u t:%u] | lvol:%s occ:%s/%s lobj:%s culled:%u[f:%u o:%u p:%u] | shad:sun:%s(%.2f) spot:%u point:%u | cfg:orb%.2f h%.1f r%.2f i%.2f | draws:%u/%u | tile:%ux%u | refs:%llu avg:%.1f max:%u nz:%u/%u | lightsw:%s %.1fs | %.2f ms",
             kAppName,
+            light_tech_name,
+            recipe_name,
+            recipe_status,
             mode_name,
             cull_name,
-            cull_src,
             culler_backend,
             rec_mode,
             visible_light_count_,
@@ -4170,13 +4319,17 @@ private:
                     use_multithread_recording_ = !use_multithread_recording_;
                     break;
                 case SDLK_F2:
-                    cycle_technique_mode();
+                    if ((e.key.keysym.mod & KMOD_SHIFT) != 0)
+                    {
+                        cycle_lighting_technique();
+                    }
+                    else
+                    {
+                        cycle_render_path_recipe();
+                    }
                     break;
-                case SDLK_F3:
-                    cycle_culling_override_mode();
-                    break;
-                case SDLK_F4:
-                    clear_culling_override_mode();
+                case SDLK_TAB:
+                    cycle_render_path_recipe();
                     break;
                 case SDLK_F5:
                     shadow_settings_.enable = !shadow_settings_.enable;
@@ -4292,7 +4445,8 @@ private:
                 technique_switch_accum_sec_ += dt;
                 if (technique_switch_accum_sec_ >= kTechniqueSwitchPeriodSec)
                 {
-                    cycle_technique_mode();
+                    cycle_lighting_technique();
+                    technique_switch_accum_sec_ = 0.0f;
                 }
             }
 
@@ -4478,8 +4632,6 @@ private:
     bool use_forward_plus_ = true;
     shs::LightCullingMode culling_mode_ = shs::LightCullingMode::Tiled;
     shs::ShadowCompositionSettings shadow_settings_ = shs::make_default_shadow_composition_settings();
-    bool manual_culling_override_ = false;
-    shs::LightCullingMode manual_culling_mode_ = shs::LightCullingMode::Tiled;
     VulkanCullerBackend vulkan_culler_backend_ = VulkanCullerBackend::GpuCompute;
     bool profile_depth_prepass_enabled_ = true;
     bool enable_depth_prepass_ = true;
@@ -4489,6 +4641,13 @@ private:
     uint32_t cull_debug_non_empty_lists_ = 0;
     uint32_t cull_debug_list_count_ = 0;
     uint32_t cull_debug_max_list_size_ = 0;
+    shs::RenderPathRegistry render_path_registry_{};
+    std::vector<std::string> render_path_cycle_order_{};
+    shs::RenderPathRecipe render_path_recipe_{};
+    shs::RenderPathExecutionPlan render_path_plan_{};
+    bool render_path_plan_valid_ = false;
+    size_t render_path_cycle_index_ = 0;
+    LightingTechnique lighting_technique_ = LightingTechnique::PBR;
     shs::TechniqueMode active_technique_ = shs::TechniqueMode::ForwardPlus;
     size_t technique_cycle_index_ = 1;
     float technique_switch_accum_sec_ = 0.0f;
@@ -4514,7 +4673,7 @@ int main()
 {
     try
     {
-        HelloForwardPlusStressVulkanApp app{};
+        HelloRenderingPathsApp app{};
         app.run();
         return 0;
     }

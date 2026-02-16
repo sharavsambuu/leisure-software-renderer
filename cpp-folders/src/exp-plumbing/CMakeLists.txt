@@ -295,7 +295,7 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
             "${VK_PB_COMPOSITE_FRAG_SPV}"
             "${VK_PB_FXAA_FRAG_SPV}"
     )
-    add_custom_target(HelloForwardPlusStressVulkanShaders
+    add_custom_target(HelloRenderingPathsShaders
         DEPENDS
             "${VK_FP_SCENE_VERT_SPV}"
             "${VK_FP_SCENE_FRAG_SPV}"
@@ -344,10 +344,10 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
     endif()
     target_compile_features(HelloPassBasicsVulkan PRIVATE cxx_std_20)
 
-    add_executable(HelloForwardPlusStressVulkan hello_forward_plus_stress_vulkan.cpp)
-    add_dependencies(HelloForwardPlusStressVulkan HelloForwardPlusStressVulkanShaders)
-    target_link_libraries(HelloForwardPlusStressVulkan PRIVATE shs::renderer)
-    target_compile_definitions(HelloForwardPlusStressVulkan PRIVATE
+    add_executable(HelloRenderingPaths hello_rendering_paths.cpp)
+    add_dependencies(HelloRenderingPaths HelloRenderingPathsShaders)
+    target_link_libraries(HelloRenderingPaths PRIVATE shs::renderer)
+    target_compile_definitions(HelloRenderingPaths PRIVATE
         SHS_VK_FP_SCENE_VERT_SPV="${VK_FP_SCENE_VERT_SPV}"
         SHS_VK_FP_SCENE_FRAG_SPV="${VK_FP_SCENE_FRAG_SPV}"
         SHS_VK_FP_SHADOW_VERT_SPV="${VK_FP_SHADOW_VERT_SPV}"
@@ -355,33 +355,13 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
         SHS_VK_FP_DEPTH_REDUCE_COMP_SPV="${VK_FP_DEPTH_REDUCE_COMP_SPV}"
     )
     if(MSVC)
-        target_compile_options(HelloForwardPlusStressVulkan PRIVATE /W4)
+        target_compile_options(HelloRenderingPaths PRIVATE /W4)
     else()
-        target_compile_options(HelloForwardPlusStressVulkan PRIVATE -Wall -Wextra -Wpedantic)
-        target_compile_options(HelloForwardPlusStressVulkan PRIVATE $<$<CONFIG:Release>:-O3>)
-        target_compile_options(HelloForwardPlusStressVulkan PRIVATE $<$<CONFIG:Debug>:-g>)
+        target_compile_options(HelloRenderingPaths PRIVATE -Wall -Wextra -Wpedantic)
+        target_compile_options(HelloRenderingPaths PRIVATE $<$<CONFIG:Release>:-O3>)
+        target_compile_options(HelloRenderingPaths PRIVATE $<$<CONFIG:Debug>:-g>)
     endif()
-    target_compile_features(HelloForwardPlusStressVulkan PRIVATE cxx_std_20)
-
-    add_executable(HelloVulkanShadowTechniques hello_forward_plus_stress_vulkan.cpp)
-    add_dependencies(HelloVulkanShadowTechniques HelloForwardPlusStressVulkanShaders)
-    target_link_libraries(HelloVulkanShadowTechniques PRIVATE shs::renderer)
-    target_compile_definitions(HelloVulkanShadowTechniques PRIVATE
-        SHS_VK_FP_SCENE_VERT_SPV="${VK_FP_SCENE_VERT_SPV}"
-        SHS_VK_FP_SCENE_FRAG_SPV="${VK_FP_SCENE_FRAG_SPV}"
-        SHS_VK_FP_SHADOW_VERT_SPV="${VK_FP_SHADOW_VERT_SPV}"
-        SHS_VK_FP_LIGHT_CULL_COMP_SPV="${VK_FP_LIGHT_CULL_COMP_SPV}"
-        SHS_VK_FP_DEPTH_REDUCE_COMP_SPV="${VK_FP_DEPTH_REDUCE_COMP_SPV}"
-        SHS_FP_SHADOW_SHOWCASE=1
-    )
-    if(MSVC)
-        target_compile_options(HelloVulkanShadowTechniques PRIVATE /W4)
-    else()
-        target_compile_options(HelloVulkanShadowTechniques PRIVATE -Wall -Wextra -Wpedantic)
-        target_compile_options(HelloVulkanShadowTechniques PRIVATE $<$<CONFIG:Release>:-O3>)
-        target_compile_options(HelloVulkanShadowTechniques PRIVATE $<$<CONFIG:Debug>:-g>)
-    endif()
-    target_compile_features(HelloVulkanShadowTechniques PRIVATE cxx_std_20)
+    target_compile_features(HelloRenderingPaths PRIVATE cxx_std_20)
 else()
     if(NOT SHS_RENDERER_HAS_VULKAN)
         message(STATUS "HelloVulkanTriangle skipped (shs::renderer built without Vulkan support)")
@@ -398,18 +378,11 @@ else()
         message(STATUS "HelloPassBasicsVulkan skipped (SDL2 was built without Vulkan support)")
     endif()
     if(NOT SHS_RENDERER_HAS_VULKAN)
-        message(STATUS "HelloForwardPlusStressVulkan skipped (shs::renderer built without Vulkan support)")
+        message(STATUS "HelloRenderingPaths skipped (shs::renderer built without Vulkan support)")
     elseif(NOT GLSLANG_VALIDATOR)
-        message(STATUS "HelloForwardPlusStressVulkan skipped (glslangValidator not found)")
+        message(STATUS "HelloRenderingPaths skipped (glslangValidator not found)")
     elseif(NOT SHS_SDL2_HAS_VULKAN)
-        message(STATUS "HelloForwardPlusStressVulkan skipped (SDL2 was built without Vulkan support)")
-    endif()
-    if(NOT SHS_RENDERER_HAS_VULKAN)
-        message(STATUS "HelloVulkanShadowTechniques skipped (shs::renderer built without Vulkan support)")
-    elseif(NOT GLSLANG_VALIDATOR)
-        message(STATUS "HelloVulkanShadowTechniques skipped (glslangValidator not found)")
-    elseif(NOT SHS_SDL2_HAS_VULKAN)
-        message(STATUS "HelloVulkanShadowTechniques skipped (SDL2 was built without Vulkan support)")
+        message(STATUS "HelloRenderingPaths skipped (SDL2 was built without Vulkan support)")
     endif()
 endif()
 
@@ -418,7 +391,7 @@ endif()
 # -----------------------------------------------------------------------------
 if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
     add_executable(hello_jolt_integration hello_jolt_integration.cpp)
-    add_dependencies(hello_jolt_integration HelloForwardPlusStressVulkanShaders)
+    add_dependencies(hello_jolt_integration HelloRenderingPathsShaders)
     target_link_libraries(hello_jolt_integration PRIVATE shs::renderer)
     set_target_properties(hello_jolt_integration PROPERTIES FOLDER "Demos")
     target_compile_definitions(hello_jolt_integration PRIVATE

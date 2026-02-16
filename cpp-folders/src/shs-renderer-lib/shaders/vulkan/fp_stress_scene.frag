@@ -14,7 +14,7 @@ layout(set = 0, binding = 0) uniform CameraUBO
     vec4 sun_dir_intensity;
     uvec4 screen_tile_lightcount; // x: width, y: height, z: tiles_x, w: light_count
     uvec4 params;                 // x: tiles_y, y: max_per_tile, z: tile_size, w: culling_mode
-    uvec4 culling_params;         // x: cluster_z_slices
+    uvec4 culling_params;         // x: cluster_z_slices, y: lighting_technique
     vec4 depth_params;            // x: near, y: far
     vec4 exposure_gamma;          // x: exposure, y: gamma
     mat4 sun_shadow_view_proj;
@@ -73,6 +73,10 @@ const uint SHADOW_TECH_DIRECTIONAL = 1u;
 const uint SHADOW_TECH_SPOT = 2u;
 const uint SHADOW_TECH_POINT = 3u;
 const uint SHADOW_TECH_AREA_PROXY = 4u;
+const uint LIGHT_TECH_PBR = 0u;
+const uint LIGHT_TECH_BLINN = 1u;
+const uint LIGHT_TECH_LAMBERT = 2u;
+const uint LIGHT_TECH_TOON = 3u;
 
 float distribution_ggx(vec3 N, vec3 H, float roughness)
 {
@@ -125,6 +129,70 @@ vec3 eval_pbr_light(vec3 N, vec3 V, vec3 L, vec3 radiance, vec3 albedo, float me
     vec3 kD = (vec3(1.0) - kS) * (1.0 - metallic);
 
     return (kD * albedo / PI + specular) * radiance * NdotL;
+}
+
+vec3 eval_blinn_phong_light(vec3 N, vec3 V, vec3 L, vec3 radiance, vec3 albedo, float metallic, float roughness)
+{
+    float NdotL = max(dot(N, L), 0.0);
+    if (NdotL <= 0.0) return vec3(0.0);
+
+    vec3 H = normalize(V + L);
+    float shininess = mix(10.0, 96.0, 1.0 - clamp(roughness, 0.0, 1.0));
+    float spec = pow(max(dot(N, H), 0.0), shininess);
+    vec3 spec_color = mix(vec3(0.04), albedo, metallic);
+    float spec_strength = mix(0.15, 0.65, 1.0 - clamp(roughness, 0.0, 1.0));
+
+    return radiance * ((albedo / PI) * NdotL + spec_color * spec * spec_strength);
+}
+
+vec3 eval_lambert_light(vec3 N, vec3 L, vec3 radiance, vec3 albedo)
+{
+    float NdotL = max(dot(N, L), 0.0);
+    if (NdotL <= 0.0) return vec3(0.0);
+    return (albedo / PI) * radiance * NdotL;
+}
+
+vec3 eval_toon_light(vec3 N, vec3 V, vec3 L, vec3 radiance, vec3 albedo, float metallic, float roughness)
+{
+    float NdotL = max(dot(N, L), 0.0);
+    if (NdotL <= 0.0) return vec3(0.0);
+
+    float bands = 4.0;
+    float stepped = floor(NdotL * bands) / max(bands - 1.0, 1.0);
+    vec3 diffuse = albedo * mix(0.20, 1.0, stepped);
+
+    vec3 H = normalize(V + L);
+    float toon_shine = mix(18.0, 80.0, 1.0 - clamp(roughness, 0.0, 1.0));
+    float raw_spec = pow(max(dot(N, H), 0.0), toon_shine);
+    float spec_step = step(0.55, raw_spec) * 0.35;
+    vec3 spec_color = mix(vec3(0.08), albedo, clamp(metallic, 0.0, 1.0) * 0.4);
+
+    return radiance * (diffuse + spec_color * spec_step);
+}
+
+vec3 eval_light_technique(
+    uint lighting_technique,
+    vec3 N,
+    vec3 V,
+    vec3 L,
+    vec3 radiance,
+    vec3 albedo,
+    float metallic,
+    float roughness)
+{
+    if (lighting_technique == LIGHT_TECH_BLINN)
+    {
+        return eval_blinn_phong_light(N, V, L, radiance, albedo, metallic, roughness);
+    }
+    if (lighting_technique == LIGHT_TECH_LAMBERT)
+    {
+        return eval_lambert_light(N, L, radiance, albedo);
+    }
+    if (lighting_technique == LIGHT_TECH_TOON)
+    {
+        return eval_toon_light(N, V, L, radiance, albedo, metallic, roughness);
+    }
+    return eval_pbr_light(N, V, L, radiance, albedo, metallic, roughness);
 }
 
 float shadow_bias(float ndotl, float bias_const, float bias_slope)
@@ -334,7 +402,7 @@ float eval_local_shadow(uint idx, vec3 N, vec3 L)
     return 1.0;
 }
 
-vec3 eval_local_light(uint idx, vec3 N, vec3 V, vec3 albedo, float metallic, float roughness)
+vec3 eval_local_light(uint idx, vec3 N, vec3 V, vec3 albedo, float metallic, float roughness, uint lighting_technique)
 {
     CullingLightGPU light = light_buffer.lights[idx];
     uint light_type = light.type_shape_flags.x;
@@ -435,7 +503,7 @@ vec3 eval_local_light(uint idx, vec3 N, vec3 V, vec3 albedo, float metallic, flo
 
     float shadow_vis = eval_local_shadow(idx, N, L);
     vec3 radiance = light.color_intensity.rgb * light.color_intensity.a * atten * shadow_vis;
-    return eval_pbr_light(N, V, L, radiance, albedo, metallic, roughness);
+    return eval_light_technique(lighting_technique, N, V, L, radiance, albedo, metallic, roughness);
 }
 
 uint cluster_slice_from_view_depth(float view_depth, uint z_slices)
@@ -461,16 +529,28 @@ void main()
     float metallic = clamp(pc.material_params.x, 0.0, 1.0);
     float roughness = clamp(pc.material_params.y, 0.04, 1.0);
     float ao = clamp(pc.material_params.z, 0.0, 1.0);
+    uint lighting_technique = ubo.culling_params.y;
 
     vec3 N = normalize(v_normal_ws);
     vec3 V = normalize(ubo.camera_pos_time.xyz - v_world_pos);
 
-    vec3 color = albedo * 0.035 * ao;
+    float ambient_base = 0.035;
+    if (lighting_technique == LIGHT_TECH_LAMBERT) ambient_base = 0.050;
+    else if (lighting_technique == LIGHT_TECH_TOON) ambient_base = 0.042;
+    vec3 color = albedo * ambient_base * ao;
 
     vec3 Ld = normalize(-ubo.sun_dir_intensity.xyz);
     vec3 sun_radiance = vec3(1.0, 0.97, 0.92) * max(ubo.sun_dir_intensity.w, 0.0);
     float sun_vis = eval_directional_shadow(N, Ld);
-    color += eval_pbr_light(N, V, Ld, sun_radiance * sun_vis, albedo, metallic, roughness);
+    color += eval_light_technique(
+        lighting_technique,
+        N,
+        V,
+        Ld,
+        sun_radiance * sun_vis,
+        albedo,
+        metallic,
+        roughness);
 
     uint light_count = ubo.screen_tile_lightcount.w;
     uint tiles_x = max(ubo.screen_tile_lightcount.z, 1u);
@@ -499,28 +579,28 @@ void main()
         // from truncated tile lists in high-density stress scenarios.
         if (count >= max_per_tile)
         {
-            for (uint i = 0u; i < light_count; ++i)
+                for (uint i = 0u; i < light_count; ++i)
+                {
+                    color += eval_local_light(i, N, V, albedo, metallic, roughness, lighting_technique);
+                }
+            }
+            else
             {
-                color += eval_local_light(i, N, V, albedo, metallic, roughness);
+                for (uint i = 0u; i < count; ++i)
+                {
+                    uint idx = tile_indices[base + i];
+                    if (idx >= light_count) continue;
+                    color += eval_local_light(idx, N, V, albedo, metallic, roughness, lighting_technique);
+                }
             }
         }
         else
         {
-            for (uint i = 0u; i < count; ++i)
+            for (uint i = 0u; i < light_count; ++i)
             {
-                uint idx = tile_indices[base + i];
-                if (idx >= light_count) continue;
-                color += eval_local_light(idx, N, V, albedo, metallic, roughness);
+                color += eval_local_light(i, N, V, albedo, metallic, roughness, lighting_technique);
             }
         }
-    }
-    else
-    {
-        for (uint i = 0u; i < light_count; ++i)
-        {
-            color += eval_local_light(i, N, V, albedo, metallic, roughness);
-        }
-    }
 
     float exposure = max(ubo.exposure_gamma.x, 0.0001);
     float inv_gamma = 1.0 / max(ubo.exposure_gamma.y, 0.001);

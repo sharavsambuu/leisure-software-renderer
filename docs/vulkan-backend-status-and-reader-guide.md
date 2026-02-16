@@ -24,7 +24,7 @@ Integration examples checked:
 
 - `cpp-folders/src/exp-plumbing/hello_vulkan_triangle.cpp`
 - `cpp-folders/src/exp-plumbing/hello_pass_basics_vulkan.cpp`
-- `cpp-folders/src/exp-plumbing/hello_forward_plus_stress_vulkan.cpp`
+- `cpp-folders/src/exp-plumbing/hello_rendering_paths.cpp`
 - `cpp-folders/src/exp-plumbing/hello_soft_shadow_culling_vk.cpp`
 - `cpp-folders/src/exp-plumbing/hello_culling_vk.cpp`
 - `cpp-folders/src/exp-plumbing/hello_occlusion_culling_vk.cpp`
@@ -160,7 +160,7 @@ Recommended order:
 Then inspect demo usage patterns:
 
 - `cpp-folders/src/exp-plumbing/hello_pass_basics_vulkan.cpp`
-- `cpp-folders/src/exp-plumbing/hello_forward_plus_stress_vulkan.cpp`
+- `cpp-folders/src/exp-plumbing/hello_rendering_paths.cpp`
 - `cpp-folders/src/exp-plumbing/hello_soft_shadow_culling_vk.cpp`
 
 ## 9) Suggested Next Steps

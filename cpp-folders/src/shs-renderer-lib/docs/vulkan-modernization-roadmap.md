@@ -4,7 +4,7 @@ This roadmap targets incremental upgrades from the current Vulkan 1.1-style core
 
 ## Baseline (current)
 
-- Core render-pass pipeline + explicit barriers works (`hello_pass_basics_vulkan`, `hello_forward_plus_stress_vulkan`).
+- Core render-pass pipeline + explicit barriers works (`hello_pass_basics_vulkan`, `hello_rendering_paths`).
 - Compute passes exist for light culling/depth reduce.
 - Secondary command buffer recording exists for stress demo.
 - Backend now probes and exposes optional feature availability:
@@ -16,7 +16,7 @@ This roadmap targets incremental upgrades from the current Vulkan 1.1-style core
 - Phase-1 bootstrap landed:
   - backend can submit via `vkQueueSubmit2` when Sync2 is available (with legacy fallback)
   - `HelloPassBasicsVulkan` barriers use Sync2 path when available (with legacy fallback)
-  - `HelloForwardPlusStressVulkan` memory barriers use Sync2 path when available (with legacy fallback)
+  - `HelloRenderingPaths` memory barriers use Sync2 path when available (with legacy fallback)
 
 ## Phase 1: Sync modernization (high priority)
 
@@ -28,7 +28,7 @@ Goal: remove brittle stage-mask/barrier assumptions and make frame orchestration
 4. Centralize image layout transitions into small helpers with per-resource state tracking.
 
 Success criteria:
-- No regression in `HelloPassBasicsVulkan` and `HelloForwardPlusStressVulkan`.
+- No regression in `HelloPassBasicsVulkan` and `HelloRenderingPaths`.
 - Validation layer clean in normal runtime path.
 
 ## Phase 2: Descriptor model upgrade (high priority)
@@ -86,7 +86,7 @@ Success criteria:
 
 1. Build targets:
    - `HelloPassBasicsVulkan`
-   - `HelloForwardPlusStressVulkan`
+   - `HelloRenderingPaths`
    - `HelloVulkanTriangle`
 2. Run with validation layer enabled and capture warnings/errors.
 3. Visual A/B against known-good screenshots.
