@@ -1,6 +1,12 @@
 
 # Tasks to mess around in the near future
 
+    Make lights more cullable
+    Clamp light contribution based on the light type aka light shape volume
+    Tune tiles and cluster density
+    Multithreaded draw calls for per light list and tile or cluster, make sure job systems efficient
+    
+    
     Dynamic compositional and configurable renderer path combinations
       Tunable combinations ->
         Different Light Volumes      x
