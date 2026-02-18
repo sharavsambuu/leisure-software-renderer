@@ -5,6 +5,8 @@
     Clamp light contribution based on the light type aka light shape volume
     Tune tiles and cluster density
     Multithreaded draw calls for per light list and tile or cluster, make sure job systems efficient
+
+    Explore the idea of using C++20 coroutines 
     
     
     Dynamic compositional and configurable renderer path combinations
