@@ -53,3 +53,6 @@ phase_*.log
 phase_*.json
 phase_*.csv
 phase_*.txt
+
+build_it.sh
+stress_soak.sh

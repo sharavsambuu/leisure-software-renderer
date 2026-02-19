@@ -162,18 +162,19 @@ namespace shs::jolt
     /// Rect area light → oriented box.
     inline JPH::ShapeRefC make_rect_area_light_volume(const glm::vec2& half_extents, float range)
     {
+        const float r = std::max(range, kMinShapeExtentMeters);
         return make_box(glm::vec3(
-            std::max(half_extents.x, kMinShapeExtentMeters),
-            std::max(half_extents.y, kMinShapeExtentMeters),
-            std::max(range, kMinShapeExtentMeters) * 0.5f));
+            std::max(half_extents.x + r, kMinShapeExtentMeters),
+            std::max(half_extents.y + r, kMinShapeExtentMeters),
+            r * 0.5f));
     }
 
     /// Tube area light → capsule.
-    inline JPH::ShapeRefC make_tube_area_light_volume(float half_length, float radius)
+    inline JPH::ShapeRefC make_tube_area_light_volume(float half_length, float range)
     {
         return make_capsule(
             std::max(half_length, kMinShapeExtentMeters),
-            std::max(radius, kMinShapeExtentMeters));
+            std::max(range, kMinShapeExtentMeters));
     }
 
 

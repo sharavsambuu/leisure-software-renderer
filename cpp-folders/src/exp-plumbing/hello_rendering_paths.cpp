@@ -1725,6 +1725,14 @@ private:
             return;
         }
 
+        // Add Modern-Extreme coverage variant
+        shs::RenderCompositionRecipe extreme{};
+        extreme.name = "composition_modern_extreme";
+        extreme.path_preset = shs::RenderPathPreset::ClusteredForward;
+        extreme.technique_preset = shs::RenderTechniquePreset::PBR;
+        extreme.post_stack = shs::RenderCompositionPostStackPreset::Full;
+        composition_cycle_order_.push_back(std::move(extreme));
+
         std::filesystem::path output_path(phase_g_config_.output_path);
         if (output_path.has_parent_path())
         {
@@ -1812,6 +1820,49 @@ private:
             phase_g_state_.finished = true;
             std::fprintf(stderr, "[phase-g] Soak run complete. Results: %s\n", phase_g_config_.output_path.c_str());
             running_ = false;
+        }
+    }
+
+    void apply_phase_g_camera_tour(float dt, float t)
+    {
+        (void)dt; (void)t;
+        const float elapsed = phase_g_state_.elapsed_sec;
+        const float total_duration = static_cast<float>(std::max(1u, phase_g_config_.duration_sec));
+        const float t_total = elapsed / total_duration;
+
+        // Add stochastic "randomness" via overlapping sine waves to make it feel natural/dynamic
+        const float noise_x = std::sin(elapsed * 1.15f) * 0.6f + std::sin(elapsed * 2.45f) * 0.25f;
+        const float noise_y = std::sin(elapsed * 0.85f) * 0.45f + std::sin(elapsed * 1.65f) * 0.35f;
+        const float noise_z = std::cos(elapsed * 1.45f) * 0.55f + std::cos(elapsed * 2.15f) * 0.25f;
+
+        if (t_total < 0.35f)
+        {
+            // Phase 1: Orbit (Outer ring) + Noise
+            const float orbit_speed = 0.5f;
+            const float radius = 22.0f + noise_x * 2.0f;
+            const float height = 7.0f + std::sin(elapsed * 0.3f) * 4.0f + noise_y;
+            camera_.pos.x = std::cos(elapsed * orbit_speed) * radius;
+            camera_.pos.z = std::sin(elapsed * orbit_speed) * radius;
+            camera_.pos.y = height;
+            camera_.yaw = elapsed * orbit_speed + glm::pi<float>() + noise_z * 0.05f;
+            camera_.pitch = -0.25f + noise_x * 0.02f;
+        }
+        else if (t_total < 0.70f)
+        {
+            // Phase 2: High-speed Fly-through (occlusion stress) + Random Jitter
+            const float t_phase = (t_total - 0.35f) / 0.35f;
+            const float z_pos = glm::mix(-40.0f, 40.0f, t_phase);
+            camera_.pos = glm::vec3(std::sin(elapsed * 0.8f) * 12.0f + noise_x * 3.0f, 4.5f + noise_y, z_pos);
+            camera_.yaw = glm::half_pi<float>() + noise_z * 0.12f;
+            camera_.pitch = std::sin(elapsed * 1.25f) * 0.18f + noise_x * 0.05f;
+        }
+        else
+        {
+            // Phase 3: Vertical & Tile Stress + Stochastic Wander
+            const float t_phase = (t_total - 0.70f) / 0.30f;
+            camera_.pos = glm::vec3(8.0f + noise_x * 2.0f, 2.0f + t_phase * 12.0f + noise_y, -8.0f + noise_z * 2.0f);
+            camera_.yaw = glm::radians(225.0f) + noise_x * 0.25f; 
+            camera_.pitch = glm::sin(elapsed * 0.5f) * 0.5f - 0.2f + noise_z * 0.15f;
         }
     }
 
@@ -5337,12 +5388,21 @@ private:
         const shs::RenderCompositionRecipe& composition = composition_cycle_order_[active_composition_index_];
 
         apply_render_technique_preset(composition.technique_preset, false);
-        const shs::RenderCompositionResolved resolved =
+        shs::RenderCompositionResolved resolved =
             shs::resolve_builtin_render_composition_recipe(
                 composition,
                 shs::RenderBackendType::Vulkan,
                 "render_path_vk",
                 "render_tech_vk");
+
+        // Force Modern-Extreme specific overrides
+        if (composition.name == "composition_modern_extreme")
+        {
+            resolved.path_recipe.light_volume_provider = shs::RenderPathLightVolumeProvider::ClusteredGrid;
+            resolved.path_recipe.runtime_defaults.shadow_occlusion_enabled = true;
+            resolved.path_recipe.view_culling = shs::RenderPathCullingMode::FrustumAndOcclusion;
+            resolved.path_recipe.name = "path_clustered_forward_modern_extreme";
+        }
         const bool plan_valid =
             render_path_executor_.apply_recipe(resolved.path_recipe, ctx_, &pass_contract_registry_);
         const bool ok = consume_active_render_path_apply_result(plan_valid);
@@ -6003,6 +6063,11 @@ private:
 
     void update_frame_data(float dt, float t, uint32_t w, uint32_t h, uint32_t frame_slot)
     {
+        if (phase_g_config_.enabled && phase_g_state_.started && !phase_g_state_.finished)
+        {
+            apply_phase_g_camera_tour(dt, t);
+        }
+
         const float aspect = (h > 0) ? (static_cast<float>(w) / static_cast<float>(h)) : 1.0f;
         camera_.update(
             move_forward_,
