@@ -7069,7 +7069,6 @@ private:
         uint32_t h,
         bool flip_y,
         uint32_t frame_slot,
-        uint32_t worker_idx,
         uint32_t start,
         uint32_t end,
         bool draw_floor_here,
@@ -7078,21 +7077,11 @@ private:
         out = VK_NULL_HANDLE;
         if (start >= end && !draw_floor_here) return true;
         if (!frame_resources_.valid_slot(frame_slot)) return false;
-        if (worker_idx >= worker_pools_.size()) return false;
         const VkDescriptorSet global_set = frame_resources_.at_slot(frame_slot).global_set;
         if (global_set == VK_NULL_HANDLE) return false;
-        const VkCommandPool pool = worker_pools_[worker_idx].pools[frame_slot];
-        if (pool == VK_NULL_HANDLE) return false;
-
-        VkCommandBufferAllocateInfo ai{};
-        ai.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        ai.commandPool = pool;
-        ai.level = VK_COMMAND_BUFFER_LEVEL_SECONDARY;
-        ai.commandBufferCount = 1;
-        if (vkAllocateCommandBuffers(vk_->device(), &ai, &out) != VK_SUCCESS)
-        {
-            return false;
-        }
+        
+        out = vk_->get_secondary_command_buffer(frame_slot);
+        if (out == VK_NULL_HANDLE) return false;
 
         VkCommandBufferInheritanceInfo inh{};
         inh.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
@@ -7129,14 +7118,15 @@ private:
     {
         out.clear();
 
-        if (!use_multithread_recording_ || !jobs_ || worker_pools_.empty() || instances_.empty())
+        if (!use_multithread_recording_ || !jobs_ || instances_.empty())
         {
             return true;
         }
 
-        const uint32_t workers = std::min<uint32_t>(static_cast<uint32_t>(worker_pools_.size()), static_cast<uint32_t>(instances_.size()));
+        // We can spawn as many workers as makes sense, limit to e.g. 16 or instances.
+        const uint32_t workers = std::min<uint32_t>(16u, static_cast<uint32_t>(instances_.size()));
         if (workers <= 1) return true;
-        if (frame_slot >= kWorkerPoolRingSize) return false;
+        if (frame_slot >= shs::VulkanRenderBackend::kMaxFramesInFlight) return false;
 
         std::vector<VkCommandBuffer> tmp(workers, VK_NULL_HANDLE);
         std::atomic<bool> ok{true};
@@ -7154,7 +7144,7 @@ private:
             wg.add(1);
             jobs_->enqueue([&, wi, start, end]() {
                 const bool draw_floor_here = include_floor && (wi == 0);
-                if (!record_secondary_batch(rp, fb, pipeline, layout, w, h, flip_y, frame_slot, wi, start, end, draw_floor_here, tmp[wi]))
+                if (!record_secondary_batch(rp, fb, pipeline, layout, w, h, flip_y, frame_slot, start, end, draw_floor_here, tmp[wi]))
                 {
                     ok.store(false, std::memory_order_release);
                 }
@@ -7174,18 +7164,8 @@ private:
 
     bool reset_worker_pools_for_frame(uint32_t frame_slot)
     {
-        if (!frame_resources_.valid_slot(frame_slot)) return false;
-        if (!use_multithread_recording_ || !jobs_ || worker_pools_.empty() || instances_.empty()) return true;
-
-        const uint32_t workers = std::min<uint32_t>(static_cast<uint32_t>(worker_pools_.size()), static_cast<uint32_t>(instances_.size()));
-        if (workers <= 1) return true;
-
-        for (uint32_t i = 0; i < workers; ++i)
-        {
-            const VkCommandPool pool = worker_pools_[i].pools[frame_slot];
-            if (pool == VK_NULL_HANDLE) return false;
-            vkResetCommandPool(vk_->device(), pool, 0);
-        }
+        (void)frame_slot;
+        // worker command pools are now centrally managed and automatically reset by the Vulkan backend!
         return true;
     }
 
@@ -8409,6 +8389,10 @@ private:
         {
             throw std::runtime_error("vkBeginCommandBuffer failed");
         }
+        if (vkBeginCommandBuffer(fi.compute_cmd, &bi) != VK_SUCCESS)
+        {
+            throw std::runtime_error("vkBeginCommandBuffer compute_cmd failed");
+        }
         begin_gpu_pass_timing_recording(fi.cmd, frame_slot);
         ensure_history_color_shader_read_layout(fi.cmd);
 
@@ -8488,6 +8472,10 @@ private:
         if (vkEndCommandBuffer(fi.cmd) != VK_SUCCESS)
         {
             throw std::runtime_error("vkEndCommandBuffer failed");
+        }
+        if (fi.has_compute_work && vkEndCommandBuffer(fi.compute_cmd) != VK_SUCCESS)
+        {
+            throw std::runtime_error("vkEndCommandBuffer compute_cmd failed");
         }
 
         vk_->end_frame(fi);

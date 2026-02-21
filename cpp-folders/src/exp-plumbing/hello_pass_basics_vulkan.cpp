@@ -3773,7 +3773,7 @@ int main()
             }
             else
             {
-                free_cam.yaw += pin.mouse_dx * MOUSE_LOOK_SENS;
+                free_cam.yaw -= pin.mouse_dx * MOUSE_LOOK_SENS;
                 free_cam.pitch = std::clamp(
                     free_cam.pitch - pin.mouse_dy * MOUSE_LOOK_SENS,
                     glm::radians(-85.0f),
@@ -3793,8 +3793,8 @@ int main()
             const glm::vec3 right = free_cam.right();
             if (pin.forward) free_cam.pos += fwd * move_speed;
             if (pin.backward) free_cam.pos -= fwd * move_speed;
-            if (pin.right) free_cam.pos += right * move_speed;
-            if (pin.left) free_cam.pos -= right * move_speed;
+            if (pin.right) free_cam.pos -= right * move_speed;
+            if (pin.left) free_cam.pos += right * move_speed;
             if (pin.ascend) free_cam.pos.y += move_speed;
             if (pin.descend) free_cam.pos.y -= move_speed;
         }

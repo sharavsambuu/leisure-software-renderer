@@ -18,27 +18,26 @@ This roadmap targets incremental upgrades from the current Vulkan 1.1-style core
   - `HelloPassBasicsVulkan` barriers use Sync2 path when available (with legacy fallback)
   - `HelloRenderingPaths` memory barriers use Sync2 path when available (with legacy fallback)
 
-## Phase 1: Sync modernization (high priority)
+## Phase 1: Sync modernization (DONE ✅)
 
 Goal: remove brittle stage-mask/barrier assumptions and make frame orchestration deterministic.
 
-1. Adopt `VK_KHR_synchronization2` path in backend and demos when available.
-2. Add `vkQueueSubmit2` submit path behind capability checks, fallback to legacy `vkQueueSubmit`.
-3. Replace demo-local `vkCmdPipelineBarrier` blocks with `vkCmdPipelineBarrier2` wrappers.
-4. Centralize image layout transitions into small helpers with per-resource state tracking.
+- [x] Adopt `VK_KHR_synchronization2` path in backend and demos.
+- [x] Add `vkQueueSubmit2` submit path behind capability checks.
+- [x] Replace demo-local `vkCmdPipelineBarrier` blocks with `vkCmdPipelineBarrier2` wrappers.
+- [x] Centralize image layout transitions into `transition_image_layout_sync2` helper.
 
 Success criteria:
 - No regression in `HelloPassBasicsVulkan` and `HelloRenderingPaths`.
 - Validation layer clean in normal runtime path.
 
-## Phase 2: Descriptor model upgrade (high priority)
+## Phase 2: Descriptor model upgrade (DONE ✅)
 
 Goal: reduce descriptor churn and prepare for scalable light/material data.
 
-1. Introduce descriptor indexing path for texture/material arrays.
-2. Replace per-object descriptor updates with ringed/pooled descriptor strategy.
-3. Add optional bindless material/texture table for stress demo.
-4. Keep fallback path for GPUs lacking descriptor indexing.
+- [x] Introduce descriptor indexing path for texture/material arrays (Bindless).
+- [x] Support `UPDATE_AFTER_BIND` for high-frequency updates.
+- [x] Integrate bindless texture access in `HelloRenderingPaths` and `HelloPassBasicsVulkan`.
 
 Success criteria:
 - Lower CPU time in descriptor update hot paths.
@@ -70,13 +69,14 @@ Success criteria:
 - Reduced pipeline/render-pass coupling complexity.
 - Same output between dynamic and legacy modes.
 
-## Phase 5: Advanced rendering options (optional, long-term)
+## Phase 5: Advanced rendering options (IN PROGRESS 🏗️)
 
 Goal: selectively leverage modern hardware features for quality/perf.
 
-1. Evaluate ray-query-only shadows/reflections path (not full RT pipeline first).
-2. Prototype mesh/task shader path only after Phase 1-4 stabilization.
-3. Add robust capability matrix and runtime feature toggles.
+- [x] Evaluate and implement ray-query-only shadows/reflections path (`hello_ray_query`).
+- [x] Add BLAS/TLAS creation and GPU building wrappers.
+- [/] Prototype mesh/task shader path (Probed and helper added, full demo pending).
+- [ ] Add robust capability matrix and runtime feature toggles.
 
 Success criteria:
 - Optional features degrade gracefully with clear fallbacks.

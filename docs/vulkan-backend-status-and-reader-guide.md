@@ -1,6 +1,6 @@
 # Vulkan Backend Status and Reader Guide
 
-Last updated: 2026-02-16
+Last updated: 2026-02-21
 
 ## 1) Purpose
 
@@ -49,8 +49,9 @@ Integration examples checked:
 
 ### 3.2) Frame model
 
-- Backend currently runs with `kMaxFramesInFlight = 1`.
-- This is intentional and documented in code to avoid inter-frame hazards while demos still update many resources in-place.
+- Backend now runs with `kMaxFramesInFlight = 2`.
+- This allows the CPU to parallelize command buffer recording while the GPU executes the previous frame.
+- It maximizes GPU utilization compared to the previous single-frame model.
 - Frame sync model uses binary semaphores + fences and per-image in-flight fence tracking.
 
 ### 3.3) Render path shape
@@ -63,14 +64,15 @@ Integration examples checked:
 
 - Backend probes optional feature bundles:
   - timeline semaphore
-  - descriptor indexing
+  - descriptor indexing (Bindless)
   - dynamic rendering
   - synchronization2
-  - ray query bundle
-- Device creation uses a safe fallback ladder:
-  - try all optional bundles
-  - retry without ray bundle
-  - fallback to baseline required extensions
+  - ray query bundle (hardware ray tracing)
+  - mesh shader extension
+- Device creation uses a robust fallback ladder:
+  - try all optional bundles (Ray Query + Mesh Shader + Modern Sync/Bindless)
+  - retry without mesh/ray bundles
+  - fallback to baseline required extensions (Vulkan 1.1)
 - `BackendCapabilities` is refreshed with probed features and hardware limits.
 
 ### 3.5) Synchronization2 status
@@ -103,7 +105,7 @@ Integration examples checked:
 - Swapchain recreation uses `vkDeviceWaitIdle`, which is simple but can create visible hitches during resize/rebuild.
 - Memory management is manual Vulkan allocation; no allocator layer yet.
 - Swapchain uploader currently uses legacy `vkCmdPipelineBarrier` transitions (not sync2-based helper path yet).
-- Ray query capability is probed and surfaced, but no full ray-query rendering workflow is integrated in this backend layer.
+- Ray query capability is fully integrated. Demos can build and traverse acceleration structures on the GPU.
 
 ## 6) Shader Organization Status (2026-02-16)
 
@@ -198,3 +200,57 @@ Related plan:
 - `docs/dynamic-render-path-composition-plan.md`
 - `docs/render-path-core-draft-and-state.md`
 - `docs/modern-rendering-maturity-roadmap.md`
+## 10) Major Feature Usage Guide
+
+### 10.1) Hardware Ray Tracing (Ray Query)
+
+To use Ray Query in your demo:
+1.  **Request the bundle**: Set `InitDesc::request_ray_bundle = true` during backend initialization.
+2.  **Check support**: Verify `vk->capabilities().features.ray_query` is true.
+3.  **Create AS**: Use `vk->create_acceleration_structure(...)` for both BLAS and TLAS.
+4.  **Shader logic**: Enable `GL_EXT_ray_query` in your GLSL and use `rayQueryEXT` for intersection tests.
+5.  **Buffer Usage**: Ensure vertex/index buffers used for AS building have `VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT`.
+
+### 10.2) Modern Synchronization (Sync2)
+
+Avoid legacy barriers; use the backend helpers:
+- **Layout Transitions**: Use `vk->transition_image_layout_sync2(...)`. This handles `VkImageMemoryBarrier2` and `VkDependencyInfo` internally.
+- **Submission**: The backend automatically uses `vkQueueSubmit2` if available.
+
+### 10.3) Bindless / Descriptor Indexing
+
+To use large descriptor arrays:
+1.  **Standard Layout**: Use `shs/pipeline/vk_render_path_descriptors.hpp` for a global bindless texture array.
+2.  **Update after bind**: The backend enables `DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT` by default in its internal layouts.
+3.  **Indexing**: Access textures in shaders via `sampler2D myTextures[]` indexed by push constants or UBO data.
+
+### 10.4) Mesh Shaders
+
+1.  **Check support**: Verify `vk->capabilities().features.mesh_shader` is true.
+2.  **Draw calls**: Use `vk->cmd_draw_mesh_tasks(cmd, groupX, groupY, groupZ)` helper to launch mesh/task shader pipelines.
+
+## 11) Software Renderer Counterpart Analysis
+
+While the Vulkan backend targets modern GPU hardware, `shs-renderer-lib` maintains a CPU-based **Software Rasterizer** (`shs::SoftwareRasterizer`) for educational purposes and baseline validation.
+
+### 11.1) Current Software Capabilities
+- **Perspective-Correct Rasterization**: Full 1/w interpolation for varyings, UVs, and depth.
+- **Parallel Execution**: Uses an `IJobSystem` to scale across multiple CPU cores.
+- **Classic Pipeline**: Supports custom C++ Vertex and Fragment shaders (as `std::function`).
+- **Standard Features**: Back/Front face culling, Frustum clipping, Depth testing.
+
+### 11.2) Missing Counterparts (Gaps)
+| Vulkan Feature | Software Counterpart | Status |
+| :--- | :--- | :--- |
+| **Hardware Ray Query** | CPU BVH / Ray Tracer | **Missing** (Demos use manual shadow maps) |
+| **Compute Shaders** | `parallel_for` lambda | **Lacks unified Pipeline abstraction** |
+| **Mesh/Task Shaders** | N/A | **Missing** |
+| **Bindless Textures** | Pointer arrays | **Manual implementation only** |
+| **Explicit Sync (2)** | Thread primitives | **Implicit only** |
+
+### 11.3) Library Generalness and Cross-Backend Demos
+The library is **very general** on the Vulkan side, allowing for standard modern rendering techniques (PBR, Clustered, Ray Tracing). However, there is currently a "fork" in how demos are written:
+- **Vulkan Demos**: Use SPIR-V, descriptors, and command buffers.
+- **Software Demos**: Use C++ lambdas and direct target-buffer access.
+
+**Recommendation**: To reach "Full Generalness", the library could benefit from a higher-level abstraction that maps common concepts (like "Material Parameters" or "Passes") to both C++ functions and SPIR-V/Descriptors. Currently, developers must essentially write two different rendering paths if they want to support both backends.

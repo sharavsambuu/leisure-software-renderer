@@ -121,27 +121,37 @@ namespace shs
                 ctx.fi->cmd,
                 depth_stage,
                 depth_access,
-                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, // While incorrect for pure cross-queue, we rely on the end_frame submit semaphore for true sync
                 VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
+
+            VkCommandBuffer c_cmd = use_depth_range_reduction ? ctx.fi->cmd : ctx.fi->compute_cmd;
 
             if (use_depth_range_reduction)
             {
-                dispatch_depth_reduce(ctx.fi->cmd, ctx.global_set);
+                dispatch_depth_reduce(c_cmd, ctx.global_set);
                 memory_barrier(
-                    ctx.fi->cmd,
+                    c_cmd,
                     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                     VK_ACCESS_SHADER_WRITE_BIT,
                     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                     VK_ACCESS_SHADER_READ_BIT);
             }
 
-            dispatch_light_cull(ctx.fi->cmd, ctx.global_set, dispatch_z);
-            memory_barrier(
-                ctx.fi->cmd,
-                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                VK_ACCESS_SHADER_WRITE_BIT,
-                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-                VK_ACCESS_SHADER_READ_BIT);
+            dispatch_light_cull(c_cmd, ctx.global_set, dispatch_z);
+            
+            if (!use_depth_range_reduction)
+            {
+                ctx.fi->has_compute_work = true;
+            }
+            else
+            {
+                memory_barrier(
+                    c_cmd,
+                    VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                    VK_ACCESS_SHADER_WRITE_BIT,
+                    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                    VK_ACCESS_SHADER_READ_BIT);
+            }
         }
         else if (!ctx.light_grid_cleared)
         {

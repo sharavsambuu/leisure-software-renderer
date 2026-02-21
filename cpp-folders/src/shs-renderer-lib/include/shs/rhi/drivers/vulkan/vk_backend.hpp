@@ -20,6 +20,9 @@
 #include <optional>
 #include <string>
 #include <vector>
+#include <mutex>
+#include <thread>
+#include <unordered_map>
 
 #include "shs/rhi/core/backend.hpp"
 #include "shs/rhi/drivers/vulkan/vk_component_notes.hpp"
@@ -44,6 +47,7 @@ namespace shs
             int width = 0;
             int height = 0;
             bool enable_validation = false;
+            bool request_ray_bundle = false;
             const char* app_name = "shs-renderer-lib";
         };
 
@@ -51,6 +55,8 @@ namespace shs
         {
 #ifdef SHS_HAS_VULKAN
             VkCommandBuffer cmd = VK_NULL_HANDLE;
+            VkCommandBuffer compute_cmd = VK_NULL_HANDLE;
+            bool has_compute_work = false;
             VkFramebuffer framebuffer = VK_NULL_HANDLE;
             VkRenderPass render_pass = VK_NULL_HANDLE;
             VkExtent2D extent{};
@@ -59,6 +65,14 @@ namespace shs
             VkImageView depth_view = VK_NULL_HANDLE;
             uint32_t image_index = 0;
 #endif
+        };
+
+        struct VulkanAccelerationStructure
+        {
+            VkAccelerationStructureKHR handle = VK_NULL_HANDLE;
+            VkBuffer buffer = VK_NULL_HANDLE;
+            VkDeviceMemory memory = VK_NULL_HANDLE;
+            uint64_t device_address = 0;
         };
 
         ~VulkanRenderBackend() override { shutdown(); }
@@ -118,6 +132,7 @@ namespace shs
             enable_validation_ = desc.enable_validation;
             requested_width_ = desc.width;
             requested_height_ = desc.height;
+            request_ray_bundle_ = desc.request_ray_bundle;
             app_name_ = desc.app_name ? desc.app_name : "shs-renderer-lib";
             layers_.clear();
             resize_pending_ = false;
@@ -208,6 +223,8 @@ namespace shs
                 images_in_flight_[image_index] = inflight_fences_[cur];
             }
 
+            reset_thread_command_buffers(image_index);
+
             VkCommandBuffer cb = cmd_bufs_[image_index];
             const VkResult reset_cb = vkResetCommandBuffer(cb, 0);
             if (reset_cb == VK_ERROR_DEVICE_LOST)
@@ -217,7 +234,18 @@ namespace shs
             }
             if (reset_cb != VK_SUCCESS) return false;
 
+            VkCommandBuffer compute_cb = compute_cmd_bufs_[image_index];
+            const VkResult reset_compute_cb = vkResetCommandBuffer(compute_cb, 0);
+            if (reset_compute_cb == VK_ERROR_DEVICE_LOST)
+            {
+                device_lost_ = true;
+                return false;
+            }
+            if (reset_compute_cb != VK_SUCCESS) return false;
+
             out.cmd = cb;
+            out.compute_cmd = compute_cb;
+            out.has_compute_work = false;
             out.framebuffer = framebuffers_[image_index];
             out.render_pass = render_pass_;
             out.extent = extent_;
@@ -251,6 +279,53 @@ namespace shs
             }
             if (reset_fence != VK_SUCCESS) return;
 
+            bool used_compute = info.has_compute_work && info.compute_cmd != VK_NULL_HANDLE;
+            if (used_compute)
+            {
+#if defined(VK_STRUCTURE_TYPE_SUBMIT_INFO_2) && defined(VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT)
+                if (supports_synchronization2())
+                {
+                    VkCommandBufferSubmitInfo compute_cmd_info{};
+                    compute_cmd_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+                    compute_cmd_info.commandBuffer = info.compute_cmd;
+                    compute_cmd_info.deviceMask = 0;
+
+                    VkSemaphoreSubmitInfo compute_signal_info{};
+                    compute_signal_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+                    compute_signal_info.semaphore = compute_finished_[cur];
+                    compute_signal_info.value = 0;
+                    compute_signal_info.stageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+                    compute_signal_info.deviceIndex = 0;
+
+                    VkSubmitInfo2 compute_si{};
+                    compute_si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+                    compute_si.commandBufferInfoCount = 1;
+                    compute_si.pCommandBufferInfos = &compute_cmd_info;
+                    compute_si.signalSemaphoreInfoCount = 1;
+                    compute_si.pSignalSemaphoreInfos = &compute_signal_info;
+
+                    if (queue_submit2_fn_ != nullptr)
+                    {
+                        vkQueueSubmit2_fn_(compute_q_, 1, &compute_si, VK_NULL_HANDLE);
+                    }
+                    else if (queue_submit2_khr_fn_ != nullptr)
+                    {
+                        vkQueueSubmit2_khr_fn_(compute_q_, 1, &compute_si, VK_NULL_HANDLE);
+                    }
+                }
+                else
+#endif
+                {
+                    VkSubmitInfo compute_si{};
+                    compute_si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+                    compute_si.commandBufferCount = 1;
+                    compute_si.pCommandBuffers = &info.compute_cmd;
+                    compute_si.signalSemaphoreCount = 1;
+                    compute_si.pSignalSemaphores = &compute_finished_[cur];
+                    vkQueueSubmit(compute_q_, 1, &compute_si, VK_NULL_HANDLE);
+                }
+            }
+
             VkResult submit_res = VK_ERROR_UNKNOWN;
 #if defined(VK_STRUCTURE_TYPE_SUBMIT_INFO_2) && \
     defined(VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT) && \
@@ -258,6 +333,8 @@ namespace shs
     defined(VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT)
             if (supports_synchronization2())
             {
+                std::vector<VkSemaphoreSubmitInfo> wait_infos;
+
                 VkSemaphoreSubmitInfo wait_info{};
                 wait_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
                 wait_info.semaphore = image_available_[cur];
@@ -268,6 +345,18 @@ namespace shs
                 wait_info.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_2_TRANSFER_BIT;
 #endif
                 wait_info.deviceIndex = 0;
+                wait_infos.push_back(wait_info);
+
+                if (used_compute) 
+                {
+                    VkSemaphoreSubmitInfo compute_wait_info{};
+                    compute_wait_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+                    compute_wait_info.semaphore = compute_finished_[cur];
+                    compute_wait_info.value = 0;
+                    compute_wait_info.stageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT; // The graphics queue waits for compute before fragment shading
+                    compute_wait_info.deviceIndex = 0;
+                    wait_infos.push_back(compute_wait_info);
+                }
 
                 VkCommandBufferSubmitInfo cmd_info{};
                 cmd_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
@@ -287,8 +376,8 @@ namespace shs
 
                 VkSubmitInfo2 si2{};
                 si2.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
-                si2.waitSemaphoreInfoCount = 1;
-                si2.pWaitSemaphoreInfos = &wait_info;
+                si2.waitSemaphoreInfoCount = static_cast<uint32_t>(wait_infos.size());
+                si2.pWaitSemaphoreInfos = wait_infos.data();
                 si2.commandBufferInfoCount = 1;
                 si2.pCommandBufferInfos = &cmd_info;
                 si2.signalSemaphoreInfoCount = 1;
@@ -310,12 +399,20 @@ namespace shs
             else
 #endif
             {
-                VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+                std::vector<VkSemaphore> wait_semaphores = {image_available_[cur]};
+                std::vector<VkPipelineStageFlags> wait_stages = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+
+                if (used_compute)
+                {
+                    wait_semaphores.push_back(compute_finished_[cur]);
+                    wait_stages.push_back(VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+                }
+
                 VkSubmitInfo si{};
                 si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-                si.waitSemaphoreCount = 1;
-                si.pWaitSemaphores = &image_available_[cur];
-                si.pWaitDstStageMask = &wait_stage;
+                si.waitSemaphoreCount = static_cast<uint32_t>(wait_semaphores.size());
+                si.pWaitSemaphores = wait_semaphores.data();
+                si.pWaitDstStageMask = wait_stages.data();
                 si.commandBufferCount = 1;
                 si.pCommandBuffers = &info.cmd;
                 si.signalSemaphoreCount = 1;
@@ -363,10 +460,79 @@ namespace shs
         }
 
 #ifdef SHS_HAS_VULKAN
+        // Demos currently update many resources in-place each frame.
+        // Keep two frames in flight to maximize GPU utilization and allow the CPU to 
+        // parallelize recording while the GPU executes the previous frame.
+        static constexpr uint32_t kMaxFramesInFlight = 2;
+
         VkDevice device() const { return device_; }
         VkPhysicalDevice physical_device() const { return gpu_; }
         VkQueue graphics_queue() const { return graphics_q_; }
-        VkQueue present_queue() const { return present_q_; }
+        VkQueue compute_queue() const { return compute_q_; }
+
+        void cmd_draw_mesh_tasks(VkCommandBuffer cmd, uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ) const
+        {
+            if (cmd_draw_mesh_tasks_ext_fn_)
+            {
+                cmd_draw_mesh_tasks_ext_fn_(cmd, groupCountX, groupCountY, groupCountZ);
+            }
+        }
+
+        VkDeviceAddress get_buffer_device_address(VkBuffer buffer) const
+        {
+            if (!vkGetBufferDeviceAddress_fn_ || buffer == VK_NULL_HANDLE) return 0;
+            VkBufferDeviceAddressInfo info{};
+            info.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+            info.buffer = buffer;
+            return vkGetBufferDeviceAddress_fn_(device_, &info);
+        }
+
+        bool create_acceleration_structure(VkAccelerationStructureTypeKHR type, VkDeviceSize size, VulkanAccelerationStructure& out_as) const
+        {
+            if (!vkCreateAccelerationStructureKHR_fn_) return false;
+
+            if (!shs::vk_create_buffer(device_, gpu_, size,
+                VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, out_as.buffer, out_as.memory))
+            {
+                return false;
+            }
+
+            VkAccelerationStructureCreateInfoKHR asci{};
+            asci.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR;
+            asci.buffer = out_as.buffer;
+            asci.size = size;
+            asci.type = type;
+
+            if (vkCreateAccelerationStructureKHR_fn_(device_, &asci, nullptr, &out_as.handle) != VK_SUCCESS)
+            {
+                shs::vk_destroy_buffer(device_, out_as.buffer, out_as.memory);
+                return false;
+            }
+
+            VkAccelerationStructureDeviceAddressInfoKHR adai{};
+            adai.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR;
+            adai.accelerationStructure = out_as.handle;
+            if (vkGetAccelerationStructureDeviceAddressKHR_fn_)
+            {
+                out_as.device_address = vkGetAccelerationStructureDeviceAddressKHR_fn_(device_, &adai);
+            }
+
+            return true;
+        }
+
+        void destroy_acceleration_structure(VulkanAccelerationStructure& as) const
+        {
+            if (device_ == VK_NULL_HANDLE) return;
+            if (as.handle != VK_NULL_HANDLE && vkDestroyAccelerationStructureKHR_fn_)
+            {
+                vkDestroyAccelerationStructureKHR_fn_(device_, as.handle, nullptr);
+                as.handle = VK_NULL_HANDLE;
+            }
+            shs::vk_destroy_buffer(device_, as.buffer, as.memory);
+            as.device_address = 0;
+        }
+        
         uint32_t graphics_queue_family_index() const { return qf_.graphics.value_or(0u); }
         VkRenderPass render_pass() const { return render_pass_; }
         VkExtent2D swapchain_extent() const { return extent_; }
@@ -495,6 +661,45 @@ namespace shs
 #ifdef SHS_HAS_VMA
         VmaAllocator allocator() const { return allocator_; }
 #endif
+
+        VkCommandBuffer get_secondary_command_buffer(uint32_t image_index)
+        {
+            std::lock_guard<std::mutex> lock(thread_pools_mutex_);
+            auto id = std::this_thread::get_id();
+            auto& tp = thread_pools_[id];
+            if (tp.pool == VK_NULL_HANDLE) {
+                VkCommandPoolCreateInfo cp{};
+                cp.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+                cp.queueFamilyIndex = qf_.graphics.value();
+                cp.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT | VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+                vkCreateCommandPool(device_, &cp, nullptr, &tp.pool);
+                tp.buffers.resize(kMaxFramesInFlight);
+                tp.allocated.resize(kMaxFramesInFlight, 0);
+            }
+            if (tp.allocated[image_index] >= tp.buffers[image_index].size()) {
+                VkCommandBufferAllocateInfo cba{};
+                cba.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+                cba.commandPool = tp.pool;
+                cba.level = VK_COMMAND_BUFFER_LEVEL_SECONDARY;
+                cba.commandBufferCount = 1;
+                VkCommandBuffer cb;
+                vkAllocateCommandBuffers(device_, &cba, &cb);
+                tp.buffers[image_index].push_back(cb);
+            }
+            VkCommandBuffer cb = tp.buffers[image_index][tp.allocated[image_index]++];
+            vkResetCommandBuffer(cb, 0);
+            return cb;
+        }
+
+        void reset_thread_command_buffers(uint32_t image_index)
+        {
+            std::lock_guard<std::mutex> lock(thread_pools_mutex_);
+            for (auto& pair : thread_pools_) {
+                if (image_index < pair.second.allocated.size()) {
+                    pair.second.allocated[image_index] = 0;
+                }
+            }
+        }
 #endif
     
         void begin_rendering(VkCommandBuffer cmd, VkImageView color_view, VkImageView depth_view, VkExtent2D extent, VkClearColorValue clear_color, float clear_depth, bool use_depth)
@@ -627,7 +832,8 @@ namespace shs
         {
             std::optional<uint32_t> graphics{};
             std::optional<uint32_t> present{};
-            bool ok() const { return graphics.has_value() && present.has_value(); }
+            std::optional<uint32_t> compute{};
+            bool ok() const { return graphics.has_value() && present.has_value() && compute.has_value(); }
         };
 
         struct SwapchainSupport
@@ -809,11 +1015,23 @@ namespace shs
             for (uint32_t i = 0; i < n; ++i)
             {
                 if (props[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) out.graphics = i;
+                if ((props[i].queueFlags & VK_QUEUE_COMPUTE_BIT) && !(props[i].queueFlags & VK_QUEUE_GRAPHICS_BIT))
+                {
+                    out.compute = i; // Prefer dedicated async compute queue
+                }
                 VkBool32 present = VK_FALSE;
                 vkGetPhysicalDeviceSurfaceSupportKHR(gpu, i, surface_, &present);
                 if (present) out.present = i;
-                if (out.ok()) break;
             }
+            // Fallback: If no dedicated compute queue found, fallback to the graphics queue handling compute
+            if (!out.compute.has_value() && out.graphics.has_value())
+            {
+                if (props[out.graphics.value()].queueFlags & VK_QUEUE_COMPUTE_BIT)
+                {
+                    out.compute = out.graphics;
+                }
+            }
+            if (out.ok()) return out;
             return out;
         }
 
@@ -877,6 +1095,7 @@ namespace shs
             float qprio = 1.0f;
             std::vector<uint32_t> fams{*qf_.graphics};
             if (*qf_.present != *qf_.graphics) fams.push_back(*qf_.present);
+            if (*qf_.compute != *qf_.graphics && *qf_.compute != *qf_.present) fams.push_back(*qf_.compute);
             std::vector<VkDeviceQueueCreateInfo> qcis{};
             for (uint32_t fam : fams)
             {
@@ -895,6 +1114,8 @@ namespace shs
             constexpr const char* kRayQueryExt = "VK_KHR_ray_query";
             constexpr const char* kAccelStructExt = "VK_KHR_acceleration_structure";
             constexpr const char* kDeferredHostOpsExt = "VK_KHR_deferred_host_operations";
+            constexpr const char* kBufferDeviceAddressExt = "VK_KHR_buffer_device_address";
+            constexpr const char* kMeshShaderExt = "VK_EXT_mesh_shader";
 
             VkPhysicalDeviceProperties gpu_props{};
             vkGetPhysicalDeviceProperties(gpu_, &gpu_props);
@@ -908,53 +1129,65 @@ namespace shs
             const bool has_ray_query = device_extension_supported(gpu_, kRayQueryExt);
             const bool has_accel_struct = device_extension_supported(gpu_, kAccelStructExt);
             const bool has_deferred_host_ops = device_extension_supported(gpu_, kDeferredHostOpsExt);
-            const bool has_ray_bundle = has_ray_query && has_accel_struct && has_deferred_host_ops;
+            const bool has_bda = is_1_3_or_higher || device_extension_supported(gpu_, kBufferDeviceAddressExt);
+            const bool has_ray_bundle = has_ray_query && has_accel_struct && has_deferred_host_ops && has_bda;
+            const bool has_mesh_shader = device_extension_supported(gpu_, kMeshShaderExt);
 
             timeline_semaphore_ext_enabled_ = false;
             descriptor_indexing_ext_enabled_ = false;
             dynamic_rendering_ext_enabled_ = false;
             synchronization2_ext_enabled_ = false;
             ray_query_ext_enabled_ = false;
+            mesh_shader_ext_enabled_ = false;
             timeline_semaphore_enabled_ = false;
             descriptor_indexing_enabled_ = false;
             dynamic_rendering_enabled_ = false;
             synchronization2_enabled_ = false;
             ray_query_enabled_ = false;
+            mesh_shader_enabled_ = false;
 
             auto try_create_device = [&](bool want_timeline,
                                          bool want_descriptor_indexing,
                                          bool want_dynamic_rendering,
                                          bool want_synchronization2,
-                                         bool want_ray_bundle) -> bool
+                                         bool want_ray_bundle,
+                                         bool want_mesh_shader) -> bool
             {
                 std::vector<const char*> device_exts{};
                 device_exts.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
                 if (has_portability_subset) device_exts.push_back(kPortabilitySubsetExt);
 
-                auto append_unique_ext = [&](const char* ext_name, bool enabled) -> bool
+                auto append_unique_ext = [&](const char* ext_name, bool enabled)
                 {
-                    if (!enabled || !ext_name) return false;
+                    if (!enabled || !ext_name) return;
                     for (const char* e : device_exts)
                     {
-                        if (e && std::strcmp(e, ext_name) == 0) return true;
+                        if (e && std::strcmp(e, ext_name) == 0) return;
                     }
                     device_exts.push_back(ext_name);
-                    return true;
                 };
 
-                const bool use_timeline_ext = !is_1_3_or_higher && append_unique_ext(kTimelineSemaphoreExt, want_timeline && has_timeline);
-                const bool use_descriptor_ext = !is_1_3_or_higher && append_unique_ext(kDescriptorIndexingExt, want_descriptor_indexing && has_descriptor_indexing);
-                const bool use_dynamic_ext = !is_1_3_or_higher && append_unique_ext(kDynamicRenderingExt, want_dynamic_rendering && has_dynamic_rendering);
-                const bool use_sync2_ext = !is_1_3_or_higher && append_unique_ext(kSynchronization2Ext, want_synchronization2 && has_synchronization2);
+                append_unique_ext(kTimelineSemaphoreExt, want_timeline && has_timeline && !is_1_3_or_higher);
+                append_unique_ext(kDescriptorIndexingExt, want_descriptor_indexing && has_descriptor_indexing && !is_1_3_or_higher);
+                append_unique_ext(kDynamicRenderingExt, want_dynamic_rendering && has_dynamic_rendering && !is_1_3_or_higher);
+                append_unique_ext(kSynchronization2Ext, want_synchronization2 && has_synchronization2 && !is_1_3_or_higher);
+
+                const bool use_timeline_ext = want_timeline && has_timeline; // Native or ext
+                const bool use_descriptor_ext = want_descriptor_indexing && has_descriptor_indexing;
+                const bool use_dynamic_ext = want_dynamic_rendering && has_dynamic_rendering;
+                const bool use_sync2_ext = want_synchronization2 && has_synchronization2;
 
                 bool use_ray_bundle_ext = want_ray_bundle && has_ray_bundle;
                 if (use_ray_bundle_ext)
                 {
-                    use_ray_bundle_ext =
-                        append_unique_ext(kRayQueryExt, true) &&
-                        append_unique_ext(kAccelStructExt, true) &&
-                        append_unique_ext(kDeferredHostOpsExt, true);
+                    append_unique_ext(kRayQueryExt, true);
+                    append_unique_ext(kAccelStructExt, true);
+                    append_unique_ext(kDeferredHostOpsExt, true);
+                    append_unique_ext(kBufferDeviceAddressExt, !is_1_3_or_higher);
                 }
+
+                append_unique_ext(kMeshShaderExt, want_mesh_shader && has_mesh_shader);
+                const bool use_mesh_ext = want_mesh_shader && has_mesh_shader;
 
                 VkPhysicalDeviceFeatures2 features2{};
                 features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
@@ -965,6 +1198,7 @@ namespace shs
                 bool dynamic_feature_enabled = false;
                 bool sync2_feature_enabled = false;
                 bool ray_feature_enabled = false;
+                bool mesh_feature_enabled = false;
 
                 VkPhysicalDeviceTimelineSemaphoreFeatures timeline_features{};
                 timeline_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES;
@@ -1017,6 +1251,30 @@ namespace shs
                 {
                     ray_query_features.pNext = features2.pNext;
                     features2.pNext = &ray_query_features;
+                }
+
+                VkPhysicalDeviceAccelerationStructureFeaturesKHR as_features{};
+                as_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;
+                if (use_ray_bundle_ext)
+                {
+                    as_features.pNext = features2.pNext;
+                    features2.pNext = &as_features;
+                }
+
+                VkPhysicalDeviceBufferDeviceAddressFeatures bda_features{};
+                bda_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES;
+                if (use_ray_bundle_ext)
+                {
+                    bda_features.pNext = features2.pNext;
+                    features2.pNext = &bda_features;
+                }
+
+                VkPhysicalDeviceMeshShaderFeaturesEXT mesh_features{};
+                mesh_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT;
+                if (use_mesh_ext)
+                {
+                    mesh_features.pNext = features2.pNext;
+                    features2.pNext = &mesh_features;
                 }
 
                 vkGetPhysicalDeviceFeatures2(gpu_, &features2);
@@ -1082,10 +1340,19 @@ namespace shs
 #endif
 
 
-                if (use_ray_bundle_ext && ray_query_features.rayQuery == VK_TRUE)
+                if (use_ray_bundle_ext && ray_query_features.rayQuery == VK_TRUE && as_features.accelerationStructure == VK_TRUE && bda_features.bufferDeviceAddress == VK_TRUE)
                 {
                     ray_query_features.rayQuery = VK_TRUE;
+                    as_features.accelerationStructure = VK_TRUE;
+                    bda_features.bufferDeviceAddress = VK_TRUE;
                     ray_feature_enabled = true;
+                }
+
+                if (use_mesh_ext && mesh_features.meshShader == VK_TRUE)
+                {
+                    mesh_features.meshShader = VK_TRUE;
+                    mesh_features.taskShader = VK_TRUE; // Request task shader as well
+                    mesh_feature_enabled = true;
                 }
 
                 VkDeviceCreateInfo dci{};
@@ -1109,32 +1376,36 @@ namespace shs
                 dynamic_rendering_ext_enabled_ = use_dynamic_ext;
                 synchronization2_ext_enabled_ = use_sync2_ext;
                 ray_query_ext_enabled_ = use_ray_bundle_ext;
+                mesh_shader_ext_enabled_ = use_mesh_ext;
 
                 timeline_semaphore_enabled_ = timeline_feature_enabled;
                 descriptor_indexing_enabled_ = descriptor_feature_enabled;
                 dynamic_rendering_enabled_ = dynamic_feature_enabled;
                 synchronization2_enabled_ = sync2_feature_enabled;
                 ray_query_enabled_ = ray_feature_enabled;
+                mesh_shader_enabled_ = mesh_feature_enabled;
                 return true;
             };
 
             // Attempt strategy:
-            // 1) all optional bundles
-            // 2) disable complex ray-query bundle
-            // 3) required-only baseline (swapchain + portability subset)
-            if (!try_create_device(true, true, true, true, true))
+            bool want_ray = request_ray_bundle_;
+            if (!try_create_device(true, true, true, true, want_ray, true))
             {
-                if (!try_create_device(true, true, true, true, false))
+                if (!try_create_device(true, true, true, true, false, true))
                 {
-                    if (!try_create_device(false, false, false, false, false))
+                    if (!try_create_device(true, true, true, true, false, false))
                     {
-                        return false;
+                        if (!try_create_device(false, false, false, false, false, false))
+                        {
+                            return false;
+                        }
                     }
                 }
             }
 
             vkGetDeviceQueue(device_, *qf_.graphics, 0, &graphics_q_);
             vkGetDeviceQueue(device_, *qf_.present, 0, &present_q_);
+            vkGetDeviceQueue(device_, *qf_.compute, 0, &compute_q_);
 
 #if defined(VK_STRUCTURE_TYPE_SUBMIT_INFO_2)
             queue_submit2_fn_ = nullptr;
@@ -1159,6 +1430,30 @@ namespace shs
                 }
             }
 #endif
+
+            if (mesh_shader_enabled_)
+            {
+                cmd_draw_mesh_tasks_ext_fn_ = reinterpret_cast<PFN_vkCmdDrawMeshTasksEXT>(vkGetDeviceProcAddr(device_, "vkCmdDrawMeshTasksEXT"));
+            }
+
+            if (ray_query_enabled_)
+            {
+                vkGetBufferDeviceAddress_fn_ = reinterpret_cast<PFN_vkGetBufferDeviceAddress>(vkGetDeviceProcAddr(device_, "vkGetBufferDeviceAddress"));
+                if (!vkGetBufferDeviceAddress_fn_) vkGetBufferDeviceAddress_fn_ = reinterpret_cast<PFN_vkGetBufferDeviceAddress>(vkGetDeviceProcAddr(device_, "vkGetBufferDeviceAddressKHR"));
+                
+                vkGetAccelerationStructureBuildSizesKHR_fn_ = reinterpret_cast<PFN_vkGetAccelerationStructureBuildSizesKHR>(vkGetDeviceProcAddr(device_, "vkGetAccelerationStructureBuildSizesKHR"));
+                vkCreateAccelerationStructureKHR_fn_ = reinterpret_cast<PFN_vkCreateAccelerationStructureKHR>(vkGetDeviceProcAddr(device_, "vkCreateAccelerationStructureKHR"));
+                vkDestroyAccelerationStructureKHR_fn_ = reinterpret_cast<PFN_vkDestroyAccelerationStructureKHR>(vkGetDeviceProcAddr(device_, "vkDestroyAccelerationStructureKHR"));
+                vkCmdBuildAccelerationStructuresKHR_fn_ = reinterpret_cast<PFN_vkCmdBuildAccelerationStructuresKHR>(vkGetDeviceProcAddr(device_, "vkCmdBuildAccelerationStructuresKHR"));
+                vkGetAccelerationStructureDeviceAddressKHR_fn_ = reinterpret_cast<PFN_vkGetAccelerationStructureDeviceAddressKHR>(vkGetDeviceProcAddr(device_, "vkGetAccelerationStructureDeviceAddressKHR"));
+
+                if (!vkGetBufferDeviceAddress_fn_ || !vkGetAccelerationStructureBuildSizesKHR_fn_ || !vkCreateAccelerationStructureKHR_fn_ || !vkCmdBuildAccelerationStructuresKHR_fn_)
+                {
+                    std::fprintf(stderr, "[shs] Ray tracing pointers could not be fully loaded, disabling feature.\n");
+                    ray_query_enabled_ = false;
+                }
+            }
+
 #ifdef VK_KHR_dynamic_rendering
             if (dynamic_rendering_enabled_)
             {
@@ -1193,18 +1488,44 @@ namespace shs
             c.features.dynamic_rendering = dynamic_rendering_enabled_;
             c.features.async_compute = false;
             c.features.ray_query = ray_query_enabled_;
+            c.features.mesh_shader = mesh_shader_enabled_;
             c.limits.max_color_attachments = 1;
             c.limits.max_descriptor_sets_per_pipeline = 1;
             c.limits.max_push_constant_bytes = 128;
 
             if (gpu_ != VK_NULL_HANDLE)
             {
-                VkPhysicalDeviceProperties props{};
-                vkGetPhysicalDeviceProperties(gpu_, &props);
+                VkPhysicalDeviceMeshShaderPropertiesEXT mesh_props{};
+                mesh_props.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_PROPERTIES_EXT;
+                mesh_props.pNext = nullptr;
+
+                VkPhysicalDeviceProperties2 props2{};
+                props2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+                props2.pNext = mesh_shader_enabled_ ? &mesh_props : nullptr;
+
+                vkGetPhysicalDeviceProperties2(gpu_, &props2);
+
+                const VkPhysicalDeviceProperties& props = props2.properties;
+                
                 c.limits.max_color_attachments = std::max<uint32_t>(1u, props.limits.maxColorAttachments);
                 c.limits.max_descriptor_sets_per_pipeline = std::max<uint32_t>(1u, props.limits.maxBoundDescriptorSets);
                 c.limits.max_push_constant_bytes = std::max<uint32_t>(1u, props.limits.maxPushConstantsSize);
                 c.limits.min_uniform_buffer_offset_alignment = std::max<uint32_t>(1u, static_cast<uint32_t>(props.limits.minUniformBufferOffsetAlignment));
+
+                if (mesh_shader_enabled_)
+                {
+                    c.limits.max_mesh_workgroup_size[0] = mesh_props.maxMeshWorkGroupSize[0];
+                    c.limits.max_mesh_workgroup_size[1] = mesh_props.maxMeshWorkGroupSize[1];
+                    c.limits.max_mesh_workgroup_size[2] = mesh_props.maxMeshWorkGroupSize[2];
+                    c.limits.max_mesh_workgroup_total_count = mesh_props.maxMeshWorkGroupTotalCount;
+                    c.limits.max_mesh_output_vertices = mesh_props.maxMeshOutputVertices;
+                    c.limits.max_mesh_output_primitives = mesh_props.maxMeshOutputPrimitives;
+
+                    c.limits.max_task_workgroup_size[0] = mesh_props.maxTaskWorkGroupSize[0];
+                    c.limits.max_task_workgroup_size[1] = mesh_props.maxTaskWorkGroupSize[1];
+                    c.limits.max_task_workgroup_size[2] = mesh_props.maxTaskWorkGroupSize[2];
+                    c.limits.max_task_workgroup_total_count = mesh_props.maxTaskWorkGroupTotalCount;
+                }
 
                 uint32_t qcount = 0;
                 vkGetPhysicalDeviceQueueFamilyProperties(gpu_, &qcount, nullptr);
@@ -1546,19 +1867,44 @@ namespace shs
                 if (vkCreateCommandPool(device_, &cp, nullptr, &cmd_pool_) != VK_SUCCESS) return false;
             }
 
+            if (compute_cmd_pool_ == VK_NULL_HANDLE)
+            {
+                VkCommandPoolCreateInfo cp{};
+                cp.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+                cp.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+                cp.queueFamilyIndex = *qf_.compute;
+                if (vkCreateCommandPool(device_, &cp, nullptr, &compute_cmd_pool_) != VK_SUCCESS) return false;
+            }
+
             if (!cmd_bufs_.empty())
             {
                 vkFreeCommandBuffers(device_, cmd_pool_, static_cast<uint32_t>(cmd_bufs_.size()), cmd_bufs_.data());
                 cmd_bufs_.clear();
             }
 
+            if (!compute_cmd_bufs_.empty())
+            {
+                vkFreeCommandBuffers(device_, compute_cmd_pool_, static_cast<uint32_t>(compute_cmd_bufs_.size()), compute_cmd_bufs_.data());
+                compute_cmd_bufs_.clear();
+            }
+
             cmd_bufs_.resize(framebuffers_.size());
+            compute_cmd_bufs_.resize(framebuffers_.size());
+
             VkCommandBufferAllocateInfo cba{};
             cba.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
             cba.commandPool = cmd_pool_;
             cba.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
             cba.commandBufferCount = static_cast<uint32_t>(cmd_bufs_.size());
             if (vkAllocateCommandBuffers(device_, &cba, cmd_bufs_.data()) != VK_SUCCESS) return false;
+
+            VkCommandBufferAllocateInfo c_cba{};
+            c_cba.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+            c_cba.commandPool = compute_cmd_pool_;
+            c_cba.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+            c_cba.commandBufferCount = static_cast<uint32_t>(compute_cmd_bufs_.size());
+            if (vkAllocateCommandBuffers(device_, &c_cba, compute_cmd_bufs_.data()) != VK_SUCCESS) return false;
+
             return true;
         }
 
@@ -1576,6 +1922,9 @@ namespace shs
                     return false;
                 if (render_finished_[i] == VK_NULL_HANDLE &&
                     vkCreateSemaphore(device_, &sem, nullptr, &render_finished_[i]) != VK_SUCCESS)
+                    return false;
+                if (compute_finished_[i] == VK_NULL_HANDLE &&
+                    vkCreateSemaphore(device_, &sem, nullptr, &compute_finished_[i]) != VK_SUCCESS)
                     return false;
                 if (inflight_fences_[i] == VK_NULL_HANDLE &&
                     vkCreateFence(device_, &fe, nullptr, &inflight_fences_[i]) != VK_SUCCESS)
@@ -1664,13 +2013,27 @@ namespace shs
                 vkDestroyCommandPool(device_, cmd_pool_, nullptr);
                 cmd_pool_ = VK_NULL_HANDLE;
             }
+            if (compute_cmd_pool_ != VK_NULL_HANDLE)
+            {
+                vkDestroyCommandPool(device_, compute_cmd_pool_, nullptr);
+                compute_cmd_pool_ = VK_NULL_HANDLE;
+            }
+            {
+                std::lock_guard<std::mutex> lock(thread_pools_mutex_);
+                for (auto& pair : thread_pools_) {
+                    pair.second.cleanup(device_);
+                }
+                thread_pools_.clear();
+            }
             for (uint32_t i = 0; i < kMaxFramesInFlight; ++i)
             {
                 if (image_available_[i] != VK_NULL_HANDLE) vkDestroySemaphore(device_, image_available_[i], nullptr);
                 if (render_finished_[i] != VK_NULL_HANDLE) vkDestroySemaphore(device_, render_finished_[i], nullptr);
+                if (compute_finished_[i] != VK_NULL_HANDLE) vkDestroySemaphore(device_, compute_finished_[i], nullptr);
                 if (inflight_fences_[i] != VK_NULL_HANDLE) vkDestroyFence(device_, inflight_fences_[i], nullptr);
                 image_available_[i] = VK_NULL_HANDLE;
                 render_finished_[i] = VK_NULL_HANDLE;
+                compute_finished_[i] = VK_NULL_HANDLE;
                 inflight_fences_[i] = VK_NULL_HANDLE;
             }
             if (device_ != VK_NULL_HANDLE)
@@ -1705,6 +2068,7 @@ namespace shs
             gpu_ = VK_NULL_HANDLE;
             graphics_q_ = VK_NULL_HANDLE;
             present_q_ = VK_NULL_HANDLE;
+            compute_q_ = VK_NULL_HANDLE;
             requested_width_ = 0;
             requested_height_ = 0;
             window_ = nullptr;
@@ -1734,6 +2098,7 @@ namespace shs
             dynamic_rendering_enabled_ = false;
             synchronization2_enabled_ = false;
             ray_query_enabled_ = false;
+            mesh_shader_enabled_ = false;
             capabilities_ = BackendCapabilities{};
             capabilities_ready_ = false;
         }
@@ -1754,13 +2119,10 @@ namespace shs
         BackendCapabilities capabilities_{};
         bool capabilities_ready_ = false;
 #ifdef SHS_HAS_VULKAN
-        // Demos currently update many resources in-place each frame.
-        // Keep one frame in flight to avoid inter-frame write/read hazards
-        // until per-frame resource rings are fully adopted across demos.
-        static constexpr uint32_t kMaxFramesInFlight = 1;
 
         SDL_Window* window_ = nullptr;
         bool enable_validation_ = false;
+        bool request_ray_bundle_ = false;
         bool resize_pending_ = false;
         bool swapchain_needs_rebuild_ = false;
         bool device_lost_ = false;
@@ -1778,6 +2140,7 @@ namespace shs
         VkDevice device_ = VK_NULL_HANDLE;
         VkQueue graphics_q_ = VK_NULL_HANDLE;
         VkQueue present_q_ = VK_NULL_HANDLE;
+        VkQueue compute_q_ = VK_NULL_HANDLE;
         VkSwapchainKHR swapchain_ = VK_NULL_HANDLE;
         VkFormat swapchain_format_ = VK_FORMAT_UNDEFINED;
         VkFormat depth_format_ = VK_FORMAT_UNDEFINED;
@@ -1795,9 +2158,28 @@ namespace shs
         std::vector<VkFramebuffer> framebuffers_{};
         VkCommandPool cmd_pool_ = VK_NULL_HANDLE;
         std::vector<VkCommandBuffer> cmd_bufs_{};
+        VkCommandPool compute_cmd_pool_ = VK_NULL_HANDLE;
+        std::vector<VkCommandBuffer> compute_cmd_bufs_{};
+
+        struct ThreadCmdPool {
+            VkCommandPool pool = VK_NULL_HANDLE;
+            std::vector<std::vector<VkCommandBuffer>> buffers;
+            std::vector<size_t> allocated;
+            
+            void cleanup(VkDevice device) {
+                if (pool != VK_NULL_HANDLE) {
+                    // command buffers are freed automatically when the pool is destroyed
+                    vkDestroyCommandPool(device, pool, nullptr);
+                    pool = VK_NULL_HANDLE;
+                }
+            }
+        };
+        mutable std::mutex thread_pools_mutex_;
+        std::unordered_map<std::thread::id, ThreadCmdPool> thread_pools_;
         std::vector<VkFence> images_in_flight_{};
         VkSemaphore image_available_[kMaxFramesInFlight]{VK_NULL_HANDLE};
         VkSemaphore render_finished_[kMaxFramesInFlight]{VK_NULL_HANDLE};
+        VkSemaphore compute_finished_[kMaxFramesInFlight]{VK_NULL_HANDLE};
         VkFence inflight_fences_[kMaxFramesInFlight]{VK_NULL_HANDLE};
         uint64_t current_frame_ = 0;
         uint64_t swapchain_generation_ = 0;
@@ -1811,12 +2193,21 @@ namespace shs
         bool dynamic_rendering_enabled_ = false;
         bool synchronization2_enabled_ = false;
         bool ray_query_enabled_ = false;
+        bool mesh_shader_ext_enabled_ = false;
+        bool mesh_shader_enabled_ = false;
 #if defined(VK_STRUCTURE_TYPE_SUBMIT_INFO_2)
         PFN_vkQueueSubmit2 queue_submit2_fn_ = nullptr;
         PFN_vkQueueSubmit2KHR queue_submit2_khr_fn_ = nullptr;
         PFN_vkCmdPipelineBarrier2 cmd_pipeline_barrier2_fn_ = nullptr;
         PFN_vkCmdPipelineBarrier2KHR cmd_pipeline_barrier2_khr_fn_ = nullptr;
 #endif
+        PFN_vkCmdDrawMeshTasksEXT cmd_draw_mesh_tasks_ext_fn_ = nullptr;
+        PFN_vkGetBufferDeviceAddress vkGetBufferDeviceAddress_fn_ = nullptr;
+        PFN_vkGetAccelerationStructureBuildSizesKHR vkGetAccelerationStructureBuildSizesKHR_fn_ = nullptr;
+        PFN_vkCreateAccelerationStructureKHR vkCreateAccelerationStructureKHR_fn_ = nullptr;
+        PFN_vkDestroyAccelerationStructureKHR vkDestroyAccelerationStructureKHR_fn_ = nullptr;
+        PFN_vkCmdBuildAccelerationStructuresKHR vkCmdBuildAccelerationStructuresKHR_fn_ = nullptr;
+        PFN_vkGetAccelerationStructureDeviceAddressKHR vkGetAccelerationStructureDeviceAddressKHR_fn_ = nullptr;
 #ifdef VK_KHR_dynamic_rendering
         PFN_vkCmdBeginRendering cmd_begin_rendering_fn_ = nullptr;
         PFN_vkCmdBeginRenderingKHR cmd_begin_rendering_khr_fn_ = nullptr;

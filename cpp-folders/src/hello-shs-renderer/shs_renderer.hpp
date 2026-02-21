@@ -1338,7 +1338,7 @@ namespace shs
     public:
         MoveRightCommand(glm::vec3 &pos, glm::vec3 right, float spd, float dt)
             : position(pos), right_vector(right), speed(spd), delta_time(dt) {}
-        void execute() override { this->position += this->right_vector * this->speed * this->delta_time; }
+        void execute() override { this->position -= this->right_vector * this->speed * this->delta_time; }
     private:
         glm::vec3 &position; glm::vec3 right_vector; float speed, delta_time;
     };
@@ -1347,7 +1347,7 @@ namespace shs
     public:
         MoveLeftCommand(glm::vec3 &pos, glm::vec3 right, float spd, float dt)
             : position(pos), right_vector(right), speed(spd), delta_time(dt) {}
-        void execute() override { this->position -= this->right_vector * this->speed * this->delta_time; }
+        void execute() override { this->position += this->right_vector * this->speed * this->delta_time; }
     private:
         glm::vec3 &position; glm::vec3 right_vector; float speed, delta_time;
     };

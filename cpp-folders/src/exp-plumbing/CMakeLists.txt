@@ -89,6 +89,10 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
     set(VK_LIGHT_TYPES_CULLING_FRAG_SPV "${VK_TRI_OUT_DIR}/light_types_culling_vk.frag.spv")
     set(VK_SOFT_SHADOW_CULLING_VERT_SPV "${VK_TRI_OUT_DIR}/soft_shadow_culling_vk.vert.spv")
     set(VK_SOFT_SHADOW_CULLING_FRAG_SPV "${VK_TRI_OUT_DIR}/soft_shadow_culling_vk.frag.spv")
+    set(VK_MESH_TRI_MESH "${VK_TRI_SHADER_DIR}/mesh_triangle.mesh")
+    set(VK_MESH_TRI_FRAG "${VK_TRI_SHADER_DIR}/mesh_triangle.frag")
+    set(VK_MESH_TRI_MESH_SPV "${VK_TRI_OUT_DIR}/mesh_triangle.mesh.spv")
+    set(VK_MESH_TRI_FRAG_SPV "${VK_TRI_OUT_DIR}/mesh_triangle.frag.spv")
 
     set(VK_PB_SHADOW_VERT "${VK_DEFAULT_SHADER_DIR}/pb_shadow.vert")
     set(VK_PB_SCENE_VERT "${VK_DEFAULT_SHADER_DIR}/pb_scene.vert")
@@ -144,6 +148,36 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
         OUTPUT "${VK_TRI_FRAG_SPV}"
         COMMAND ${GLSLANG_VALIDATOR} -V "${VK_TRI_FRAG}" -o "${VK_TRI_FRAG_SPV}"
         DEPENDS "${VK_TRI_FRAG}"
+        VERBATIM
+    )
+    add_custom_command(
+        OUTPUT "${VK_MESH_TRI_MESH_SPV}"
+        COMMAND ${GLSLANG_VALIDATOR} --target-env vulkan1.2 -V "${VK_MESH_TRI_MESH}" -o "${VK_MESH_TRI_MESH_SPV}"
+        DEPENDS "${VK_MESH_TRI_MESH}"
+        VERBATIM
+    )
+    add_custom_command(
+        OUTPUT "${VK_MESH_TRI_FRAG_SPV}"
+        COMMAND ${GLSLANG_VALIDATOR} --target-env vulkan1.2 -V "${VK_MESH_TRI_FRAG}" -o "${VK_MESH_TRI_FRAG_SPV}"
+        DEPENDS "${VK_MESH_TRI_FRAG}"
+        VERBATIM
+    )
+
+    set(VK_RAY_QUERY_VERT "${CMAKE_CURRENT_SOURCE_DIR}/shaders/ray_query.vert")
+    set(VK_RAY_QUERY_VERT_SPV "${CMAKE_CURRENT_BINARY_DIR}/shaders/ray_query.vert.spv")
+    set(VK_RAY_QUERY_FRAG "${CMAKE_CURRENT_SOURCE_DIR}/shaders/ray_query.frag")
+    set(VK_RAY_QUERY_FRAG_SPV "${CMAKE_CURRENT_BINARY_DIR}/shaders/ray_query.frag.spv")
+
+    add_custom_command(
+        OUTPUT "${VK_RAY_QUERY_VERT_SPV}"
+        COMMAND ${GLSLANG_VALIDATOR} --target-env vulkan1.2 -V "${VK_RAY_QUERY_VERT}" -o "${VK_RAY_QUERY_VERT_SPV}"
+        DEPENDS "${VK_RAY_QUERY_VERT}"
+        VERBATIM
+    )
+    add_custom_command(
+        OUTPUT "${VK_RAY_QUERY_FRAG_SPV}"
+        COMMAND ${GLSLANG_VALIDATOR} --target-env vulkan1.2 -V "${VK_RAY_QUERY_FRAG}" -o "${VK_RAY_QUERY_FRAG_SPV}"
+        DEPENDS "${VK_RAY_QUERY_FRAG}"
         VERBATIM
     )
     add_custom_command(
@@ -529,6 +563,27 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
     target_compile_definitions(hello_modern_vulkan PRIVATE
         SHS_VK_MODERN_VERT_SPV="${VK_MODERN_VERT_SPV}"
         SHS_VK_MODERN_FRAG_SPV="${VK_MODERN_FRAG_SPV}"
+    )
+
+    add_custom_target(HelloMeshShaderShaders DEPENDS "${VK_MESH_TRI_MESH_SPV}" "${VK_MESH_TRI_FRAG_SPV}")
+
+    add_executable(hello_mesh_shader hello_mesh_shader.cpp)
+    add_dependencies(hello_mesh_shader HelloMeshShaderShaders)
+    target_link_libraries(hello_mesh_shader PRIVATE shs::renderer)
+    set_target_properties(hello_mesh_shader PROPERTIES FOLDER "Demos")
+    target_compile_definitions(hello_mesh_shader PRIVATE
+        SHS_VK_MESH_TRIANGLE_MESH_SPV="${VK_MESH_TRI_MESH_SPV}"
+        SHS_VK_MESH_TRIANGLE_FRAG_SPV="${VK_MESH_TRI_FRAG_SPV}"
+    )
+
+    add_custom_target(HelloRayQueryShaders DEPENDS "${VK_RAY_QUERY_VERT_SPV}" "${VK_RAY_QUERY_FRAG_SPV}")
+    add_executable(hello_ray_query hello_ray_query.cpp)
+    add_dependencies(hello_ray_query HelloRayQueryShaders)
+    target_link_libraries(hello_ray_query PRIVATE shs::renderer)
+    set_target_properties(hello_ray_query PROPERTIES FOLDER "Demos")
+    target_compile_definitions(hello_ray_query PRIVATE
+        SHS_VK_RAY_QUERY_VERT_SPV="${VK_RAY_QUERY_VERT_SPV}"
+        SHS_VK_RAY_QUERY_FRAG_SPV="${VK_RAY_QUERY_FRAG_SPV}"
     )
 endif()
 

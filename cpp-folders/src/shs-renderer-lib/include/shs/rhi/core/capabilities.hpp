@@ -32,6 +32,7 @@ namespace shs
         bool multithread_command_recording = false;
         bool async_compute = false;
         bool ray_query = false;
+        bool mesh_shader = false;
     };
 
     struct BackendLimitCaps
@@ -41,6 +42,14 @@ namespace shs
         uint32_t max_descriptor_sets_per_pipeline = 1;
         uint32_t max_push_constant_bytes = 0;
         uint32_t min_uniform_buffer_offset_alignment = 1;
+
+        // Mesh Shader Limits
+        uint32_t max_mesh_workgroup_size[3] = {1, 1, 1};
+        uint32_t max_mesh_workgroup_total_count = 1;
+        uint32_t max_mesh_output_vertices = 0;
+        uint32_t max_mesh_output_primitives = 0;
+        uint32_t max_task_workgroup_size[3] = {1, 1, 1};
+        uint32_t max_task_workgroup_total_count = 1;
     };
 
     struct BackendCapabilities
