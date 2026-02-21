@@ -41,6 +41,7 @@
 #include <shs/rhi/drivers/vulkan/vk_shader_utils.hpp>
 #include <shs/scene/scene_culling.hpp>
 #include <shs/scene/scene_elements.hpp>
+#include <shs/scene/scene_instance.hpp>
 
 using namespace shs;
 
@@ -127,21 +128,6 @@ struct MeshGPU
     GpuBuffer line_indices{};
     uint32_t tri_index_count = 0;
     uint32_t line_index_count = 0;
-};
-
-struct ShapeInstance
-{
-    SceneShape shape;
-    uint32_t mesh_index = 0;
-    glm::vec3 color{1.0f};
-    glm::vec3 base_pos{0.0f};
-    glm::vec3 base_rot{0.0f};
-    glm::vec3 angular_vel{0.0f};
-    glm::mat4 model{1.0f};
-    bool visible = true;
-    bool frustum_visible = true;
-    bool occluded = false;
-    bool animated = true;
 };
 
 struct FreeCamera
@@ -309,17 +295,17 @@ AABB compute_local_aabb_from_debug_mesh(const DebugMesh& mesh)
 }
 
 AABB compute_scene_bounds(
-    const std::vector<ShapeInstance>& instances,
+    const std::vector<SceneInstance>& instances,
     const std::vector<AABB>& mesh_local_aabbs,
     bool animated_only)
 {
     AABB out{};
     bool any = false;
-    for (const ShapeInstance& inst : instances)
+    for (const SceneInstance& inst : instances)
     {
-        if (animated_only && !inst.animated) continue;
-        if (inst.mesh_index >= mesh_local_aabbs.size()) continue;
-        const AABB box = transform_aabb(mesh_local_aabbs[inst.mesh_index], inst.model);
+        if (animated_only && !inst.anim.animated) continue;
+        if (inst.user_index >= mesh_local_aabbs.size()) continue;
+        const AABB box = transform_aabb(mesh_local_aabbs[inst.user_index], jolt::to_glm(inst.geometry.transform));
         if (!any)
         {
             out.minv = box.minv;
@@ -476,12 +462,12 @@ DebugMesh make_tessellated_floor_mesh(float half_extent, int subdivisions)
     return mesh;
 }
 
-void sync_instances_to_scene(SceneElementSet& scene, const std::vector<ShapeInstance>& instances)
+void sync_instances_to_scene(SceneElementSet& scene, const std::vector<SceneInstance>& instances)
 {
     auto elems = scene.elements();
     for (size_t i = 0; i < instances.size() && i < elems.size(); ++i)
     {
-        elems[i].geometry = instances[i].shape;
+        elems[i].geometry = instances[i].geometry;
         elems[i].visible = true;
         elems[i].frustum_visible = true;
         elems[i].occluded = false;
@@ -695,17 +681,16 @@ private:
 
         // Floor.
         {
-            ShapeInstance floor{};
-            floor.shape.shape = jolt::make_box(glm::vec3(kDemoFloorHalfExtentM, 0.12f * units::meter, kDemoFloorHalfExtentM));
-            floor.base_pos = glm::vec3(0.0f, -0.12f * units::meter, 0.0f);
-            floor.base_rot = glm::vec3(0.0f);
-            floor.model = compose_model(floor.base_pos, floor.base_rot);
-            floor.shape.transform = jolt::to_jph(floor.model);
-            floor.shape.stable_id = 9000;
-            floor.color = glm::vec3(0.44f, 0.44f, 0.46f);
-            floor.animated = false;
+            SceneInstance floor{};
+            floor.geometry.shape = jolt::make_box(glm::vec3(kDemoFloorHalfExtentM, 0.12f * units::meter, kDemoFloorHalfExtentM));
+            floor.anim.base_pos = glm::vec3(0.0f, -0.12f * units::meter, 0.0f);
+            floor.anim.base_rot = glm::vec3(0.0f);
+            floor.geometry.transform = jolt::to_jph(compose_model(floor.anim.base_pos, floor.anim.base_rot));
+            floor.geometry.stable_id = 9000;
+            floor.tint_color = glm::vec3(0.44f, 0.44f, 0.46f);
+            floor.anim.animated = false;
 
-            floor.mesh_index = upload_debug_mesh(make_tessellated_floor_mesh(kDemoFloorVisualSizeM, 64));
+            floor.user_index = upload_debug_mesh(make_tessellated_floor_mesh(kDemoFloorVisualSizeM, 64));
             instances_.push_back(floor);
         }
 
@@ -748,27 +733,26 @@ private:
                     const DemoShapeKind kind = shape_kinds[(logical_idx * 7u + 3u) % shape_kinds.size()];
                     const float scale = 0.42f + 0.52f * pseudo_random01(logical_idx * 1664525u + 1013904223u);
 
-                    ShapeInstance inst{};
-                    inst.shape.shape = make_scaled_demo_shape(kind, scale);
-                    inst.mesh_index = upload_debug_mesh(debug_mesh_from_shape(*inst.shape.shape, JPH::Mat44::sIdentity()));
+                    SceneInstance inst{};
+                    inst.geometry.shape = make_scaled_demo_shape(kind, scale);
+                    inst.user_index = upload_debug_mesh(debug_mesh_from_shape(*inst.geometry.shape, JPH::Mat44::sIdentity()));
 
-                    inst.base_pos = glm::vec3(
+                    inst.anim.base_pos = glm::vec3(
                         (-0.5f * static_cast<float>(cols_per_row - 1) + static_cast<float>(col)) * col_spacing_x + zig,
                         base_y + layer_y_step * static_cast<float>(layer) + 0.18f * units::meter * static_cast<float>(col % 3),
                         row_z);
-                    inst.base_rot = glm::vec3(
+                    inst.anim.base_rot = glm::vec3(
                         0.21f * pseudo_random01(logical_idx * 279470273u + 1u),
                         0.35f * pseudo_random01(logical_idx * 2246822519u + 7u),
                         0.19f * pseudo_random01(logical_idx * 3266489917u + 11u));
-                    inst.angular_vel = glm::vec3(
+                    inst.anim.angular_vel = glm::vec3(
                         0.10f + 0.14f * pseudo_random01(logical_idx * 747796405u + 13u),
                         0.09f + 0.16f * pseudo_random01(logical_idx * 2891336453u + 17u),
                         0.08f + 0.12f * pseudo_random01(logical_idx * 1181783497u + 19u));
-                    inst.model = compose_model(inst.base_pos, inst.base_rot);
-                    inst.shape.transform = jolt::to_jph(inst.model);
-                    inst.shape.stable_id = next_shape_id++;
-                    inst.color = color_for_demo_shape_kind(kind);
-                    inst.animated = true;
+                    inst.geometry.transform = jolt::to_jph(compose_model(inst.anim.base_pos, inst.anim.base_rot));
+                    inst.geometry.stable_id = next_shape_id++;
+                    inst.tint_color = color_for_demo_shape_kind(kind);
+                    inst.anim.animated = true;
                     instances_.push_back(std::move(inst));
                 }
             }
@@ -892,7 +876,7 @@ private:
         for (size_t i = 0; i < instances_.size(); ++i)
         {
             SceneElement elem{};
-            elem.geometry = instances_[i].shape;
+            elem.geometry = instances_[i].geometry;
             elem.user_index = static_cast<uint32_t>(i);
             elem.visible = true;
             elem.frustum_visible = true;
@@ -1270,14 +1254,13 @@ private:
 
     void update_scene_and_culling(float time_s)
     {
-        for (ShapeInstance& inst : instances_)
+        for (SceneInstance& inst : instances_)
         {
-            if (inst.animated)
+            if (inst.anim.animated)
             {
-                const glm::vec3 rot = inst.base_rot + inst.angular_vel * time_s;
-                inst.model = compose_model(inst.base_pos, rot);
+                const glm::vec3 rot = inst.anim.base_rot + inst.anim.angular_vel * time_s;
+                inst.geometry.transform = jolt::to_jph(compose_model(inst.anim.base_pos, rot));
             }
-            inst.shape.transform = jolt::to_jph(inst.model);
             inst.visible = true;
             inst.frustum_visible = true;
             inst.occluded = false;
@@ -1320,14 +1303,14 @@ private:
             view_proj_matrix_,
             [&](const SceneElement& elem, uint32_t, std::span<float> depth_span) {
                 if (elem.user_index >= instances_.size()) return;
-                const ShapeInstance& inst = instances_[elem.user_index];
-                if (inst.mesh_index >= mesh_cpu_.size()) return;
+                const SceneInstance& inst = instances_[elem.user_index];
+                if (inst.user_index >= mesh_cpu_.size()) return;
                 culling_sw::rasterize_mesh_depth_transformed(
                     depth_span,
                     kOccW,
                     kOccH,
-                    mesh_cpu_[inst.mesh_index],
-                    inst.model,
+                    mesh_cpu_[inst.user_index],
+                    jolt::to_glm(inst.geometry.transform),
                     view_proj_matrix_);
             });
         (void)view_cull_ctx_.apply_frustum_fallback_if_needed(
@@ -1530,14 +1513,14 @@ private:
             const uint32_t obj_idx = view_cull_scene_[scene_idx].user_index;
             if (obj_idx >= instances_.size()) continue;
 
-            const ShapeInstance& inst = instances_[obj_idx];
-            if (inst.mesh_index >= meshes_.size()) continue;
+            const SceneInstance& inst = instances_[obj_idx];
+            if (inst.user_index >= meshes_.size()) continue;
 
             LightSelection draw_selection{};
             const LightSelection* draw_selection_ptr = nullptr;
             if (render_lit_surfaces_)
             {
-                const AABB world_box = inst.shape.world_aabb();
+                const AABB world_box = inst.geometry.world_aabb();
                 const std::span<const uint32_t> candidate_light_scene_indices =
                     gather_light_scene_candidates_for_aabb(
                         light_bin_data_,
@@ -1573,9 +1556,9 @@ private:
             bind_and_draw_mesh(
                 cmd,
                 camera_set,
-                meshes_[inst.mesh_index],
-                inst.model,
-                inst.color,
+                meshes_[inst.user_index],
+                jolt::to_glm(inst.geometry.transform),
+                inst.tint_color,
                 draw_selection_ptr,
                 render_lit_surfaces_,
                 render_lit_surfaces_);
@@ -1590,8 +1573,8 @@ private:
                 const uint32_t obj_idx = view_cull_scene_[scene_idx].user_index;
                 if (obj_idx >= instances_.size()) continue;
 
-                const ShapeInstance& inst = instances_[obj_idx];
-                const AABB box = inst.shape.world_aabb();
+                const SceneInstance& inst = instances_[obj_idx];
+                const AABB box = inst.geometry.world_aabb();
                 const glm::vec3 center = (box.minv + box.maxv) * 0.5f;
                 const glm::vec3 size = glm::max(box.maxv - box.minv, glm::vec3(1e-4f));
                 const glm::mat4 aabb_model =
@@ -1911,7 +1894,7 @@ private:
     std::vector<DebugMesh> mesh_cpu_{};
     std::vector<AABB> mesh_local_aabbs_{};
 
-    std::vector<ShapeInstance> instances_{};
+    std::vector<SceneInstance> instances_{};
     std::vector<LightInstance> lights_{};
 
     uint32_t unit_aabb_mesh_index_ = 0;

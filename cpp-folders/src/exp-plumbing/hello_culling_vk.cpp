@@ -28,6 +28,7 @@
 #include <shs/geometry/jolt_debug_draw.hpp>
 #include <shs/geometry/jolt_shapes.hpp>
 #include <shs/geometry/scene_shape.hpp>
+#include <shs/scene/scene_instance.hpp>
 #include <shs/platform/platform_input.hpp>
 #include <shs/rhi/backend/backend_factory.hpp>
 #include <shs/rhi/drivers/vulkan/vk_backend.hpp>
@@ -86,19 +87,6 @@ struct MeshGPU
     GpuBuffer line_indices{};
     uint32_t tri_index_count = 0;
     uint32_t line_index_count = 0;
-};
-
-struct ShapeInstance
-{
-    SceneShape shape;
-    uint32_t mesh_index = 0;
-    glm::vec3 color{1.0f};
-    glm::vec3 base_pos{0.0f};
-    glm::vec3 base_rot{0.0f};
-    glm::vec3 angular_vel{0.0f};
-    glm::mat4 model{1.0f};
-    bool visible = true;
-    bool animated = true;
 };
 
 struct FreeCamera
@@ -389,18 +377,17 @@ private:
 
         // Floor
         {
-            ShapeInstance floor{};
-            floor.shape.shape = jolt::make_box(glm::vec3(50.0f, 0.1f, 50.0f));
-            floor.base_pos = glm::vec3(0.0f, -0.2f, 0.0f);
-            floor.base_rot = glm::vec3(0.0f);
-            floor.model = compose_model(floor.base_pos, floor.base_rot);
-            floor.shape.transform = jolt::to_jph(floor.model);
-            floor.shape.stable_id = 9000;
-            floor.color = glm::vec3(0.18f, 0.18f, 0.22f);
-            floor.animated = false;
+            SceneInstance floor{};
+            floor.geometry.shape = jolt::make_box(glm::vec3(50.0f, 0.1f, 50.0f));
+            floor.anim.base_pos = glm::vec3(0.0f, -0.2f, 0.0f);
+            floor.anim.base_rot = glm::vec3(0.0f);
+            floor.geometry.transform = jolt::to_jph(compose_model(floor.anim.base_pos, floor.anim.base_rot));
+            floor.geometry.stable_id = 9000;
+            floor.tint_color = glm::vec3(0.18f, 0.18f, 0.22f);
+            floor.anim.animated = false;
 
-            const DebugMesh floor_mesh = debug_mesh_from_shape(*floor.shape.shape, JPH::Mat44::sIdentity());
-            floor.mesh_index = upload_debug_mesh(floor_mesh);
+            const DebugMesh floor_mesh = debug_mesh_from_shape(*floor.geometry.shape, JPH::Mat44::sIdentity());
+            floor.user_index = upload_debug_mesh(floor_mesh);
             instances_.push_back(floor);
         }
 
@@ -481,26 +468,25 @@ private:
         {
             for (int c = 0; c < copies_per_type; ++c)
             {
-                ShapeInstance inst{};
-                inst.shape.shape = shape_types[t].shape;
-                inst.mesh_index = shape_types[t].mesh_index;
-                inst.base_pos = glm::vec3(
+                SceneInstance inst{};
+                inst.geometry.shape = shape_types[t].shape;
+                inst.user_index = shape_types[t].mesh_index;
+                inst.anim.base_pos = glm::vec3(
                     (-0.5f * (copies_per_type - 1) + static_cast<float>(c)) * spacing_x,
                     1.25f + 0.25f * static_cast<float>(c % 3),
                     (-0.5f * static_cast<float>(shape_types.size() - 1) + static_cast<float>(t)) * spacing_z);
-                inst.base_rot = glm::vec3(
+                inst.anim.base_rot = glm::vec3(
                     0.17f * static_cast<float>(c),
                     0.23f * static_cast<float>(t),
                     0.11f * static_cast<float>(c + static_cast<int>(t)));
-                inst.angular_vel = glm::vec3(
+                inst.anim.angular_vel = glm::vec3(
                     0.30f + 0.07f * static_cast<float>((c + static_cast<int>(t)) % 5),
                     0.42f + 0.06f * static_cast<float>(c % 4),
                     0.36f + 0.05f * static_cast<float>(static_cast<int>(t) % 6));
-                inst.model = compose_model(inst.base_pos, inst.base_rot);
-                inst.shape.transform = jolt::to_jph(inst.model);
-                inst.shape.stable_id = next_id++;
-                inst.color = shape_types[t].color;
-                inst.animated = true;
+                inst.geometry.transform = jolt::to_jph(compose_model(inst.anim.base_pos, inst.anim.base_rot));
+                inst.geometry.stable_id = next_id++;
+                inst.tint_color = shape_types[t].color;
+                inst.anim.animated = true;
                 instances_.push_back(std::move(inst));
             }
         }
@@ -824,12 +810,11 @@ private:
     {
         for (auto& inst : instances_)
         {
-            if (inst.animated)
+            if (inst.anim.animated)
             {
-                const glm::vec3 rot = inst.base_rot + inst.angular_vel * time_s;
-                inst.model = compose_model(inst.base_pos, rot);
+                const glm::vec3 rot = inst.anim.base_rot + inst.anim.angular_vel * time_s;
+                inst.geometry.transform = jolt::to_jph(compose_model(inst.anim.base_pos, rot));
             }
-            inst.shape.transform = jolt::to_jph(inst.model);
         }
 
         const glm::mat4 view = camera_.view_matrix();
@@ -838,9 +823,9 @@ private:
         frustum_ = extract_frustum_planes(vp);
 
         const CullingResultEx frustum_result = run_frustum_culling(
-            std::span<const ShapeInstance>(instances_.data(), instances_.size()),
+            std::span<const SceneInstance>(instances_.data(), instances_.size()),
             frustum_,
-            [](const ShapeInstance& inst) -> const SceneShape& { return inst.shape; });
+            [](const SceneInstance& inst) -> const SceneShape& { return inst.geometry; });
 
         for (auto& inst : instances_)
         {
@@ -878,8 +863,8 @@ private:
         for (const auto& inst : instances_)
         {
             if (!inst.visible) continue;
-            if (inst.mesh_index >= meshes_.size()) continue;
-            const MeshGPU& mesh = meshes_[inst.mesh_index];
+            if (inst.user_index >= meshes_.size()) continue;
+            const MeshGPU& mesh = meshes_[inst.user_index];
 
             const VkBuffer vb = mesh.vertex.buffer;
             const VkDeviceSize vb_off = 0;
@@ -902,8 +887,8 @@ private:
             vkCmdBindIndexBuffer(cmd, ib, 0, VK_INDEX_TYPE_UINT32);
 
             DrawPush push{};
-            push.model = inst.model;
-            push.base_color = glm::vec4(inst.color, 1.0f);
+            push.model = jolt::to_glm(inst.geometry.transform);
+            push.base_color = glm::vec4(inst.tint_color, 1.0f);
             push.mode_pad.x = render_lit_surfaces_ ? 1u : 0u;
             vkCmdPushConstants(cmd, pipeline_layout_, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(DrawPush), &push);
             vkCmdDrawIndexed(cmd, index_count, 1, 0, 0, 0);
@@ -931,7 +916,7 @@ private:
         for (const auto& inst : instances_)
         {
             if (!inst.visible) continue;
-            const AABB box = inst.shape.world_aabb();
+            const AABB box = inst.geometry.world_aabb();
             const glm::vec3 center = (box.minv + box.maxv) * 0.5f;
             const glm::vec3 size = glm::max(box.maxv - box.minv, glm::vec3(1e-4f));
 
@@ -1155,7 +1140,7 @@ private:
     uint64_t pipeline_gen_ = 0;
 
     std::vector<MeshGPU> meshes_{};
-    std::vector<ShapeInstance> instances_{};
+    std::vector<SceneInstance> instances_{};
     uint32_t aabb_mesh_index_ = 0;
 
     FreeCamera camera_{};

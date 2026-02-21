@@ -23,6 +23,7 @@
 #include <shs/geometry/jolt_debug_draw.hpp>
 #include <shs/geometry/scene_shape.hpp>
 #include <shs/scene/scene_culling.hpp>
+#include <shs/scene/scene_instance.hpp>
 #include <shs/camera/light_camera.hpp>
 #include <shs/lighting/shadow_sample.hpp>
 #include <shs/core/context.hpp>
@@ -31,6 +32,7 @@
 #include <shs/pipeline/render_composition_presets.hpp>
 #include <shs/pipeline/render_path_executor.hpp>
 #include <shs/pipeline/render_technique_presets.hpp>
+#include <shs/sw_render/debug_draw.hpp>
 #include <shs/camera/camera_math.hpp>
 #include <shs/camera/convention.hpp>
 
@@ -87,20 +89,7 @@ SurfaceLightingParams make_surface_lighting_params(RenderTechniquePreset preset)
     return params;
 }
 
-struct ShapeInstance {
-    SceneShape shape;
-    uint32_t mesh_index = 0;
-    glm::vec3 color{1.0f};
-    glm::vec3 base_pos{0.0f};
-    glm::vec3 base_rot{0.0f};
-    glm::vec3 angular_vel{0.0f};
-    glm::mat4 model{1.0f};
-    bool visible = true;
-    bool animated = true;
-    bool frustum_visible = true;
-    bool occluded = false;
-    bool casts_shadow = true;
-};
+
 
 struct FreeCamera {
     glm::vec3 pos{0.0f, 14.0f, -28.0f};
@@ -145,20 +134,7 @@ struct FreeCamera {
     }
 };
 
-void draw_line_rt(RT_ColorLDR& rt, int x0, int y0, int x1, int y1, Color c) {
-    int dx = std::abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
-    int dy = -std::abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
-    int err = dx + dy, e2;
-    while (true) {
-        if (x0 >= 0 && x0 < rt.w && y0 >= 0 && y0 < rt.h) {
-            rt.set_rgba(x0, y0, c.r, c.g, c.b, c.a);
-        }
-        if (x0 == x1 && y0 == y1) break;
-        e2 = 2 * err;
-        if (e2 >= dy) { err += dy; x0 += sx; }
-        if (e2 <= dx) { err += dx; y0 += sy; }
-    }
-}
+
 
 glm::mat4 compose_model(const glm::vec3& pos, const glm::vec3& rot_euler)
 {
@@ -170,113 +146,7 @@ glm::mat4 compose_model(const glm::vec3& pos, const glm::vec3& rot_euler)
     return model;
 }
 
-float edge_fn(const glm::vec2& a, const glm::vec2& b, const glm::vec2& p)
-{
-    return (p.x - a.x) * (b.y - a.y) - (p.y - a.y) * (b.x - a.x);
-}
 
-bool project_world_to_screen(
-    const glm::vec3& world,
-    const glm::mat4& vp,
-    int canvas_w,
-    int canvas_h,
-    glm::vec2& out_xy,
-    float& out_depth)
-{
-    const glm::vec4 clip = vp * glm::vec4(world, 1.0f);
-    if (clip.w <= 0.001f) return false;
-    const glm::vec3 ndc = glm::vec3(clip) / clip.w;
-    if (ndc.z < -1.0f || ndc.z > 1.0f) return false;
-
-    out_xy = glm::vec2(
-        (ndc.x + 1.0f) * 0.5f * (float)canvas_w,
-        (ndc.y + 1.0f) * 0.5f * (float)canvas_h);
-    out_depth = ndc.z * 0.5f + 0.5f;
-    return true;
-}
-
-void draw_filled_triangle(
-    RT_ColorLDR& rt,
-    std::vector<float>& depth_buffer,
-    const glm::vec2& p0, float z0,
-    const glm::vec2& p1, float z1,
-    const glm::vec2& p2, float z2,
-    Color c)
-{
-    const float area = edge_fn(p0, p1, p2);
-    if (std::abs(area) <= 1e-6f) return;
-
-    const float min_xf = std::min(p0.x, std::min(p1.x, p2.x));
-    const float min_yf = std::min(p0.y, std::min(p1.y, p2.y));
-    const float max_xf = std::max(p0.x, std::max(p1.x, p2.x));
-    const float max_yf = std::max(p0.y, std::max(p1.y, p2.y));
-
-    const int min_x = std::max(0, (int)std::floor(min_xf));
-    const int min_y = std::max(0, (int)std::floor(min_yf));
-    const int max_x = std::min(rt.w - 1, (int)std::ceil(max_xf));
-    const int max_y = std::min(rt.h - 1, (int)std::ceil(max_yf));
-    if (min_x > max_x || min_y > max_y) return;
-
-    const bool ccw = area > 0.0f;
-    for (int y = min_y; y <= max_y; ++y) {
-        for (int x = min_x; x <= max_x; ++x) {
-            const glm::vec2 p((float)x + 0.5f, (float)y + 0.5f);
-            const float w0 = edge_fn(p1, p2, p);
-            const float w1 = edge_fn(p2, p0, p);
-            const float w2 = edge_fn(p0, p1, p);
-            const bool inside = ccw ? (w0 >= 0.0f && w1 >= 0.0f && w2 >= 0.0f)
-                                    : (w0 <= 0.0f && w1 <= 0.0f && w2 <= 0.0f);
-            if (!inside) continue;
-
-            const float iw0 = w0 / area;
-            const float iw1 = w1 / area;
-            const float iw2 = w2 / area;
-            const float depth = iw0 * z0 + iw1 * z1 + iw2 * z2;
-            if (depth < 0.0f || depth > 1.0f) continue;
-
-            const size_t di = (size_t)y * (size_t)rt.w + (size_t)x;
-            if (depth < depth_buffer[di]) {
-                depth_buffer[di] = depth;
-                rt.set_rgba(x, y, c.r, c.g, c.b, c.a);
-            }
-        }
-    }
-}
-
-void draw_debug_mesh_wireframe_transformed(
-    RT_ColorLDR& rt,
-    const DebugMesh& mesh_local,
-    const glm::mat4& model,
-    const glm::mat4& vp,
-    int canvas_w,
-    int canvas_h,
-    Color line_color)
-{
-    std::vector<glm::ivec2> projected(mesh_local.vertices.size(), glm::ivec2(-1, -1));
-    for (size_t i = 0; i < mesh_local.vertices.size(); ++i)
-    {
-        const glm::vec3 world = glm::vec3(model * glm::vec4(mesh_local.vertices[i], 1.0f));
-        glm::vec2 s{};
-        float z = 1.0f;
-        if (!project_world_to_screen(world, vp, canvas_w, canvas_h, s, z)) continue;
-        projected[i] = glm::ivec2((int)s.x, (int)s.y);
-    }
-
-    for (size_t i = 0; i + 2 < mesh_local.indices.size(); i += 3) {
-        const uint32_t i0 = mesh_local.indices[i + 0];
-        const uint32_t i1 = mesh_local.indices[i + 1];
-        const uint32_t i2 = mesh_local.indices[i + 2];
-        if (i0 >= projected.size() || i1 >= projected.size() || i2 >= projected.size()) continue;
-
-        const glm::ivec2 v0 = projected[i0];
-        const glm::ivec2 v1 = projected[i1];
-        const glm::ivec2 v2 = projected[i2];
-
-        if (v0.x >= 0 && v1.x >= 0) draw_line_rt(rt, v0.x, v0.y, v1.x, v1.y, line_color);
-        if (v1.x >= 0 && v2.x >= 0) draw_line_rt(rt, v1.x, v1.y, v2.x, v2.y, line_color);
-        if (v2.x >= 0 && v0.x >= 0) draw_line_rt(rt, v2.x, v2.y, v0.x, v0.y, line_color);
-    }
-}
 
 void draw_mesh_blinn_phong_shadowed_transformed(
     RT_ColorLDR& rt,
@@ -306,9 +176,9 @@ void draw_mesh_blinn_phong_shadowed_transformed(
 
         glm::vec2 s0, s1, s2;
         float z0 = 1.0f, z1 = 1.0f, z2 = 1.0f;
-        if (!project_world_to_screen(p0, vp, canvas_w, canvas_h, s0, z0)) continue;
-        if (!project_world_to_screen(p1, vp, canvas_w, canvas_h, s1, z1)) continue;
-        if (!project_world_to_screen(p2, vp, canvas_w, canvas_h, s2, z2)) continue;
+        if (!debug_draw::project_world_to_screen(p0, vp, canvas_w, canvas_h, s0, z0)) continue;
+        if (!debug_draw::project_world_to_screen(p1, vp, canvas_w, canvas_h, s1, z1)) continue;
+        if (!debug_draw::project_world_to_screen(p2, vp, canvas_w, canvas_h, s2, z2)) continue;
 
         // Mesh winding follows LH + clockwise front faces, so flip RH cross order.
         glm::vec3 n = glm::cross(p2 - p0, p1 - p0);
@@ -316,7 +186,7 @@ void draw_mesh_blinn_phong_shadowed_transformed(
         if (n2 <= 1e-10f) continue;
         n = glm::normalize(n);
 
-        const float area = edge_fn(s0, s1, s2);
+        const float area = debug_draw::edge_fn(s0, s1, s2);
         if (std::abs(area) <= 1e-6f) continue;
 
         const float min_xf = std::min(s0.x, std::min(s1.x, s2.x));
@@ -336,9 +206,9 @@ void draw_mesh_blinn_phong_shadowed_transformed(
             for (int x = min_x; x <= max_x; ++x)
             {
                 const glm::vec2 p((float)x + 0.5f, (float)y + 0.5f);
-                const float w0 = edge_fn(s1, s2, p);
-                const float w1 = edge_fn(s2, s0, p);
-                const float w2 = edge_fn(s0, s1, p);
+                const float w0 = debug_draw::edge_fn(s1, s2, p);
+                const float w1 = debug_draw::edge_fn(s2, s0, p);
+                const float w2 = debug_draw::edge_fn(s0, s1, p);
                 const bool inside = ccw
                     ? (w0 >= 0.0f && w1 >= 0.0f && w2 >= 0.0f)
                     : (w0 <= 0.0f && w1 <= 0.0f && w2 <= 0.0f);
@@ -437,7 +307,7 @@ AABB compute_local_aabb_from_debug_mesh(const DebugMesh& mesh)
 }
 
 AABB compute_shadow_caster_bounds_shs(
-    const std::vector<ShapeInstance>& instances,
+    const std::vector<SceneInstance>& instances,
     const std::vector<AABB>& mesh_local_aabbs)
 {
     AABB out{};
@@ -445,8 +315,8 @@ AABB compute_shadow_caster_bounds_shs(
     for (const auto& inst : instances)
     {
         if (!inst.casts_shadow) continue;
-        if (inst.mesh_index >= mesh_local_aabbs.size()) continue;
-        const AABB box = transform_aabb(mesh_local_aabbs[inst.mesh_index], inst.model);
+        if (inst.user_index >= mesh_local_aabbs.size()) continue;
+        const AABB box = transform_aabb(mesh_local_aabbs[inst.user_index], jolt::to_glm(inst.geometry.transform));
         if (!any)
         {
             out.minv = box.minv;
@@ -698,25 +568,24 @@ int main() {
     std::vector<float> shadow_occlusion_depth((size_t)SHADOW_OCC_W * (size_t)SHADOW_OCC_H, 1.0f);
     RT_ShadowDepth shadow_map(SHADOW_MAP_W, SHADOW_MAP_H);
 
-    std::vector<ShapeInstance> instances;
+    std::vector<SceneInstance> instances;
     std::vector<DebugMesh> mesh_library;
     std::vector<AABB> mesh_local_aabbs;
 
     // Large floor
     {
-        ShapeInstance floor{};
-        floor.shape.shape = jolt::make_box(glm::vec3(120.0f, 0.1f, 120.0f));
-        floor.base_pos = glm::vec3(0.0f, -0.2f, 0.0f);
-        floor.base_rot = glm::vec3(0.0f);
-        floor.model = compose_model(floor.base_pos, floor.base_rot);
-        floor.shape.transform = jolt::to_jph(floor.model);
-        floor.shape.stable_id = 9000;
-        floor.color = kFloorBaseColor;
-        floor.animated = false;
+        SceneInstance floor{};
+        floor.geometry.shape = jolt::make_box(glm::vec3(120.0f, 0.1f, 120.0f));
+        floor.anim.base_pos = glm::vec3(0.0f, -0.2f, 0.0f);
+        floor.anim.base_rot = glm::vec3(0.0f);
+        floor.geometry.transform = jolt::to_jph(compose_model(floor.anim.base_pos, floor.anim.base_rot));
+        floor.geometry.stable_id = 9000;
+        floor.tint_color = kFloorBaseColor;
+        floor.anim.animated = false;
         floor.casts_shadow = true;
 
-        floor.mesh_index = static_cast<uint32_t>(mesh_library.size());
-        mesh_library.push_back(make_tessellated_floor_mesh(120.0f, 96));
+        floor.user_index = static_cast<uint32_t>(mesh_library.size());
+        mesh_library.push_back(debug_mesh_from_shape(*floor.geometry.shape, JPH::Mat44::sIdentity()));
         mesh_local_aabbs.push_back(compute_local_aabb_from_debug_mesh(mesh_library.back()));
         instances.push_back(floor);
     }
@@ -746,48 +615,55 @@ int main() {
     const float base_y = 1.3f;
     const float layer_y_step = 0.9f;
 
-    for (int layer = 0; layer < layer_count; ++layer)
+    struct ShapeType
     {
-        const float layer_z = (-0.5f * (float)(layer_count - 1) + (float)layer) * layer_spacing_z;
-        for (int row = 0; row < rows_per_layer; ++row)
-        {
-            const float row_z = layer_z + (-0.5f * (float)(rows_per_layer - 1) + (float)row) * row_spacing_z;
-            const float zig = (((row + layer) & 1) != 0) ? (0.42f * col_spacing_x) : 0.0f;
-            for (int col = 0; col < cols_per_row; ++col)
-            {
-                const uint32_t logical_idx =
-                    (uint32_t)layer * (uint32_t)(rows_per_layer * cols_per_row) +
-                    (uint32_t)row * (uint32_t)cols_per_row +
-                    (uint32_t)col;
-                const DemoShapeKind kind = shape_kinds[(logical_idx * 7u + 3u) % shape_kinds.size()];
-                const float scale = 0.58f + 1.02f * pseudo_random01(logical_idx * 1664525u + 1013904223u);
+        JPH::ShapeRefC shape;
+        uint32_t mesh_index;
+        glm::vec3 color;
+    };
+    std::vector<ShapeType> shape_types;
+    shape_types.reserve(shape_kinds.size());
 
-                ShapeInstance inst{};
-                inst.shape.shape = make_scaled_demo_shape(kind, scale);
-                inst.mesh_index = static_cast<uint32_t>(mesh_library.size());
-                mesh_library.push_back(debug_mesh_from_shape(*inst.shape.shape, JPH::Mat44::sIdentity()));
-                mesh_local_aabbs.push_back(compute_local_aabb_from_debug_mesh(mesh_library.back()));
+    for (size_t i = 0; i < shape_kinds.size(); ++i)
+    {
+        const DemoShapeKind kind = shape_kinds[i];
+        const float scale = 0.58f + 1.02f * pseudo_random01(i * 1664525u + 1013904223u);
+        ShapeType st{};
+        st.shape = make_scaled_demo_shape(kind, scale);
+        st.mesh_index = static_cast<uint32_t>(mesh_library.size());
+        mesh_library.push_back(debug_mesh_from_shape(*st.shape, JPH::Mat44::sIdentity()));
+        mesh_local_aabbs.push_back(compute_local_aabb_from_debug_mesh(mesh_library.back()));
+        st.color = color_for_demo_shape_kind(kind);
+        shape_types.push_back(std::move(st));
+    }
 
-                inst.base_pos = glm::vec3(
-                    (-0.5f * (float)(cols_per_row - 1) + (float)col) * col_spacing_x + zig,
-                    base_y + layer_y_step * (float)layer + 0.22f * (float)(col % 3),
-                    row_z);
-                inst.base_rot = glm::vec3(
-                    0.21f * pseudo_random01(logical_idx * 279470273u + 1u),
-                    0.35f * pseudo_random01(logical_idx * 2246822519u + 7u),
-                    0.19f * pseudo_random01(logical_idx * 3266489917u + 11u));
-                inst.angular_vel = glm::vec3(
-                    0.20f + 0.26f * pseudo_random01(logical_idx * 747796405u + 13u),
-                    0.18f + 0.24f * pseudo_random01(logical_idx * 2891336453u + 17u),
-                    0.16f + 0.21f * pseudo_random01(logical_idx * 1181783497u + 19u));
-                inst.model = compose_model(inst.base_pos, inst.base_rot);
-                inst.shape.transform = jolt::to_jph(inst.model);
-                inst.shape.stable_id = next_id++;
-                inst.color = color_for_demo_shape_kind(kind);
-                inst.animated = true;
-                inst.casts_shadow = true;
-                instances.push_back(std::move(inst));
-            }
+    const int copies_per_type = 10;
+    const float spacing_x = 5.2f;
+    const float spacing_z = 4.6f;
+
+    for (size_t t = 0; t < shape_types.size(); ++t) {
+        for (int c = 0; c < copies_per_type; ++c) {
+            SceneInstance inst{};
+            inst.geometry.shape = shape_types[t].shape;
+            inst.user_index = shape_types[t].mesh_index;
+            inst.anim.base_pos = glm::vec3(
+                (-0.5f * (copies_per_type - 1) + (float)c) * spacing_x,
+                1.25f + 0.25f * (float)(c % 3),
+                (-0.5f * (float)(shape_types.size() - 1) + (float)t) * spacing_z);
+            inst.anim.base_rot = glm::vec3(
+                0.17f * (float)c,
+                0.23f * (float)t,
+                0.11f * (float)(c + (int)t));
+            inst.anim.angular_vel = glm::vec3(
+                0.30f + 0.07f * (float)((c + (int)t) % 5),
+                0.42f + 0.06f * (float)(c % 4),
+                0.36f + 0.05f * (float)((int)t % 6));
+            inst.geometry.transform = jolt::to_jph(compose_model(inst.anim.base_pos, inst.anim.base_rot));
+            inst.geometry.stable_id = next_id++;
+            inst.tint_color = shape_types[t].color;
+            inst.anim.animated = true;
+            inst.casts_shadow = true;
+            instances.push_back(std::move(inst));
         }
     }
 
@@ -808,7 +684,7 @@ int main() {
     for (size_t i = 0; i < instances.size(); ++i)
     {
         SceneElement view_elem{};
-        view_elem.geometry = instances[i].shape;
+        view_elem.geometry = instances[i].geometry;
         view_elem.user_index = static_cast<uint32_t>(i);
         view_elem.visible = instances[i].visible;
         view_elem.frustum_visible = instances[i].frustum_visible;
@@ -817,7 +693,7 @@ int main() {
         view_cull_scene.add(std::move(view_elem));
 
         SceneElement shadow_elem{};
-        shadow_elem.geometry = instances[i].shape;
+        shadow_elem.geometry = instances[i].geometry;
         shadow_elem.user_index = static_cast<uint32_t>(i);
         shadow_elem.visible = true;
         shadow_elem.frustum_visible = true;
@@ -1042,12 +918,11 @@ int main() {
 
         for (auto& inst : instances)
         {
-            if (inst.animated)
+            if (inst.anim.animated)
             {
-                const glm::vec3 rot = inst.base_rot + inst.angular_vel * time_s;
-                inst.model = compose_model(inst.base_pos, rot);
+                const glm::vec3 rot = inst.anim.base_rot + inst.anim.angular_vel * time_s;
+                inst.geometry.transform = jolt::to_jph(compose_model(inst.anim.base_pos, rot));
             }
-            inst.shape.transform = jolt::to_jph(inst.model);
             inst.visible = true;
             inst.frustum_visible = true;
             inst.occluded = false;
@@ -1057,13 +932,13 @@ int main() {
         auto shadow_elems = shadow_cull_scene.elements();
         for (size_t i = 0; i < instances.size(); ++i)
         {
-            view_elems[i].geometry = instances[i].shape;
+            view_elems[i].geometry = instances[i].geometry;
             view_elems[i].visible = true;
             view_elems[i].frustum_visible = true;
             view_elems[i].occluded = false;
             view_elems[i].enabled = true;
 
-            shadow_elems[i].geometry = instances[i].shape;
+            shadow_elems[i].geometry = instances[i].geometry;
             shadow_elems[i].visible = true;
             shadow_elems[i].frustum_visible = true;
             shadow_elems[i].occluded = false;
@@ -1112,15 +987,15 @@ int main() {
                 light_vp,
                 [&](const SceneElement& elem, uint32_t, std::span<float> depth_span) {
                     if (elem.user_index >= instances.size()) return;
-                    const ShapeInstance& inst = instances[elem.user_index];
+                    const SceneInstance& inst = instances[elem.user_index];
                     if (!inst.casts_shadow) return;
-                    if (inst.mesh_index >= mesh_library.size()) return;
+                    if (inst.user_index >= mesh_library.size()) return;
                     culling_sw::rasterize_mesh_depth_transformed(
                         depth_span,
                         SHADOW_OCC_W,
                         SHADOW_OCC_H,
-                        mesh_library[inst.mesh_index],
-                        inst.model,
+                        mesh_library[inst.user_index],
+                        jolt::to_glm(inst.geometry.transform),
                         light_vp);
                 });
             (void)shadow_cull_ctx.apply_frustum_fallback_if_needed(
@@ -1135,13 +1010,13 @@ int main() {
                 if (shadow_scene_idx >= shadow_cull_scene.size()) continue;
                 const uint32_t idx = shadow_cull_scene[shadow_scene_idx].user_index;
                 if (idx >= instances.size()) continue;
-                const ShapeInstance& inst = instances[idx];
+                const SceneInstance& inst = instances[idx];
                 if (!inst.casts_shadow) continue;
-                if (inst.mesh_index >= mesh_library.size()) continue;
+                if (inst.user_index >= mesh_library.size()) continue;
                 rasterize_shadow_mesh_transformed(
                     shadow_map,
-                    mesh_library[inst.mesh_index],
-                    inst.model,
+                    mesh_library[inst.user_index],
+                    jolt::to_glm(inst.geometry.transform),
                     light_vp);
             }
         }
@@ -1162,14 +1037,14 @@ int main() {
             vp,
             [&](const SceneElement& elem, uint32_t, std::span<float> depth_span) {
                 if (elem.user_index >= instances.size()) return;
-                const ShapeInstance& inst = instances[elem.user_index];
-                if (inst.mesh_index >= mesh_library.size()) return;
+                const SceneInstance& inst = instances[elem.user_index];
+                if (inst.user_index >= mesh_library.size()) return;
                 culling_sw::rasterize_mesh_depth_transformed(
                     depth_span,
                     OCC_W,
                     OCC_H,
-                    mesh_library[inst.mesh_index],
-                    inst.model,
+                    mesh_library[inst.user_index],
+                    jolt::to_glm(inst.geometry.transform),
                     vp);
             });
         (void)view_cull_ctx.apply_frustum_fallback_if_needed(
@@ -1219,15 +1094,15 @@ int main() {
             const uint32_t idx = view_cull_scene[scene_idx].user_index;
             if (idx >= instances.size()) continue;
             const auto& inst = instances[idx];
-            if (inst.mesh_index >= mesh_library.size()) continue;
-            const DebugMesh& shape_mesh = mesh_library[inst.mesh_index];
-            const glm::vec3 base_color = inst.color;
+            if (inst.user_index >= mesh_library.size()) continue;
+            const DebugMesh& shape_mesh = mesh_library[inst.user_index];
+            const glm::vec3 base_color = inst.tint_color;
             if (render_lit_surfaces) {
                 draw_mesh_blinn_phong_shadowed_transformed(
                     ldr_rt,
                     depth_buffer,
                     shape_mesh,
-                    inst.model,
+                    jolt::to_glm(inst.geometry.transform),
                     vp,
                     CANVAS_W,
                     CANVAS_H,
@@ -1244,17 +1119,17 @@ int main() {
                     (uint8_t)std::clamp(base_color.b * 255.0f, 0.0f, 255.0f),
                     255
                 };
-                draw_debug_mesh_wireframe_transformed(ldr_rt, shape_mesh, inst.model, vp, CANVAS_W, CANVAS_H, shape_color);
+                debug_draw::draw_debug_mesh_wireframe_transformed(ldr_rt, shape_mesh, jolt::to_glm(inst.geometry.transform), vp, CANVAS_W, CANVAS_H, shape_color);
             }
 
             if (show_aabb_debug && unit_aabb_mesh_index < mesh_library.size()) {
-                const AABB box = inst.shape.world_aabb();
+                const AABB box = inst.geometry.world_aabb();
                 const glm::vec3 center = box.center();
                 const glm::vec3 size = glm::max(box.maxv - box.minv, glm::vec3(1e-4f));
                 const glm::mat4 aabb_model =
                     glm::translate(glm::mat4(1.0f), center) *
                     glm::scale(glm::mat4(1.0f), size);
-                draw_debug_mesh_wireframe_transformed(
+                debug_draw::draw_debug_mesh_wireframe_transformed(
                     ldr_rt,
                     mesh_library[unit_aabb_mesh_index],
                     aabb_model,

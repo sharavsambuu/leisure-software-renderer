@@ -16,7 +16,7 @@
 #include <shs/platform/platform_input.hpp>
 #include <shs/platform/platform_runtime.hpp>
 #include <shs/platform/sdl/sdl_runtime.hpp>
-#include <shs/render/rasterizer.hpp>
+#include <shs/sw_render/rasterizer.hpp>
 #include <shs/resources/mesh.hpp>
 #include <shs/rhi/backend/backend_factory.hpp>
 #include <shs/shader/program.hpp>

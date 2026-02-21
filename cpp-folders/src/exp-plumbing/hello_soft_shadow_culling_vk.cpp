@@ -31,6 +31,7 @@
 #include <shs/geometry/jolt_debug_draw.hpp>
 #include <shs/geometry/jolt_shapes.hpp>
 #include <shs/geometry/scene_shape.hpp>
+#include <shs/scene/scene_instance.hpp>
 #include <shs/job/thread_pool_job_system.hpp>
 #include <shs/job/wait_group.hpp>
 #include <shs/platform/platform_input.hpp>
@@ -147,22 +148,6 @@ struct DepthTarget
     VkDeviceMemory memory = VK_NULL_HANDLE;
     VkImageView view = VK_NULL_HANDLE;
     VkFormat format = VK_FORMAT_UNDEFINED;
-};
-
-struct ShapeInstance
-{
-    SceneShape shape;
-    uint32_t mesh_index = 0;
-    glm::vec3 color{1.0f};
-    glm::vec3 base_pos{0.0f};
-    glm::vec3 base_rot{0.0f};
-    glm::vec3 angular_vel{0.0f};
-    glm::mat4 model{1.0f};
-    bool visible = true;
-    bool frustum_visible = true;
-    bool occluded = false;
-    bool animated = true;
-    bool casts_shadow = true;
 };
 
 struct FreeCamera
@@ -298,7 +283,7 @@ AABB compute_local_aabb_from_debug_mesh(const DebugMesh& mesh)
 }
 
 AABB compute_shadow_caster_bounds_shs(
-    const std::vector<ShapeInstance>& instances,
+    const std::vector<SceneInstance>& instances,
     const std::vector<MeshGPU>& meshes)
 {
     AABB out{};
@@ -306,8 +291,8 @@ AABB compute_shadow_caster_bounds_shs(
     for (const auto& inst : instances)
     {
         if (!inst.casts_shadow) continue;
-        if (inst.mesh_index >= meshes.size()) continue;
-        const AABB box = transform_aabb(meshes[inst.mesh_index].local_aabb, inst.model);
+        if (inst.user_index >= meshes.size()) continue;
+        const AABB box = transform_aabb(meshes[inst.user_index].local_aabb, jolt::to_glm(inst.geometry.transform));
         if (!any)
         {
             out.minv = box.minv;
@@ -884,17 +869,16 @@ private:
 
         // Large floor
         {
-            ShapeInstance floor{};
-            floor.shape.shape = jolt::make_box(glm::vec3(120.0f, 0.1f, 120.0f));
-            floor.base_pos = glm::vec3(0.0f, -0.2f, 0.0f);
-            floor.base_rot = glm::vec3(0.0f);
-            floor.model = compose_model(floor.base_pos, floor.base_rot);
-            floor.shape.transform = jolt::to_jph(floor.model);
-            floor.shape.stable_id = 9000;
-            floor.color = kFloorBaseColor;
-            floor.animated = false;
+            SceneInstance floor{};
+            floor.geometry.shape = jolt::make_box(glm::vec3(120.0f, 0.1f, 120.0f));
+            floor.anim.base_pos = glm::vec3(0.0f, -0.2f, 0.0f);
+            floor.anim.base_rot = glm::vec3(0.0f);
+            floor.geometry.transform = jolt::to_jph(compose_model(floor.anim.base_pos, floor.anim.base_rot));
+            floor.geometry.stable_id = 9000;
+            floor.tint_color = kFloorBaseColor;
+            floor.anim.animated = false;
             floor.casts_shadow = true;
-            floor.mesh_index = upload_debug_mesh(make_tessellated_floor_mesh(120.0f, 96));
+            floor.user_index = upload_debug_mesh(make_tessellated_floor_mesh(120.0f, 96));
             instances_.push_back(floor);
         }
 
@@ -939,26 +923,25 @@ private:
                     const DemoShapeKind kind = shape_kinds[(logical_idx * 7u + 3u) % shape_kinds.size()];
                     const float scale = 0.58f + 1.02f * pseudo_random01(logical_idx * 1664525u + 1013904223u);
 
-                    ShapeInstance inst{};
-                    inst.shape.shape = make_scaled_demo_shape(kind, scale);
-                    inst.mesh_index = upload_debug_mesh(debug_mesh_from_shape(*inst.shape.shape, JPH::Mat44::sIdentity()));
-                    inst.base_pos = glm::vec3(
+                    SceneInstance inst{};
+                    inst.geometry.shape = make_scaled_demo_shape(kind, scale);
+                    inst.user_index = upload_debug_mesh(debug_mesh_from_shape(*inst.geometry.shape, JPH::Mat44::sIdentity()));
+                    inst.anim.base_pos = glm::vec3(
                         (-0.5f * (float)(cols_per_row - 1) + (float)col) * col_spacing_x + zig,
                         base_y + layer_y_step * (float)layer + 0.22f * (float)(col % 3),
                         row_z);
-                    inst.base_rot = glm::vec3(
+                    inst.anim.base_rot = glm::vec3(
                         0.21f * pseudo_random01(logical_idx * 279470273u + 1u),
                         0.35f * pseudo_random01(logical_idx * 2246822519u + 7u),
                         0.19f * pseudo_random01(logical_idx * 3266489917u + 11u));
-                    inst.angular_vel = glm::vec3(
+                    inst.anim.angular_vel = glm::vec3(
                         0.20f + 0.26f * pseudo_random01(logical_idx * 747796405u + 13u),
                         0.18f + 0.24f * pseudo_random01(logical_idx * 2891336453u + 17u),
                         0.16f + 0.21f * pseudo_random01(logical_idx * 1181783497u + 19u));
-                    inst.model = compose_model(inst.base_pos, inst.base_rot);
-                    inst.shape.transform = jolt::to_jph(inst.model);
-                    inst.shape.stable_id = next_id++;
-                    inst.color = color_for_demo_shape_kind(kind);
-                    inst.animated = true;
+                    inst.geometry.transform = jolt::to_jph(compose_model(inst.anim.base_pos, inst.anim.base_rot));
+                    inst.geometry.stable_id = next_id++;
+                    inst.tint_color = color_for_demo_shape_kind(kind);
+                    inst.anim.animated = true;
                     inst.casts_shadow = true;
                     instances_.push_back(std::move(inst));
                 }
@@ -978,7 +961,7 @@ private:
         for (size_t i = 0; i < instances_.size(); ++i)
         {
             SceneElement view_elem{};
-            view_elem.geometry = instances_[i].shape;
+            view_elem.geometry = instances_[i].geometry;
             view_elem.user_index = static_cast<uint32_t>(i);
             view_elem.visible = instances_[i].visible;
             view_elem.frustum_visible = instances_[i].frustum_visible;
@@ -987,7 +970,7 @@ private:
             view_cull_scene_.add(std::move(view_elem));
 
             SceneElement shadow_elem{};
-            shadow_elem.geometry = instances_[i].shape;
+            shadow_elem.geometry = instances_[i].geometry;
             shadow_elem.user_index = static_cast<uint32_t>(i);
             shadow_elem.visible = true;
             shadow_elem.frustum_visible = true;
@@ -1815,12 +1798,11 @@ private:
     {
         for (auto& inst : instances_)
         {
-            if (inst.animated)
+            if (inst.anim.animated)
             {
-                const glm::vec3 rot = inst.base_rot + inst.angular_vel * time_s;
-                inst.model = compose_model(inst.base_pos, rot);
+                const glm::vec3 rot = inst.anim.base_rot + inst.anim.angular_vel * time_s;
+                inst.geometry.transform = jolt::to_jph(compose_model(inst.anim.base_pos, rot));
             }
-            inst.shape.transform = jolt::to_jph(inst.model);
             inst.visible = true;
             inst.frustum_visible = true;
             inst.occluded = false;
@@ -1830,13 +1812,13 @@ private:
         auto shadow_elems = shadow_cull_scene_.elements();
         for (size_t i = 0; i < instances_.size(); ++i)
         {
-            view_elems[i].geometry = instances_[i].shape;
+            view_elems[i].geometry = instances_[i].geometry;
             view_elems[i].visible = true;
             view_elems[i].frustum_visible = true;
             view_elems[i].occluded = false;
             view_elems[i].enabled = true;
 
-            shadow_elems[i].geometry = instances_[i].shape;
+            shadow_elems[i].geometry = instances_[i].geometry;
             shadow_elems[i].visible = true;
             shadow_elems[i].frustum_visible = true;
             shadow_elems[i].occluded = false;
@@ -1985,18 +1967,17 @@ private:
         }
     }
 
-    bool get_view_scene_instance(uint32_t scene_idx, const ShapeInstance*& out_inst, const MeshGPU*& out_mesh) const
+    bool get_view_scene_instance(uint32_t scene_idx, const SceneInstance*& out_inst, const MeshGPU*& out_mesh) const
     {
         out_inst = nullptr;
         out_mesh = nullptr;
         if (scene_idx >= view_cull_scene_.size()) return false;
         const uint32_t idx = view_cull_scene_[scene_idx].user_index;
         if (idx >= instances_.size()) return false;
-        const ShapeInstance& inst = instances_[idx];
-        if (inst.mesh_index >= meshes_.size()) return false;
-        const MeshGPU& mesh = meshes_[inst.mesh_index];
+        const SceneInstance& inst = instances_[idx];
+        if (inst.user_index >= meshes_.size()) return false;
         out_inst = &inst;
-        out_mesh = &mesh;
+        out_mesh = &meshes_[inst.user_index];
         return true;
     }
 
@@ -2013,7 +1994,7 @@ private:
         {
             if (view_query_scene_indices_[ring].size() >= max_view_query_count_) break;
 
-            const ShapeInstance* inst = nullptr;
+            const SceneInstance* inst = nullptr;
             const MeshGPU* mesh = nullptr;
             if (!get_view_scene_instance(scene_idx, inst, mesh)) continue;
             if (mesh->tri_indices.buffer == VK_NULL_HANDLE || mesh->tri_index_count == 0) continue;
@@ -2048,7 +2029,7 @@ private:
         for (uint32_t i = begin; i < end; ++i)
         {
             const uint32_t scene_idx = render_view_scene_indices_[i];
-            const ShapeInstance* inst = nullptr;
+            const SceneInstance* inst = nullptr;
             const MeshGPU* mesh = nullptr;
             if (!get_view_scene_instance(scene_idx, inst, mesh)) continue;
             if (mesh->tri_indices.buffer == VK_NULL_HANDLE || mesh->tri_index_count == 0) continue;
@@ -2059,8 +2040,8 @@ private:
             vkCmdBindIndexBuffer(cmd, mesh->tri_indices.buffer, 0, VK_INDEX_TYPE_UINT32);
 
             DrawPush push{};
-            push.model = inst->model;
-            push.base_color = glm::vec4(inst->color, 1.0f);
+            push.model = jolt::to_glm(inst->geometry.transform);
+            push.base_color = glm::vec4(inst->tint_color, 1.0f);
             push.mode_pad.x = 1u;
             vkCmdPushConstants(
                 cmd,
@@ -2121,7 +2102,7 @@ private:
         for (uint32_t i = begin; i < end; ++i)
         {
             const uint32_t scene_idx = render_view_scene_indices_[i];
-            const ShapeInstance* inst = nullptr;
+            const SceneInstance* inst = nullptr;
             const MeshGPU* mesh = nullptr;
             if (!get_view_scene_instance(scene_idx, inst, mesh)) continue;
 
@@ -2145,8 +2126,8 @@ private:
             vkCmdBindIndexBuffer(cmd, ib, 0, VK_INDEX_TYPE_UINT32);
 
             DrawPush push{};
-            push.model = inst->model;
-            push.base_color = glm::vec4(inst->color, 1.0f);
+            push.model = jolt::to_glm(inst->geometry.transform);
+            push.base_color = glm::vec4(inst->tint_color, 1.0f);
             push.mode_pad.x = render_lit_surfaces_ ? 1u : 0u;
             vkCmdPushConstants(
                 cmd,
@@ -2195,12 +2176,12 @@ private:
         for (uint32_t i = begin; i < end; ++i)
         {
             const uint32_t scene_idx = render_view_scene_indices_[i];
-            const ShapeInstance* inst = nullptr;
+            const SceneInstance* inst = nullptr;
             const MeshGPU* mesh = nullptr;
             if (!get_view_scene_instance(scene_idx, inst, mesh)) continue;
             (void)mesh;
 
-            const AABB box = inst->shape.world_aabb();
+            const AABB box = inst->geometry.world_aabb();
             const glm::vec3 center = (box.minv + box.maxv) * 0.5f;
             const glm::vec3 size = glm::max(box.maxv - box.minv, glm::vec3(1e-4f));
 
@@ -2232,11 +2213,6 @@ private:
         if (view_query_pools_[ring] == VK_NULL_HANDLE) return;
         if (pipeline_occ_query_ == VK_NULL_HANDLE) return;
 
-        const uint32_t query_n = view_query_counts_[ring];
-        begin = std::min(begin, query_n);
-        end = std::min(end, query_n);
-        if (begin >= end) return;
-
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_occ_query_);
         vkCmdBindDescriptorSets(
             cmd,
@@ -2251,7 +2227,7 @@ private:
         for (uint32_t query_idx = begin; query_idx < end; ++query_idx)
         {
             const uint32_t scene_idx = view_query_scene_indices_[ring][query_idx];
-            const ShapeInstance* inst = nullptr;
+            const SceneInstance* inst = nullptr;
             const MeshGPU* mesh = nullptr;
             if (!get_view_scene_instance(scene_idx, inst, mesh)) continue;
             if (mesh->tri_indices.buffer == VK_NULL_HANDLE || mesh->tri_index_count == 0) continue;
@@ -2262,8 +2238,8 @@ private:
             vkCmdBindIndexBuffer(cmd, mesh->tri_indices.buffer, 0, VK_INDEX_TYPE_UINT32);
 
             DrawPush push{};
-            push.model = inst->model;
-            push.base_color = glm::vec4(inst->color, 1.0f);
+            push.model = jolt::to_glm(inst->geometry.transform);
+            push.base_color = glm::vec4(inst->tint_color, 1.0f);
             push.mode_pad.x = 1u;
             vkCmdPushConstants(
                 cmd,
@@ -2457,10 +2433,10 @@ private:
         if (shadow_scene_idx >= shadow_cull_scene_.size()) return;
         const uint32_t idx = shadow_cull_scene_[shadow_scene_idx].user_index;
         if (idx >= instances_.size()) return;
-        const ShapeInstance& inst = instances_[idx];
+        const SceneInstance& inst = instances_[idx];
         if (!inst.casts_shadow) return;
-        if (inst.mesh_index >= meshes_.size()) return;
-        const MeshGPU& mesh = meshes_[inst.mesh_index];
+        if (inst.user_index >= meshes_.size()) return;
+        const MeshGPU& mesh = meshes_[inst.user_index];
         if (mesh.tri_indices.buffer == VK_NULL_HANDLE || mesh.tri_index_count == 0) return;
 
         const VkBuffer vb = mesh.vertex.buffer;
@@ -2469,7 +2445,7 @@ private:
         vkCmdBindIndexBuffer(cmd, mesh.tri_indices.buffer, 0, VK_INDEX_TYPE_UINT32);
 
         ShadowPush sp{};
-        sp.light_mvp = light_view_proj_mtx_ * inst.model;
+        sp.light_mvp = light_view_proj_mtx_ * jolt::to_glm(inst.geometry.transform);
         vkCmdPushConstants(cmd, shadow_pipeline_layout_, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(ShadowPush), &sp);
         vkCmdDrawIndexed(cmd, mesh.tri_index_count, 1, 0, 0, 0);
     }
@@ -2493,10 +2469,10 @@ private:
             if (shadow_scene_idx >= shadow_cull_scene_.size()) continue;
             const uint32_t idx = shadow_cull_scene_[shadow_scene_idx].user_index;
             if (idx >= instances_.size()) continue;
-            const ShapeInstance& inst = instances_[idx];
+            const SceneInstance& inst = instances_[idx];
             if (!inst.casts_shadow) continue;
-            if (inst.mesh_index >= meshes_.size()) continue;
-            const MeshGPU& mesh = meshes_[inst.mesh_index];
+            if (inst.user_index >= meshes_.size()) continue;
+            const MeshGPU& mesh = meshes_[inst.user_index];
             if (mesh.tri_indices.buffer == VK_NULL_HANDLE || mesh.tri_index_count == 0) continue;
 
             const VkBuffer vb = mesh.vertex.buffer;
@@ -2505,7 +2481,7 @@ private:
             vkCmdBindIndexBuffer(cmd, mesh.tri_indices.buffer, 0, VK_INDEX_TYPE_UINT32);
 
             ShadowPush sp{};
-            sp.light_mvp = light_view_proj_mtx_ * inst.model;
+            sp.light_mvp = light_view_proj_mtx_ * jolt::to_glm(inst.geometry.transform);
             vkCmdPushConstants(cmd, shadow_pipeline_layout_, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(ShadowPush), &sp);
 
             const uint32_t query_idx = shadow_query_counts_[ring];
@@ -3075,7 +3051,7 @@ private:
     uint32_t max_shadow_query_count_ = 0;
 
     std::vector<MeshGPU> meshes_{};
-    std::vector<ShapeInstance> instances_{};
+    std::vector<SceneInstance> instances_{};
     SceneElementSet view_cull_scene_{};
     SceneElementSet shadow_cull_scene_{};
     SceneCullingContext view_cull_ctx_{

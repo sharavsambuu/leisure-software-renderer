@@ -28,7 +28,7 @@
 #include "shs/passes/pass_tonemap.hpp"
 #include "shs/pipeline/pass_registry.hpp"
 #include "shs/pipeline/render_pass.hpp"
-#include "shs/render/rasterizer.hpp"
+#include "shs/sw_render/rasterizer.hpp"
 #include "shs/resources/resource_registry.hpp"
 #include "shs/shader/program.hpp"
 

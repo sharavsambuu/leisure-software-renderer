@@ -12,8 +12,8 @@
 
 #include <functional>
 
-#include "shs/render/draw_packet.hpp"
-#include "shs/render/target.hpp"
+#include "shs/sw_render/draw_packet.hpp"
+#include "shs/sw_render/target.hpp"
 
 namespace shs
 {

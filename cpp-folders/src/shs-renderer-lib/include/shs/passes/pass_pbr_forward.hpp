@@ -10,7 +10,7 @@
 */
 
 
-#include "shs/render/rasterizer.hpp"
+#include "shs/sw_render/rasterizer.hpp"
 #include "shs/resources/resource_registry.hpp"
 #include "shs/scene/scene_types.hpp"
 #include "shs/frame/frame_params.hpp"

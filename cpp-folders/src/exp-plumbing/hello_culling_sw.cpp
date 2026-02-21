@@ -17,8 +17,10 @@
 #include <shs/geometry/culling_runtime.hpp>
 #include <shs/geometry/jolt_debug_draw.hpp>
 #include <shs/geometry/scene_shape.hpp>
+#include <shs/scene/scene_instance.hpp>
 #include <shs/core/context.hpp>
 #include <shs/gfx/rt_types.hpp>
+#include <shs/sw_render/debug_draw.hpp>
 #include <shs/camera/camera_math.hpp>
 #include <shs/camera/convention.hpp>
 
@@ -29,16 +31,6 @@ const int WINDOW_H = 900;
 const int CANVAS_W = 1200;
 const int CANVAS_H = 900;
 const glm::vec3 kSunLightDirWs = glm::normalize(glm::vec3(0.20f, -1.0f, 0.16f));
-
-struct ShapeInstance {
-    SceneShape shape;
-    glm::vec3 color;
-    glm::vec3 base_pos{0.0f};
-    glm::vec3 base_rot{0.0f};
-    glm::vec3 angular_vel{0.0f};
-    bool visible = true;
-    bool animated = true;
-};
 
 struct FreeCamera {
     glm::vec3 pos{0.0f, 14.0f, -28.0f};
@@ -84,21 +76,6 @@ struct FreeCamera {
     }
 };
 
-void draw_line_rt(RT_ColorLDR& rt, int x0, int y0, int x1, int y1, Color c) {
-    int dx = std::abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
-    int dy = -std::abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
-    int err = dx + dy, e2;
-    while (true) {
-        if (x0 >= 0 && x0 < rt.w && y0 >= 0 && y0 < rt.h) {
-            rt.set_rgba(x0, y0, c.r, c.g, c.b, c.a);
-        }
-        if (x0 == x1 && y0 == y1) break;
-        e2 = 2 * err;
-        if (e2 >= dy) { err += dy; x0 += sx; }
-        if (e2 <= dx) { err += dx; y0 += sy; }
-    }
-}
-
 glm::mat4 compose_model(const glm::vec3& pos, const glm::vec3& rot_euler)
 {
     glm::mat4 model(1.0f);
@@ -107,165 +84,6 @@ glm::mat4 compose_model(const glm::vec3& pos, const glm::vec3& rot_euler)
     model = glm::rotate(model, rot_euler.y, glm::vec3(0.0f, 1.0f, 0.0f));
     model = glm::rotate(model, rot_euler.z, glm::vec3(0.0f, 0.0f, 1.0f));
     return model;
-}
-
-void draw_debug_mesh_wireframe(
-    RT_ColorLDR& rt,
-    const DebugMesh& mesh,
-    const glm::mat4& vp,
-    int canvas_w,
-    int canvas_h,
-    Color line_color)
-{
-    auto project = [&](const glm::vec3& p) -> glm::ivec2 {
-        glm::vec4 clip = vp * glm::vec4(p, 1.0f);
-        if (clip.w <= 0.001f) return {-1, -1};
-        glm::vec3 ndc = glm::vec3(clip) / clip.w;
-        if (ndc.z < -1.0f || ndc.z > 1.0f) return {-1, -1};
-        return {
-            (int)((ndc.x + 1.0f) * 0.5f * (float)canvas_w),
-            (int)((ndc.y + 1.0f) * 0.5f * (float)canvas_h)
-        };
-    };
-
-    for (size_t i = 0; i + 2 < mesh.indices.size(); i += 3) {
-        const glm::vec3 p0 = mesh.vertices[mesh.indices[i + 0]];
-        const glm::vec3 p1 = mesh.vertices[mesh.indices[i + 1]];
-        const glm::vec3 p2 = mesh.vertices[mesh.indices[i + 2]];
-
-        const glm::ivec2 v0 = project(p0);
-        const glm::ivec2 v1 = project(p1);
-        const glm::ivec2 v2 = project(p2);
-
-        if (v0.x >= 0 && v1.x >= 0) draw_line_rt(rt, v0.x, v0.y, v1.x, v1.y, line_color);
-        if (v1.x >= 0 && v2.x >= 0) draw_line_rt(rt, v1.x, v1.y, v2.x, v2.y, line_color);
-        if (v2.x >= 0 && v0.x >= 0) draw_line_rt(rt, v2.x, v2.y, v0.x, v0.y, line_color);
-    }
-}
-
-float edge_fn(const glm::vec2& a, const glm::vec2& b, const glm::vec2& p)
-{
-    return (p.x - a.x) * (b.y - a.y) - (p.y - a.y) * (b.x - a.x);
-}
-
-bool project_clip_to_screen(
-    const glm::vec3& p,
-    const glm::mat4& vp,
-    int canvas_w,
-    int canvas_h,
-    glm::vec2& out_xy,
-    float& out_depth)
-{
-    const glm::vec4 clip = vp * glm::vec4(p, 1.0f);
-    if (clip.w <= 0.001f) return false;
-    const glm::vec3 ndc = glm::vec3(clip) / clip.w;
-    if (ndc.z < -1.0f || ndc.z > 1.0f) return false;
-
-    out_xy = glm::vec2(
-        (ndc.x + 1.0f) * 0.5f * (float)canvas_w,
-        (ndc.y + 1.0f) * 0.5f * (float)canvas_h);
-    out_depth = ndc.z * 0.5f + 0.5f;
-    return true;
-}
-
-void draw_filled_triangle(
-    RT_ColorLDR& rt,
-    std::vector<float>& depth_buffer,
-    const glm::vec2& p0, float z0,
-    const glm::vec2& p1, float z1,
-    const glm::vec2& p2, float z2,
-    Color c)
-{
-    const float area = edge_fn(p0, p1, p2);
-    if (std::abs(area) <= 1e-6f) return;
-
-    const float min_xf = std::min(p0.x, std::min(p1.x, p2.x));
-    const float min_yf = std::min(p0.y, std::min(p1.y, p2.y));
-    const float max_xf = std::max(p0.x, std::max(p1.x, p2.x));
-    const float max_yf = std::max(p0.y, std::max(p1.y, p2.y));
-
-    const int min_x = std::max(0, (int)std::floor(min_xf));
-    const int min_y = std::max(0, (int)std::floor(min_yf));
-    const int max_x = std::min(rt.w - 1, (int)std::ceil(max_xf));
-    const int max_y = std::min(rt.h - 1, (int)std::ceil(max_yf));
-    if (min_x > max_x || min_y > max_y) return;
-
-    const bool ccw = area > 0.0f;
-    for (int y = min_y; y <= max_y; ++y) {
-        for (int x = min_x; x <= max_x; ++x) {
-            const glm::vec2 p((float)x + 0.5f, (float)y + 0.5f);
-            const float w0 = edge_fn(p1, p2, p);
-            const float w1 = edge_fn(p2, p0, p);
-            const float w2 = edge_fn(p0, p1, p);
-            const bool inside = ccw ? (w0 >= 0.0f && w1 >= 0.0f && w2 >= 0.0f)
-                                    : (w0 <= 0.0f && w1 <= 0.0f && w2 <= 0.0f);
-            if (!inside) continue;
-
-            const float iw0 = w0 / area;
-            const float iw1 = w1 / area;
-            const float iw2 = w2 / area;
-            const float depth = iw0 * z0 + iw1 * z1 + iw2 * z2;
-            if (depth < 0.0f || depth > 1.0f) continue;
-
-            const size_t di = (size_t)y * (size_t)rt.w + (size_t)x;
-            if (depth < depth_buffer[di]) {
-                depth_buffer[di] = depth;
-                rt.set_rgba(x, y, c.r, c.g, c.b, c.a);
-            }
-        }
-    }
-}
-
-void draw_mesh_blinn_phong(
-    RT_ColorLDR& rt,
-    std::vector<float>& depth_buffer,
-    const DebugMesh& mesh,
-    const glm::mat4& vp,
-    int canvas_w,
-    int canvas_h,
-    const glm::vec3& camera_pos,
-    const glm::vec3& light_dir_ws,
-    const glm::vec3& base_color)
-{
-    const glm::vec3 L = glm::normalize(-light_dir_ws);
-    for (size_t i = 0; i + 2 < mesh.indices.size(); i += 3) {
-        const glm::vec3 p0 = mesh.vertices[mesh.indices[i + 0]];
-        const glm::vec3 p1 = mesh.vertices[mesh.indices[i + 1]];
-        const glm::vec3 p2 = mesh.vertices[mesh.indices[i + 2]];
-
-        glm::vec2 s0, s1, s2;
-        float z0 = 1.0f, z1 = 1.0f, z2 = 1.0f;
-        if (!project_clip_to_screen(p0, vp, canvas_w, canvas_h, s0, z0)) continue;
-        if (!project_clip_to_screen(p1, vp, canvas_w, canvas_h, s1, z1)) continue;
-        if (!project_clip_to_screen(p2, vp, canvas_w, canvas_h, s2, z2)) continue;
-
-        // Mesh winding follows LH + clockwise front faces, so flip RH cross order.
-        glm::vec3 n = glm::cross(p2 - p0, p1 - p0);
-        const float n2 = glm::dot(n, n);
-        if (n2 <= 1e-10f) continue;
-        n = glm::normalize(n);
-
-        const glm::vec3 centroid = (p0 + p1 + p2) * (1.0f / 3.0f);
-        const glm::vec3 V = glm::normalize(camera_pos - centroid);
-        const glm::vec3 H = glm::normalize(L + V);
-
-        const float ndotl = std::max(0.0f, glm::dot(n, L));
-        const float ndoth = std::max(0.0f, glm::dot(n, H));
-        const float ambient = 0.18f;
-        const float diffuse = 0.72f * ndotl;
-        const float specular = (ndotl > 0.0f) ? (0.35f * std::pow(ndoth, 32.0f)) : 0.0f;
-
-        glm::vec3 lit = base_color * (ambient + diffuse) + glm::vec3(specular);
-        lit = glm::clamp(lit, glm::vec3(0.0f), glm::vec3(1.0f));
-        const Color c{
-            (uint8_t)std::clamp(lit.r * 255.0f, 0.0f, 255.0f),
-            (uint8_t)std::clamp(lit.g * 255.0f, 0.0f, 255.0f),
-            (uint8_t)std::clamp(lit.b * 255.0f, 0.0f, 255.0f),
-            255
-        };
-
-        draw_filled_triangle(rt, depth_buffer, s0, z0, s1, z1, s2, z2, c);
-    }
 }
 
 int main() {
@@ -281,18 +99,18 @@ int main() {
     std::vector<uint8_t> rgba8_staging(CANVAS_W * CANVAS_H * 4);
     std::vector<float> depth_buffer((size_t)CANVAS_W * (size_t)CANVAS_H, 1.0f);
 
-    std::vector<ShapeInstance> instances;
+    std::vector<SceneInstance> instances;
 
     // Large floor
     {
-        ShapeInstance floor{};
-        floor.shape.shape = jolt::make_box(glm::vec3(50.0f, 0.1f, 50.0f));
-        floor.base_pos = glm::vec3(0.0f, -0.2f, 0.0f);
-        floor.base_rot = glm::vec3(0.0f);
-        floor.shape.transform = jolt::to_jph(compose_model(floor.base_pos, floor.base_rot));
-        floor.shape.stable_id = 9000;
-        floor.color = glm::vec3(0.18f, 0.18f, 0.22f);
-        floor.animated = false;
+        SceneInstance floor{};
+        floor.geometry.shape = jolt::make_box(glm::vec3(50.0f, 0.1f, 50.0f));
+        floor.anim.base_pos = glm::vec3(0.0f, -0.2f, 0.0f);
+        floor.anim.base_rot = glm::vec3(0.0f);
+        floor.geometry.transform = jolt::to_jph(compose_model(floor.anim.base_pos, floor.anim.base_rot));
+        floor.geometry.stable_id = 9000;
+        floor.tint_color = glm::vec3(0.18f, 0.18f, 0.22f);
+        floor.anim.animated = false;
         instances.push_back(floor);
     }
 
@@ -365,24 +183,24 @@ int main() {
     const float spacing_z = 4.8f;
     for (size_t t = 0; t < shape_types.size(); ++t) {
         for (int c = 0; c < copies_per_type; ++c) {
-            ShapeInstance inst{};
-            inst.shape.shape = shape_types[t].shape;
-            inst.base_pos = glm::vec3(
+            SceneInstance inst{};
+            inst.geometry.shape = shape_types[t].shape;
+            inst.anim.base_pos = glm::vec3(
                 (-0.5f * (copies_per_type - 1) + (float)c) * spacing_x,
                 1.25f + 0.25f * (float)(c % 3),
                 (-0.5f * (float)(shape_types.size() - 1) + (float)t) * spacing_z);
-            inst.base_rot = glm::vec3(
+            inst.anim.base_rot = glm::vec3(
                 0.17f * (float)c,
                 0.23f * (float)t,
                 0.11f * (float)(c + (int)t));
-            inst.angular_vel = glm::vec3(
+            inst.anim.angular_vel = glm::vec3(
                 0.30f + 0.07f * (float)((c + (int)t) % 5),
                 0.42f + 0.06f * (float)(c % 4),
                 0.36f + 0.05f * (float)((int)t % 6));
-            inst.shape.transform = jolt::to_jph(compose_model(inst.base_pos, inst.base_rot));
-            inst.shape.stable_id = next_id++;
-            inst.color = shape_types[t].color;
-            inst.animated = true;
+            inst.geometry.transform = jolt::to_jph(compose_model(inst.anim.base_pos, inst.anim.base_rot));
+            inst.geometry.stable_id = next_id++;
+            inst.tint_color = shape_types[t].color;
+            inst.anim.animated = true;
             instances.push_back(std::move(inst));
         }
     }
@@ -420,9 +238,9 @@ int main() {
         // Animate rotations for all non-floor shapes.
         for (auto& inst : instances)
         {
-            if (!inst.animated) continue;
-            const glm::vec3 rot = inst.base_rot + inst.angular_vel * time_s;
-            inst.shape.transform = jolt::to_jph(compose_model(inst.base_pos, rot));
+            if (!inst.anim.animated) continue;
+            const glm::vec3 rot = inst.anim.base_rot + inst.anim.angular_vel * time_s;
+            inst.geometry.transform = jolt::to_jph(compose_model(inst.anim.base_pos, rot));
         }
 
         glm::mat4 view = camera.get_view_matrix();
@@ -431,9 +249,9 @@ int main() {
 
         const Frustum frustum = extract_frustum_planes(vp);
         const CullingResultEx frustum_result = run_frustum_culling(
-            std::span<const ShapeInstance>(instances.data(), instances.size()),
+            std::span<const SceneInstance>(instances.data(), instances.size()),
             frustum,
-            [](const ShapeInstance& inst) -> const SceneShape& { return inst.shape; });
+            [](const SceneInstance& inst) -> const SceneShape& { return inst.geometry; });
 
         for (auto& inst : instances) inst.visible = false;
         for (uint32_t idx : frustum_result.visible_indices)
@@ -448,13 +266,14 @@ int main() {
         for (const auto& inst : instances) {
             if (!inst.visible) continue;
 
-            const DebugMesh shape_mesh = debug_mesh_from_scene_shape(inst.shape);
-            const glm::vec3 base_color = inst.color;
+            const DebugMesh shape_mesh = debug_mesh_from_scene_shape(inst.geometry);
+            const glm::vec3 base_color = inst.tint_color;
             if (render_lit_surfaces) {
-                draw_mesh_blinn_phong(
+                debug_draw::draw_mesh_blinn_phong_transformed(
                     ldr_rt,
                     depth_buffer,
                     shape_mesh,
+                    glm::mat4(1.0f),
                     vp,
                     CANVAS_W,
                     CANVAS_H,
@@ -468,12 +287,24 @@ int main() {
                     (uint8_t)std::clamp(base_color.b * 255.0f, 0.0f, 255.0f),
                     255
                 };
-                draw_debug_mesh_wireframe(ldr_rt, shape_mesh, vp, CANVAS_W, CANVAS_H, shape_color);
+                debug_draw::draw_debug_mesh_wireframe_transformed(ldr_rt, shape_mesh, glm::mat4(1.0f), vp, CANVAS_W, CANVAS_H, shape_color);
             }
 
             if (show_aabb_debug) {
-                const DebugMesh aabb_mesh = debug_mesh_from_aabb(inst.shape.world_aabb());
-                draw_debug_mesh_wireframe(ldr_rt, aabb_mesh, vp, CANVAS_W, CANVAS_H, Color{255, 240, 80, 255});
+                const AABB& aabb = inst.geometry.world_aabb();
+                const glm::vec3 center = (aabb.minv + aabb.maxv) * 0.5f;
+                const glm::vec3 size = (aabb.maxv - aabb.minv); // Full extents for scaling
+                const glm::mat4 aabb_model =
+                    glm::translate(glm::mat4(1.0f), center) *
+                    glm::scale(glm::mat4(1.0f), size);
+                shs::debug_draw::draw_debug_mesh_wireframe_transformed(
+                    ldr_rt,
+                    shs::debug_mesh_from_aabb(AABB{glm::vec3(-0.5f), glm::vec3(0.5f)}), // Unit AABB
+                    aabb_model,
+                    vp,
+                    CANVAS_W,
+                    CANVAS_H,
+                    Color{255, 240, 80, 255});
             }
         }
 
