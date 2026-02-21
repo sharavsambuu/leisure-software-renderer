@@ -287,22 +287,5 @@ namespace shs
         return classify(cluster.hull, cell, tol);
     }
 
-    inline CullClass classify(
-        const ShapeVolumeVariant& shape,
-        const ConvexCell& cell,
-        const CullTolerance& tol = {})
-    {
-        return std::visit([&](const auto& s) -> CullClass {
-            return classify(s, cell, tol);
-        }, shape);
-    }
-
-    inline CullClass classify(
-        const ShapeVolume& shape,
-        const ConvexCell& cell,
-        const CullTolerance& tol = {})
-    {
-        return classify(shape.value, cell, tol);
-    }
 }
 

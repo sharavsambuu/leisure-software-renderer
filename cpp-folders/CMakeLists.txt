@@ -64,6 +64,9 @@ set(CROSS_PLATFORM_DETERMINISTIC OFF CACHE BOOL "" FORCE)
 set(INTERPROCEDURAL_OPTIMIZATION OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(JoltPhysics)
 
+# VulkanMemoryAllocator via vcpkg
+find_package(VulkanMemoryAllocator CONFIG REQUIRED)
+
 
 #
 # Too slow to fetch on my machine

@@ -30,7 +30,8 @@ namespace shs
         SunShadowSampler = 6u,
         LocalShadowSampler = 7u,
         PointShadowSampler = 8u,
-        ShadowLightsSSBO = 9u
+        ShadowLightsSSBO = 9u,
+        BindlessTextures = 10u
     };
 
     constexpr uint32_t vk_render_path_global_binding_count()
@@ -98,6 +99,40 @@ namespace shs
         return vkCreateDescriptorSetLayout(device, &ci, nullptr, out_layout) == VK_SUCCESS;
     }
 
+    inline bool vk_create_bindless_descriptor_set_layout(
+        VkDevice device,
+        uint32_t max_textures,
+        VkDescriptorSetLayout* out_layout)
+    {
+        if (device == VK_NULL_HANDLE || !out_layout) return false;
+
+        VkDescriptorSetLayoutBinding binding{};
+        binding.binding = 0;
+        binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        binding.descriptorCount = max_textures;
+        binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        binding.pImmutableSamplers = nullptr;
+
+        VkDescriptorBindingFlagsEXT flags =
+            VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT_EXT |
+            VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT_EXT |
+            VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT_EXT;
+
+        VkDescriptorSetLayoutBindingFlagsCreateInfoEXT layout_flags{};
+        layout_flags.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO_EXT;
+        layout_flags.bindingCount = 1;
+        layout_flags.pBindingFlags = &flags;
+
+        VkDescriptorSetLayoutCreateInfo ci{};
+        ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        ci.pNext = &layout_flags;
+        ci.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT;
+        ci.bindingCount = 1;
+        ci.pBindings = &binding;
+
+        return vkCreateDescriptorSetLayout(device, &ci, nullptr, out_layout) == VK_SUCCESS;
+    }
+
     inline std::array<VkDescriptorPoolSize, 3> vk_make_render_path_global_pool_sizes(uint32_t set_count)
     {
         const uint32_t n = (set_count == 0u) ? 1u : set_count;
@@ -125,6 +160,27 @@ namespace shs
         ci.maxSets = n;
         ci.poolSizeCount = static_cast<uint32_t>(sizes.size());
         ci.pPoolSizes = sizes.data();
+        return vkCreateDescriptorPool(device, &ci, nullptr, out_pool) == VK_SUCCESS;
+    }
+
+    inline bool vk_create_bindless_descriptor_pool(
+        VkDevice device,
+        uint32_t max_textures,
+        VkDescriptorPool* out_pool)
+    {
+        if (device == VK_NULL_HANDLE || !out_pool) return false;
+
+        VkDescriptorPoolSize size{};
+        size.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        size.descriptorCount = max_textures;
+
+        VkDescriptorPoolCreateInfo ci{};
+        ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        ci.flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT_EXT;
+        ci.maxSets = 1;
+        ci.poolSizeCount = 1;
+        ci.pPoolSizes = &size;
+
         return vkCreateDescriptorPool(device, &ci, nullptr, out_pool) == VK_SUCCESS;
     }
 
@@ -239,6 +295,30 @@ namespace shs
 
         vkUpdateDescriptorSets(device, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
         return true;
+    }
+
+    inline void vk_update_bindless_texture(
+        VkDevice device,
+        VkDescriptorSet set,
+        uint32_t slot,
+        VkSampler sampler,
+        VkImageView view)
+    {
+        VkDescriptorImageInfo image{};
+        image.sampler = sampler;
+        image.imageView = view;
+        image.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+        VkWriteDescriptorSet write{};
+        write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        write.dstSet = set;
+        write.dstBinding = 0;
+        write.dstArrayElement = slot;
+        write.descriptorCount = 1;
+        write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        write.pImageInfo = &image;
+
+        vkUpdateDescriptorSets(device, 1, &write, 0, nullptr);
     }
 #endif
 }

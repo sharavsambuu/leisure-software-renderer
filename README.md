@@ -16,7 +16,9 @@
         Different Rendering          x
         Different Passes
 
-    Once the dynamic compositional lightening renderer solved, maybe I might try to estimate or approximate global illuminations through multi bounce many preplaced virtual point lights.
+    Once the dynamic compositional lightening renderer solved, maybe 
+    I might try to estimate or approximate global illuminations 
+    through multi bounce many preplaced virtual point lights.
 
 
     Revive Lockless job system experiments
@@ -123,6 +125,7 @@
     sudo vcpkg install glm
     sudo vcpkg install assimp
     sudo vcpkg install joltphysics
+    sudo vcpkg install vulkan-memory-allocator
 
     
     Compilation steps on ubuntu 24.04
@@ -165,6 +168,7 @@
     vcpkg install "glm:arm64-osx"
     vcpkg install "assimp:arm64-osx"
     vcpkg install "joltphysics:arm64-osx"
+    vcpkg install "vulkan-memory-allocator:arm64-osx"
 
 
     cd cpp-folders && mkdir build && cd build
@@ -192,6 +196,7 @@
     vcpkg install glm
     vcpkg install assimp
     vcpkg install joltphysics
+    vcpkg install vulkan-memory-allocator:x64-windows
 
 
     Use CMake-GUI with Visual Studio 17 2022

@@ -351,8 +351,8 @@ int main() {
     const JPH::ShapeRefC mesh_shape = jolt::make_mesh_shape(wedge_mesh);
     const JPH::ShapeRefC convex_from_mesh_shape = jolt::make_convex_hull_from_mesh(wedge_mesh);
     const JPH::ShapeRefC point_light_volume_shape = jolt::make_point_light_volume(1.0f);
-    const JPH::ShapeRefC spot_light_volume_shape = jolt::make_spot_light_volume(1.8f, glm::radians(28.0f), 20);
-    const JPH::ShapeRefC rect_light_volume_shape = jolt::make_rect_area_light_volume(glm::vec2(0.8f, 0.5f), 2.0f);
+    const JPH::ShapeRefC spot_light_volume_shape = jolt::make_spot_light_volume(1.2f, glm::radians(28.0f), 20);
+    const JPH::ShapeRefC rect_light_volume_shape = jolt::make_rect_area_light_volume(glm::vec2(0.8f, 0.5f), 0.1f);
     const JPH::ShapeRefC tube_light_volume_shape = jolt::make_tube_area_light_volume(0.9f, 0.35f);
 
     struct ShapeTypeDef {

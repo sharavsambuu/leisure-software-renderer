@@ -30,6 +30,7 @@ struct SDL_Window;
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_vulkan.h>
 #include <vulkan/vulkan.h>
+#include "shs/rhi/drivers/vulkan/vk_memory_utils.hpp"
 #endif
 
 namespace shs
@@ -54,6 +55,8 @@ namespace shs
             VkRenderPass render_pass = VK_NULL_HANDLE;
             VkExtent2D extent{};
             VkFormat format = VK_FORMAT_UNDEFINED;
+            VkImageView view = VK_NULL_HANDLE;
+            VkImageView depth_view = VK_NULL_HANDLE;
             uint32_t image_index = 0;
 #endif
         };
@@ -219,6 +222,8 @@ namespace shs
             out.render_pass = render_pass_;
             out.extent = extent_;
             out.format = swapchain_format_;
+            out.view = views_[image_index];
+            out.depth_view = depth_view_;
             out.image_index = image_index;
             (void)frame;
             return true;
@@ -397,12 +402,86 @@ namespace shs
             }
             return false;
         }
+
+        void transition_image_layout_sync2(
+            VkCommandBuffer cmd,
+            VkImage image,
+            VkImageLayout old_layout,
+            VkImageLayout new_layout,
+            VkImageSubresourceRange subresource_range,
+            VkPipelineStageFlags2 src_stage_mask,
+            VkAccessFlags2 src_access_mask,
+            VkPipelineStageFlags2 dst_stage_mask,
+            VkAccessFlags2 dst_access_mask
+        ) const
+        {
+            VkImageMemoryBarrier2 ib2{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
+            ib2.srcStageMask = src_stage_mask;
+            ib2.srcAccessMask = src_access_mask;
+            ib2.dstStageMask = dst_stage_mask;
+            ib2.dstAccessMask = dst_access_mask;
+            ib2.oldLayout = old_layout;
+            ib2.newLayout = new_layout;
+            ib2.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            ib2.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            ib2.image = image;
+            ib2.subresourceRange = subresource_range;
+
+            VkDependencyInfo dep{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+            dep.imageMemoryBarrierCount = 1;
+            dep.pImageMemoryBarriers = &ib2;
+
+            cmd_pipeline_barrier2(cmd, dep);
+        }
 #endif
+
+        void transition_image_layout(
+            VkCommandBuffer cmd,
+            VkImage image,
+            VkImageLayout old_layout,
+            VkImageLayout new_layout,
+            VkImageSubresourceRange subresource_range,
+            VkPipelineStageFlags2 src_stage_mask,
+            VkAccessFlags2 src_access_mask,
+            VkPipelineStageFlags2 dst_stage_mask,
+            VkAccessFlags2 dst_access_mask
+        ) const
+        {
+#if defined(VK_STRUCTURE_TYPE_DEPENDENCY_INFO)
+            if (supports_synchronization2())
+            {
+                transition_image_layout_sync2(
+                    cmd, image, old_layout, new_layout, subresource_range,
+                    src_stage_mask, src_access_mask, dst_stage_mask, dst_access_mask
+                );
+                return;
+            }
+#endif
+            VkImageMemoryBarrier ib{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+            ib.srcAccessMask = static_cast<VkAccessFlags>(src_access_mask);
+            ib.dstAccessMask = static_cast<VkAccessFlags>(dst_access_mask);
+            ib.oldLayout = old_layout;
+            ib.newLayout = new_layout;
+            ib.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            ib.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            ib.image = image;
+            ib.subresourceRange = subresource_range;
+
+            vkCmdPipelineBarrier(cmd,
+                static_cast<VkPipelineStageFlags>(src_stage_mask),
+                static_cast<VkPipelineStageFlags>(dst_stage_mask),
+                0, 0, nullptr, 0, nullptr, 1, &ib);
+        }
 
         VkImage swapchain_image(uint32_t image_index) const
         {
             if (image_index >= images_.size()) return VK_NULL_HANDLE;
             return images_[image_index];
+        }
+
+        uint32_t swapchain_image_count() const
+        {
+            return static_cast<uint32_t>(images_.size());
         }
 
         void wait_idle() const
@@ -412,7 +491,93 @@ namespace shs
                 vkDeviceWaitIdle(device_);
             }
         }
+
+#ifdef SHS_HAS_VMA
+        VmaAllocator allocator() const { return allocator_; }
 #endif
+#endif
+    
+        void begin_rendering(VkCommandBuffer cmd, VkImageView color_view, VkImageView depth_view, VkExtent2D extent, VkClearColorValue clear_color, float clear_depth, bool use_depth)
+        {
+            if (dynamic_rendering_enabled_)
+            {
+                VkRenderingAttachmentInfo color_at{};
+                color_at.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+                color_at.imageView = color_view;
+                color_at.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+                color_at.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+                color_at.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+                color_at.clearValue.color = clear_color;
+
+                VkRenderingAttachmentInfo depth_at{};
+                depth_at.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+                depth_at.imageView = depth_view;
+                depth_at.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+                depth_at.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+                depth_at.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+                depth_at.clearValue.depthStencil.depth = clear_depth;
+
+                VkRenderingInfo ri{};
+                ri.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+                ri.renderArea.extent = extent;
+                ri.layerCount = 1;
+                ri.colorAttachmentCount = 1;
+                ri.pColorAttachments = &color_at;
+                if (use_depth && depth_view != VK_NULL_HANDLE)
+                {
+                    ri.pDepthAttachment = &depth_at;
+                }
+
+                if (cmd_begin_rendering_fn_ != nullptr) cmd_begin_rendering_fn_(cmd, &ri);
+            }
+            else
+            {
+#ifdef VK_KHR_dynamic_rendering
+                VkRenderingAttachmentInfoKHR color_at{};
+                color_at.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR;
+                color_at.imageView = color_view;
+                color_at.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+                color_at.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+                color_at.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+                color_at.clearValue.color = clear_color;
+
+                VkRenderingAttachmentInfoKHR depth_at{};
+                depth_at.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR;
+                depth_at.imageView = depth_view;
+                depth_at.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+                depth_at.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+                depth_at.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+                depth_at.clearValue.depthStencil.depth = clear_depth;
+
+                VkRenderingInfoKHR ri{};
+                ri.sType = VK_STRUCTURE_TYPE_RENDERING_INFO_KHR;
+                ri.renderArea.extent = extent;
+                ri.layerCount = 1;
+                ri.colorAttachmentCount = 1;
+                ri.pColorAttachments = &color_at;
+                if (use_depth && depth_view != VK_NULL_HANDLE)
+                {
+                    ri.pDepthAttachment = &depth_at;
+                }
+
+                if (cmd_begin_rendering_khr_fn_ != nullptr) cmd_begin_rendering_khr_fn_(cmd, &ri);
+#endif
+            }
+        }
+
+        void end_rendering(VkCommandBuffer cmd)
+        {
+            if (dynamic_rendering_enabled_)
+            {
+                if (cmd_end_rendering_fn_ != nullptr) cmd_end_rendering_fn_(cmd);
+            }
+            else
+            {
+#ifdef VK_KHR_dynamic_rendering
+                if (cmd_end_rendering_khr_fn_ != nullptr) cmd_end_rendering_khr_fn_(cmd);
+#endif
+            }
+        }
 
     private:
 #ifdef SHS_HAS_VULKAN
@@ -509,16 +674,19 @@ namespace shs
             init_attempted_ = true;
             if (!window_) return false;
 
-            if (!create_instance()) { shutdown(); return false; }
-            if (!SDL_Vulkan_CreateSurface(window_, instance_, &surface_)) { shutdown(); return false; }
-            if (!pick_physical_device()) { shutdown(); return false; }
-            if (!create_device_and_queues()) { shutdown(); return false; }
-            if (!create_swapchain()) { shutdown(); return false; }
-            if (!create_render_pass()) { shutdown(); return false; }
-            if (!create_depth_resources()) { shutdown(); return false; }
-            if (!create_framebuffers()) { shutdown(); return false; }
-            if (!create_command_pool_and_buffers()) { shutdown(); return false; }
-            if (!create_sync_objects()) { shutdown(); return false; }
+            if (!create_instance()) { std::fprintf(stderr, "[shs] Vulkan: create_instance failed\n"); shutdown(); return false; }
+            if (!SDL_Vulkan_CreateSurface(window_, instance_, &surface_)) { std::fprintf(stderr, "[shs] Vulkan: create surface failed\n"); shutdown(); return false; }
+            if (!pick_physical_device()) { std::fprintf(stderr, "[shs] Vulkan: pick_physical_device failed\n"); shutdown(); return false; }
+            if (!create_device_and_queues()) { std::fprintf(stderr, "[shs] Vulkan: create_device_and_queues failed\n"); shutdown(); return false; }
+            if (!create_swapchain()) { std::fprintf(stderr, "[shs] Vulkan: create_swapchain failed\n"); shutdown(); return false; }
+#ifdef SHS_HAS_VMA
+            if (!create_vma_allocator()) { std::fprintf(stderr, "[shs] Vulkan: create_vma_allocator failed\n"); shutdown(); return false; }
+#endif
+            if (!create_depth_resources()) { std::fprintf(stderr, "[shs] Vulkan: create_depth_resources failed\n"); shutdown(); return false; }
+            if (!create_render_pass()) { std::fprintf(stderr, "[shs] Vulkan: create_render_pass failed\n"); shutdown(); return false; }
+            if (!create_framebuffers()) { std::fprintf(stderr, "[shs] Vulkan: create_framebuffers failed\n"); shutdown(); return false; }
+            if (!create_command_pool_and_buffers()) { std::fprintf(stderr, "[shs] Vulkan: create_command_pool_and_buffers failed\n"); shutdown(); return false; }
+            if (!create_sync_objects()) { std::fprintf(stderr, "[shs] Vulkan: create_sync_objects failed\n"); shutdown(); return false; }
             refresh_capabilities();
             device_lost_ = false;
             initialized_ = true;
@@ -555,7 +723,9 @@ namespace shs
             }
 
             uint32_t requested_api_version = VK_API_VERSION_1_0;
-#ifdef VK_API_VERSION_1_1
+#ifdef VK_API_VERSION_1_3
+            requested_api_version = VK_API_VERSION_1_3;
+#elif defined(VK_API_VERSION_1_1)
             requested_api_version = VK_API_VERSION_1_1;
 #endif
 
@@ -573,6 +743,7 @@ namespace shs
             }
 #endif
             const uint32_t negotiated_api_version = std::min(requested_api_version, loader_api_version);
+            api_version_ = negotiated_api_version;
 
             VkApplicationInfo app{};
             app.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -725,11 +896,15 @@ namespace shs
             constexpr const char* kAccelStructExt = "VK_KHR_acceleration_structure";
             constexpr const char* kDeferredHostOpsExt = "VK_KHR_deferred_host_operations";
 
+            VkPhysicalDeviceProperties gpu_props{};
+            vkGetPhysicalDeviceProperties(gpu_, &gpu_props);
+            const bool is_1_3_or_higher = gpu_props.apiVersion >= VK_API_VERSION_1_3;
+
             const bool has_portability_subset = device_extension_supported(gpu_, kPortabilitySubsetExt);
-            const bool has_timeline = device_extension_supported(gpu_, kTimelineSemaphoreExt);
-            const bool has_descriptor_indexing = device_extension_supported(gpu_, kDescriptorIndexingExt);
-            const bool has_dynamic_rendering = device_extension_supported(gpu_, kDynamicRenderingExt);
-            const bool has_synchronization2 = device_extension_supported(gpu_, kSynchronization2Ext);
+            const bool has_timeline = is_1_3_or_higher || device_extension_supported(gpu_, kTimelineSemaphoreExt);
+            const bool has_descriptor_indexing = is_1_3_or_higher || device_extension_supported(gpu_, kDescriptorIndexingExt);
+            const bool has_dynamic_rendering = is_1_3_or_higher || device_extension_supported(gpu_, kDynamicRenderingExt);
+            const bool has_synchronization2 = is_1_3_or_higher || device_extension_supported(gpu_, kSynchronization2Ext);
             const bool has_ray_query = device_extension_supported(gpu_, kRayQueryExt);
             const bool has_accel_struct = device_extension_supported(gpu_, kAccelStructExt);
             const bool has_deferred_host_ops = device_extension_supported(gpu_, kDeferredHostOpsExt);
@@ -767,10 +942,10 @@ namespace shs
                     return true;
                 };
 
-                const bool use_timeline_ext = append_unique_ext(kTimelineSemaphoreExt, want_timeline && has_timeline);
-                const bool use_descriptor_ext = append_unique_ext(kDescriptorIndexingExt, want_descriptor_indexing && has_descriptor_indexing);
-                const bool use_dynamic_ext = append_unique_ext(kDynamicRenderingExt, want_dynamic_rendering && has_dynamic_rendering);
-                const bool use_sync2_ext = append_unique_ext(kSynchronization2Ext, want_synchronization2 && has_synchronization2);
+                const bool use_timeline_ext = !is_1_3_or_higher && append_unique_ext(kTimelineSemaphoreExt, want_timeline && has_timeline);
+                const bool use_descriptor_ext = !is_1_3_or_higher && append_unique_ext(kDescriptorIndexingExt, want_descriptor_indexing && has_descriptor_indexing);
+                const bool use_dynamic_ext = !is_1_3_or_higher && append_unique_ext(kDynamicRenderingExt, want_dynamic_rendering && has_dynamic_rendering);
+                const bool use_sync2_ext = !is_1_3_or_higher && append_unique_ext(kSynchronization2Ext, want_synchronization2 && has_synchronization2);
 
                 bool use_ray_bundle_ext = want_ray_bundle && has_ray_bundle;
                 if (use_ray_bundle_ext)
@@ -791,7 +966,6 @@ namespace shs
                 bool sync2_feature_enabled = false;
                 bool ray_feature_enabled = false;
 
-#ifdef VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES
                 VkPhysicalDeviceTimelineSemaphoreFeatures timeline_features{};
                 timeline_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES;
                 if (use_timeline_ext)
@@ -799,19 +973,18 @@ namespace shs
                     timeline_features.pNext = features2.pNext;
                     features2.pNext = &timeline_features;
                 }
-#endif
 
-#ifdef VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES
                 VkPhysicalDeviceDescriptorIndexingFeatures descriptor_features{};
                 descriptor_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
-                if (use_descriptor_ext)
+                // Chain for both the KHR-extension path and the Vulkan 1.3 native path so that
+                // vkGetPhysicalDeviceFeatures2 populates the sub-feature flags and vkCreateDevice
+                // sees them in the pNext chain and enables them.
+                if (use_descriptor_ext || (is_1_3_or_higher && want_descriptor_indexing && has_descriptor_indexing))
                 {
                     descriptor_features.pNext = features2.pNext;
                     features2.pNext = &descriptor_features;
                 }
-#endif
 
-#ifdef VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES
                 VkPhysicalDeviceDynamicRenderingFeatures dynamic_features{};
                 dynamic_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES;
                 if (use_dynamic_ext)
@@ -819,19 +992,25 @@ namespace shs
                     dynamic_features.pNext = features2.pNext;
                     features2.pNext = &dynamic_features;
                 }
-#endif
 
-#ifdef VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES
                 VkPhysicalDeviceSynchronization2Features sync2_features{};
                 sync2_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES;
-                if (use_sync2_ext)
+                if (want_synchronization2 && has_synchronization2)
                 {
                     sync2_features.pNext = features2.pNext;
                     features2.pNext = &sync2_features;
                 }
+
+#if defined(VK_API_VERSION_1_3) || defined(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES)
+                VkPhysicalDeviceVulkan13Features v13_features{};
+                v13_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+                if (is_1_3_or_higher)
+                {
+                    v13_features.pNext = features2.pNext;
+                    features2.pNext = &v13_features;
+                }
 #endif
 
-#ifdef VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR
                 VkPhysicalDeviceRayQueryFeaturesKHR ray_query_features{};
                 ray_query_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR;
                 if (use_ray_bundle_ext)
@@ -839,20 +1018,18 @@ namespace shs
                     ray_query_features.pNext = features2.pNext;
                     features2.pNext = &ray_query_features;
                 }
-#endif
 
                 vkGetPhysicalDeviceFeatures2(gpu_, &features2);
 
-#ifdef VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES
                 if (use_timeline_ext && timeline_features.timelineSemaphore == VK_TRUE)
                 {
                     timeline_features.timelineSemaphore = VK_TRUE;
                     timeline_feature_enabled = true;
                 }
-#endif
 
-#ifdef VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES
-                if (use_descriptor_ext)
+                // Cover both the KHR-extension path (use_descriptor_ext) and the Vulkan 1.3
+                // native path (where we also chained descriptor_features into pNext).
+                if (use_descriptor_ext || (is_1_3_or_higher && want_descriptor_indexing && has_descriptor_indexing))
                 {
                     const bool has_runtime_array = descriptor_features.runtimeDescriptorArray == VK_TRUE;
                     const bool has_partial_bound = descriptor_features.descriptorBindingPartiallyBound == VK_TRUE;
@@ -865,34 +1042,51 @@ namespace shs
                     descriptor_features.descriptorBindingUpdateUnusedWhilePending = has_update_unused ? VK_TRUE : VK_FALSE;
                     descriptor_features.shaderSampledImageArrayNonUniformIndexing = has_nonuniform ? VK_TRUE : VK_FALSE;
                     descriptor_features.descriptorBindingVariableDescriptorCount = has_var_count ? VK_TRUE : VK_FALSE;
+                    descriptor_features.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
 
                     descriptor_feature_enabled = has_runtime_array && has_partial_bound && has_nonuniform;
                 }
-#endif
 
-#ifdef VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES
                 if (use_dynamic_ext && dynamic_features.dynamicRendering == VK_TRUE)
                 {
                     dynamic_features.dynamicRendering = VK_TRUE;
                     dynamic_feature_enabled = true;
                 }
-#endif
 
-#ifdef VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES
                 if (use_sync2_ext && sync2_features.synchronization2 == VK_TRUE)
                 {
                     sync2_features.synchronization2 = VK_TRUE;
                     sync2_feature_enabled = true;
                 }
+
+                // For Vulkan 1.3+ native path, read feature support from v13_features.
+                // The KHR extension booleans above are not populated in this path.
+#if defined(VK_API_VERSION_1_3) || defined(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES)
+                if (is_1_3_or_higher)
+                {
+                    if (v13_features.dynamicRendering == VK_TRUE)
+                    {
+                        dynamic_feature_enabled = true;
+                    }
+                    if (v13_features.synchronization2 == VK_TRUE)
+                    {
+                        sync2_feature_enabled = true;
+                    }
+                    if (v13_features.inlineUniformBlock == VK_TRUE)
+                    {
+                        // inline uniform block available — no separate flag needed
+                    }
+                    // timeline semaphore is core in 1.2+; for 1.3 it is always available.
+                    timeline_feature_enabled = true;
+                }
 #endif
 
-#ifdef VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR
+
                 if (use_ray_bundle_ext && ray_query_features.rayQuery == VK_TRUE)
                 {
                     ray_query_features.rayQuery = VK_TRUE;
                     ray_feature_enabled = true;
                 }
-#endif
 
                 VkDeviceCreateInfo dci{};
                 dci.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
@@ -962,6 +1156,23 @@ namespace shs
                 {
                     synchronization2_ext_enabled_ = false;
                     synchronization2_enabled_ = false;
+                }
+            }
+#endif
+#ifdef VK_KHR_dynamic_rendering
+            if (dynamic_rendering_enabled_)
+            {
+                cmd_begin_rendering_fn_ = reinterpret_cast<PFN_vkCmdBeginRendering>(vkGetDeviceProcAddr(device_, "vkCmdBeginRendering"));
+                cmd_begin_rendering_khr_fn_ = reinterpret_cast<PFN_vkCmdBeginRenderingKHR>(vkGetDeviceProcAddr(device_, "vkCmdBeginRenderingKHR"));
+                cmd_end_rendering_fn_ = reinterpret_cast<PFN_vkCmdEndRendering>(vkGetDeviceProcAddr(device_, "vkCmdEndRendering"));
+                cmd_end_rendering_khr_fn_ = reinterpret_cast<PFN_vkCmdEndRenderingKHR>(vkGetDeviceProcAddr(device_, "vkCmdEndRenderingKHR"));
+
+                const bool has_begin = (cmd_begin_rendering_fn_ != nullptr) || (cmd_begin_rendering_khr_fn_ != nullptr);
+                const bool has_end = (cmd_end_rendering_fn_ != nullptr) || (cmd_end_rendering_khr_fn_ != nullptr);
+                if (!has_begin || !has_end)
+                {
+                    dynamic_rendering_ext_enabled_ = false;
+                    dynamic_rendering_enabled_ = false;
                 }
             }
 #endif
@@ -1303,31 +1514,11 @@ namespace shs
             ii.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
             ii.samples = VK_SAMPLE_COUNT_1_BIT;
             ii.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-            if (vkCreateImage(device_, &ii, nullptr, &depth_image_) != VK_SUCCESS) return false;
-
-            VkMemoryRequirements req{};
-            vkGetImageMemoryRequirements(device_, depth_image_, &req);
-            VkPhysicalDeviceMemoryProperties mp{};
-            vkGetPhysicalDeviceMemoryProperties(gpu_, &mp);
-            uint32_t memory_type = UINT32_MAX;
-            for (uint32_t i = 0; i < mp.memoryTypeCount; ++i)
-            {
-                const bool type_ok = (req.memoryTypeBits & (1u << i)) != 0;
-                const bool prop_ok = (mp.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != 0;
-                if (type_ok && prop_ok)
-                {
-                    memory_type = i;
-                    break;
-                }
-            }
-            if (memory_type == UINT32_MAX) return false;
-
-            VkMemoryAllocateInfo mai{};
-            mai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-            mai.allocationSize = req.size;
-            mai.memoryTypeIndex = memory_type;
-            if (vkAllocateMemory(device_, &mai, nullptr, &depth_memory_) != VK_SUCCESS) return false;
-            if (vkBindImageMemory(device_, depth_image_, depth_memory_, 0) != VK_SUCCESS) return false;
+#ifdef SHS_HAS_VMA
+            if (!vma_create_image(allocator_, ii, VMA_MEMORY_USAGE_GPU_ONLY, depth_image_, depth_allocation_)) return false;
+#else
+            if (!vk_create_image(device_, gpu_, ii, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, depth_image_, depth_memory_)) return false;
+#endif
 
             VkImageViewCreateInfo iv{};
             iv.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -1393,6 +1584,7 @@ namespace shs
             return true;
         }
 
+
         void destroy_swapchain_objects()
         {
             for (auto fb : framebuffers_) vkDestroyFramebuffer(device_, fb, nullptr);
@@ -1411,16 +1603,16 @@ namespace shs
                 vkDestroyImageView(device_, depth_view_, nullptr);
                 depth_view_ = VK_NULL_HANDLE;
             }
-            if (depth_image_ != VK_NULL_HANDLE)
+#ifdef SHS_HAS_VMA
+            if (depth_image_ != VK_NULL_HANDLE || depth_allocation_ != VK_NULL_HANDLE)
             {
-                vkDestroyImage(device_, depth_image_, nullptr);
+                vma_destroy_image(allocator_, depth_image_, depth_allocation_);
                 depth_image_ = VK_NULL_HANDLE;
+                depth_allocation_ = VK_NULL_HANDLE;
             }
-            if (depth_memory_ != VK_NULL_HANDLE)
-            {
-                vkFreeMemory(device_, depth_memory_, nullptr);
-                depth_memory_ = VK_NULL_HANDLE;
-            }
+#else
+             vk_destroy_image(device_, depth_image_, depth_memory_);
+#endif
             depth_format_ = VK_FORMAT_UNDEFINED;
             swapchain_usage_ = 0;
             if (swapchain_ != VK_NULL_HANDLE)
@@ -1446,9 +1638,16 @@ namespace shs
             if (idle_res != VK_SUCCESS) return false;
             destroy_swapchain_objects();
             if (!create_swapchain()) return false;
-            if (!create_render_pass()) return false;
             if (!create_depth_resources()) return false;
-            if (!create_framebuffers()) return false;
+            if (!dynamic_rendering_enabled_)
+            {
+                if (!create_render_pass()) return false;
+                if (!create_framebuffers()) return false;
+            }
+            else
+            {
+                framebuffers_.resize(views_.size(), VK_NULL_HANDLE);
+            }
             if (!create_command_pool_and_buffers()) return false;
             resize_pending_ = false;
             swapchain_needs_rebuild_ = false;
@@ -1476,6 +1675,13 @@ namespace shs
             }
             if (device_ != VK_NULL_HANDLE)
             {
+#ifdef SHS_HAS_VMA
+                if (allocator_ != VK_NULL_HANDLE)
+                {
+                    vmaDestroyAllocator(allocator_);
+                    allocator_ = VK_NULL_HANDLE;
+                }
+#endif
                 vkDestroyDevice(device_, nullptr);
                 device_ = VK_NULL_HANDLE;
             }
@@ -1563,6 +1769,7 @@ namespace shs
         std::string app_name_ = "shs-renderer-lib";
         std::vector<const char*> layers_{};
 
+        uint32_t api_version_ = VK_API_VERSION_1_0;
         VkInstance instance_ = VK_NULL_HANDLE;
         VkDebugUtilsMessengerEXT debug_messenger_ = VK_NULL_HANDLE;
         VkSurfaceKHR surface_ = VK_NULL_HANDLE;
@@ -1580,6 +1787,9 @@ namespace shs
         std::vector<VkImageView> views_{};
         VkImage depth_image_ = VK_NULL_HANDLE;
         VkDeviceMemory depth_memory_ = VK_NULL_HANDLE;
+#ifdef SHS_HAS_VMA
+        VmaAllocation depth_allocation_ = VK_NULL_HANDLE;
+#endif
         VkImageView depth_view_ = VK_NULL_HANDLE;
         VkRenderPass render_pass_ = VK_NULL_HANDLE;
         std::vector<VkFramebuffer> framebuffers_{};
@@ -1607,6 +1817,37 @@ namespace shs
         PFN_vkCmdPipelineBarrier2 cmd_pipeline_barrier2_fn_ = nullptr;
         PFN_vkCmdPipelineBarrier2KHR cmd_pipeline_barrier2_khr_fn_ = nullptr;
 #endif
+#ifdef VK_KHR_dynamic_rendering
+        PFN_vkCmdBeginRendering cmd_begin_rendering_fn_ = nullptr;
+        PFN_vkCmdBeginRenderingKHR cmd_begin_rendering_khr_fn_ = nullptr;
+        PFN_vkCmdEndRendering cmd_end_rendering_fn_ = nullptr;
+        PFN_vkCmdEndRenderingKHR cmd_end_rendering_khr_fn_ = nullptr;
+#endif
+#ifdef SHS_HAS_VMA
+        VmaAllocator allocator_ = VK_NULL_HANDLE;
+
+        bool create_vma_allocator()
+        {
+            VmaAllocatorCreateInfo allocatorInfo = {};
+            allocatorInfo.physicalDevice = gpu_;
+            allocatorInfo.device = device_;
+            allocatorInfo.instance = instance_;
+            allocatorInfo.vulkanApiVersion = VK_API_VERSION_1_3;
+
+            // Optional: integration with Volition or other function pointers if needed, 
+            // but standard vcpkg/static link works with default pointers.
+            VmaVulkanFunctions vulkanFunctions = {};
+            vulkanFunctions.vkGetInstanceProcAddr = &vkGetInstanceProcAddr;
+            vulkanFunctions.vkGetDeviceProcAddr = &vkGetDeviceProcAddr;
+            allocatorInfo.pVulkanFunctions = &vulkanFunctions;
+
+            if (vmaCreateAllocator(&allocatorInfo, &allocator_) != VK_SUCCESS)
+            {
+                return false;
+            }
+            return true;
+        }
 #endif
     };
 }
+#endif

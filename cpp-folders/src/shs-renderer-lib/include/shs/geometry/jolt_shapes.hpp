@@ -166,15 +166,15 @@ namespace shs::jolt
         return make_box(glm::vec3(
             std::max(half_extents.x + r, kMinShapeExtentMeters),
             std::max(half_extents.y + r, kMinShapeExtentMeters),
-            r * 0.5f));
+            r));
     }
 
     /// Tube area light → capsule.
-    inline JPH::ShapeRefC make_tube_area_light_volume(float half_length, float range)
+    inline JPH::ShapeRefC make_tube_area_light_volume(float half_length, float radius)
     {
         return make_capsule(
             std::max(half_length, kMinShapeExtentMeters),
-            std::max(range, kMinShapeExtentMeters));
+            std::max(radius, kMinShapeExtentMeters));
     }
 
 

@@ -1,6 +1,5 @@
 #version 450
-
-layout(set = 0, binding = 0) uniform sampler2D u_base_color;
+#extension GL_EXT_nonuniform_qualifier : require
 
 layout(set = 0, binding = 1) uniform ObjectUBO
 {
@@ -14,10 +13,13 @@ layout(set = 0, binding = 1) uniform ObjectUBO
     vec4 sun_color_pad;
     vec4 sun_dir_ws_pad;
     vec4 shadow_params;
+    uvec4 extra_indices;
 } ubo;
 
 layout(set = 1, binding = 0) uniform sampler2D u_shadow_map;
 layout(set = 1, binding = 1) uniform sampler2D u_env_sky;
+
+layout(set = 2, binding = 0) uniform sampler2D u_bindless_textures[];
 
 layout(location = 0) in vec3 v_world_pos;
 layout(location = 1) in vec3 v_normal_ws;
@@ -216,8 +218,9 @@ void main()
     float ao = clamp(ubo.roughness_ao_emissive_hastex.y, 0.0, 1.0);
     float emissive_intensity = max(ubo.roughness_ao_emissive_hastex.z, 0.0);
     float has_tex = ubo.roughness_ao_emissive_hastex.w;
+    uint tex_idx = ubo.extra_indices.x;
 
-    vec3 tex_albedo = texture(u_base_color, v_uv).rgb;
+    vec3 tex_albedo = texture(u_bindless_textures[nonuniformEXT(tex_idx)], v_uv).rgb;
     vec3 albedo = ubo.base_color_metallic.rgb * mix(vec3(1.0), tex_albedo, clamp(has_tex, 0.0, 1.0));
 
     vec3 F0 = mix(vec3(0.04), albedo, metallic);

@@ -71,6 +71,8 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
 
     set(VK_TRI_VERT "${VK_TRI_SHADER_DIR}/vulkan_triangle.vert")
     set(VK_TRI_FRAG "${VK_TRI_SHADER_DIR}/vulkan_triangle.frag")
+    set(VK_MODERN_VERT "${VK_TRI_SHADER_DIR}/modern_instanced.vert")
+    set(VK_MODERN_FRAG "${VK_TRI_SHADER_DIR}/modern_instanced.frag")
     set(VK_CULLING_VERT "${VK_TRI_SHADER_DIR}/culling_vk.vert")
     set(VK_CULLING_FRAG "${VK_TRI_SHADER_DIR}/culling_vk.frag")
     set(VK_LIGHT_TYPES_CULLING_VERT "${VK_TRI_SHADER_DIR}/light_types_culling_vk.vert")
@@ -79,6 +81,8 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
     set(VK_SOFT_SHADOW_CULLING_FRAG "${VK_TRI_SHADER_DIR}/soft_shadow_culling_vk.frag")
     set(VK_TRI_VERT_SPV "${VK_TRI_OUT_DIR}/vulkan_triangle.vert.spv")
     set(VK_TRI_FRAG_SPV "${VK_TRI_OUT_DIR}/vulkan_triangle.frag.spv")
+    set(VK_MODERN_VERT_SPV "${VK_TRI_OUT_DIR}/modern_instanced.vert.spv")
+    set(VK_MODERN_FRAG_SPV "${VK_TRI_OUT_DIR}/modern_instanced.frag.spv")
     set(VK_CULLING_VERT_SPV "${VK_TRI_OUT_DIR}/culling_vk.vert.spv")
     set(VK_CULLING_FRAG_SPV "${VK_TRI_OUT_DIR}/culling_vk.frag.spv")
     set(VK_LIGHT_TYPES_CULLING_VERT_SPV "${VK_TRI_OUT_DIR}/light_types_culling_vk.vert.spv")
@@ -140,6 +144,18 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
         OUTPUT "${VK_TRI_FRAG_SPV}"
         COMMAND ${GLSLANG_VALIDATOR} -V "${VK_TRI_FRAG}" -o "${VK_TRI_FRAG_SPV}"
         DEPENDS "${VK_TRI_FRAG}"
+        VERBATIM
+    )
+    add_custom_command(
+        OUTPUT "${VK_MODERN_VERT_SPV}"
+        COMMAND ${GLSLANG_VALIDATOR} -V "${VK_MODERN_VERT}" -o "${VK_MODERN_VERT_SPV}"
+        DEPENDS "${VK_MODERN_VERT}"
+        VERBATIM
+    )
+    add_custom_command(
+        OUTPUT "${VK_MODERN_FRAG_SPV}"
+        COMMAND ${GLSLANG_VALIDATOR} -V "${VK_MODERN_FRAG}" -o "${VK_MODERN_FRAG_SPV}"
+        DEPENDS "${VK_MODERN_FRAG}"
         VERBATIM
     )
     add_custom_command(
@@ -326,6 +342,7 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
             "${VK_LIGHT_TYPES_CULLING_VERT_SPV}"
             "${VK_LIGHT_TYPES_CULLING_FRAG_SPV}"
     )
+    add_custom_target(HelloModernVulkanShaders DEPENDS "${VK_MODERN_VERT_SPV}" "${VK_MODERN_FRAG_SPV}")
     add_custom_target(HelloSoftShadowCullingVkShaders
         DEPENDS
             "${VK_CULLING_VERT_SPV}"
@@ -503,6 +520,15 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
         SHS_VK_SOFT_SHADOW_CULLING_VERT_SPV="${VK_SOFT_SHADOW_CULLING_VERT_SPV}"
         SHS_VK_SOFT_SHADOW_CULLING_FRAG_SPV="${VK_SOFT_SHADOW_CULLING_FRAG_SPV}"
         SHS_VK_PB_SHADOW_VERT_SPV="${VK_PB_SHADOW_VERT_SPV}"
+    )
+
+    add_executable(hello_modern_vulkan hello_modern_vulkan.cpp)
+    add_dependencies(hello_modern_vulkan HelloModernVulkanShaders)
+    target_link_libraries(hello_modern_vulkan PRIVATE shs::renderer)
+    set_target_properties(hello_modern_vulkan PROPERTIES FOLDER "Demos")
+    target_compile_definitions(hello_modern_vulkan PRIVATE
+        SHS_VK_MODERN_VERT_SPV="${VK_MODERN_VERT_SPV}"
+        SHS_VK_MODERN_FRAG_SPV="${VK_MODERN_FRAG_SPV}"
     )
 endif()
 

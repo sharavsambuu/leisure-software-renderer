@@ -60,30 +60,21 @@ namespace shs
             const bool image_initialized = (image_initialized_[frame.image_index] != 0);
             const bool full_overwrite = (uint32_t)width == frame.extent.width && (uint32_t)height == frame.extent.height;
 
-            VkImageMemoryBarrier to_transfer{};
-            to_transfer.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-            to_transfer.oldLayout = image_initialized ? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR : VK_IMAGE_LAYOUT_UNDEFINED;
-            to_transfer.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-            to_transfer.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            to_transfer.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            to_transfer.image = swap_img;
-            to_transfer.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-            to_transfer.subresourceRange.baseMipLevel = 0;
-            to_transfer.subresourceRange.levelCount = 1;
-            to_transfer.subresourceRange.baseArrayLayer = 0;
-            to_transfer.subresourceRange.layerCount = 1;
-            to_transfer.srcAccessMask = image_initialized ? VK_ACCESS_MEMORY_READ_BIT : 0;
-            to_transfer.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-            const VkPipelineStageFlags to_transfer_src_stage =
-                image_initialized ? VK_PIPELINE_STAGE_ALL_COMMANDS_BIT : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-            vkCmdPipelineBarrier(
+            VkImageSubresourceRange range{};
+            range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            range.levelCount = 1;
+            range.layerCount = 1;
+
+            backend.transition_image_layout(
                 frame.cmd,
-                to_transfer_src_stage,
-                VK_PIPELINE_STAGE_TRANSFER_BIT,
-                0,
-                0, nullptr,
-                0, nullptr,
-                1, &to_transfer
+                swap_img,
+                image_initialized ? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR : VK_IMAGE_LAYOUT_UNDEFINED,
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                range,
+                image_initialized ? VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT : VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+                image_initialized ? VK_ACCESS_2_MEMORY_READ_BIT : VK_ACCESS_2_NONE,
+                VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                VK_ACCESS_2_TRANSFER_WRITE_BIT
             );
 
             if (!image_initialized && !full_overwrite)
@@ -128,28 +119,21 @@ namespace shs
                 &copy
             );
 
-            VkImageMemoryBarrier to_present{};
-            to_present.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-            to_present.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-            to_present.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-            to_present.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            to_present.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            to_present.image = swap_img;
-            to_present.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-            to_present.subresourceRange.baseMipLevel = 0;
-            to_present.subresourceRange.levelCount = 1;
-            to_present.subresourceRange.baseArrayLayer = 0;
-            to_present.subresourceRange.layerCount = 1;
-            to_present.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-            to_present.dstAccessMask = 0;
-            vkCmdPipelineBarrier(
+            VkImageSubresourceRange range_p{};
+            range_p.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            range_p.levelCount = 1;
+            range_p.layerCount = 1;
+
+            backend.transition_image_layout(
                 frame.cmd,
-                VK_PIPELINE_STAGE_TRANSFER_BIT,
-                VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                0,
-                0, nullptr,
-                0, nullptr,
-                1, &to_present
+                swap_img,
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                range_p,
+                VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+                VK_ACCESS_2_NONE
             );
             image_initialized_[frame.image_index] = 1;
             return true;

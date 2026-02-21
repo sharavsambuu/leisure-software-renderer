@@ -38,6 +38,7 @@
 #include <shs/rhi/backend/backend_factory.hpp>
 #include <shs/rhi/drivers/vulkan/vk_backend.hpp>
 #include <shs/rhi/drivers/vulkan/vk_cmd_utils.hpp>
+#include <shs/rhi/drivers/vulkan/vk_render_path_descriptors.hpp>
 #include <shs/rhi/drivers/vulkan/vk_memory_utils.hpp>
 #include <shs/rhi/drivers/vulkan/vk_shader_utils.hpp>
 #include <shs/resources/loaders/primitive_import.hpp>
@@ -384,6 +385,16 @@ namespace
                 vkDestroyDescriptorSetLayout(dev, scene_obj_layout_, nullptr);
                 scene_obj_layout_ = VK_NULL_HANDLE;
             }
+            if (bindless_layout_ != VK_NULL_HANDLE)
+            {
+                vkDestroyDescriptorSetLayout(dev, bindless_layout_, nullptr);
+                bindless_layout_ = VK_NULL_HANDLE;
+            }
+            if (bindless_pool_ != VK_NULL_HANDLE)
+            {
+                vkDestroyDescriptorPool(dev, bindless_pool_, nullptr);
+                bindless_pool_ = VK_NULL_HANDLE;
+            }
             if (scene_shadow_layout_ != VK_NULL_HANDLE)
             {
                 vkDestroyDescriptorSetLayout(dev, scene_shadow_layout_, nullptr);
@@ -547,6 +558,7 @@ namespace
             glm::vec4 sun_color_pad{1.0f, 0.97f, 0.92f, 0.0f};
             glm::vec4 sun_dir_ws_pad{0.0f, -1.0f, 0.0f, 0.0f};
             glm::vec4 shadow_params{1.0f, 0.0008f, 0.0015f, 1.0f}; // x=strength,y=bias_const,z=bias_slope,w=pcf_step
+            glm::uvec4 extra_indices{0u, 0u, 0u, 0u}; // x=texture_index, y,z,w=pad
         };
 
         struct ShadowPush
@@ -921,6 +933,8 @@ namespace
             return true;
         }
 
+
+
         void transition_color_image(
             VkCommandBuffer cmd,
             VkImage image,
@@ -928,157 +942,49 @@ namespace
             VkImageLayout new_layout
         )
         {
-            VkImageMemoryBarrier b{};
-            b.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-            b.oldLayout = old_layout;
-            b.newLayout = new_layout;
-            b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            b.image = image;
-            b.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-            b.subresourceRange.baseMipLevel = 0;
-            b.subresourceRange.levelCount = 1;
-            b.subresourceRange.baseArrayLayer = 0;
-            b.subresourceRange.layerCount = 1;
+            if (!vk_ || cmd == VK_NULL_HANDLE || image == VK_NULL_HANDLE) return;
+            VkPipelineStageFlags2 src_stage = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
+            VkPipelineStageFlags2 dst_stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+            VkAccessFlags2 src_access = 0;
+            VkAccessFlags2 dst_access = VK_ACCESS_2_TRANSFER_WRITE_BIT;
 
-            VkPipelineStageFlags src_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-            VkPipelineStageFlags dst_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-
-            if (old_layout == VK_IMAGE_LAYOUT_UNDEFINED && new_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
+            if (old_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL &&
+                new_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
             {
-                b.srcAccessMask = 0;
-                b.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-            }
-            else if (old_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL &&
-                     new_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
-            {
-                b.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-                b.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-                src_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-                dst_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+                src_access = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+                dst_access = VK_ACCESS_2_SHADER_READ_BIT;
+                src_stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+                dst_stage = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
             }
 
-#if defined(VK_STRUCTURE_TYPE_DEPENDENCY_INFO) && \
-    defined(VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT) && \
-    defined(VK_PIPELINE_STAGE_2_TRANSFER_BIT) && \
-    defined(VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT)
-            if (vk_ && vk_->supports_synchronization2())
-            {
-                VkImageMemoryBarrier2 b2{};
-                b2.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
-                b2.oldLayout = old_layout;
-                b2.newLayout = new_layout;
-                b2.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                b2.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                b2.image = image;
-                b2.subresourceRange = b.subresourceRange;
+            VkImageSubresourceRange range{};
+            range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            range.baseMipLevel = 0;
+            range.levelCount = 1;
+            range.baseArrayLayer = 0;
+            range.layerCount = 1;
 
-                if (old_layout == VK_IMAGE_LAYOUT_UNDEFINED && new_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
-                {
-                    b2.srcStageMask = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
-                    b2.srcAccessMask = 0;
-                    b2.dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
-                    b2.dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
-                }
-                else if (old_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL &&
-                         new_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
-                {
-                    b2.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
-                    b2.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
-                    b2.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
-                    b2.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
-                }
-                else
-                {
-                    b2.srcStageMask = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
-                    b2.srcAccessMask = 0;
-                    b2.dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
-                    b2.dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
-                }
-
-                VkDependencyInfo dep{};
-                dep.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-                dep.imageMemoryBarrierCount = 1;
-                dep.pImageMemoryBarriers = &b2;
-                if (vk_->cmd_pipeline_barrier2(cmd, dep)) return;
-            }
-#endif
-
-            vkCmdPipelineBarrier(
-                cmd,
-                src_stage,
-                dst_stage,
-                0,
-                0,
-                nullptr,
-                0,
-                nullptr,
-                1,
-                &b
-            );
+            vk_->transition_image_layout(cmd, image, old_layout, new_layout, range, src_stage, src_access, dst_stage, dst_access);
         }
 
         void barrier_color_write_to_shader_read(VkCommandBuffer cmd, VkImage image)
         {
-            if (cmd == VK_NULL_HANDLE || image == VK_NULL_HANDLE) return;
-
-            VkImageMemoryBarrier b{};
-            b.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-            b.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-            b.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-            b.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            b.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            b.image = image;
-            b.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-            b.subresourceRange.baseMipLevel = 0;
-            b.subresourceRange.levelCount = 1;
-            b.subresourceRange.baseArrayLayer = 0;
-            b.subresourceRange.layerCount = 1;
-
-#if defined(VK_STRUCTURE_TYPE_DEPENDENCY_INFO) && \
-    defined(VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT) && \
-    defined(VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT)
-            if (vk_ && vk_->supports_synchronization2())
-            {
-                VkImageMemoryBarrier2 b2{};
-                b2.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
-                b2.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-                b2.srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
-                b2.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
-                b2.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
-                b2.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                b2.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                b2.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                b2.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                b2.image = image;
-                b2.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-                b2.subresourceRange.baseMipLevel = 0;
-                b2.subresourceRange.levelCount = 1;
-                b2.subresourceRange.baseArrayLayer = 0;
-                b2.subresourceRange.layerCount = 1;
-
-                VkDependencyInfo dep{};
-                dep.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-                dep.imageMemoryBarrierCount = 1;
-                dep.pImageMemoryBarriers = &b2;
-                if (vk_->cmd_pipeline_barrier2(cmd, dep)) return;
-            }
-#endif
-
-            vkCmdPipelineBarrier(
-                cmd,
-                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-                0,
-                0,
-                nullptr,
-                0,
-                nullptr,
-                1,
-                &b
-            );
+            if (!vk_ || cmd == VK_NULL_HANDLE || image == VK_NULL_HANDLE) return;
+            VkImageSubresourceRange range{};
+            range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            range.baseMipLevel = 0;
+            range.levelCount = 1;
+            range.baseArrayLayer = 0;
+            range.layerCount = 1;
+            vk_->transition_image_layout(
+                cmd, image,
+                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                range,
+                VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+                VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                VK_ACCESS_2_SHADER_READ_BIT);
         }
 
         bool allocate_single_descriptor(VkDescriptorSetLayout layout, VkDescriptorSet& out_set)
@@ -1099,22 +1005,23 @@ namespace
 
             if (scene_obj_layout_ == VK_NULL_HANDLE)
             {
-                VkDescriptorSetLayoutBinding b[2]{};
-                b[0].binding = 0;
-                b[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                VkDescriptorSetLayoutBinding b[1]{};
+                b[0].binding = 1;
+                b[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
                 b[0].descriptorCount = 1;
-                b[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-
-                b[1].binding = 1;
-                b[1].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-                b[1].descriptorCount = 1;
-                b[1].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+                b[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
                 VkDescriptorSetLayoutCreateInfo ci{};
                 ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-                ci.bindingCount = 2;
+                ci.bindingCount = 1;
                 ci.pBindings = b;
                 if (vkCreateDescriptorSetLayout(dev, &ci, nullptr, &scene_obj_layout_) != VK_SUCCESS) return false;
+            }
+
+            if (bindless_layout_ == VK_NULL_HANDLE)
+            {
+                shs::vk_create_bindless_descriptor_set_layout(dev, 4096, &bindless_layout_);
+                shs::vk_create_bindless_descriptor_pool(dev, 4096, &bindless_pool_);
             }
 
             if (scene_shadow_layout_ == VK_NULL_HANDLE)
@@ -1193,18 +1100,31 @@ namespace
 
             if (descriptor_pool_ == VK_NULL_HANDLE)
             {
-                VkDescriptorPoolSize sizes[2]{};
-                sizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-                sizes[0].descriptorCount = 8192;
-                sizes[1].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-                sizes[1].descriptorCount = 2048;
-
+                VkDescriptorPoolSize sizes[] = {
+                    {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 200},
+                    {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 200}};
                 VkDescriptorPoolCreateInfo ci{};
                 ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-                ci.maxSets = 4096;
                 ci.poolSizeCount = 2;
                 ci.pPoolSizes = sizes;
+                ci.maxSets = 400;
+                ci.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
                 if (vkCreateDescriptorPool(dev, &ci, nullptr, &descriptor_pool_) != VK_SUCCESS) return false;
+            }
+
+            if (bindless_set_ == VK_NULL_HANDLE)
+            {
+                VkDescriptorSetVariableDescriptorCountAllocateInfoEXT count_info{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO_EXT};
+                uint32_t max_binding = 4096;
+                count_info.descriptorSetCount = 1;
+                count_info.pDescriptorCounts = &max_binding;
+        
+                VkDescriptorSetAllocateInfo ai{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+                ai.pNext = &count_info;
+                ai.descriptorPool = bindless_pool_;
+                ai.descriptorSetCount = 1;
+                ai.pSetLayouts = &bindless_layout_;
+                if (vkAllocateDescriptorSets(vk_->device(), &ai, &bindless_set_) != VK_SUCCESS) return false;
             }
 
             if (sampler_linear_repeat_ == VK_NULL_HANDLE)
@@ -1511,7 +1431,15 @@ namespace
         {
             if (white_texture_.view != VK_NULL_HANDLE) return true;
             const uint8_t white[] = {255u, 255u, 255u, 255u};
-            return create_texture_from_rgba(white, 1, 1, white_texture_);
+            if (!create_texture_from_rgba(white, 1, 1, white_texture_)) return false;
+
+            if (bindless_set_ != VK_NULL_HANDLE && sampler_linear_repeat_ != VK_NULL_HANDLE)
+            {
+                bindless_indices_[0] = 0; // AssetHandle 0 -> bindless index 0
+                next_bindless_index_ = std::max(next_bindless_index_, 1u);
+                shs::vk_update_bindless_texture(vk_->device(), bindless_set_, 0, sampler_linear_repeat_, white_texture_.view);
+            }
+            return true;
         }
 
         bool ensure_sky_texture(const shs::Scene& scene)
@@ -1706,6 +1634,13 @@ namespace
                             textures_[tex_h] = gt;
                             tex = &textures_.at(tex_h);
                             has_tex = true;
+                            
+                            if (bindless_set_ != VK_NULL_HANDLE && sampler_linear_repeat_ != VK_NULL_HANDLE)
+                            {
+                                uint32_t b_idx = next_bindless_index_++;
+                                bindless_indices_[tex_h] = b_idx;
+                                shs::vk_update_bindless_texture(vk_->device(), bindless_set_, b_idx, sampler_linear_repeat_, gt.view);
+                            }
                         }
                     }
                 }
@@ -1715,32 +1650,20 @@ namespace
             const bool tex_changed = (!obj.has_bound_tex) || (obj.bound_tex != desired_tex);
             if (tex_changed || obj.bound_tex == 0)
             {
-                VkDescriptorImageInfo img{};
-                img.sampler = sampler_linear_repeat_;
-                img.imageView = tex->view;
-                img.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-
                 VkDescriptorBufferInfo buf{};
                 buf.buffer = obj.ubo;
                 buf.offset = 0;
                 buf.range = sizeof(ObjectUBO);
 
-                VkWriteDescriptorSet w[2]{};
+                VkWriteDescriptorSet w[1]{};
                 w[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
                 w[0].dstSet = obj.set;
-                w[0].dstBinding = 0;
+                w[0].dstBinding = 1;
                 w[0].descriptorCount = 1;
-                w[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-                w[0].pImageInfo = &img;
+                w[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+                w[0].pBufferInfo = &buf;
 
-                w[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                w[1].dstSet = obj.set;
-                w[1].dstBinding = 1;
-                w[1].descriptorCount = 1;
-                w[1].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-                w[1].pBufferInfo = &buf;
-
-                vkUpdateDescriptorSets(vk_->device(), 2, w, 0, nullptr);
+                vkUpdateDescriptorSets(vk_->device(), 1, w, 0, nullptr);
 
                 obj.bound_tex = desired_tex;
                 obj.has_bound_tex = true;
@@ -2244,8 +2167,8 @@ namespace
                 return false;
             }
 
-            VkDescriptorSetLayout sets[2] = {scene_obj_layout_, scene_shadow_layout_};
-            if (!create_pipeline_layout(scene_pipeline_layout_, sets, 2, 0, 0))
+            VkDescriptorSetLayout sets[3] = {scene_obj_layout_, scene_shadow_layout_, bindless_layout_};
+            if (!create_pipeline_layout(scene_pipeline_layout_, sets, 3, 0, 0))
             {
                 vkDestroyShaderModule(vk_->device(), vs, nullptr);
                 vkDestroyShaderModule(vk_->device(), fs, nullptr);
@@ -2770,6 +2693,11 @@ namespace
                     fp.pass.shadow.bias_const,
                     fp.pass.shadow.bias_slope,
                     fp.pass.shadow.pcf_step);
+                    
+                uint32_t b_idx = 0;
+                auto it_b = bindless_indices_.find(tex_h);
+                if (it_b != bindless_indices_.end()) b_idx = it_b->second;
+                ubo.extra_indices = glm::uvec4(b_idx, 0, 0, 0);
 
                 if (!update_object_ubo(key, ubo))
                 {
@@ -2780,6 +2708,7 @@ namespace
 
                 VkDeviceSize vb_offset = 0;
                 vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, scene_pipeline_layout_, 0, 1, &obj_set, 0, nullptr);
+                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, scene_pipeline_layout_, 2, 1, &bindless_set_, 0, nullptr);
                 vkCmdBindVertexBuffers(cmd, 0, 1, &gm.vb, &vb_offset);
                 vkCmdBindIndexBuffer(cmd, gm.ib, 0, VK_INDEX_TYPE_UINT32);
                 vkCmdDrawIndexed(cmd, gm.index_count, 1, 0, 0, 0);
@@ -2925,6 +2854,9 @@ namespace
 
         VkDescriptorPool descriptor_pool_ = VK_NULL_HANDLE;
         VkDescriptorSetLayout scene_obj_layout_ = VK_NULL_HANDLE;
+        VkDescriptorSetLayout bindless_layout_ = VK_NULL_HANDLE;
+        VkDescriptorPool bindless_pool_ = VK_NULL_HANDLE;
+        VkDescriptorSet bindless_set_ = VK_NULL_HANDLE;
         VkDescriptorSetLayout scene_shadow_layout_ = VK_NULL_HANDLE;
         VkDescriptorSetLayout single_tex_layout_ = VK_NULL_HANDLE;
         VkDescriptorSetLayout shafts_layout_ = VK_NULL_HANDLE;
@@ -2987,6 +2919,8 @@ namespace
         VkPipelineLayout fxaa_pipeline_layout_ = VK_NULL_HANDLE;
         VkPipeline fxaa_pipeline_ = VK_NULL_HANDLE;
 
+        std::unordered_map<shs::TextureAssetHandle, uint32_t> bindless_indices_;
+        uint32_t next_bindless_index_ = 0;
         std::unordered_map<shs::MeshAssetHandle, GpuMesh> meshes_{};
         std::unordered_map<shs::TextureAssetHandle, GpuTexture> textures_{};
         std::unordered_map<uint64_t, GpuObject> objects_{};

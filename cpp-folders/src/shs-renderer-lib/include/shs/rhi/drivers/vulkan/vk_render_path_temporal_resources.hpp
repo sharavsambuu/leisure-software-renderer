@@ -251,6 +251,7 @@ namespace shs
     }
 
     inline void vk_render_path_cmd_image_layout_barrier(
+        const VulkanRenderBackend& backend,
         VkCommandBuffer cmd,
         VkImage image,
         VkImageLayout old_layout,
@@ -263,32 +264,23 @@ namespace shs
     {
         if (cmd == VK_NULL_HANDLE || image == VK_NULL_HANDLE || old_layout == new_layout) return;
 
-        VkImageMemoryBarrier ib{};
-        ib.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        ib.oldLayout = old_layout;
-        ib.newLayout = new_layout;
-        ib.srcAccessMask = src_access;
-        ib.dstAccessMask = dst_access;
-        ib.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        ib.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        ib.image = image;
-        ib.subresourceRange.aspectMask = aspect_mask;
-        ib.subresourceRange.baseMipLevel = 0;
-        ib.subresourceRange.levelCount = 1;
-        ib.subresourceRange.baseArrayLayer = 0;
-        ib.subresourceRange.layerCount = 1;
+        VkImageSubresourceRange range{};
+        range.aspectMask = aspect_mask;
+        range.baseMipLevel = 0;
+        range.levelCount = 1;
+        range.baseArrayLayer = 0;
+        range.layerCount = 1;
 
-        vkCmdPipelineBarrier(
+        backend.transition_image_layout(
             cmd,
+            image,
+            old_layout,
+            new_layout,
+            range,
             src_stage,
+            src_access,
             dst_stage,
-            0,
-            0,
-            nullptr,
-            0,
-            nullptr,
-            1,
-            &ib);
+            dst_access);
     }
 
     inline void vk_render_path_cmd_memory_barrier(
@@ -317,6 +309,7 @@ namespace shs
     }
 
     inline bool vk_render_path_record_swapchain_copy_to_shader_read_image(
+        const VulkanRenderBackend& backend,
         VkCommandBuffer cmd,
         VkImage swapchain_image,
         VkExtent2D swapchain_extent,
@@ -330,6 +323,7 @@ namespace shs
         if (dst_extent.width == 0u || dst_extent.height == 0u) return false;
 
         vk_render_path_cmd_image_layout_barrier(
+            backend,
             cmd,
             swapchain_image,
             VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
@@ -340,6 +334,7 @@ namespace shs
             VK_PIPELINE_STAGE_TRANSFER_BIT);
 
         vk_render_path_cmd_image_layout_barrier(
+            backend,
             cmd,
             dst_image,
             dst_current_layout,
@@ -372,6 +367,7 @@ namespace shs
             &copy);
 
         vk_render_path_cmd_image_layout_barrier(
+            backend,
             cmd,
             dst_image,
             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
@@ -382,6 +378,7 @@ namespace shs
             VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
 
         vk_render_path_cmd_image_layout_barrier(
+            backend,
             cmd,
             swapchain_image,
             VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
@@ -394,6 +391,7 @@ namespace shs
     }
 
     inline bool vk_render_path_record_swapchain_copy_to_host_buffer(
+        const VulkanRenderBackend& backend,
         VkCommandBuffer cmd,
         VkImage swapchain_image,
         VkExtent2D swapchain_extent,
@@ -403,6 +401,7 @@ namespace shs
         if (swapchain_extent.width == 0u || swapchain_extent.height == 0u) return false;
 
         vk_render_path_cmd_image_layout_barrier(
+            backend,
             cmd,
             swapchain_image,
             VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
@@ -438,6 +437,7 @@ namespace shs
             VK_ACCESS_HOST_READ_BIT);
 
         vk_render_path_cmd_image_layout_barrier(
+            backend,
             cmd,
             swapchain_image,
             VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
@@ -450,6 +450,7 @@ namespace shs
     }
 
     inline void vk_render_path_ensure_history_color_shader_read_layout(
+        const VulkanRenderBackend& backend,
         VkCommandBuffer cmd,
         VkRenderPathTemporalResources& resources)
     {
@@ -467,6 +468,7 @@ namespace shs
                 : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
 
         vk_render_path_cmd_image_layout_barrier(
+            backend,
             cmd,
             history.image,
             history.layout,
@@ -479,6 +481,7 @@ namespace shs
     }
 
     inline bool vk_render_path_record_history_color_copy(
+        const VulkanRenderBackend& backend,
         VkCommandBuffer cmd,
         VkImage swapchain_image,
         VkExtent2D swapchain_extent,
@@ -497,6 +500,7 @@ namespace shs
             ? VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT
             : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
         if (!vk_render_path_record_swapchain_copy_to_shader_read_image(
+                backend,
                 cmd,
                 swapchain_image,
                 swapchain_extent,

@@ -6537,7 +6537,7 @@ private:
                             l.common.position_ws,
                             l.axis_ws,
                             l.half_length,
-                            l.common.range);
+                            l.radius);
                         const glm::vec3 c = glm::clamp(l.common.color * 1.05f, glm::vec3(0.05f), glm::vec3(1.0f));
                         d.color = glm::vec4(c, 1.0f);
                         light_volume_debug_draws_.push_back(d);
@@ -6919,7 +6919,7 @@ private:
         const glm::vec3& right_ws,
         float half_x,
         float half_y,
-        float range) const
+        float extent_z) const
     {
         glm::vec3 fwd = shs::normalize_or(dir_ws, glm::vec3(0.0f, -1.0f, 0.0f));
         glm::vec3 right = right_ws - fwd * glm::dot(right_ws, fwd);
@@ -6927,32 +6927,30 @@ private:
         glm::vec3 up = shs::normalize_or(glm::cross(fwd, right), glm::vec3(0.0f, 1.0f, 0.0f));
         right = shs::normalize_or(glm::cross(up, fwd), right);
 
-        // Shader influence is a forward rounded-prism bound:
-        // x/y expand by +range beyond panel half extents, z spans [0, range].
+        // RectArea bounds are BoxShape with half-extents (hx + r, hy + r, r)
         // Source box mesh is centered and unit-sized, so scale by 2x half-extents.
-        const float ex = std::max((half_x + range) * 2.0f, 0.10f);
-        const float ey = std::max((half_y + range) * 2.0f, 0.10f);
-        const float ez = std::max(range, 0.10f);
-        const glm::vec3 center = pos_ws + fwd * (range * 0.5f);
-        return model_from_basis_and_scale(center, right, up, fwd, glm::vec3(ex, ey, ez));
+        const float ex = std::max((half_x + extent_z) * 2.0f, 0.10f);
+        const float ey = std::max((half_y + extent_z) * 2.0f, 0.10f);
+        const float ez = std::max(extent_z * 2.0f, 0.10f);
+        return model_from_basis_and_scale(pos_ws, right, up, fwd, glm::vec3(ex, ey, ez));
     }
 
     glm::mat4 make_tube_volume_debug_model(
         const glm::vec3& pos_ws,
         const glm::vec3& axis_ws,
         float half_length,
-        float range) const
+        float radius) const
     {
         glm::vec3 axis = shs::normalize_or(axis_ws, glm::vec3(1.0f, 0.0f, 0.0f));
         glm::vec3 up_hint = safe_perp_axis(axis);
         glm::vec3 up = shs::normalize_or(glm::cross(axis, up_hint), glm::vec3(0.0f, 1.0f, 0.0f));
         glm::vec3 side = shs::normalize_or(glm::cross(up, axis), glm::vec3(0.0f, 0.0f, 1.0f));
 
-        // Shader influence is a capsule around segment [ -half_length, +half_length ]
-        // with capsule radius == range.
-        const float ex = std::max((half_length + range) * 2.0f, 0.10f);
-        const float ey = std::max(range * 2.0f, 0.10f);
-        const float ez = std::max(range * 2.0f, 0.10f);
+        // TubeArea bounds is a CapsuleShape, length = 2*half_length + 2*radius, width = 2*radius.
+        // We debug draw it using a Box that encapsulates the capsule bounds exactly.
+        const float ex = std::max((half_length + radius) * 2.0f, 0.10f);
+        const float ey = std::max(radius * 2.0f, 0.10f);
+        const float ez = std::max(radius * 2.0f, 0.10f);
         return model_from_basis_and_scale(pos_ws, axis, up, side, glm::vec3(ex, ey, ez));
     }
 
@@ -7506,6 +7504,7 @@ private:
         }
 
         if (!shs::vk_render_path_record_swapchain_copy_to_shader_read_image(
+                *vk_,
                 ctx.fi->cmd,
                 swapchain_image,
                 ctx.fi->extent,
@@ -7526,7 +7525,7 @@ private:
 
     void ensure_history_color_shader_read_layout(VkCommandBuffer cmd)
     {
-        shs::vk_render_path_ensure_history_color_shader_read_layout(cmd, temporal_resources_);
+        shs::vk_render_path_ensure_history_color_shader_read_layout(*vk_, cmd, temporal_resources_);
     }
 
     void record_history_color_copy(VkCommandBuffer cmd, const shs::VulkanRenderBackend::FrameInfo& fi)
@@ -7548,6 +7547,7 @@ private:
         const VkImage swapchain_image = vk_->swapchain_image(fi.image_index);
         if (swapchain_image == VK_NULL_HANDLE) return;
         (void)shs::vk_render_path_record_history_color_copy(
+            *vk_,
             cmd,
             swapchain_image,
             fi.extent,
@@ -7626,6 +7626,7 @@ private:
         }
 
         if (!shs::vk_render_path_record_swapchain_copy_to_host_buffer(
+                *vk_,
                 cmd,
                 swapchain_image,
                 fi.extent,

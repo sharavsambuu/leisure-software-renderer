@@ -417,9 +417,12 @@ JPH::ShapeRefC make_scaled_demo_shape(DemoShapeKind kind, float s)
         case DemoShapeKind::PointLightVolume:
             return jolt::make_point_light_volume(1.0f * ss);
         case DemoShapeKind::SpotLightVolume:
-            return jolt::make_spot_light_volume(1.8f * ss, glm::radians(28.0f), 20);
+            return jolt::make_spot_light_volume(1.2f * ss, glm::radians(28.0f), 20);
         case DemoShapeKind::RectLightVolume:
-            return jolt::make_rect_area_light_volume(glm::vec2(0.8f, 0.5f) * ss, 2.0f * ss);
+            // For general visualization scaling, use a very small attenuation bound
+            // so the shape draws reasonably as a panel rather than a giant cube.
+            // Jolt BoxShape asserts if extents < 0.05f, so clamp minimum thickness.
+            return jolt::make_rect_area_light_volume(glm::vec2(0.8f, 0.5f) * ss, std::max(0.1f * ss, 0.055f));
         case DemoShapeKind::TubeLightVolume:
             return jolt::make_tube_area_light_volume(0.9f * ss, 0.35f * ss);
     }
@@ -1194,8 +1197,11 @@ private:
 
             if (e.type == SDL_MOUSEMOTION)
             {
-                out.mouse_dx += static_cast<float>(e.motion.xrel);
-                out.mouse_dy += static_cast<float>(e.motion.yrel);
+                if (!ignore_next_mouse_dt_)
+                {
+                    out.mouse_dx += static_cast<float>(e.motion.xrel);
+                    out.mouse_dy += static_cast<float>(e.motion.yrel);
+                }
             }
             if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_RIGHT) mouse_right_held_ = true;
             if (e.type == SDL_MOUSEBUTTONUP && e.button.button == SDL_BUTTON_RIGHT) mouse_right_held_ = false;
@@ -1234,11 +1240,14 @@ private:
         out.ascend = ks[SDL_SCANCODE_E] != 0;
         out.boost = ks[SDL_SCANCODE_LSHIFT] != 0;
 
+        if (ignore_next_mouse_dt_) ignore_next_mouse_dt_ = false;
+
         const bool look_drag = out.right_mouse_down || out.left_mouse_down;
         if (look_drag != relative_mouse_mode_)
         {
             relative_mouse_mode_ = look_drag;
             SDL_SetRelativeMouseMode(relative_mouse_mode_ ? SDL_TRUE : SDL_FALSE);
+            if (relative_mouse_mode_) ignore_next_mouse_dt_ = true;
             out.mouse_dx = 0.0f;
             out.mouse_dy = 0.0f;
         }
@@ -1601,7 +1610,7 @@ private:
             }
         }
 
-        if (draw_light_volumes_)
+        if (draw_light_volumes_ && !render_lit_surfaces_)
         {
             vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_line_);
             for (const uint32_t light_scene_idx : visible_light_scene_indices_)
@@ -1951,6 +1960,7 @@ private:
     std::vector<uint32_t> light_candidate_scene_scratch_{};
 
     bool relative_mouse_mode_ = false;
+    bool ignore_next_mouse_dt_ = false;
     bool mouse_right_held_ = false;
     bool mouse_left_held_ = false;
 

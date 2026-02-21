@@ -448,8 +448,8 @@ private:
         const JPH::ShapeRefC mesh_shape = jolt::make_mesh_shape(wedge_mesh);
         const JPH::ShapeRefC convex_from_mesh_shape = jolt::make_convex_hull_from_mesh(wedge_mesh);
         const JPH::ShapeRefC point_light_volume_shape = jolt::make_point_light_volume(1.0f);
-        const JPH::ShapeRefC spot_light_volume_shape = jolt::make_spot_light_volume(1.8f, glm::radians(28.0f), 20);
-        const JPH::ShapeRefC rect_light_volume_shape = jolt::make_rect_area_light_volume(glm::vec2(0.8f, 0.5f), 2.0f);
+        const JPH::ShapeRefC spot_light_volume_shape = jolt::make_spot_light_volume(1.2f, glm::radians(28.0f), 20);
+        const JPH::ShapeRefC rect_light_volume_shape = jolt::make_rect_area_light_volume(glm::vec2(0.8f, 0.5f), 0.1f);
         const JPH::ShapeRefC tube_light_volume_shape = jolt::make_tube_area_light_volume(0.9f, 0.35f);
 
         struct ShapeTypeDef
@@ -859,8 +859,11 @@ private:
 
             if (e.type == SDL_MOUSEMOTION)
             {
-                out.mouse_dx += static_cast<float>(e.motion.xrel);
-                out.mouse_dy += static_cast<float>(e.motion.yrel);
+                if (!ignore_next_mouse_dt_)
+                {
+                    out.mouse_dx += static_cast<float>(e.motion.xrel);
+                    out.mouse_dy += static_cast<float>(e.motion.yrel);
+                }
             }
             if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_RIGHT) mouse_right_held_ = true;
             if (e.type == SDL_MOUSEBUTTONUP && e.button.button == SDL_BUTTON_RIGHT) mouse_right_held_ = false;
@@ -899,11 +902,14 @@ private:
         out.ascend = ks[SDL_SCANCODE_E] != 0;
         out.boost = ks[SDL_SCANCODE_LSHIFT] != 0;
 
+        if (ignore_next_mouse_dt_) ignore_next_mouse_dt_ = false;
+
         const bool look_drag = out.right_mouse_down || out.left_mouse_down;
         if (look_drag != relative_mouse_mode_)
         {
             relative_mouse_mode_ = look_drag;
             SDL_SetRelativeMouseMode(relative_mouse_mode_ ? SDL_TRUE : SDL_FALSE);
+            if (relative_mouse_mode_) ignore_next_mouse_dt_ = true;
             out.mouse_dx = 0.0f;
             out.mouse_dy = 0.0f;
         }
@@ -1506,6 +1512,7 @@ private:
     bool render_lit_surfaces_ = false;
     bool enable_occlusion_ = true;
     bool relative_mouse_mode_ = false;
+    bool ignore_next_mouse_dt_ = false;
     bool mouse_right_held_ = false;
     bool mouse_left_held_ = false;
     bool apply_occlusion_this_frame_ = false;

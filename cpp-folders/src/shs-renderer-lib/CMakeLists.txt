@@ -43,6 +43,7 @@ endif()
 
 add_library(shs_renderer ${_shs_renderer_lib_type}
     src/shs_renderer_lib.cpp
+    src/shs_vma.cpp
 )
 add_library(shs::renderer ALIAS shs_renderer)
 
@@ -128,6 +129,8 @@ if(Vulkan_FOUND AND TARGET Vulkan::Vulkan)
     set(SHS_RENDERER_HAS_VULKAN ON)
     target_compile_definitions(shs_renderer PUBLIC SHS_HAS_VULKAN=1)
     target_link_libraries(shs_renderer PUBLIC Vulkan::Vulkan)
+    target_link_libraries(shs_renderer PUBLIC GPUOpen::VulkanMemoryAllocator)
+    target_compile_definitions(shs_renderer PUBLIC SHS_HAS_VMA=1)
 endif()
 set(SHS_RENDERER_HAS_VULKAN "${SHS_RENDERER_HAS_VULKAN}" PARENT_SCOPE)
 set(SHS_SDL2_HAS_VULKAN "${SHS_SDL2_HAS_VULKAN}" PARENT_SCOPE)

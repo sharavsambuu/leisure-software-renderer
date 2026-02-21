@@ -12,6 +12,7 @@ layout(set = 0, binding = 1) uniform ObjectUBO
     vec4 sun_color_pad;
     vec4 sun_dir_ws_pad;
     vec4 shadow_params;
+    uvec4 extra_indices;
 } ubo;
 
 layout(location = 0) in vec3 in_pos;

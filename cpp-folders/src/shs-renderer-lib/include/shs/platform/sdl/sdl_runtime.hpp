@@ -88,8 +88,11 @@ namespace shs
 
                 if (e.type == SDL_MOUSEMOTION)
                 {
-                    out.mouse_dx += (float)e.motion.xrel;
-                    out.mouse_dy += (float)e.motion.yrel;
+                    if (!ignore_next_mouse_dt_)
+                    {
+                        out.mouse_dx += (float)e.motion.xrel;
+                        out.mouse_dy += (float)e.motion.yrel;
+                    }
                 }
                 if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_RIGHT)
                 {
@@ -145,12 +148,16 @@ namespace shs
             out.descend = ks[SDL_SCANCODE_Q] != 0;
             out.ascend = ks[SDL_SCANCODE_E] != 0;
             out.boost = ks[SDL_SCANCODE_LSHIFT] != 0;
+
+            if (ignore_next_mouse_dt_) ignore_next_mouse_dt_ = false;
+
             return !out.quit;
         }
 
         void set_relative_mouse_mode(bool enabled) override
         {
             SDL_SetRelativeMouseMode(enabled ? SDL_TRUE : SDL_FALSE);
+            if (enabled) ignore_next_mouse_dt_ = true;
         }
 
         void set_title(const std::string& title) override
@@ -193,5 +200,6 @@ namespace shs
         SDL_Texture* texture_ = nullptr;
         bool right_mouse_held_ = false;
         bool left_mouse_held_ = false;
+        bool ignore_next_mouse_dt_ = false;
     };
 }

@@ -580,9 +580,11 @@ JPH::ShapeRefC make_scaled_demo_shape(DemoShapeKind kind, float s)
         case DemoShapeKind::PointLightVolume:
             return jolt::make_point_light_volume(1.0f * ss);
         case DemoShapeKind::SpotLightVolume:
-            return jolt::make_spot_light_volume(1.8f * ss, glm::radians(28.0f), 20);
+            return jolt::make_spot_light_volume(1.2f * ss, glm::radians(28.0f), 20);
         case DemoShapeKind::RectLightVolume:
-            return jolt::make_rect_area_light_volume(glm::vec2(0.8f, 0.5f) * ss, 2.0f * ss);
+            // For general visualization scaling, use a very small attenuation bound
+            // so the shape draws reasonably as a panel rather than a giant cube.
+            return jolt::make_rect_area_light_volume(glm::vec2(0.8f, 0.5f) * ss, 0.1f * ss);
         case DemoShapeKind::TubeLightVolume:
             return jolt::make_tube_area_light_volume(0.9f * ss, 0.35f * ss);
     }
