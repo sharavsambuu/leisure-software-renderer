@@ -92,3 +92,4 @@ add_subdirectory("src/hello-other-exps")
 
 add_subdirectory("src/shs-renderer-lib")
 add_subdirectory("src/exp-plumbing")
+add_subdirectory("src/exp-rendering-techniques")

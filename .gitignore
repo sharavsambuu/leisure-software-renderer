@@ -56,3 +56,7 @@ phase_*.txt
 
 build_it.sh
 stress_soak.sh
+
+build_and_test.sh
+build_fwd.sh
+compile.sh
