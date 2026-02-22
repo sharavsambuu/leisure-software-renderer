@@ -47,6 +47,11 @@ To evaluate realistic production workloads, these technique demos will also inco
 *   **SSAO (Screen Space Ambient Occlusion)**: Evaluated directly from Depth/Normals.
 *   **Anti-Aliasing**: Generic post-process AA (FXAA) or Temporal AA (TAA) depending on motion vector availability.
 
+## Future Work
+
+See [optimization_tasks.md](optimization_tasks.md) for tracked parallelization and performance optimization tasks that apply across all technique demos.
+
 ---
 
 *This document was generated as part of the `exp-rendering-techniques` phase to guide the rollout of discrete rendering paradigms.*
+
