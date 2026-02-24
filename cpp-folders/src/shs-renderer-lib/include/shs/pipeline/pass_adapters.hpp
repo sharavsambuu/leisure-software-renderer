@@ -27,6 +27,7 @@
 #include "shs/passes/pass_shadow_map.hpp"
 #include "shs/passes/pass_tonemap.hpp"
 #include "shs/pipeline/pass_registry.hpp"
+#include "shs/pipeline/pass_contract_registry.hpp"
 #include "shs/pipeline/render_pass.hpp"
 #include "shs/sw_render/rasterizer.hpp"
 #include "shs/resources/resource_registry.hpp"
@@ -224,19 +225,21 @@ namespace shs
                 fp.technique.mode == TechniqueMode::ClusteredForward;
         }
 
-        inline void execute_generic_light_culling(
+        inline bool execute_generic_light_culling(
             Context& ctx,
             const Scene& scene,
             const FrameParams& fp,
             RTRegistry& rtr,
             RT_Motion rt_motion,
+            LightCullingRuntimePayload* light_culling,
+            bool depth_prepass_ready,
             bool force_enable)
         {
-            ctx.forward_plus.light_culling_valid = false;
-
+            (void)ctx;
             const bool light_culling_enabled = force_enable || technique_uses_light_culling(fp);
-            if (!light_culling_enabled) return;
-            if (fp.technique.depth_prepass && !ctx.forward_plus.depth_prepass_valid) return;
+            if (!light_culling_enabled) return false;
+            if (!light_culling) return false;
+            if (fp.technique.depth_prepass && !depth_prepass_ready) return false;
 
             int w = fp.w;
             int h = fp.h;
@@ -249,7 +252,7 @@ namespace shs
                     h = motion->h;
                 }
             }
-            if (w <= 0 || h <= 0) return;
+            if (w <= 0 || h <= 0) return false;
 
             const uint32_t tile_size = std::max<uint32_t>(1u, fp.technique.tile_size);
             const uint32_t tile_x = (uint32_t)((w + (int)tile_size - 1) / (int)tile_size);
@@ -286,7 +289,7 @@ namespace shs
                 }
             }
 
-            auto& fwdp = ctx.forward_plus;
+            auto& fwdp = *light_culling;
             fwdp.tile_size = tile_size;
             fwdp.tile_count_x = tile_x;
             fwdp.tile_count_y = tile_y;
@@ -326,7 +329,7 @@ namespace shs
                     }
                 }
             }
-            fwdp.light_culling_valid = true;
+            return true;
         }
 
         inline ShaderProgram make_depth_prepass_program()
@@ -377,14 +380,17 @@ namespace shs
             return io;
         }
 
-        void execute(Context& ctx, const Scene& scene, const FrameParams& fp, RTRegistry& rtr) override
+        PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
         {
+            if (!request.valid) return PassExecutionResult::not_executed();
+            if (!request.inputs.scene || !request.inputs.frame || !request.inputs.registry) return PassExecutionResult::not_executed();
             PassShadowMap::Inputs in{};
-            in.scene = &scene;
-            in.fp = &fp;
-            in.rtr = &rtr;
+            in.scene = request.inputs.scene;
+            in.fp = request.inputs.frame;
+            in.rtr = request.inputs.registry;
             in.rt_shadow = rt_shadow_;
             pass_.execute(ctx, in);
+            return PassExecutionResult::executed_no_outputs();
         }
 
     private:
@@ -422,25 +428,67 @@ namespace shs
             return io;
         }
 
-        void execute(Context& ctx, const Scene& scene, const FrameParams& fp, RTRegistry& rtr) override
+        PassExecutionRequest build_execution_request(
+            const Context& ctx,
+            const Scene& scene,
+            const FrameParams& fp,
+            RTRegistry& rtr) const override
         {
-            ctx.forward_plus.depth_prepass_valid = false;
-            if (!fp.technique.depth_prepass) return;
-            if (!rt_motion_.valid()) return;
-
+            (void)ctx;
+            PassExecutionRequest req = IRenderPass::build_execution_request(ctx, scene, fp, rtr);
+            if (!req.valid || !fp.technique.depth_prepass || !rt_motion_.valid()) return req;
             auto* motion = static_cast<RT_ColorDepthMotion*>(rtr.get(rt_motion_));
-            if (!motion || motion->w <= 0 || motion->h <= 0) return;
-
-            motion->depth.clear(1.0f);
-            motion->motion.clear(Motion2f{});
+            if (!motion || motion->w <= 0 || motion->h <= 0) return req;
 
             RTHandle scratch_hdr = rt_scratch_hdr_;
             if (!scratch_hdr.valid())
             {
                 scratch_hdr = rtr.ensure_transient_color_hdr("depth_prepass.auto_hdr", motion->w, motion->h);
             }
+            if (!scratch_hdr.valid())
+            {
+                req.valid = false;
+                return req;
+            }
+            req.set_named_rt("depth_prepass.scratch_hdr", scratch_hdr);
+            return req;
+        }
+
+        PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
+        {
+            if (!request.valid) return PassExecutionResult::not_executed();
+            if (!request.inputs.scene || !request.inputs.frame || !request.inputs.registry) return PassExecutionResult::not_executed();
+            const bool produced_depth = execute_with_scratch(
+                ctx,
+                *request.inputs.scene,
+                *request.inputs.frame,
+                *request.inputs.registry,
+                request.find_named_rt("depth_prepass.scratch_hdr"));
+            if (!produced_depth) return PassExecutionResult::not_executed();
+            PassExecutionResult out = PassExecutionResult::executed_no_outputs();
+            out.produced_depth = true;
+            return out;
+        }
+
+    private:
+        bool execute_with_scratch(
+            Context& ctx,
+            const Scene& scene,
+            const FrameParams& fp,
+            RTRegistry& rtr,
+            RTHandle scratch_hdr)
+        {
+            if (!fp.technique.depth_prepass) return false;
+            if (!rt_motion_.valid()) return false;
+
+            auto* motion = static_cast<RT_ColorDepthMotion*>(rtr.get(rt_motion_));
+            if (!motion || motion->w <= 0 || motion->h <= 0) return false;
+
             auto* hdr = static_cast<RT_ColorHDR*>(rtr.get(scratch_hdr));
-            if (!hdr || hdr->w <= 0 || hdr->h <= 0) return;
+            if (!hdr || hdr->w <= 0 || hdr->h <= 0) return false;
+
+            motion->depth.clear(1.0f);
+            motion->motion.clear(Motion2f{});
 
             hdr->clear(ColorF{0.0f, 0.0f, 0.0f, 1.0f});
 
@@ -473,11 +521,8 @@ namespace shs
                 uniforms.enable_motion_vectors = false;
                 (void)rasterize_mesh(*mesh, depth_prog, uniforms, target, rast_cfg);
             }
-
-            ctx.forward_plus.depth_prepass_valid = true;
+            return true;
         }
-
-    private:
         RT_Motion rt_motion_{};
         RTHandle rt_scratch_hdr_{};
     };
@@ -519,9 +564,24 @@ namespace shs
             return io;
         }
 
-        void execute(Context& ctx, const Scene& scene, const FrameParams& fp, RTRegistry& rtr) override
+        PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
         {
-            detail::execute_generic_light_culling(ctx, scene, fp, rtr, rt_motion_, false);
+            if (!request.valid) return PassExecutionResult::not_executed();
+            if (!request.inputs.scene || !request.inputs.frame || !request.inputs.registry) return PassExecutionResult::not_executed();
+            const bool produced_light_data = detail::execute_generic_light_culling(
+                ctx,
+                *request.inputs.scene,
+                *request.inputs.frame,
+                *request.inputs.registry,
+                rt_motion_,
+                request.inputs.light_culling,
+                request.depth_prepass_ready,
+                false);
+            if (!produced_light_data) return PassExecutionResult::not_executed();
+            PassExecutionResult out = PassExecutionResult::executed_no_outputs();
+            out.produced_light_grid = true;
+            out.produced_light_index_list = true;
+            return out;
         }
 
     private:
@@ -560,10 +620,14 @@ namespace shs
             return io;
         }
 
-        void execute(Context& ctx, const Scene& scene, const FrameParams& fp, RTRegistry& rtr) override
+        PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
         {
-            (void)scene;
-            if (fp.technique.depth_prepass && !ctx.forward_plus.depth_prepass_valid) return;
+            if (!request.valid) return PassExecutionResult::not_executed();
+            if (!request.inputs.frame || !request.inputs.registry) return PassExecutionResult::not_executed();
+
+            const FrameParams& fp = *request.inputs.frame;
+            RTRegistry& rtr = *request.inputs.registry;
+            if (fp.technique.depth_prepass && !request.depth_prepass_ready) return PassExecutionResult::not_executed();
 
             int w = fp.w;
             int h = fp.h;
@@ -576,16 +640,18 @@ namespace shs
                     h = motion->h;
                 }
             }
-            if (w <= 0 || h <= 0) return;
+            if (w <= 0 || h <= 0) return PassExecutionResult::not_executed();
 
-            auto& fwdp = ctx.forward_plus;
-            fwdp.tile_size = std::max<uint32_t>(1u, fp.technique.tile_size);
-            fwdp.tile_count_x = (uint32_t)((w + (int)fwdp.tile_size - 1) / (int)fwdp.tile_size);
-            fwdp.tile_count_y = (uint32_t)((h + (int)fwdp.tile_size - 1) / (int)fwdp.tile_size);
-            if (fwdp.tile_light_counts.size() != (size_t)fwdp.tile_count_x * (size_t)fwdp.tile_count_y)
+            auto* fwdp = request.inputs.light_culling;
+            if (!fwdp) return PassExecutionResult::not_executed();
+            fwdp->tile_size = std::max<uint32_t>(1u, fp.technique.tile_size);
+            fwdp->tile_count_x = (uint32_t)((w + (int)fwdp->tile_size - 1) / (int)fwdp->tile_size);
+            fwdp->tile_count_y = (uint32_t)((h + (int)fwdp->tile_size - 1) / (int)fwdp->tile_size);
+            if (fwdp->tile_light_counts.size() != (size_t)fwdp->tile_count_x * (size_t)fwdp->tile_count_y)
             {
-                fwdp.tile_light_counts.assign((size_t)fwdp.tile_count_x * (size_t)fwdp.tile_count_y, 0u);
+                fwdp->tile_light_counts.assign((size_t)fwdp->tile_count_x * (size_t)fwdp->tile_count_y, 0u);
             }
+            return PassExecutionResult::executed_no_outputs();
         }
 
     private:
@@ -628,9 +694,24 @@ namespace shs
             return io;
         }
 
-        void execute(Context& ctx, const Scene& scene, const FrameParams& fp, RTRegistry& rtr) override
+        PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
         {
-            detail::execute_generic_light_culling(ctx, scene, fp, rtr, rt_motion_, true);
+            if (!request.valid) return PassExecutionResult::not_executed();
+            if (!request.inputs.scene || !request.inputs.frame || !request.inputs.registry) return PassExecutionResult::not_executed();
+            const bool produced_light_data = detail::execute_generic_light_culling(
+                ctx,
+                *request.inputs.scene,
+                *request.inputs.frame,
+                *request.inputs.registry,
+                rt_motion_,
+                request.inputs.light_culling,
+                request.depth_prepass_ready,
+                true);
+            if (!produced_light_data) return PassExecutionResult::not_executed();
+            PassExecutionResult out = PassExecutionResult::executed_no_outputs();
+            out.produced_light_grid = true;
+            out.produced_light_index_list = true;
+            return out;
         }
 
     private:
@@ -666,12 +747,11 @@ namespace shs
             return io;
         }
 
-        void execute(Context& ctx, const Scene& scene, const FrameParams& fp, RTRegistry& rtr) override
+        PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
         {
             (void)ctx;
-            (void)scene;
-            (void)fp;
-            (void)rtr;
+            if (!request.valid) return PassExecutionResult::not_executed();
+            return PassExecutionResult::executed_no_outputs();
         }
     };
 
@@ -704,12 +784,11 @@ namespace shs
             return io;
         }
 
-        void execute(Context& ctx, const Scene& scene, const FrameParams& fp, RTRegistry& rtr) override
+        PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
         {
             (void)ctx;
-            (void)scene;
-            (void)fp;
-            (void)rtr;
+            if (!request.valid) return PassExecutionResult::not_executed();
+            return PassExecutionResult::executed_no_outputs();
         }
     };
 
@@ -752,8 +831,13 @@ namespace shs
             return io;
         }
 
-        void execute(Context& ctx, const Scene& scene, const FrameParams& fp, RTRegistry& rtr) override
+        PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
         {
+            if (!request.valid) return PassExecutionResult::not_executed();
+            if (!request.inputs.scene || !request.inputs.frame || !request.inputs.registry) return PassExecutionResult::not_executed();
+            const Scene& scene = *request.inputs.scene;
+            const FrameParams& fp = *request.inputs.frame;
+            RTRegistry& rtr = *request.inputs.registry;
             PassPBRForward::Inputs in{};
             in.scene = &scene;
             in.fp = &fp;
@@ -762,6 +846,7 @@ namespace shs
             in.rt_motion = rt_motion_;
             in.rt_shadow = rt_shadow_;
             pass_.execute(ctx, in);
+            return PassExecutionResult::executed_no_outputs();
         }
 
     private:
@@ -818,10 +903,16 @@ namespace shs
             return io;
         }
 
-        void execute(Context& ctx, const Scene& scene, const FrameParams& fp, RTRegistry& rtr) override
+        PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
         {
-            const bool depth_ready = (!fp.technique.depth_prepass) || ctx.forward_plus.depth_prepass_valid;
-            const bool culling_ready = (!detail::technique_uses_light_culling(fp)) || ctx.forward_plus.light_culling_valid;
+            if (!request.valid) return PassExecutionResult::not_executed();
+            if (!request.inputs.scene || !request.inputs.frame || !request.inputs.registry) return PassExecutionResult::not_executed();
+            const Scene& scene = *request.inputs.scene;
+            const FrameParams& fp = *request.inputs.frame;
+            RTRegistry& rtr = *request.inputs.registry;
+
+            const bool depth_ready = (!fp.technique.depth_prepass) || request.depth_prepass_ready;
+            const bool culling_ready = (!detail::technique_uses_light_culling(fp)) || request.light_culling_ready;
 
             PassPBRForward::Inputs in{};
             in.scene = &scene;
@@ -832,6 +923,7 @@ namespace shs
             in.rt_shadow = rt_shadow_;
             in.preserve_existing_depth = depth_ready && culling_ready && fp.technique.depth_prepass;
             pass_.execute(ctx, in);
+            return PassExecutionResult::executed_no_outputs();
         }
 
     private:
@@ -880,10 +972,16 @@ namespace shs
             return io;
         }
 
-        void execute(Context& ctx, const Scene& scene, const FrameParams& fp, RTRegistry& rtr) override
+        PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
         {
-            const bool depth_ready = (!fp.technique.depth_prepass) || ctx.forward_plus.depth_prepass_valid;
-            const bool culling_ready = (!detail::technique_uses_light_culling(fp)) || ctx.forward_plus.light_culling_valid;
+            if (!request.valid) return PassExecutionResult::not_executed();
+            if (!request.inputs.scene || !request.inputs.frame || !request.inputs.registry) return PassExecutionResult::not_executed();
+            const Scene& scene = *request.inputs.scene;
+            const FrameParams& fp = *request.inputs.frame;
+            RTRegistry& rtr = *request.inputs.registry;
+
+            const bool depth_ready = (!fp.technique.depth_prepass) || request.depth_prepass_ready;
+            const bool culling_ready = (!detail::technique_uses_light_culling(fp)) || request.light_culling_ready;
 
             PassPBRForward::Inputs in{};
             in.scene = &scene;
@@ -894,6 +992,7 @@ namespace shs
             in.rt_shadow = rt_shadow_;
             in.preserve_existing_depth = depth_ready && culling_ready && fp.technique.depth_prepass;
             pass_.execute(ctx, in);
+            return PassExecutionResult::executed_no_outputs();
         }
 
     private:
@@ -937,8 +1036,13 @@ namespace shs
             return io;
         }
 
-        void execute(Context& ctx, const Scene& scene, const FrameParams& fp, RTRegistry& rtr) override
+        PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
         {
+            if (!request.valid) return PassExecutionResult::not_executed();
+            if (!request.inputs.scene || !request.inputs.frame || !request.inputs.registry) return PassExecutionResult::not_executed();
+            const Scene& scene = *request.inputs.scene;
+            const FrameParams& fp = *request.inputs.frame;
+            RTRegistry& rtr = *request.inputs.registry;
             PassPBRForward::Inputs in{};
             in.scene = &scene;
             in.fp = &fp;
@@ -947,6 +1051,7 @@ namespace shs
             in.rt_motion = rt_motion_;
             in.rt_shadow = rt_shadow_;
             pass_.execute(ctx, in);
+            return PassExecutionResult::executed_no_outputs();
         }
 
     private:
@@ -995,11 +1100,17 @@ namespace shs
             return io;
         }
 
-        void execute(Context& ctx, const Scene& scene, const FrameParams& fp, RTRegistry& rtr) override
+        PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
         {
+            if (!request.valid) return PassExecutionResult::not_executed();
+            if (!request.inputs.scene || !request.inputs.frame || !request.inputs.registry) return PassExecutionResult::not_executed();
+            const Scene& scene = *request.inputs.scene;
+            const FrameParams& fp = *request.inputs.frame;
+            RTRegistry& rtr = *request.inputs.registry;
+
             const bool light_culling_enabled = fp.technique.light_culling || fp.technique.mode == TechniqueMode::ForwardPlus;
-            const bool depth_ready = (!fp.technique.depth_prepass) || ctx.forward_plus.depth_prepass_valid;
-            const bool culling_ready = (!light_culling_enabled) || ctx.forward_plus.light_culling_valid;
+            const bool depth_ready = (!fp.technique.depth_prepass) || request.depth_prepass_ready;
+            const bool culling_ready = (!light_culling_enabled) || request.light_culling_ready;
 
             PassPBRForward::Inputs in{};
             in.scene = &scene;
@@ -1010,6 +1121,7 @@ namespace shs
             in.rt_shadow = rt_shadow_;
             in.preserve_existing_depth = depth_ready && culling_ready && fp.technique.depth_prepass;
             pass_.execute(ctx, in);
+            return PassExecutionResult::executed_no_outputs();
         }
 
     private:
@@ -1048,15 +1160,19 @@ namespace shs
             return io;
         }
 
-        void execute(Context& ctx, const Scene& scene, const FrameParams& fp, RTRegistry& rtr) override
+        PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
         {
-            (void)scene;
+            if (!request.valid) return PassExecutionResult::not_executed();
+            if (!request.inputs.frame || !request.inputs.registry) return PassExecutionResult::not_executed();
+            const FrameParams& fp = *request.inputs.frame;
+            RTRegistry& rtr = *request.inputs.registry;
             PassTonemap::Inputs in{};
             in.fp = &fp;
             in.rtr = &rtr;
             in.rt_hdr = rt_hdr_;
             in.rt_ldr = rt_ldr_;
             pass_.execute(ctx, in);
+            return PassExecutionResult::executed_no_outputs();
         }
 
     private:
@@ -1104,7 +1220,44 @@ namespace shs
             return io;
         }
 
-        void execute(Context& ctx, const Scene& scene, const FrameParams& fp, RTRegistry& rtr) override
+        PassExecutionRequest build_execution_request(
+            const Context& ctx,
+            const Scene& scene,
+            const FrameParams& fp,
+            RTRegistry& rtr) const override
+        {
+            PassExecutionRequest req = IRenderPass::build_execution_request(ctx, scene, fp, rtr);
+            if (!req.valid) return req;
+            RTHandle tmp = rt_shafts_tmp_;
+            if (!tmp.valid())
+            {
+                auto* ldr = static_cast<RT_ColorLDR*>(rtr.get(rt_ldr_));
+                if (ldr) tmp = rtr.ensure_transient_color_ldr("light_shafts.auto_tmp", ldr->w, ldr->h);
+            }
+            req.set_named_rt("light_shafts.tmp", tmp);
+            return req;
+        }
+
+        PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
+        {
+            if (!request.valid) return PassExecutionResult::not_executed();
+            if (!request.inputs.scene || !request.inputs.frame || !request.inputs.registry) return PassExecutionResult::not_executed();
+            execute_with_tmp(
+                ctx,
+                *request.inputs.scene,
+                *request.inputs.frame,
+                *request.inputs.registry,
+                request.find_named_rt("light_shafts.tmp"));
+            return PassExecutionResult::executed_no_outputs();
+        }
+
+    private:
+        void execute_with_tmp(
+            Context& ctx,
+            const Scene& scene,
+            const FrameParams& fp,
+            RTRegistry& rtr,
+            RTHandle tmp)
         {
             PassLightShafts::Inputs in{};
             in.scene = &scene;
@@ -1113,17 +1266,9 @@ namespace shs
             in.rt_input_ldr = rt_ldr_;
             in.rt_output_ldr = rt_ldr_;
             in.rt_depth_like = rt_depth_like_;
-            RTHandle tmp = rt_shafts_tmp_;
-            if (!tmp.valid())
-            {
-                auto* ldr = static_cast<RT_ColorLDR*>(rtr.get(rt_ldr_));
-                if (ldr) tmp = rtr.ensure_transient_color_ldr("light_shafts.auto_tmp", ldr->w, ldr->h);
-            }
             in.rt_shafts_tmp = tmp;
             pass_.execute(ctx, in);
         }
-
-    private:
         RTHandle rt_ldr_{};
         RTHandle rt_depth_like_{};
         RTHandle rt_shafts_tmp_{};
@@ -1167,26 +1312,52 @@ namespace shs
             return io;
         }
 
-        void execute(Context& ctx, const Scene& scene, const FrameParams& fp, RTRegistry& rtr) override
+        PassExecutionRequest build_execution_request(
+            const Context& ctx,
+            const Scene& scene,
+            const FrameParams& fp,
+            RTRegistry& rtr) const override
         {
-            (void)scene;
-            PassMotionBlur::Inputs in{};
-            in.fp = &fp;
-            in.rtr = &rtr;
-            in.rt_input_ldr = rt_ldr_;
-            in.rt_output_ldr = rt_ldr_;
-            in.rt_motion = rt_motion_;
+            PassExecutionRequest req = IRenderPass::build_execution_request(ctx, scene, fp, rtr);
+            if (!req.valid) return req;
             RTHandle tmp = rt_tmp_;
             if (!tmp.valid())
             {
                 auto* ldr = static_cast<RT_ColorLDR*>(rtr.get(rt_ldr_));
                 if (ldr) tmp = rtr.ensure_transient_color_ldr("motion_blur.auto_tmp", ldr->w, ldr->h);
             }
-            in.rt_tmp = tmp;
-            pass_.execute(ctx, in);
+            req.set_named_rt("motion_blur.tmp", tmp);
+            return req;
+        }
+
+        PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
+        {
+            if (!request.valid) return PassExecutionResult::not_executed();
+            if (!request.inputs.frame || !request.inputs.registry) return PassExecutionResult::not_executed();
+            execute_with_tmp(
+                ctx,
+                *request.inputs.frame,
+                *request.inputs.registry,
+                request.find_named_rt("motion_blur.tmp"));
+            return PassExecutionResult::executed_no_outputs();
         }
 
     private:
+        void execute_with_tmp(
+            Context& ctx,
+            const FrameParams& fp,
+            RTRegistry& rtr,
+            RTHandle tmp)
+        {
+            PassMotionBlur::Inputs in{};
+            in.fp = &fp;
+            in.rtr = &rtr;
+            in.rt_input_ldr = rt_ldr_;
+            in.rt_output_ldr = rt_ldr_;
+            in.rt_motion = rt_motion_;
+            in.rt_tmp = tmp;
+            pass_.execute(ctx, in);
+        }
         RTHandle rt_ldr_{};
         RTHandle rt_motion_{};
         RTHandle rt_tmp_{};
@@ -1220,12 +1391,11 @@ namespace shs
             return io;
         }
 
-        void execute(Context& ctx, const Scene& scene, const FrameParams& fp, RTRegistry& rtr) override
+        PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
         {
             (void)ctx;
-            (void)scene;
-            (void)fp;
-            (void)rtr;
+            if (!request.valid) return PassExecutionResult::not_executed();
+            return PassExecutionResult::executed_no_outputs();
         }
     };
 
@@ -1262,49 +1432,46 @@ namespace shs
 
         void reset_history(Context& ctx, RTRegistry& rtr) override
         {
-            (void)ctx;
             (void)rtr;
-            history_.clear();
-            history_w_ = 0;
-            history_h_ = 0;
-            history_valid_ = false;
+            ctx.temporal_aa.reset();
         }
 
-        void execute(Context& ctx, const Scene& scene, const FrameParams& fp, RTRegistry& rtr) override
+        PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
         {
-            (void)ctx;
-            (void)scene;
-            (void)fp;
+            if (!request.valid) return PassExecutionResult::not_executed();
+            if (!request.inputs.registry) return PassExecutionResult::not_executed();
+            RTRegistry& rtr = *request.inputs.registry;
             auto* ldr = static_cast<RT_ColorLDR*>(rtr.get(rt_ldr_));
-            if (!ldr || ldr->w <= 0 || ldr->h <= 0) return;
+            if (!ldr || ldr->w <= 0 || ldr->h <= 0) return PassExecutionResult::not_executed();
 
+            auto& taa = ctx.temporal_aa;
             const int w = ldr->w;
             const int h = ldr->h;
             const size_t count = static_cast<size_t>(w) * static_cast<size_t>(h);
-            if (history_w_ != w || history_h_ != h || history_.size() != count)
+            if (taa.history_w != w || taa.history_h != h || taa.history.size() != count)
             {
-                history_.assign(count, Color{0, 0, 0, 255});
-                history_w_ = w;
-                history_h_ = h;
-                history_valid_ = false;
+                taa.history.assign(count, Color{0, 0, 0, 255});
+                taa.history_w = w;
+                taa.history_h = h;
+                taa.history_valid = false;
             }
 
             const float blend = 0.12f;
             const float keep = 1.0f - blend;
-            if (!history_valid_)
+            if (!taa.history_valid)
             {
                 for (size_t i = 0; i < count; ++i)
                 {
-                    history_[i] = ldr->color.data[i];
+                    taa.history[i] = ldr->color.data[i];
                 }
-                history_valid_ = true;
-                return;
+                taa.history_valid = true;
+                return PassExecutionResult::executed_no_outputs();
             }
 
             for (size_t i = 0; i < count; ++i)
             {
                 const Color cur = ldr->color.data[i];
-                const Color prev = history_[i];
+                const Color prev = taa.history[i];
 
                 auto lerp_chan = [keep, blend](uint8_t a, uint8_t b) -> uint8_t {
                     const float v = keep * static_cast<float>(a) + blend * static_cast<float>(b);
@@ -1318,16 +1485,13 @@ namespace shs
                 out.b = lerp_chan(cur.b, prev.b);
                 out.a = cur.a;
                 ldr->color.data[i] = out;
-                history_[i] = out;
+                taa.history[i] = out;
             }
+            return PassExecutionResult::executed_no_outputs();
         }
 
     private:
         RTHandle rt_ldr_{};
-        std::vector<Color> history_{};
-        int history_w_ = 0;
-        int history_h_ = 0;
-        bool history_valid_ = false;
     };
 
     inline PassFactoryRegistry make_standard_pass_factory_registry(
@@ -1340,55 +1504,65 @@ namespace shs
     )
     {
         PassFactoryRegistry reg{};
-        reg.register_factory(PassId::ShadowMap, [=]() {
+        const uint32_t sw_only_backend_mask = PassFactoryRegistry::backend_bit(RenderBackendType::Software);
+        auto register_standard = [&](PassId pass_id, PassFactoryRegistry::Factory f) {
+            reg.register_factory(pass_id, std::move(f));
+            TechniquePassContract c{};
+            if (lookup_standard_pass_contract(pass_id, c))
+            {
+                reg.register_descriptor(pass_id, c, sw_only_backend_mask, true);
+            }
+        };
+
+        register_standard(PassId::ShadowMap, [=]() {
             return std::make_unique<PassShadowMapAdapter>(rt_shadow);
         });
-        reg.register_factory(PassId::PBRForward, [=]() {
+        register_standard(PassId::PBRForward, [=]() {
             return std::make_unique<PassPBRForwardAdapter>(rt_hdr, rt_motion, RTHandle{rt_shadow.id});
         });
-        reg.register_factory(PassId::DepthPrepass, [=]() {
+        register_standard(PassId::DepthPrepass, [=]() {
             return std::make_unique<PassDepthPrepassAdapter>(rt_motion);
         });
-        reg.register_factory(PassId::LightCulling, [=]() {
+        register_standard(PassId::LightCulling, [=]() {
             return std::make_unique<PassLightCullingAdapter>(rt_motion);
         });
-        reg.register_factory(PassId::ClusterBuild, [=]() {
+        register_standard(PassId::ClusterBuild, [=]() {
             return std::make_unique<PassClusterBuildAdapter>(rt_motion);
         });
-        reg.register_factory(PassId::ClusterLightAssign, [=]() {
+        register_standard(PassId::ClusterLightAssign, [=]() {
             return std::make_unique<PassClusterLightAssignAdapter>(rt_motion);
         });
-        reg.register_factory(PassId::PBRForwardPlus, [=]() {
+        register_standard(PassId::PBRForwardPlus, [=]() {
             return std::make_unique<PassPBRForwardPlusAdapter>(rt_hdr, rt_motion, RTHandle{rt_shadow.id});
         });
-        reg.register_factory(PassId::PBRForwardClustered, [=]() {
+        register_standard(PassId::PBRForwardClustered, [=]() {
             return std::make_unique<PassPBRForwardClusteredAdapter>(rt_hdr, rt_motion, RTHandle{rt_shadow.id});
         });
-        reg.register_factory(PassId::GBuffer, [=]() {
+        register_standard(PassId::GBuffer, [=]() {
             return std::make_unique<PassGBufferAdapter>();
         });
-        reg.register_factory(PassId::SSAO, [=]() {
+        register_standard(PassId::SSAO, [=]() {
             return std::make_unique<PassSSAOAdapter>();
         });
-        reg.register_factory(PassId::DeferredLighting, [=]() {
+        register_standard(PassId::DeferredLighting, [=]() {
             return std::make_unique<PassDeferredLightingAdapter>(rt_hdr, rt_motion, RTHandle{rt_shadow.id});
         });
-        reg.register_factory(PassId::DeferredLightingTiled, [=]() {
+        register_standard(PassId::DeferredLightingTiled, [=]() {
             return std::make_unique<PassDeferredLightingTiledAdapter>(rt_hdr, rt_motion, RTHandle{rt_shadow.id});
         });
-        reg.register_factory(PassId::Tonemap, [=]() {
+        register_standard(PassId::Tonemap, [=]() {
             return std::make_unique<PassTonemapAdapter>(rt_hdr, rt_ldr);
         });
         reg.register_factory("light_shafts", [=]() {
             return std::make_unique<PassLightShaftsAdapter>(rt_ldr, rt_motion, rt_shafts_tmp);
         });
-        reg.register_factory(PassId::MotionBlur, [=]() {
+        register_standard(PassId::MotionBlur, [=]() {
             return std::make_unique<PassMotionBlurAdapter>(rt_ldr, rt_motion, rt_motion_blur_tmp);
         });
-        reg.register_factory(PassId::DepthOfField, [=]() {
+        register_standard(PassId::DepthOfField, [=]() {
             return std::make_unique<PassDepthOfFieldAdapter>();
         });
-        reg.register_factory(PassId::TAA, [=]() {
+        register_standard(PassId::TAA, [=]() {
             return std::make_unique<PassTemporalAAAdapter>(rt_ldr);
         });
         return reg;

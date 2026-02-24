@@ -12,9 +12,12 @@
 
 #include <memory>
 #include <string>
+#include <string_view>
 #include <cstdint>
 #include <vector>
 #include <functional>
+#include <utility>
+#include <algorithm>
 
 #include "shs/core/context.hpp"
 #include "shs/frame/frame_params.hpp"
@@ -26,6 +29,85 @@
 
 namespace shs
 {
+    struct LightCullingRuntimePayload
+    {
+        uint32_t tile_size = 16u;
+        uint32_t tile_count_x = 0u;
+        uint32_t tile_count_y = 0u;
+        uint32_t max_lights_per_tile = 128u;
+        uint32_t visible_light_count = 0u;
+        std::vector<uint32_t> tile_light_counts{};
+
+        void reset()
+        {
+            tile_size = 16u;
+            tile_count_x = 0u;
+            tile_count_y = 0u;
+            max_lights_per_tile = 128u;
+            visible_light_count = 0u;
+            tile_light_counts.clear();
+        }
+    };
+
+    struct PassRuntimeInputs
+    {
+        const Scene* scene = nullptr;
+        const FrameParams* frame = nullptr;
+        RTRegistry* registry = nullptr;
+        LightCullingRuntimePayload* light_culling = nullptr;
+    };
+
+    struct PassExecutionRequest
+    {
+        PassRuntimeInputs inputs{};
+        std::vector<std::pair<std::string, RTHandle>> named_rt_handles{};
+        bool depth_prepass_ready = false;
+        bool light_culling_ready = false;
+        bool valid = false;
+
+        void set_named_rt(std::string key, RTHandle handle)
+        {
+            const auto it = std::ranges::find_if(named_rt_handles, [&](const auto& kv) {
+                return kv.first == key;
+            });
+            if (it != named_rt_handles.end())
+            {
+                it->second = handle;
+                return;
+            }
+            named_rt_handles.emplace_back(std::move(key), handle);
+        }
+
+        RTHandle find_named_rt(std::string_view key) const
+        {
+            const auto it = std::ranges::find_if(named_rt_handles, [&](const auto& kv) {
+                return kv.first == key;
+            });
+            if (it != named_rt_handles.end()) return it->second;
+            return RTHandle{};
+        }
+    };
+
+    struct PassExecutionResult
+    {
+        bool executed = false;
+        bool produced_depth = false;
+        bool produced_light_grid = false;
+        bool produced_light_index_list = false;
+
+        static constexpr PassExecutionResult not_executed()
+        {
+            return PassExecutionResult{};
+        }
+
+        static constexpr PassExecutionResult executed_no_outputs()
+        {
+            PassExecutionResult out{};
+            out.executed = true;
+            return out;
+        }
+    };
+
     enum class PassResourceType : uint32_t
     {
         Unknown = 0,
@@ -196,13 +278,28 @@ namespace shs
         {
             return technique_mode_in_mask(describe_contract().supported_modes_mask, mode);
         }
+        // Planning-side hook: resolve runtime inputs as an explicit value object.
+        virtual PassExecutionRequest build_execution_request(
+            const Context& ctx,
+            const Scene& scene,
+            const FrameParams& fp,
+            RTRegistry& rtr) const
+        {
+            (void)ctx;
+            PassExecutionRequest out{};
+            out.inputs.scene = &scene;
+            out.inputs.frame = &fp;
+            out.inputs.registry = &rtr;
+            out.valid = true;
+            return out;
+        }
         virtual bool is_interop_pass() const { return false; }
         virtual PassIODesc describe_io() const { return PassIODesc{}; }
         virtual void on_resize(Context& ctx, RTRegistry& rtr, int w, int h) { (void)ctx; (void)rtr; (void)w; (void)h; }
         virtual void on_scene_reset(Context& ctx, RTRegistry& rtr) { (void)ctx; (void)rtr; }
         virtual void reset_history(Context& ctx, RTRegistry& rtr) { (void)ctx; (void)rtr; }
-
-        virtual void execute(Context& ctx, const Scene& scene, const FrameParams& fp, RTRegistry& rtr) = 0;
+        // Runtime-side hook: all pass execution must flow through resolved request values.
+        virtual PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) = 0;
 
     protected:
         bool enabled_ = true;

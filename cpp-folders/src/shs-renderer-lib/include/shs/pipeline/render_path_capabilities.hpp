@@ -5,12 +5,11 @@
 
     FILE: render_path_capabilities.hpp
     MODULE: pipeline
-    PURPOSE: Capability snapshot and compatibility rule inputs for render path recipes.
+    PURPOSE: Capability snapshot and policy inputs for render path recipes.
 */
 
 
 #include "shs/core/context.hpp"
-#include "shs/rhi/drivers/vulkan/vk_backend.hpp"
 
 namespace shs
 {
@@ -42,8 +41,8 @@ namespace shs
         out.supports_offscreen = caps.supports_offscreen;
         out.supports_secondary_command_recording = caps.features.multithread_command_recording;
         out.supports_async_compute = caps.features.async_compute;
-        out.supports_depth_attachment = true;
-        out.depth_attachment_known = false;
+        out.supports_depth_attachment = caps.supports_depth_attachment;
+        out.depth_attachment_known = caps.depth_attachment_known;
         // Treat this as "occlusion culling support" (hardware query or software depth-cull path).
         out.supports_occlusion_query = true;
         return out;
@@ -63,25 +62,10 @@ namespace shs
         out.supports_offscreen = out.backend_caps.supports_offscreen;
         out.supports_secondary_command_recording = out.backend_caps.features.multithread_command_recording;
         out.supports_async_compute = out.backend_caps.features.async_compute;
-
-        // Baseline assumption during early compile time: depth is available unless
-        // a backend can explicitly report the opposite.
-        out.supports_depth_attachment = true;
-        out.depth_attachment_known = false;
+        out.supports_depth_attachment = out.backend_caps.supports_depth_attachment;
+        out.depth_attachment_known = out.backend_caps.depth_attachment_known;
         // Treat this as "occlusion culling support" (hardware query or software depth-cull path).
         out.supports_occlusion_query = true;
-
-        if (backend == RenderBackendType::Vulkan)
-        {
-#ifdef SHS_HAS_VULKAN
-            const auto* vk_backend = dynamic_cast<const VulkanRenderBackend*>(rb);
-            if (vk_backend)
-            {
-                out.depth_attachment_known = true;
-                out.supports_depth_attachment = vk_backend->has_depth_attachment();
-            }
-#endif
-        }
 
         return out;
     }

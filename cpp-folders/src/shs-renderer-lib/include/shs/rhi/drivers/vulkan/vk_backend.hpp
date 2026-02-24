@@ -92,6 +92,8 @@ namespace shs
                 c.limits.max_descriptor_sets_per_pipeline = 1;
                 c.limits.max_push_constant_bytes = 128;
                 c.supports_offscreen = true;
+                c.depth_attachment_known = false;
+                c.supports_depth_attachment = true;
             }
 #ifdef SHS_HAS_VULKAN
             c.features.validation_layers = layer_supported("VK_LAYER_KHRONOS_validation");
@@ -1480,6 +1482,8 @@ namespace shs
             c.limits.max_frames_in_flight = kMaxFramesInFlight;
             c.supports_offscreen = true;
             c.supports_present = surface_ != VK_NULL_HANDLE;
+            c.depth_attachment_known = true;
+            c.supports_depth_attachment = (depth_view_ != VK_NULL_HANDLE);
             c.features.validation_layers = layer_supported("VK_LAYER_KHRONOS_validation");
             c.features.push_constants = true;
             c.features.multithread_command_recording = true;

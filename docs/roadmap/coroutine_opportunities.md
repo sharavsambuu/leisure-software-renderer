@@ -2,6 +2,15 @@
 
 Research note on where `co_await`, `co_yield`, and `co_return` fit naturally in the renderer to replace complex state machines and callback chains.
 
+VOP alignment note:
+- Coroutine adoption is not a blocker for "full VOP-first" completion.
+- Coroutines should stay on runtime/effect edges and must not introduce planner-side hidden mutation.
+
+## 0. VOP Boundary Rules for Coroutines
+1. Do use coroutines for runtime scheduling, GPU waits, and async I/O orchestration.
+2. Do not use coroutines to mutate planning/reducer state machines in hidden or non-deterministic ways.
+3. Keep planner/reducer layers as explicit value transforms; coroutine handles/promises should not leak into planning contracts.
+
 ## 1. Logic → Coroutine Scripts
 Replace the callback-based `StateMachine` with sequential coroutine scripts for "Patrol -> Chase -> Attack" logic.
 

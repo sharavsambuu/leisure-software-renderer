@@ -323,26 +323,6 @@ namespace shs
         return result;
     }
 
-    // Backward-compatible alias. Kept for existing call sites that pass depth01.
-    inline TiledLightCullingResult cull_lights_tiled_depth_range(
-        std::span<const SceneShape> light_shapes,
-        const glm::mat4& view_proj,
-        uint32_t viewport_w,
-        uint32_t viewport_h,
-        uint32_t tile_size,
-        std::span<const float> tile_min_depths,
-        std::span<const float> tile_max_depths)
-    {
-        return cull_lights_tiled_depth01_range(
-            light_shapes,
-            view_proj,
-            viewport_w,
-            viewport_h,
-            tile_size,
-            tile_min_depths,
-            tile_max_depths);
-    }
-
 
     // =========================================================================
     //  Clustered Light Culling (3D grid)

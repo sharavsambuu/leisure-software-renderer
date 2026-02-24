@@ -59,6 +59,7 @@ namespace shs
         BackendLimitCaps limits{};
         bool supports_present = false;
         bool supports_offscreen = true;
+        bool depth_attachment_known = false;
+        bool supports_depth_attachment = true;
     };
 }
-

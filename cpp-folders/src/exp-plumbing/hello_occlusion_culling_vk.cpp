@@ -29,6 +29,7 @@
 #include <shs/geometry/jolt_debug_draw.hpp>
 #include <shs/geometry/jolt_shapes.hpp>
 #include <shs/geometry/scene_shape.hpp>
+#include <shs/input/value_actions.hpp>
 #include <shs/scene/scene_instance.hpp>
 #include <shs/platform/platform_input.hpp>
 #include <shs/rhi/backend/backend_factory.hpp>
@@ -131,8 +132,8 @@ struct FreeCamera
         const float speed = move_speed * (input.boost ? 2.0f : 1.0f);
         if (input.forward) pos += fwd * speed * dt;
         if (input.backward) pos -= fwd * speed * dt;
-        if (input.left) pos += right * speed * dt;
-        if (input.right) pos -= right * speed * dt;
+        if (input.left) pos -= right * speed * dt;
+        if (input.right) pos += right * speed * dt;
         if (input.ascend) pos += up * speed * dt;
         if (input.descend) pos -= up * speed * dt;
     }
@@ -142,6 +143,32 @@ struct FreeCamera
         return look_at_lh(pos, pos + forward_from_yaw_pitch(yaw, pitch), glm::vec3(0.0f, 1.0f, 0.0f));
     }
 };
+
+inline InputState make_runtime_input_state(const PlatformInputState& in)
+{
+    InputState out{};
+    out.forward = in.forward;
+    out.backward = in.backward;
+    out.left = in.left;
+    out.right = in.right;
+    out.ascend = in.ascend;
+    out.descend = in.descend;
+    out.boost = in.boost;
+    out.look_active = in.right_mouse_down || in.left_mouse_down;
+    float mdx = in.mouse_dx;
+    float mdy = in.mouse_dy;
+    if (std::abs(mdx) > FreeCamera::kMouseSpikeThreshold || std::abs(mdy) > FreeCamera::kMouseSpikeThreshold)
+    {
+        mdx = 0.0f;
+        mdy = 0.0f;
+    }
+    mdx = std::clamp(mdx, -FreeCamera::kMouseDeltaClamp, FreeCamera::kMouseDeltaClamp);
+    mdy = std::clamp(mdy, -FreeCamera::kMouseDeltaClamp, FreeCamera::kMouseDeltaClamp);
+    out.look_dx = -mdx;
+    out.look_dy = mdy;
+    out.quit = in.quit;
+    return out;
+}
 
 inline glm::mat4 compose_model(const glm::vec3& pos, const glm::vec3& rot_euler)
 {
@@ -843,7 +870,8 @@ private:
 
             if (e.type == SDL_MOUSEMOTION)
             {
-                if (!ignore_next_mouse_dt_)
+                const bool capture_mouse = mouse_right_held_ || mouse_left_held_ || relative_mouse_mode_;
+                if (capture_mouse && !ignore_next_mouse_dt_)
                 {
                     out.mouse_dx += static_cast<float>(e.motion.xrel);
                     out.mouse_dy += static_cast<float>(e.motion.yrel);
@@ -1337,6 +1365,10 @@ private:
         auto prev = t0;
         auto title_tick = t0;
         float ema_ms = 16.0f;
+        runtime_state_.camera.pos = camera_.pos;
+        runtime_state_.camera.yaw = camera_.yaw;
+        runtime_state_.camera.pitch = camera_.pitch;
+        runtime_state_.quit_requested = false;
 
         while (running)
         {
@@ -1362,7 +1394,18 @@ private:
                 occlusion_warmup_frames_ = kOcclusionWarmupFramesAfterCameraMove;
             }
 
-            camera_.update(input, dt);
+            runtime_actions_.clear();
+            emit_human_actions(
+                make_runtime_input_state(input),
+                runtime_actions_,
+                camera_.move_speed,
+                2.0f,
+                camera_.look_speed);
+            runtime_state_ = reduce_runtime_state(runtime_state_, runtime_actions_, dt);
+            if (runtime_state_.quit_requested) break;
+            camera_.pos = runtime_state_.camera.pos;
+            camera_.yaw = runtime_state_.camera.yaw;
+            camera_.pitch = runtime_state_.camera.pitch;
             if (camera_prev_valid_)
             {
                 const float pos_delta = glm::length(camera_.pos - camera_prev_pos_);
@@ -1498,6 +1541,8 @@ private:
     bool ignore_next_mouse_dt_ = false;
     bool mouse_right_held_ = false;
     bool mouse_left_held_ = false;
+    RuntimeState runtime_state_{};
+    std::vector<RuntimeAction> runtime_actions_{};
     bool apply_occlusion_this_frame_ = false;
     uint32_t occlusion_warmup_frames_ = 0;
     bool camera_prev_valid_ = false;

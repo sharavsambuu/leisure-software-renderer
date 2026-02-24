@@ -88,7 +88,11 @@ namespace shs
 
                 if (e.type == SDL_MOUSEMOTION)
                 {
-                    if (!ignore_next_mouse_dt_)
+                    const bool capture_mouse =
+                        right_mouse_held_ ||
+                        left_mouse_held_ ||
+                        (SDL_GetRelativeMouseMode() == SDL_TRUE);
+                    if (capture_mouse && !ignore_next_mouse_dt_)
                     {
                         out.mouse_dx += (float)e.motion.xrel;
                         out.mouse_dy += (float)e.motion.yrel;

@@ -33,6 +33,8 @@ namespace shs
             c.limits.max_color_attachments = 8;
             c.supports_present = true;
             c.supports_offscreen = true;
+            c.depth_attachment_known = true;
+            c.supports_depth_attachment = true;
             return c;
         }
         void begin_frame(Context& ctx, const RenderBackendFrameInfo& frame) override { (void)ctx; (void)frame; }

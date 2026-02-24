@@ -71,10 +71,8 @@ namespace shs
             if (input.forward)  pos += fwd * current_speed * dt;
             if (input.backward) pos -= fwd * current_speed * dt;
             
-            // LH convention check:
-            // hello_culling_sw (LH): move left = pos += right, move right = pos -= right
-            if (input.left)     pos += right * current_speed * dt;
-            if (input.right)    pos -= right * current_speed * dt;
+            if (input.left)     pos -= right * current_speed * dt;
+            if (input.right)    pos += right * current_speed * dt;
             
             if (input.ascend)   pos += up * current_speed * dt;
             if (input.descend)  pos -= up * current_speed * dt;

@@ -11,17 +11,13 @@
 
 
 #include <cmath>
-#include <glm/glm.hpp>
 
-#include "shs/input/camera_commands.hpp"
-#include "shs/input/command_processor.hpp"
+#include "shs/input/value_actions.hpp"
 
 namespace shs
 {
-    inline void emit_orbit_bot_commands(float time_s, CommandProcessor& out)
+    inline void emit_orbit_bot_runtime_actions(float time_s, std::vector<RuntimeAction>& out)
     {
-        const float sway = std::sin(time_s * 0.5f);
-        out.emplace<LookCommand>(0.35f + 0.25f * sway, 0.0f, 0.01f);
-        out.emplace<MoveCommand>(glm::vec3(0.0f, 0.0f, 0.4f + 0.2f * std::sin(time_s * 0.8f)), 2.0f);
+        emit_orbit_bot_actions(time_s, out);
     }
 }

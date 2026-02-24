@@ -135,6 +135,45 @@ endif()
 set(SHS_RENDERER_HAS_VULKAN "${SHS_RENDERER_HAS_VULKAN}" PARENT_SCOPE)
 set(SHS_SDL2_HAS_VULKAN "${SHS_SDL2_HAS_VULKAN}" PARENT_SCOPE)
 
+option(SHS_RENDERER_BUILD_TESTS "Build shs_renderer core tests" ON)
+if(SHS_RENDERER_BUILD_TESTS)
+    enable_testing()
+
+    add_executable(shs_renderer_vop_tests
+        tests/vop_core_tests.cpp
+    )
+    target_link_libraries(shs_renderer_vop_tests PRIVATE shs::renderer)
+    target_compile_features(shs_renderer_vop_tests PRIVATE cxx_std_20)
+    if(MSVC)
+        target_compile_options(shs_renderer_vop_tests PRIVATE /W4)
+    else()
+        target_compile_options(shs_renderer_vop_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+
+    add_custom_target(shs_renderer_vop_boundary_check
+        COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_vop_boundaries.sh"
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        COMMENT "Running VOP boundary checks for planner layer"
+        VERBATIM
+    )
+
+    add_test(
+        NAME shs_renderer_vop_boundary_check
+        COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_vop_boundaries.sh"
+    )
+    set_tests_properties(shs_renderer_vop_boundary_check PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+
+    add_test(
+        NAME shs_renderer_vop_tests
+        COMMAND shs_renderer_vop_tests
+    )
+    set_tests_properties(shs_renderer_vop_tests PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    )
+endif()
+
 
 # If you need ASSIMP_INCLUDE_DIR for some reason, prefer target includes:
 # target_include_directories(shs_renderer INTERFACE ${ASSIMP_INCLUDE_DIR})

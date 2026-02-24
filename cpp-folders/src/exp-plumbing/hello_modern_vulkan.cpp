@@ -13,7 +13,10 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+#include <shs/camera/convention.hpp>
 #include <shs/core/context.hpp>
+#include <shs/input/value_actions.hpp>
+#include <shs/input/value_input_latch.hpp>
 #include <shs/rhi/backend/backend_factory.hpp>
 #include <shs/rhi/drivers/vulkan/vk_backend.hpp>
 #include <shs/rhi/drivers/vulkan/vk_cmd_utils.hpp>
@@ -311,15 +314,36 @@ private:
     void main_loop()
     {
         bool running = true;
+        shs::RuntimeInputLatch input_latch{};
+        std::vector<shs::RuntimeInputEvent> pending_input_events{};
+        shs::RuntimeState runtime_state{};
+        std::vector<shs::RuntimeAction> runtime_actions{};
         while (running)
         {
             SDL_Event e;
             while (SDL_PollEvent(&e))
             {
-                if (e.type == SDL_QUIT) running = false;
+                if (e.type == SDL_QUIT)
+                {
+                    pending_input_events.push_back(shs::make_quit_input_event());
+                }
+                if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE)
+                {
+                    pending_input_events.push_back(shs::make_quit_input_event());
+                }
                 if (e.type == SDL_WINDOWEVENT && e.window.event == SDL_WINDOWEVENT_RESIZED)
                     vk_->request_resize(e.window.data1, e.window.data2);
             }
+            input_latch = shs::reduce_runtime_input_latch(input_latch, pending_input_events);
+            pending_input_events.clear();
+
+            runtime_actions.clear();
+            shs::InputState runtime_input{};
+            runtime_input.quit = input_latch.quit_requested;
+            shs::emit_human_actions(runtime_input, runtime_actions, 0.0f, 1.0f, 0.0f);
+            runtime_state = shs::reduce_runtime_state(runtime_state, runtime_actions, 0.0f);
+            if (runtime_state.quit_requested) break;
+
             draw_frame();
         }
     }
@@ -358,7 +382,11 @@ private:
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_);
         
         // Update Push Constants
-        glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)fi.extent.width / (float)fi.extent.height, 0.1f, 1000.0f);
+        glm::mat4 projection = shs::perspective_lh_no(
+            glm::radians(45.0f),
+            (float)fi.extent.width / (float)fi.extent.height,
+            0.1f,
+            1000.0f);
         glm::mat4 view = glm::translate(glm::mat4(1.0f), glm::vec3(0, 0, -25.0f));
         glm::mat4 viewProj = projection * view;
         vkCmdPushConstants(cmd, pipeline_layout_, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &viewProj);

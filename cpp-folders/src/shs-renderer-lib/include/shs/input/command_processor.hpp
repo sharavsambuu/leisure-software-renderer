@@ -31,14 +31,31 @@ namespace shs
             queue_.push_back(std::make_unique<TCmd>(std::forward<Args>(args)...));
         }
 
-        void execute_all(CommandContext& ctx)
+        std::vector<RuntimeAction> collect_runtime_actions()
         {
-            for (auto& c : queue_) c->execute(ctx);
+            std::vector<RuntimeAction> actions{};
+            actions.reserve(queue_.size());
+
+            for (auto& c : queue_)
+            {
+                if (!c) continue;
+                actions.push_back(c->to_runtime_action());
+            }
             queue_.clear();
+            return actions;
+        }
+
+        RuntimeState reduce_all(RuntimeState state, float dt)
+        {
+            const std::vector<RuntimeAction> actions = collect_runtime_actions();
+            if (!actions.empty())
+            {
+                state = reduce_runtime_state(state, actions, dt);
+            }
+            return state;
         }
 
     private:
         std::vector<CommandPtr> queue_{};
     };
 }
-

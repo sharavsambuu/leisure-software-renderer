@@ -23,6 +23,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include <shs/app/camera_sync.hpp>
+#include <shs/app/runtime_state.hpp>
 #include <shs/camera/convention.hpp>
 #include <shs/camera/follow_camera.hpp>
 #include <shs/core/context.hpp>
@@ -32,6 +33,8 @@
 #include <shs/gfx/rt_types.hpp>
 #include <shs/job/thread_pool_job_system.hpp>
 #include <shs/logic/fsm.hpp>
+#include <shs/input/input_state.hpp>
+#include <shs/input/value_actions.hpp>
 #include <shs/platform/platform_input.hpp>
 #include <shs/platform/platform_runtime.hpp>
 #include <shs/pipeline/technique_profile.hpp>
@@ -61,6 +64,35 @@
 
 namespace
 {
+    constexpr float MOUSE_SPIKE_THRESHOLD = 240.0f;
+    constexpr float MOUSE_DELTA_CLAMP = 90.0f;
+
+    inline shs::InputState make_runtime_input_state(const shs::PlatformInputState& in, bool look_active)
+    {
+        shs::InputState out{};
+        out.forward = in.forward;
+        out.backward = in.backward;
+        out.left = in.left;
+        out.right = in.right;
+        out.ascend = in.ascend;
+        out.descend = in.descend;
+        out.boost = in.boost;
+        out.look_active = look_active;
+        float mdx = in.mouse_dx;
+        float mdy = in.mouse_dy;
+        if (std::abs(mdx) > MOUSE_SPIKE_THRESHOLD || std::abs(mdy) > MOUSE_SPIKE_THRESHOLD)
+        {
+            mdx = 0.0f;
+            mdy = 0.0f;
+        }
+        out.look_dx = -std::clamp(mdx, -MOUSE_DELTA_CLAMP, MOUSE_DELTA_CLAMP);
+        out.look_dy = std::clamp(mdy, -MOUSE_DELTA_CLAMP, MOUSE_DELTA_CLAMP);
+        out.toggle_light_shafts = in.toggle_light_shafts;
+        out.toggle_bot = in.toggle_bot;
+        out.quit = in.quit;
+        return out;
+    }
+
     constexpr int WINDOW_W = 900;
     constexpr int WINDOW_H = 600;
     constexpr int CANVAS_W = 900;
@@ -248,14 +280,40 @@ namespace
                 if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_m) out.toggle_motion_blur = true;
                 if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_LEFTBRACKET) out.step_pass_isolation_prev = true;
                 if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_RIGHTBRACKET) out.step_pass_isolation_next = true;
-                if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_RIGHT) out.right_mouse_down = true;
-                if (e.type == SDL_MOUSEBUTTONUP && e.button.button == SDL_BUTTON_RIGHT) out.right_mouse_up = true;
-                if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) out.left_mouse_down = true;
-                if (e.type == SDL_MOUSEBUTTONUP && e.button.button == SDL_BUTTON_LEFT) out.left_mouse_up = true;
+                if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_RIGHT)
+                {
+                    mouse_right_held_ = true;
+                }
+                if (e.type == SDL_MOUSEBUTTONUP && e.button.button == SDL_BUTTON_RIGHT)
+                {
+                    mouse_right_held_ = false;
+                    out.right_mouse_up = true;
+                }
+                if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT)
+                {
+                    mouse_left_held_ = true;
+                }
+                if (e.type == SDL_MOUSEBUTTONUP && e.button.button == SDL_BUTTON_LEFT)
+                {
+                    mouse_left_held_ = false;
+                    out.left_mouse_up = true;
+                }
                 if (e.type == SDL_MOUSEMOTION)
                 {
-                    out.mouse_dx += (float)e.motion.xrel;
-                    out.mouse_dy += (float)e.motion.yrel;
+                    const bool capture_mouse =
+                        mouse_right_held_ ||
+                        mouse_left_held_ ||
+                        (SDL_GetRelativeMouseMode() == SDL_TRUE);
+                    if (capture_mouse && !ignore_next_mouse_dt_)
+                    {
+                        out.mouse_dx += (float)e.motion.xrel;
+                        out.mouse_dy += (float)e.motion.yrel;
+                    }
+                }
+                if (e.type == SDL_WINDOWEVENT && e.window.event == SDL_WINDOWEVENT_FOCUS_LOST)
+                {
+                    mouse_right_held_ = false;
+                    mouse_left_held_ = false;
                 }
                 if (vk_ &&
                     e.type == SDL_WINDOWEVENT &&
@@ -265,6 +323,27 @@ namespace
                 }
             }
 
+            const uint32_t ms = SDL_GetMouseState(nullptr, nullptr);
+            const bool relative_mode = SDL_GetRelativeMouseMode() == SDL_TRUE;
+            if ((ms & SDL_BUTTON(SDL_BUTTON_RIGHT)) != 0)
+            {
+                mouse_right_held_ = true;
+            }
+            else if (!relative_mode)
+            {
+                mouse_right_held_ = false;
+            }
+            if ((ms & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0)
+            {
+                mouse_left_held_ = true;
+            }
+            else if (!relative_mode)
+            {
+                mouse_left_held_ = false;
+            }
+            out.right_mouse_down = mouse_right_held_;
+            out.left_mouse_down = mouse_left_held_;
+
             const uint8_t* ks = SDL_GetKeyboardState(nullptr);
             out.forward = ks[SDL_SCANCODE_W] != 0;
             out.backward = ks[SDL_SCANCODE_S] != 0;
@@ -273,12 +352,14 @@ namespace
             out.descend = ks[SDL_SCANCODE_Q] != 0;
             out.ascend = ks[SDL_SCANCODE_E] != 0;
             out.boost = ks[SDL_SCANCODE_LSHIFT] != 0;
+            if (ignore_next_mouse_dt_) ignore_next_mouse_dt_ = false;
             return !out.quit;
         }
 
         void set_relative_mouse_mode(bool enabled)
         {
             SDL_SetRelativeMouseMode(enabled ? SDL_TRUE : SDL_FALSE);
+            if (enabled) ignore_next_mouse_dt_ = true;
         }
 
         void set_title(const std::string& title)
@@ -292,6 +373,9 @@ namespace
         int surface_h_ = 0;
         SDL_Window* window_ = nullptr;
         shs::VulkanRenderBackend* vk_ = nullptr;
+        bool mouse_right_held_ = false;
+        bool mouse_left_held_ = false;
+        bool ignore_next_mouse_dt_ = false;
     };
 
     class VulkanSceneRenderer
@@ -3534,7 +3618,7 @@ int main()
         true,
         true
     });
-    objects.sync_to_scene(scene);
+    scene.items = objects.to_render_items();
 
     // Frame-level render тохиргоонууд.
     shs::FrameParams fp{};
@@ -3606,6 +3690,9 @@ int main()
     // Free болон chase камерыг тусад нь хадгалж, эцсийн камераа blend хийж гаргана.
     shs::CameraRig free_cam = cam;
     shs::CameraRig chase_cam = cam;
+    shs::RuntimeState runtime_state{};
+    runtime_state.camera = free_cam;
+    std::vector<shs::RuntimeAction> runtime_actions{};
     float follow_blend = follow_camera ? 1.0f : 0.0f;
     bool drag_look = false;
     bool left_mouse_held = false;
@@ -3740,6 +3827,7 @@ int main()
             {
                 // Chase -> Free: одоогийн харагдаж буй камераас free горим эхэлнэ.
                 free_cam = cam;
+                runtime_state.camera = free_cam;
             }
             else if (!prev && follow_camera)
             {
@@ -3748,55 +3836,40 @@ int main()
             }
         }
 
-        // Mouse hold төлөвийг SDL-ээс шууд уншиж drag-look/relative mode-ыг тогтвортой болгоно.
-        const uint32_t mouse_state = SDL_GetMouseState(nullptr, nullptr);
-        left_mouse_held = (mouse_state & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
-        const bool right_now = (mouse_state & SDL_BUTTON(SDL_BUTTON_RIGHT)) != 0;
-        if (right_now != right_mouse_held)
+        // Runtime-ийн held-button төлөвийг ашиглаж drag-look/relative mode-ыг тогтвортой болгоно.
+        left_mouse_held = pin.left_mouse_down;
+        const bool right_now = pin.right_mouse_down;
+        right_mouse_held = right_now;
+        const bool look_drag_now = left_mouse_held || right_mouse_held;
+        if (look_drag_now != drag_look)
         {
-            right_mouse_held = right_now;
-            runtime.set_relative_mouse_mode(right_mouse_held);
+            runtime.set_relative_mouse_mode(look_drag_now);
+            pin.mouse_dx = 0.0f;
+            pin.mouse_dy = 0.0f;
         }
-        drag_look = left_mouse_held || right_mouse_held;
+        drag_look = look_drag_now;
 
-        // Left/Right drag хийхэд 2 горимд хоёуланд нь камер эргэлдэнэ.
-        if (drag_look)
-        {
-            if (follow_camera)
-            {
-                chase_orbit_yaw -= pin.mouse_dx * CHASE_ORBIT_SENS;
-                chase_orbit_pitch = std::clamp(
-                    chase_orbit_pitch + pin.mouse_dy * CHASE_ORBIT_SENS,
-                    glm::radians(5.0f),
-                    glm::radians(70.0f)
-                );
-            }
-            else
-            {
-                free_cam.yaw -= pin.mouse_dx * MOUSE_LOOK_SENS;
-                free_cam.pitch = std::clamp(
-                    free_cam.pitch - pin.mouse_dy * MOUSE_LOOK_SENS,
-                    glm::radians(-85.0f),
-                    glm::radians(85.0f)
-                );
-            }
-        }
+        const shs::InputState runtime_input = make_runtime_input_state(pin, drag_look);
+        runtime_actions.clear();
+        shs::emit_human_actions(
+            runtime_input,
+            runtime_actions,
+            FREE_CAM_BASE_SPEED,
+            2.5f,
+            MOUSE_LOOK_SENS);
+        runtime_state = shs::reduce_runtime_state(runtime_state, runtime_actions, dt);
+        if (runtime_state.quit_requested) break;
+        free_cam = runtime_state.camera;
 
-        // Free camera хөдөлгөөн (WASD + QE).
-        if (!follow_camera)
+        // Left/Right drag хийхэд follow горимд chase orbit эргэлдэнэ.
+        if (drag_look && follow_camera)
         {
-            const float move_speed = FREE_CAM_BASE_SPEED * (pin.boost ? 2.5f : 1.0f) * dt;
-            glm::vec3 fwd = free_cam.forward();
-            fwd.y = 0.0f;
-            const float fwd_len = glm::length(fwd);
-            if (fwd_len > 1e-6f) fwd /= fwd_len;
-            const glm::vec3 right = free_cam.right();
-            if (pin.forward) free_cam.pos += fwd * move_speed;
-            if (pin.backward) free_cam.pos -= fwd * move_speed;
-            if (pin.right) free_cam.pos -= right * move_speed;
-            if (pin.left) free_cam.pos += right * move_speed;
-            if (pin.ascend) free_cam.pos.y += move_speed;
-            if (pin.descend) free_cam.pos.y -= move_speed;
+            chase_orbit_yaw -= pin.mouse_dx * CHASE_ORBIT_SENS;
+            chase_orbit_pitch = std::clamp(
+                chase_orbit_pitch + pin.mouse_dy * CHASE_ORBIT_SENS,
+                glm::radians(5.0f),
+                glm::radians(70.0f)
+            );
         }
 
         // Logic systems ажиллуулна (subaru cruise, follow camera, monkey wiggle).
@@ -3869,7 +3942,7 @@ int main()
         cam.pitch = glm::mix(free_cam.pitch, chase_cam.pitch, follow_blend);
 
         // Logic-оор шинэчлэгдсэн object/camera төлөвийг render scene рүү sync хийнэ.
-        objects.sync_to_scene(scene);
+        scene.items = objects.to_render_items();
         const VkExtent2D cam_extent = vk_backend->swapchain_extent();
         if (cam_extent.width > 0 && cam_extent.height > 0)
         {

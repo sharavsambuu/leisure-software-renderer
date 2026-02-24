@@ -22,6 +22,7 @@
 #include <shs/gfx/rt_shadow.hpp>
 #include <shs/gfx/rt_types.hpp>
 #include <shs/job/thread_pool_job_system.hpp>
+#include <shs/input/value_actions.hpp>
 #include <shs/logic/fsm.hpp>
 #include <shs/pipeline/pass_adapters.hpp>
 #include <shs/pipeline/pluggable_pipeline.hpp>
@@ -59,6 +60,32 @@ namespace
     constexpr float MOUSE_LOOK_SENS = 0.0025f;
     constexpr float FREE_CAM_BASE_SPEED = 8.0f;
     constexpr float CHASE_ORBIT_SENS = 0.0025f;
+    constexpr float MOUSE_SPIKE_THRESHOLD = 240.0f;
+    constexpr float MOUSE_DELTA_CLAMP = 90.0f;
+
+    shs::InputState make_runtime_input_state(const shs::PlatformInputState& in, bool look_active)
+    {
+        shs::InputState out{};
+        out.forward = in.forward;
+        out.backward = in.backward;
+        out.left = in.left;
+        out.right = in.right;
+        out.ascend = in.ascend;
+        out.descend = in.descend;
+        out.boost = in.boost;
+        out.look_active = look_active;
+        float mdx = in.mouse_dx;
+        float mdy = in.mouse_dy;
+        if (std::abs(mdx) > MOUSE_SPIKE_THRESHOLD || std::abs(mdy) > MOUSE_SPIKE_THRESHOLD)
+        {
+            mdx = 0.0f;
+            mdy = 0.0f;
+        }
+        out.look_dx = -std::clamp(mdx, -MOUSE_DELTA_CLAMP, MOUSE_DELTA_CLAMP);
+        out.look_dy = std::clamp(mdy, -MOUSE_DELTA_CLAMP, MOUSE_DELTA_CLAMP);
+        out.quit = in.quit;
+        return out;
+    }
 
     enum class ModelForwardAxis : uint8_t
     {
@@ -699,7 +726,7 @@ int main()
         true,
         true
     });
-    objects.sync_to_scene(scene);
+    scene.items = objects.to_render_items();
 
     // Frame-level render тохиргоонууд.
     shs::FrameParams fp{};
@@ -815,7 +842,7 @@ int main()
         render_path_missing_passes.clear();
         render_path_configured =
             pipeline.configure_from_render_path_plan(pass_registry, plan, &render_path_missing_passes);
-        pipeline.set_strict_graph_validation(recipe.strict_validation);
+        pipeline.set_strict_graph_validation(true);
         return render_path_plan_valid && render_path_configured;
     };
 
@@ -890,6 +917,9 @@ int main()
     // Free болон chase камерыг тусад нь хадгалж, эцсийн камераа blend хийж гаргана.
     shs::CameraRig free_cam = cam;
     shs::CameraRig chase_cam = cam;
+    shs::RuntimeState runtime_state{};
+    runtime_state.camera = free_cam;
+    std::vector<shs::RuntimeAction> runtime_actions{};
     float follow_blend = follow_camera ? 1.0f : 0.0f;
     bool drag_look = false;
     bool left_mouse_held = false;
@@ -949,7 +979,6 @@ int main()
 
         shs::PlatformInputState pin{};
         if (!runtime.pump_input(pin)) break;
-        if (pin.quit) running = false;
         // F1: debug view цикл.
         if (pin.cycle_debug_view)
         {
@@ -1012,6 +1041,7 @@ int main()
             {
                 // Chase -> Free: одоогийн харагдаж буй камераас free горим эхэлнэ.
                 free_cam = cam;
+                runtime_state.camera = free_cam;
             }
             else if (!prev && follow_camera)
             {
@@ -1020,56 +1050,54 @@ int main()
             }
         }
 
-        // Mouse hold төлөвийг SDL-ээс шууд уншиж drag-look/relative mode-ыг тогтвортой болгоно.
-        const uint32_t mouse_state = SDL_GetMouseState(nullptr, nullptr);
-        left_mouse_held = (mouse_state & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
-        const bool right_now = (mouse_state & SDL_BUTTON(SDL_BUTTON_RIGHT)) != 0;
-        if (right_now != right_mouse_held)
+        // Runtime-ийн held-button төлөвийг ашиглаж drag-look/relative mode-ыг тогтвортой барина.
+        left_mouse_held = pin.left_mouse_down;
+        const bool right_now = pin.right_mouse_down;
+        right_mouse_held = right_now;
+        const bool look_drag_now = left_mouse_held || right_mouse_held;
+        if (look_drag_now != drag_look)
         {
-            right_mouse_held = right_now;
-            runtime.set_relative_mouse_mode(right_mouse_held);
+            runtime.set_relative_mouse_mode(look_drag_now);
+            pin.mouse_dx = 0.0f;
+            pin.mouse_dy = 0.0f;
         }
-        drag_look = left_mouse_held || right_mouse_held;
+        drag_look = look_drag_now;
 
-        // Left/Right drag хийхэд 2 горимд хоёуланд нь камер эргэлдэнэ.
-        if (drag_look)
+        // Follow camera үед Left/Right drag хийхэд chase orbit эргэлдэнэ.
+        if (drag_look && follow_camera)
         {
-            if (follow_camera)
-            {
-                chase_orbit_yaw -= pin.mouse_dx * CHASE_ORBIT_SENS;
-                chase_orbit_pitch = std::clamp(
-                    chase_orbit_pitch + pin.mouse_dy * CHASE_ORBIT_SENS,
-                    glm::radians(5.0f),
-                    glm::radians(70.0f)
-                );
-            }
-            else
-            {
-                free_cam.yaw -= pin.mouse_dx * MOUSE_LOOK_SENS;
-                free_cam.pitch = std::clamp(
-                    free_cam.pitch - pin.mouse_dy * MOUSE_LOOK_SENS,
-                    glm::radians(-85.0f),
-                    glm::radians(85.0f)
-                );
-            }
+            chase_orbit_yaw -= pin.mouse_dx * CHASE_ORBIT_SENS;
+            chase_orbit_pitch = std::clamp(
+                chase_orbit_pitch + pin.mouse_dy * CHASE_ORBIT_SENS,
+                glm::radians(5.0f),
+                glm::radians(70.0f)
+            );
         }
 
-        // Free camera хөдөлгөөн (WASD + QE).
-        if (!follow_camera)
+        shs::InputState runtime_input = make_runtime_input_state(pin, drag_look && !follow_camera);
+        if (follow_camera)
         {
-            const float move_speed = FREE_CAM_BASE_SPEED * (pin.boost ? 2.5f : 1.0f) * dt;
-            glm::vec3 fwd = free_cam.forward();
-            fwd.y = 0.0f;
-            const float fwd_len = glm::length(fwd);
-            if (fwd_len > 1e-6f) fwd /= fwd_len;
-            const glm::vec3 right = free_cam.right();
-            if (pin.forward) free_cam.pos += fwd * move_speed;
-            if (pin.backward) free_cam.pos -= fwd * move_speed;
-            if (pin.right) free_cam.pos -= right * move_speed;
-            if (pin.left) free_cam.pos += right * move_speed;
-            if (pin.ascend) free_cam.pos.y += move_speed;
-            if (pin.descend) free_cam.pos.y -= move_speed;
+            runtime_input.forward = false;
+            runtime_input.backward = false;
+            runtime_input.left = false;
+            runtime_input.right = false;
+            runtime_input.ascend = false;
+            runtime_input.descend = false;
+            runtime_input.boost = false;
+            runtime_input.look_active = false;
+            runtime_input.look_dx = 0.0f;
+            runtime_input.look_dy = 0.0f;
         }
+        runtime_actions.clear();
+        shs::emit_human_actions(
+            runtime_input,
+            runtime_actions,
+            FREE_CAM_BASE_SPEED,
+            2.5f,
+            MOUSE_LOOK_SENS);
+        runtime_state = shs::reduce_runtime_state(runtime_state, runtime_actions, dt);
+        if (runtime_state.quit_requested) running = false;
+        free_cam = runtime_state.camera;
 
         // Logic systems ажиллуулна (subaru cruise, follow camera, monkey wiggle).
         const auto t_logic0 = std::chrono::steady_clock::now();
@@ -1141,7 +1169,7 @@ int main()
         cam.pitch = glm::mix(free_cam.pitch, chase_cam.pitch, follow_blend);
 
         // Logic-оор шинэчлэгдсэн object/camera төлөвийг render scene рүү sync хийнэ.
-        objects.sync_to_scene(scene);
+        scene.items = objects.to_render_items();
         shs::sync_camera_to_scene(cam, scene, (float)CANVAS_W / (float)CANVAS_H);
         procedural_sky.set_sun_direction(scene.sun.dir_ws);
         scene.sky = use_cubemap_sky ? static_cast<const shs::ISkyModel*>(&cubemap_sky)

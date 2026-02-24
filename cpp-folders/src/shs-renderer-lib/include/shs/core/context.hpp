@@ -13,11 +13,13 @@
 #include <cstdint>
 #include <array>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 #include <glm/glm.hpp>
 
 #include "shs/job/job_system.hpp"
 #include "shs/gfx/rt_shadow.hpp"
+#include "shs/gfx/rt_types.hpp"
 #include "shs/rhi/core/backend.hpp"
 
 namespace shs
@@ -54,15 +56,22 @@ namespace shs
 
     struct ShadowRuntimeState
     {
+        using MeshBoundsPair = std::pair<glm::vec3, glm::vec3>;
         const RT_ShadowDepth* map = nullptr;
         glm::mat4 light_viewproj{1.0f};
         bool valid = false;
+        std::unordered_map<const void*, MeshBoundsPair> mesh_bounds_cache{};
 
         void reset()
         {
             map = nullptr;
             light_viewproj = glm::mat4(1.0f);
             valid = false;
+        }
+
+        void reset_caches()
+        {
+            mesh_bounds_cache.clear();
         }
     };
 
@@ -78,41 +87,30 @@ namespace shs
         }
     };
 
-    struct ForwardPlusRuntimeState
+    struct TemporalAARuntimeState
     {
-        bool depth_prepass_valid = false;
-        bool light_culling_valid = false;
-        uint32_t tile_size = 16;
-        uint32_t tile_count_x = 0;
-        uint32_t tile_count_y = 0;
-        uint32_t max_lights_per_tile = 128;
-        uint32_t visible_light_count = 0;
-        // CPU fallback-ын хувьд tile бүрийн гэрлийн тооны мэдээлэл.
-        std::vector<uint32_t> tile_light_counts{};
+        std::vector<Color> history{};
+        int history_w = 0;
+        int history_h = 0;
+        bool history_valid = false;
 
         void reset()
         {
-            depth_prepass_valid = false;
-            light_culling_valid = false;
-            tile_size = 16;
-            tile_count_x = 0;
-            tile_count_y = 0;
-            max_lights_per_tile = 128;
-            visible_light_count = 0;
-            tile_light_counts.clear();
+            history.clear();
+            history_w = 0;
+            history_h = 0;
+            history_valid = false;
         }
     };
 
     struct Context
     {
         IJobSystem* job_system = nullptr;
-        // Backward-compat: анхны single-backend pointer.
-        IRenderBackend* render_backend = nullptr;
         uint64_t frame_index = 0;
         RenderDebugStats debug{};
         ShadowRuntimeState shadow{};
         RenderHistoryState history{};
-        ForwardPlusRuntimeState forward_plus{};
+        TemporalAARuntimeState temporal_aa{};
         std::array<IRenderBackend*, 3> backends{nullptr, nullptr, nullptr};
         RenderBackendType primary_backend = RenderBackendType::Software;
 
@@ -124,10 +122,12 @@ namespace shs
         void register_backend(IRenderBackend* backend)
         {
             if (!backend) return;
+            const bool had_any_backend = has_backend(RenderBackendType::Software)
+                || has_backend(RenderBackendType::OpenGL)
+                || has_backend(RenderBackendType::Vulkan);
             backends[backend_index(backend->type())] = backend;
-            if (!render_backend)
+            if (!had_any_backend)
             {
-                render_backend = backend;
                 primary_backend = backend->type();
             }
         }
@@ -136,14 +136,12 @@ namespace shs
         {
             if (!backend) return;
             register_backend(backend);
-            render_backend = backend;
             primary_backend = backend->type();
         }
 
         void set_primary_backend(RenderBackendType type)
         {
             primary_backend = type;
-            if (auto* b = this->backend(type)) render_backend = b;
         }
 
         IRenderBackend* backend(RenderBackendType type) const
@@ -159,7 +157,9 @@ namespace shs
         IRenderBackend* active_backend() const
         {
             if (auto* b = backend(primary_backend)) return b;
-            if (render_backend) return render_backend;
+            if (auto* b = backend(RenderBackendType::Software)) return b;
+            if (auto* b = backend(RenderBackendType::OpenGL)) return b;
+            if (auto* b = backend(RenderBackendType::Vulkan)) return b;
             return backend(RenderBackendType::Software);
         }
 

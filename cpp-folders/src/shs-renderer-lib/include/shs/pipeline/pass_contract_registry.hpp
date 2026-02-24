@@ -245,12 +245,11 @@ namespace shs
             return contract_;
         }
 
-        void execute(Context& ctx, const Scene& scene, const FrameParams& fp, RTRegistry& rtr) override
+        PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
         {
             (void)ctx;
-            (void)scene;
-            (void)fp;
-            (void)rtr;
+            if (!request.valid) return PassExecutionResult::not_executed();
+            return PassExecutionResult::executed_no_outputs();
         }
 
     private:

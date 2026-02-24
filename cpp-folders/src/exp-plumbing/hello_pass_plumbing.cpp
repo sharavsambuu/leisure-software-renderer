@@ -21,8 +21,7 @@
 #include <shs/gfx/rt_registry.hpp>
 #include <shs/gfx/rt_shadow.hpp>
 #include <shs/gfx/rt_types.hpp>
-#include <shs/input/camera_commands.hpp>
-#include <shs/input/command_processor.hpp>
+#include <shs/input/value_actions.hpp>
 #include <shs/job/thread_pool_job_system.hpp>
 #include <shs/pipeline/pass_adapters.hpp>
 #include <shs/pipeline/pluggable_pipeline.hpp>
@@ -62,6 +61,8 @@ namespace
     constexpr float LOOK_SENSITIVITY = 0.0025f;
     constexpr float MOVE_SPEED = 6.0f;
     constexpr float MOVE_SPEED_BOOST = 12.0f;
+    constexpr float MOUSE_SPIKE_THRESHOLD = 240.0f;
+    constexpr float MOUSE_DELTA_CLAMP = 90.0f;
 
     float probe_shader_varyings()
     {
@@ -275,7 +276,7 @@ int main(int argc, char* argv[])
     runtime_state.bot_enabled = !capture.enabled;
 
     const float varying_probe_checksum = probe_shader_varyings();
-    shs::CommandProcessor command_processor{};
+    std::vector<shs::RuntimeAction> runtime_actions{};
     bool mouse_look_active = false;
 
     bool running = true;
@@ -300,41 +301,44 @@ int main(int argc, char* argv[])
         shs::PlatformInputState pin{};
         if (!runtime.pump_input(pin)) break;
 
-        const uint32_t mouse_state = SDL_GetMouseState(nullptr, nullptr);
-        const bool right_mouse_held = (mouse_state & SDL_BUTTON(SDL_BUTTON_RIGHT)) != 0;
-        if (right_mouse_held != mouse_look_active)
+        const bool look_drag = pin.right_mouse_down || pin.left_mouse_down;
+        if (look_drag != mouse_look_active)
         {
-            mouse_look_active = right_mouse_held;
+            mouse_look_active = look_drag;
             runtime.set_relative_mouse_mode(mouse_look_active);
+            pin.mouse_dx = 0.0f;
+            pin.mouse_dy = 0.0f;
         }
 
-        if (pin.quit)
+        runtime_actions.clear();
+        shs::InputState input_actions{};
+        input_actions.forward = pin.forward;
+        input_actions.backward = pin.backward;
+        input_actions.left = pin.left;
+        input_actions.right = pin.right;
+        input_actions.ascend = pin.ascend;
+        input_actions.descend = pin.descend;
+        input_actions.boost = pin.boost;
+        input_actions.look_active = mouse_look_active;
+        float mdx = pin.mouse_dx;
+        float mdy = pin.mouse_dy;
+        if (std::abs(mdx) > MOUSE_SPIKE_THRESHOLD || std::abs(mdy) > MOUSE_SPIKE_THRESHOLD)
         {
-            command_processor.emplace<shs::QuitCommand>();
+            mdx = 0.0f;
+            mdy = 0.0f;
         }
-        if (pin.toggle_light_shafts)
-        {
-            command_processor.emplace<shs::ToggleLightShaftsCommand>();
-        }
-        if (pin.toggle_bot)
-        {
-            command_processor.emplace<shs::ToggleBotCommand>();
-        }
-
-        const float move_speed = pin.boost ? MOVE_SPEED_BOOST : MOVE_SPEED;
-        if (pin.forward) command_processor.emplace<shs::MoveCommand>(glm::vec3(0.0f, 0.0f, 1.0f), move_speed);
-        if (pin.backward) command_processor.emplace<shs::MoveCommand>(glm::vec3(0.0f, 0.0f, -1.0f), move_speed);
-        if (pin.left) command_processor.emplace<shs::MoveCommand>(glm::vec3(-1.0f, 0.0f, 0.0f), move_speed);
-        if (pin.right) command_processor.emplace<shs::MoveCommand>(glm::vec3(1.0f, 0.0f, 0.0f), move_speed);
-        if (pin.ascend) command_processor.emplace<shs::MoveCommand>(glm::vec3(0.0f, 1.0f, 0.0f), move_speed);
-        if (pin.descend) command_processor.emplace<shs::MoveCommand>(glm::vec3(0.0f, -1.0f, 0.0f), move_speed);
-        if (mouse_look_active && (pin.mouse_dx != 0.0f || pin.mouse_dy != 0.0f))
-        {
-            command_processor.emplace<shs::LookCommand>(pin.mouse_dx, pin.mouse_dy, LOOK_SENSITIVITY);
-        }
-
-        shs::CommandContext command_ctx{runtime_state, dt};
-        command_processor.execute_all(command_ctx);
+        input_actions.look_dx = -std::clamp(mdx, -MOUSE_DELTA_CLAMP, MOUSE_DELTA_CLAMP);
+        input_actions.look_dy = std::clamp(mdy, -MOUSE_DELTA_CLAMP, MOUSE_DELTA_CLAMP);
+        input_actions.toggle_light_shafts = pin.toggle_light_shafts;
+        input_actions.toggle_bot = pin.toggle_bot;
+        input_actions.quit = pin.quit;
+        shs::emit_human_actions(
+            input_actions,
+            runtime_actions,
+            MOVE_SPEED,
+            MOVE_SPEED_BOOST / MOVE_SPEED,
+            LOOK_SENSITIVITY);
+        runtime_state = shs::reduce_runtime_state(runtime_state, runtime_actions, dt);
         if (runtime_state.quit_requested) running = false;
 
         if (pin.cycle_debug_view)
@@ -393,7 +397,7 @@ int main(int argc, char* argv[])
             runtime_state.camera.pitch = std::asin(glm::clamp(to_focus.y, -1.0f, 1.0f));
         }
 
-        objects.sync_to_scene(scene);
+        scene.items = objects.to_render_items();
         shs::sync_camera_to_scene(runtime_state.camera, scene, (float)CANVAS_W / (float)CANVAS_H);
 
         pipeline.execute(ctx, scene, fp, rtr);

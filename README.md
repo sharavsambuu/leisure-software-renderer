@@ -33,6 +33,25 @@
     Try to parallelize rasterization by subdividing large triangles based on certain threshold
         - recursively assemble rasterizable small triangle chunks into the list
         - submit them parallel rasterizer job system
+
+
+# SHS Renderer Constitutions
+
+    Constitution I (math + backend conventions)
+      docs/spec/conventions.md
+
+    Constitution II (Value-Oriented Programming)
+      docs/spec/value_oriented_programming.md
+
+    VOP roadmap
+      docs/roadmap/value_oriented_programming_first_class_roadmap.md
+
+    C++20 modernization policy for VOP migration
+      See "C++20 Guidance" in docs/spec/value_oriented_programming.md
+      and "C++20 Modernization Track" in docs/roadmap/value_oriented_programming_first_class_roadmap.md
+
+    VOP validation command (boundary + deterministic core tests)
+      cd cpp-folders/build && ctest -R "shs_renderer_vop_(boundary_check|tests)" --output-on-failure
     
 
 # About

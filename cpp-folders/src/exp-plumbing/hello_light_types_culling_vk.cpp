@@ -33,6 +33,7 @@
 #include <shs/geometry/volumes.hpp>
 #include <shs/lighting/light_culling_runtime.hpp>
 #include <shs/lighting/light_runtime.hpp>
+#include <shs/input/value_actions.hpp>
 #include <shs/platform/platform_input.hpp>
 #include <shs/rhi/backend/backend_factory.hpp>
 #include <shs/rhi/drivers/vulkan/vk_backend.hpp>
@@ -166,8 +167,8 @@ struct FreeCamera
         const float speed = move_speed * (input.boost ? 2.0f : 1.0f);
         if (input.forward) pos += fwd * speed * dt;
         if (input.backward) pos -= fwd * speed * dt;
-        if (input.left) pos += right * speed * dt;
-        if (input.right) pos -= right * speed * dt;
+        if (input.left) pos -= right * speed * dt;
+        if (input.right) pos += right * speed * dt;
         if (input.ascend) pos += up * speed * dt;
         if (input.descend) pos -= up * speed * dt;
     }
@@ -177,6 +178,32 @@ struct FreeCamera
         return look_at_lh(pos, pos + forward_from_yaw_pitch(yaw, pitch), glm::vec3(0.0f, 1.0f, 0.0f));
     }
 };
+
+inline InputState make_runtime_input_state(const PlatformInputState& in)
+{
+    InputState out{};
+    out.forward = in.forward;
+    out.backward = in.backward;
+    out.left = in.left;
+    out.right = in.right;
+    out.ascend = in.ascend;
+    out.descend = in.descend;
+    out.boost = in.boost;
+    out.look_active = in.right_mouse_down || in.left_mouse_down;
+    float mdx = in.mouse_dx;
+    float mdy = in.mouse_dy;
+    if (std::abs(mdx) > FreeCamera::kMouseSpikeThreshold || std::abs(mdy) > FreeCamera::kMouseSpikeThreshold)
+    {
+        mdx = 0.0f;
+        mdy = 0.0f;
+    }
+    mdx = std::clamp(mdx, -FreeCamera::kMouseDeltaClamp, FreeCamera::kMouseDeltaClamp);
+    mdy = std::clamp(mdy, -FreeCamera::kMouseDeltaClamp, FreeCamera::kMouseDeltaClamp);
+    out.look_dx = -mdx;
+    out.look_dy = mdy;
+    out.quit = in.quit;
+    return out;
+}
 
 enum class DemoShapeKind : uint8_t
 {
@@ -1181,7 +1208,8 @@ private:
 
             if (e.type == SDL_MOUSEMOTION)
             {
-                if (!ignore_next_mouse_dt_)
+                const bool capture_mouse = mouse_right_held_ || mouse_left_held_ || relative_mouse_mode_;
+                if (capture_mouse && !ignore_next_mouse_dt_)
                 {
                     out.mouse_dx += static_cast<float>(e.motion.xrel);
                     out.mouse_dy += static_cast<float>(e.motion.yrel);
@@ -1745,6 +1773,10 @@ private:
         auto prev = t0;
         auto title_tick = t0;
         float ema_ms = 16.0f;
+        runtime_state_.camera.pos = camera_.pos;
+        runtime_state_.camera.yaw = camera_.yaw;
+        runtime_state_.camera.pitch = camera_.pitch;
+        runtime_state_.quit_requested = false;
 
         while (true)
         {
@@ -1768,7 +1800,18 @@ private:
             if (input.toggle_follow_camera) light_culling_mode_ = next_light_culling_mode(light_culling_mode_);
 
             update_aspect_from_drawable();
-            camera_.update(input, dt);
+            runtime_actions_.clear();
+            emit_human_actions(
+                make_runtime_input_state(input),
+                runtime_actions_,
+                camera_.move_speed,
+                2.0f,
+                camera_.look_speed);
+            runtime_state_ = reduce_runtime_state(runtime_state_, runtime_actions_, dt);
+            if (runtime_state_.quit_requested) break;
+            camera_.pos = runtime_state_.camera.pos;
+            camera_.yaw = runtime_state_.camera.yaw;
+            camera_.pitch = runtime_state_.camera.pitch;
             update_scene_and_culling(time_s);
 
             const auto cpu0 = std::chrono::steady_clock::now();
@@ -1951,6 +1994,8 @@ private:
     SpotLightModel spot_model_{};
     RectAreaLightModel rect_model_{};
     TubeAreaLightModel tube_model_{};
+    RuntimeState runtime_state_{};
+    std::vector<RuntimeAction> runtime_actions_{};
 };
 
 } // namespace

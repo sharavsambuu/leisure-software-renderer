@@ -101,3 +101,12 @@ To prevent "direction drift," all shading math remains in **SHS World Space**.
 1. **Z-Flip**: Neglect of the Z-flip when passing SHS AABBs to Jolt for culling.
 2. **Sun Direction**: Mixing up "to scene" vs "to light" directions. Always use `sun_dir_to_scene_ws`.
 3. **NDC Mapping**: Forgetting the `[-1, 1]` to `[0, 1]` conversion when porting software shadow logic to Vulkan.
+
+---
+
+## 7. Constitutional Link: VOP
+
+This document is Constitution I. SHS renderer also defines Constitution II for Value-Oriented Programming (VOP).
+
+- **Constitution II**: `docs/spec/value_oriented_programming.md`
+- **Constitutional rule of thumb**: keep pure value transforms in the center, keep backend side effects at execution boundaries.

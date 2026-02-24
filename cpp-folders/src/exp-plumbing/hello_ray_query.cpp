@@ -13,6 +13,8 @@
 #include <vulkan/vulkan.h>
 
 #include <shs/core/context.hpp>
+#include <shs/input/value_actions.hpp>
+#include <shs/input/value_input_latch.hpp>
 #include <shs/rhi/backend/backend_factory.hpp>
 #include <shs/rhi/drivers/vulkan/vk_backend.hpp>
 #include <shs/rhi/drivers/vulkan/vk_cmd_utils.hpp>
@@ -23,6 +25,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+#include <shs/camera/convention.hpp>
 namespace
 {
 constexpr int kDefaultW = 960;
@@ -429,17 +432,37 @@ private:
     void main_loop()
     {
         bool running = true;
+        shs::RuntimeInputLatch input_latch{};
+        std::vector<shs::RuntimeInputEvent> pending_input_events{};
+        shs::RuntimeState runtime_state{};
+        std::vector<shs::RuntimeAction> runtime_actions{};
         while (running)
         {
             SDL_Event e;
             while (SDL_PollEvent(&e))
             {
-                if (e.type == SDL_QUIT) running = false;
+                if (e.type == SDL_QUIT)
+                {
+                    pending_input_events.push_back(shs::make_quit_input_event());
+                }
                 if (e.type == SDL_KEYDOWN)
                 {
-                    if (e.key.keysym.sym == SDLK_ESCAPE) running = false;
+                    if (e.key.keysym.sym == SDLK_ESCAPE)
+                    {
+                        pending_input_events.push_back(shs::make_quit_input_event());
+                    }
                 }
             }
+            input_latch = shs::reduce_runtime_input_latch(input_latch, pending_input_events);
+            pending_input_events.clear();
+
+            runtime_actions.clear();
+            shs::InputState runtime_input{};
+            runtime_input.quit = input_latch.quit_requested;
+            shs::emit_human_actions(runtime_input, runtime_actions, 0.0f, 1.0f, 0.0f);
+            runtime_state = shs::reduce_runtime_state(runtime_state, runtime_actions, 0.0f);
+            if (runtime_state.quit_requested) break;
+
             draw_frame();
         }
     }
@@ -470,8 +493,12 @@ private:
 
         PushConstants pcs{};
         pcs.model = glm::mat4(1.0f);
-        pcs.view = glm::lookAt(glm::vec3(0, 5, 10), glm::vec3(0, 2, 0), glm::vec3(0, 1, 0));
-        pcs.proj = glm::perspective(glm::radians(45.0f), (float)fi.extent.width / fi.extent.height, 0.1f, 100.0f);
+        pcs.view = shs::look_at_lh(glm::vec3(0, 5, 10), glm::vec3(0, 2, 0), glm::vec3(0, 1, 0));
+        pcs.proj = shs::perspective_lh_no(
+            glm::radians(45.0f),
+            (float)fi.extent.width / fi.extent.height,
+            0.1f,
+            100.0f);
         pcs.lightPos = glm::vec3(std::sin(SDL_GetTicks() * 0.001f) * 5.0f, 6.0f, 2.0f);
 
         vkCmdPushConstants(fi.cmd, pLayout_, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(pcs), &pcs);

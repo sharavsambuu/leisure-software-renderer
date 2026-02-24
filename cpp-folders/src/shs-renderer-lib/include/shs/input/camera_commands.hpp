@@ -24,14 +24,9 @@ namespace shs
             : local_dir_(local_dir), speed_mps_(meters_per_sec)
         {}
 
-        void execute(CommandContext& ctx) override
+        RuntimeAction to_runtime_action() const override
         {
-            auto& cam = ctx.state.camera;
-            const glm::vec3 fwd = cam.forward();
-            const glm::vec3 right = cam.right();
-            const glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
-            const glm::vec3 world_delta = right * local_dir_.x + up * local_dir_.y + fwd * local_dir_.z;
-            cam.pos += world_delta * (speed_mps_ * ctx.dt);
+            return make_move_local_action(local_dir_, speed_mps_);
         }
 
     private:
@@ -46,12 +41,9 @@ namespace shs
             : dx_(dx), dy_(dy), sensitivity_(sensitivity)
         {}
 
-        void execute(CommandContext& ctx) override
+        RuntimeAction to_runtime_action() const override
         {
-            auto& cam = ctx.state.camera;
-            cam.yaw += dx_ * sensitivity_;
-            cam.pitch -= dy_ * sensitivity_;
-            cam.pitch = glm::clamp(cam.pitch, glm::radians(-85.0f), glm::radians(85.0f));
+            return make_look_action(dx_, dy_, sensitivity_);
         }
 
     private:
@@ -63,27 +55,27 @@ namespace shs
     class ToggleLightShaftsCommand final : public ICommand
     {
     public:
-        void execute(CommandContext& ctx) override
+        RuntimeAction to_runtime_action() const override
         {
-            ctx.state.enable_light_shafts = !ctx.state.enable_light_shafts;
+            return make_toggle_light_shafts_action();
         }
     };
 
     class ToggleBotCommand final : public ICommand
     {
     public:
-        void execute(CommandContext& ctx) override
+        RuntimeAction to_runtime_action() const override
         {
-            ctx.state.bot_enabled = !ctx.state.bot_enabled;
+            return make_toggle_bot_action();
         }
     };
 
     class QuitCommand final : public ICommand
     {
     public:
-        void execute(CommandContext& ctx) override
+        RuntimeAction to_runtime_action() const override
         {
-            ctx.state.quit_requested = true;
+            return make_quit_action();
         }
     };
 }

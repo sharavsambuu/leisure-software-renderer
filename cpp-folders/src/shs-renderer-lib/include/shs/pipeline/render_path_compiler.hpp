@@ -10,7 +10,7 @@
 
 
 #include <string>
-#include <memory>
+#include <optional>
 #include <unordered_set>
 #include <vector>
 
@@ -233,20 +233,11 @@ namespace shs
                     continue;
                 }
 
-                std::unique_ptr<IRenderPass> pass_instance =
+                const std::optional<bool> backend_ok_hint =
                     pass_id_is_standard(entry_pass_id)
-                        ? pass_registry->create(entry_pass_id)
-                        : pass_registry->create(canonical_id);
-                if (!pass_instance)
-                {
-                    const std::string msg =
-                        "Pass id '" + canonical_id + "' is registered but factory returned null.";
-                    if (entry.required && rules_.reject_unknown_required_passes) push_error(msg);
-                    else push_warning(msg);
-                    continue;
-                }
-
-                if (!pass_instance->supports_backend(recipe.backend))
+                        ? pass_registry->supports_backend_hint(entry_pass_id, recipe.backend)
+                        : pass_registry->supports_backend_hint(canonical_id, recipe.backend);
+                if (backend_ok_hint.has_value() && !backend_ok_hint.value())
                 {
                     const std::string msg =
                         "Pass id '" + canonical_id + "' does not support backend '" +
@@ -256,7 +247,11 @@ namespace shs
                     continue;
                 }
 
-                if (!pass_instance->supports_technique_mode(recipe.technique_mode))
+                const std::optional<bool> mode_ok_hint =
+                    pass_id_is_standard(entry_pass_id)
+                        ? pass_registry->supports_technique_mode_hint(entry_pass_id, recipe.technique_mode)
+                        : pass_registry->supports_technique_mode_hint(canonical_id, recipe.technique_mode);
+                if (mode_ok_hint.has_value() && !mode_ok_hint.value())
                 {
                     const std::string msg =
                         "Pass id '" + canonical_id + "' does not support technique mode '" +
@@ -266,7 +261,18 @@ namespace shs
                     continue;
                 }
 
-                plan.pass_chain.push_back(RenderPathCompiledPass{canonical_id, entry_pass_id, entry.required});
+                if (backend_ok_hint.has_value() && mode_ok_hint.has_value())
+                {
+                    plan.pass_chain.push_back(RenderPathCompiledPass{canonical_id, entry_pass_id, entry.required});
+                    continue;
+                }
+
+                const std::string msg =
+                    "Pass id '" + canonical_id +
+                    "' has no planner capability hints (backend/mode). "
+                    "Register descriptor hints in PassFactoryRegistry for VOP-first planning.";
+                if (entry.required) push_error(msg);
+                else push_warning(msg);
             }
 
             if (plan.pass_chain.empty() && rules_.reject_empty_pass_chain)

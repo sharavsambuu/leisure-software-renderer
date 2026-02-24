@@ -11,7 +11,6 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <memory>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -342,27 +341,22 @@ namespace shs
 
             TechniquePassContract contract{};
             bool have_contract = false;
-            if (pass_registry)
-            {
-                std::unique_ptr<IRenderPass> pass =
-                    pass_id_is_standard(pass_id)
-                        ? pass_registry->create(pass_id)
-                        : pass_registry->create(pass_entry.id);
-                if (pass && pass->supports_technique_mode(plan.technique_mode))
-                {
-                    contract = pass->describe_contract();
-                    have_contract = true;
-                }
-            }
-            if (!have_contract)
+            if (pass_id_is_standard(pass_id))
             {
                 have_contract = lookup_standard_pass_contract(pass_id, contract);
             }
-
+            if (!have_contract && pass_registry)
+            {
+                have_contract =
+                    pass_id_is_standard(pass_id)
+                        ? pass_registry->try_get_contract_hint(pass_id, contract)
+                        : pass_registry->try_get_contract_hint(pass_entry.id, contract);
+            }
             if (!have_contract)
             {
                 out.warnings.push_back(
-                    "No semantic contract available for pass '" + pass_name + "'. Resource planning is partial.");
+                    "No semantic contract available for pass '" + pass_name +
+                    "' (descriptor hint required). Resource planning is partial.");
                 out.pass_bindings.push_back(std::move(binding));
                 continue;
             }

@@ -144,10 +144,10 @@ namespace shs
     {
         out_forward = normalize_or(forward, glm::vec3(0.0f, 0.0f, 1.0f));
         const glm::vec3 up_ref = normalize_or(up_hint, glm::vec3(0.0f, 1.0f, 0.0f));
-        out_right = glm::cross(out_forward, up_ref);
+        out_right = glm::cross(up_ref, out_forward);
         out_right = normalize_or(out_right, right_from_forward(out_forward, up_ref));
-        out_up = normalize_or(glm::cross(out_right, out_forward), glm::vec3(0.0f, 1.0f, 0.0f));
-        out_right = normalize_or(glm::cross(out_forward, out_up), out_right);
+        out_up = normalize_or(glm::cross(out_forward, out_right), glm::vec3(0.0f, 1.0f, 0.0f));
+        out_right = normalize_or(glm::cross(out_up, out_forward), out_right);
     }
 
     inline glm::mat4 model_from_basis(

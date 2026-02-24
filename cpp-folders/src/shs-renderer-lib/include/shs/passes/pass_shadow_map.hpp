@@ -22,8 +22,6 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
-#include <unordered_map>
-
 #include <glm/gtc/matrix_transform.hpp>
 
 namespace shs
@@ -82,8 +80,7 @@ namespace shs
             // Shadow camera фрустум таслахгүйн тулд world AABB-г консерватив байдлаар цуглуулна.
             AABB scene_aabb{};
             bool has_any_shadow_caster = false;
-            using BoundsPair = std::pair<glm::vec3, glm::vec3>;
-            static std::unordered_map<const MeshData*, BoundsPair> mesh_bounds_cache{};
+            auto& mesh_bounds_cache = ctx.shadow.mesh_bounds_cache;
             for (const auto& item : in.scene->items)
             {
                 if (!item.visible || !item.casts_shadow) continue;
@@ -93,7 +90,8 @@ namespace shs
                     const glm::mat4 model = make_model(item);
                     glm::vec3 bmin(std::numeric_limits<float>::max());
                     glm::vec3 bmax(std::numeric_limits<float>::lowest());
-                    auto it = mesh_bounds_cache.find(mesh);
+                    const void* mesh_key = static_cast<const void*>(mesh);
+                    auto it = mesh_bounds_cache.find(mesh_key);
                     if (it == mesh_bounds_cache.end())
                     {
                         for (const glm::vec3& p : mesh->positions)
@@ -101,7 +99,7 @@ namespace shs
                             bmin = glm::min(bmin, p);
                             bmax = glm::max(bmax, p);
                         }
-                        mesh_bounds_cache.emplace(mesh, BoundsPair{bmin, bmax});
+                        mesh_bounds_cache.emplace(mesh_key, shs::ShadowRuntimeState::MeshBoundsPair{bmin, bmax});
                     }
                     else
                     {

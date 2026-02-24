@@ -13,21 +13,16 @@
 #include <memory>
 
 #include "shs/app/runtime_state.hpp"
+#include "shs/input/value_actions.hpp"
 
 namespace shs
 {
-    struct CommandContext
-    {
-        RuntimeState& state;
-        float dt = 0.0f;
-    };
-
     struct ICommand
     {
         virtual ~ICommand() = default;
-        virtual void execute(CommandContext& ctx) = 0;
+        // VOP-first command contract: commands must emit an equivalent value action.
+        virtual RuntimeAction to_runtime_action() const = 0;
     };
 
     using CommandPtr = std::unique_ptr<ICommand>;
 }
-

@@ -33,6 +33,21 @@ namespace shs
     class SceneObjectSet
     {
     public:
+        std::vector<RenderItem> to_render_items() const
+        {
+            std::vector<RenderItem> out{};
+            out.reserve(objects_.size());
+            for (const auto& o : objects_)
+            {
+                RenderItem ri = make_render_item(o.mesh, o.material, o.tr.pos, o.tr.scl, o.tr.rot_euler);
+                ri.object_id = o.object_id;
+                ri.visible = o.visible;
+                ri.casts_shadow = o.casts_shadow;
+                out.push_back(ri);
+            }
+            return out;
+        }
+
         SceneObject& add(SceneObject obj)
         {
             if (obj.object_id == 0)
@@ -59,21 +74,6 @@ namespace shs
                 if (o.name == name) return &o;
             }
             return nullptr;
-        }
-
-        void sync_to_scene(Scene& scene) const
-        {
-            scene.items.clear();
-            scene.items.reserve(objects_.size());
-
-            for (const auto& o : objects_)
-            {
-                RenderItem ri = make_render_item(o.mesh, o.material, o.tr.pos, o.tr.scl, o.tr.rot_euler);
-                ri.object_id = o.object_id;
-                ri.visible = o.visible;
-                ri.casts_shadow = o.casts_shadow;
-                scene.items.push_back(ri);
-            }
         }
 
     private:

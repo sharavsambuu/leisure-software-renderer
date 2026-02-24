@@ -44,7 +44,7 @@ inline glm::vec3 pbr_direct_sun_shadowed(
     const glm::vec3& pos_ws,
     const glm::vec3& N,
     const glm::vec3& V,                 // view dir (from pos to camera) normalized
-    const glm::vec3& sun_dir_ws,        // direction FROM surface TO sun
+    const glm::vec3& sun_dir_ws,        // direction FROM sun TO scene
     const glm::vec3& sun_radiance,      // linear HDR radiance
     const glm::vec3& albedo,            // linear
     float metal,
@@ -52,8 +52,8 @@ inline glm::vec3 pbr_direct_sun_shadowed(
     const RT_ShadowDepth* shadow_map,   // can be null
     const ShadowParams* shadow_params   // can be null
 ){
-    // sun_dir_ws нь гадаргуугаас нар луу чиглэсэн вектор байна.
-    const glm::vec3 L = glm::normalize(sun_dir_ws);
+    // SHS convention: sun_dir_ws points from light toward scene.
+    const glm::vec3 L = glm::normalize(-sun_dir_ws);
 
     const float NdotL = std::max(0.0f, glm::dot(N, L));
     if (NdotL <= 0.0f) return glm::vec3(0.0f);

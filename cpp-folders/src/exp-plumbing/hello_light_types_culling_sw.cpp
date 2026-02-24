@@ -28,6 +28,7 @@
 #include <shs/gfx/rt_types.hpp>
 #include <shs/lighting/light_culling_runtime.hpp>
 #include <shs/lighting/light_runtime.hpp>
+#include <shs/input/value_actions.hpp>
 #include <shs/platform/sdl/sdl_runtime.hpp>
 #include <shs/rhi/backend/backend_factory.hpp>
 #include <shs/scene/scene_culling.hpp>
@@ -93,8 +94,8 @@ struct FreeCamera
         const float speed = move_speed * (input.boost ? 2.0f : 1.0f);
         if (input.forward) pos += fwd * speed * dt;
         if (input.backward) pos -= fwd * speed * dt;
-        if (input.left) pos += right * speed * dt;
-        if (input.right) pos -= right * speed * dt;
+        if (input.left) pos -= right * speed * dt;
+        if (input.right) pos += right * speed * dt;
         if (input.ascend) pos += up * speed * dt;
         if (input.descend) pos -= up * speed * dt;
     }
@@ -104,6 +105,32 @@ struct FreeCamera
         return look_at_lh(pos, pos + forward_from_yaw_pitch(yaw, pitch), glm::vec3(0.0f, 1.0f, 0.0f));
     }
 };
+
+InputState make_runtime_input_state(const PlatformInputState& in)
+{
+    InputState out{};
+    out.forward = in.forward;
+    out.backward = in.backward;
+    out.left = in.left;
+    out.right = in.right;
+    out.ascend = in.ascend;
+    out.descend = in.descend;
+    out.boost = in.boost;
+    out.look_active = in.right_mouse_down || in.left_mouse_down;
+    float mdx = in.mouse_dx;
+    float mdy = in.mouse_dy;
+    if (std::abs(mdx) > FreeCamera::kMouseSpikeThreshold || std::abs(mdy) > FreeCamera::kMouseSpikeThreshold)
+    {
+        mdx = 0.0f;
+        mdy = 0.0f;
+    }
+    mdx = std::clamp(mdx, -FreeCamera::kMouseDeltaClamp, FreeCamera::kMouseDeltaClamp);
+    mdy = std::clamp(mdy, -FreeCamera::kMouseDeltaClamp, FreeCamera::kMouseDeltaClamp);
+    out.look_dx = -mdx;
+    out.look_dy = mdy;
+    out.quit = in.quit;
+    return out;
+}
 
 enum class DemoShapeKind : uint8_t
 {
@@ -701,6 +728,11 @@ int main()
 
     auto start_time = std::chrono::steady_clock::now();
     auto last_time = start_time;
+    RuntimeState runtime_state{};
+    runtime_state.camera.pos = camera.pos;
+    runtime_state.camera.yaw = camera.yaw;
+    runtime_state.camera.pitch = camera.pitch;
+    std::vector<RuntimeAction> runtime_actions{};
 
     while (true)
     {
@@ -731,7 +763,18 @@ int main()
             input.mouse_dy = 0.0f;
         }
 
-        camera.update(input, dt);
+        runtime_actions.clear();
+        emit_human_actions(
+            make_runtime_input_state(input),
+            runtime_actions,
+            camera.move_speed,
+            2.0f,
+            camera.look_speed);
+        runtime_state = reduce_runtime_state(runtime_state, runtime_actions, dt);
+        if (runtime_state.quit_requested) break;
+        camera.pos = runtime_state.camera.pos;
+        camera.yaw = runtime_state.camera.yaw;
+        camera.pitch = runtime_state.camera.pitch;
 
         for (SceneInstance& inst : instances)
         {

@@ -5,6 +5,8 @@ project("leisure-software-renderer")
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+include(CTest)
+
 # Keep MSVC runtime selection consistent across all targets (including Jolt).
 # This avoids LNK2038 / LNK2005 mismatches when Jolt is built as /MT[d]
 # while app targets are /MD[d] (or vice versa).

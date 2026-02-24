@@ -31,6 +31,7 @@
 
 #include <shs/core/context.hpp>
 #include <shs/core/units.hpp>
+#include <shs/app/runtime_state.hpp>
 #include <shs/camera/camera_math.hpp>
 #include <shs/camera/convention.hpp>
 #include <shs/camera/light_camera.hpp>
@@ -43,6 +44,9 @@
 #include <shs/geometry/scene_shape.hpp>
 #include <shs/job/thread_pool_job_system.hpp>
 #include <shs/job/wait_group.hpp>
+#include <shs/input/input_state.hpp>
+#include <shs/input/value_actions.hpp>
+#include <shs/input/value_input_latch.hpp>
 #include <shs/lighting/light_culling_mode.hpp>
 #include <shs/lighting/light_runtime.hpp>
 #include <shs/lighting/light_set.hpp>
@@ -505,8 +509,8 @@ struct FreeCamera
         const float speed = move_speed * (boost ? 2.0f : 1.0f);
         if (move_forward) pos += fwd * speed * dt;
         if (move_backward) pos -= fwd * speed * dt;
-        if (move_left) pos += right * speed * dt;
-        if (move_right) pos -= right * speed * dt;
+        if (move_left) pos -= right * speed * dt;
+        if (move_right) pos += right * speed * dt;
         if (move_up) pos += up * speed * dt;
         if (move_down) pos -= up * speed * dt;
     }
@@ -516,6 +520,52 @@ struct FreeCamera
         return shs::look_at_lh(pos, pos + shs::forward_from_yaw_pitch(yaw, pitch), glm::vec3(0.0f, 1.0f, 0.0f));
     }
 };
+
+shs::CameraRig to_camera_rig(const FreeCamera& c)
+{
+    shs::CameraRig out{};
+    out.pos = c.pos;
+    out.yaw = c.yaw;
+    out.pitch = c.pitch;
+    return out;
+}
+
+FreeCamera from_camera_rig(const shs::CameraRig& c, const FreeCamera& seed)
+{
+    FreeCamera out = seed;
+    out.pos = c.pos;
+    out.yaw = c.yaw;
+    out.pitch = c.pitch;
+    return out;
+}
+
+shs::InputState make_runtime_input_state(
+    const shs::RuntimeInputLatch& latch,
+    bool pending_quit_action)
+{
+    shs::InputState out{};
+    out.forward = latch.forward;
+    out.backward = latch.backward;
+    out.left = latch.left;
+    out.right = latch.right;
+    out.ascend = latch.ascend;
+    out.descend = latch.descend;
+    out.boost = latch.boost;
+
+    const bool look_active = latch.left_mouse_down || latch.right_mouse_down;
+    out.look_active = look_active;
+    float mdx = latch.mouse_dx_accum;
+    float mdy = latch.mouse_dy_accum;
+    if (std::abs(mdx) > FreeCamera::kMouseSpikeThreshold || std::abs(mdy) > FreeCamera::kMouseSpikeThreshold)
+    {
+        mdx = 0.0f;
+        mdy = 0.0f;
+    }
+    out.look_dx = -std::clamp(mdx, -FreeCamera::kMouseDeltaClamp, FreeCamera::kMouseDeltaClamp);
+    out.look_dy = std::clamp(mdy, -FreeCamera::kMouseDeltaClamp, FreeCamera::kMouseDeltaClamp);
+    out.quit = pending_quit_action || latch.quit_requested;
+    return out;
+}
 
 enum class DebugVolumeMeshKind : uint8_t
 {
@@ -1141,6 +1191,7 @@ private:
         shs::ResourceRegistry resources{};
         shs::RTRegistry rtr{};
         shs::PluggablePipeline pipeline{};
+        pipeline.set_strict_graph_validation(true);
 
         shs::RT_ShadowDepth shadow_rt{256, 256};
         shs::RT_ColorHDR hdr_rt{static_cast<int>(w), static_cast<int>(h)};
@@ -1194,8 +1245,12 @@ private:
         scene.cam.znear = kDemoNearZ;
         scene.cam.zfar = kDemoFarZ;
         scene.cam.fov_y_radians = glm::radians(60.0f);
-        scene.cam.view = glm::lookAt(scene.cam.pos, scene.cam.target, scene.cam.up);
-        scene.cam.proj = glm::perspective(scene.cam.fov_y_radians, static_cast<float>(w) / static_cast<float>(h), scene.cam.znear, scene.cam.zfar);
+        scene.cam.view = shs::look_at_lh(scene.cam.pos, scene.cam.target, scene.cam.up);
+        scene.cam.proj = shs::perspective_lh_no(
+            scene.cam.fov_y_radians,
+            static_cast<float>(w) / static_cast<float>(h),
+            scene.cam.znear,
+            scene.cam.zfar);
         scene.cam.viewproj = scene.cam.proj * scene.cam.view;
         scene.cam.prev_viewproj = scene.cam.viewproj;
         scene.sun.dir_ws = glm::normalize(glm::vec3(-0.35f, -1.0f, -0.25f));
@@ -6067,23 +6122,30 @@ private:
         {
             apply_phase_g_camera_tour(dt, t);
         }
+        if (!runtime_state_initialized_)
+        {
+            runtime_state_.camera = to_camera_rig(camera_);
+            runtime_state_initialized_ = true;
+        }
+        if (phase_g_config_.enabled && phase_g_state_.started && !phase_g_state_.finished)
+        {
+            runtime_state_.camera = to_camera_rig(camera_);
+        }
 
         const float aspect = (h > 0) ? (static_cast<float>(w) / static_cast<float>(h)) : 1.0f;
-        camera_.update(
-            move_forward_,
-            move_backward_,
-            move_left_,
-            move_right_,
-            move_up_,
-            move_down_,
-            move_boost_,
-            mouse_left_down_,
-            mouse_right_down_,
-            mouse_dx_accum_,
-            mouse_dy_accum_,
-            dt);
-        mouse_dx_accum_ = 0.0f;
-        mouse_dy_accum_ = 0.0f;
+        const shs::InputState runtime_input = make_runtime_input_state(input_latch_, pending_quit_action_);
+        pending_quit_action_ = false;
+        runtime_actions_.clear();
+        shs::emit_human_actions(
+            runtime_input,
+            runtime_actions_,
+            camera_.move_speed,
+            2.0f,
+            camera_.look_speed);
+        runtime_state_ = shs::reduce_runtime_state(runtime_state_, runtime_actions_, dt);
+        if (runtime_state_.quit_requested) running_ = false;
+        camera_ = from_camera_rig(runtime_state_.camera, camera_);
+        input_latch_ = shs::clear_runtime_input_frame_deltas(input_latch_);
 
         const glm::vec3 cam_pos = camera_.pos;
         camera_ubo_.view = camera_.view_matrix();
@@ -8701,7 +8763,7 @@ private:
 
     void handle_event(const SDL_Event& e)
     {
-        if (e.type == SDL_QUIT) running_ = false;
+        if (e.type == SDL_QUIT) pending_quit_action_ = true;
 
         if (e.type == SDL_KEYDOWN || e.type == SDL_KEYUP)
         {
@@ -8709,26 +8771,47 @@ private:
             switch (e.key.keysym.sym)
             {
                 case SDLK_w:
-                    move_forward_ = down;
+                    shs::append_runtime_input_event(
+                        pending_input_events_,
+                        shs::RuntimeInputEventType::SetForward,
+                        down);
                     break;
                 case SDLK_s:
-                    move_backward_ = down;
+                    shs::append_runtime_input_event(
+                        pending_input_events_,
+                        shs::RuntimeInputEventType::SetBackward,
+                        down);
                     break;
                 case SDLK_a:
-                    move_left_ = down;
+                    shs::append_runtime_input_event(
+                        pending_input_events_,
+                        shs::RuntimeInputEventType::SetLeft,
+                        down);
                     break;
                 case SDLK_d:
-                    move_right_ = down;
+                    shs::append_runtime_input_event(
+                        pending_input_events_,
+                        shs::RuntimeInputEventType::SetRight,
+                        down);
                     break;
                 case SDLK_q:
-                    move_down_ = down;
+                    shs::append_runtime_input_event(
+                        pending_input_events_,
+                        shs::RuntimeInputEventType::SetDescend,
+                        down);
                     break;
                 case SDLK_e:
-                    move_up_ = down;
+                    shs::append_runtime_input_event(
+                        pending_input_events_,
+                        shs::RuntimeInputEventType::SetAscend,
+                        down);
                     break;
                 case SDLK_LSHIFT:
                 case SDLK_RSHIFT:
-                    move_boost_ = down;
+                    shs::append_runtime_input_event(
+                        pending_input_events_,
+                        shs::RuntimeInputEventType::SetBoost,
+                        down);
                     break;
                 default:
                     break;
@@ -8738,14 +8821,28 @@ private:
         if (e.type == SDL_MOUSEBUTTONDOWN || e.type == SDL_MOUSEBUTTONUP)
         {
             const bool down = (e.type == SDL_MOUSEBUTTONDOWN);
-            if (e.button.button == SDL_BUTTON_LEFT) mouse_left_down_ = down;
-            if (e.button.button == SDL_BUTTON_RIGHT) mouse_right_down_ = down;
+            if (e.button.button == SDL_BUTTON_LEFT)
+            {
+                shs::append_runtime_input_event(
+                    pending_input_events_,
+                    shs::RuntimeInputEventType::SetLeftMouseDown,
+                    down);
+            }
+            if (e.button.button == SDL_BUTTON_RIGHT)
+            {
+                shs::append_runtime_input_event(
+                    pending_input_events_,
+                    shs::RuntimeInputEventType::SetRightMouseDown,
+                    down);
+            }
         }
 
         if (e.type == SDL_MOUSEMOTION)
         {
-            mouse_dx_accum_ += static_cast<float>(e.motion.xrel);
-            mouse_dy_accum_ += static_cast<float>(e.motion.yrel);
+            pending_input_events_.push_back(
+                shs::make_mouse_delta_input_event(
+                    static_cast<float>(e.motion.xrel),
+                    static_cast<float>(e.motion.yrel)));
         }
 
         if (e.type == SDL_KEYDOWN)
@@ -8753,7 +8850,7 @@ private:
             switch (e.key.keysym.sym)
             {
                 case SDLK_ESCAPE:
-                    running_ = false;
+                    pending_quit_action_ = true;
                     break;
                 case SDLK_F1:
                     use_multithread_recording_ = !use_multithread_recording_;
@@ -8879,6 +8976,10 @@ private:
     void main_loop()
     {
         running_ = true;
+        pending_quit_action_ = false;
+        input_latch_ = shs::RuntimeInputLatch{};
+        pending_input_events_.clear();
+        runtime_state_.quit_requested = false;
 
         using clock = std::chrono::steady_clock;
         auto last = clock::now();
@@ -8891,6 +8992,16 @@ private:
             while (SDL_PollEvent(&e))
             {
                 handle_event(e);
+            }
+            input_latch_ = shs::reduce_runtime_input_latch(input_latch_, pending_input_events_);
+            pending_input_events_.clear();
+
+            const bool look_drag = input_latch_.left_mouse_down || input_latch_.right_mouse_down;
+            if (look_drag != relative_mouse_mode_)
+            {
+                relative_mouse_mode_ = look_drag;
+                SDL_SetRelativeMouseMode(relative_mouse_mode_ ? SDL_TRUE : SDL_FALSE);
+                input_latch_ = shs::clear_runtime_input_frame_deltas(input_latch_);
             }
 
             auto now = clock::now();
@@ -8927,6 +9038,11 @@ private:
         if (vk_ && vk_->device() != VK_NULL_HANDLE)
         {
             (void)vkDeviceWaitIdle(vk_->device());
+        }
+        if (relative_mouse_mode_)
+        {
+            SDL_SetRelativeMouseMode(SDL_FALSE);
+            relative_mouse_mode_ = false;
         }
     }
 
@@ -9229,17 +9345,13 @@ private:
     bool auto_cycle_technique_ = false;
     bool use_multithread_recording_ = false;
     FreeCamera camera_{};
-    bool move_forward_ = false;
-    bool move_backward_ = false;
-    bool move_left_ = false;
-    bool move_right_ = false;
-    bool move_up_ = false;
-    bool move_down_ = false;
-    bool move_boost_ = false;
-    bool mouse_left_down_ = false;
-    bool mouse_right_down_ = false;
-    float mouse_dx_accum_ = 0.0f;
-    float mouse_dy_accum_ = 0.0f;
+    shs::RuntimeInputLatch input_latch_{};
+    std::vector<shs::RuntimeInputEvent> pending_input_events_{};
+    bool pending_quit_action_ = false;
+    bool relative_mouse_mode_ = false;
+    shs::RuntimeState runtime_state_{};
+    std::vector<shs::RuntimeAction> runtime_actions_{};
+    bool runtime_state_initialized_ = false;
     float time_sec_ = 0.0f;
 };
 }

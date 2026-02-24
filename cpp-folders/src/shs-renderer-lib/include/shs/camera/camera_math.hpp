@@ -27,7 +27,6 @@ namespace shs
 
     inline glm::vec3 right_from_forward(const glm::vec3& fwd, const glm::vec3& world_up = glm::vec3(0.0f, 1.0f, 0.0f))
     {
-        return glm::normalize(glm::cross(fwd, world_up));
+        return glm::normalize(glm::cross(world_up, fwd));
     }
 }
-

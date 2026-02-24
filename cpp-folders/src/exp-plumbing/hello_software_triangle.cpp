@@ -13,6 +13,7 @@
 
 #include <shs/core/context.hpp>
 #include <shs/gfx/rt_types.hpp>
+#include <shs/input/value_actions.hpp>
 #include <shs/platform/platform_input.hpp>
 #include <shs/platform/platform_runtime.hpp>
 #include <shs/platform/sdl/sdl_runtime.hpp>
@@ -154,11 +155,19 @@ private:
     void main_loop()
     {
         bool running = true;
+        shs::RuntimeState runtime_state{};
+        std::vector<shs::RuntimeAction> runtime_actions{};
         while (running)
         {
             shs::PlatformInputState input{};
             running = runtime_->pump_input(input);
-            if (!running || input.quit) break;
+            if (!running) break;
+            runtime_actions.clear();
+            shs::InputState runtime_input{};
+            runtime_input.quit = input.quit;
+            shs::emit_human_actions(runtime_input, runtime_actions, 0.0f, 1.0f, 0.0f);
+            runtime_state = shs::reduce_runtime_state(runtime_state, runtime_actions, 0.0f);
+            if (runtime_state.quit_requested) break;
             draw_frame();
         }
     }
