@@ -1,15 +1,15 @@
 
 # Tasks to mess around in the near future
 
-    Make lights more cullable
-    Clamp light contribution based on the light type aka light shape volume
     Tune tiles and cluster density
-    Multithreaded draw calls for per light list and tile or cluster, make sure job systems efficient
+    Check the multithreaded draw calls for per light list and tile or cluster, make sure job systems efficient
 
-    Explore the idea of using C++20 coroutines 
-    Explore those stdexec from NVidia, hipThreads from AMD for the Angstrom future
-    
-    
+    Explore the idea of using C++20 stackless coroutines, and job systems
+    Explore the idea of accelerating software renderer using stdexec from NVidia 
+      Try to implement advanced tile or clustered software renderer paths
+      If this is accomplished, renderer is definitely ready for the Angstrom future
+      kinda feeling like PS3 Cell SPUs ideas comes back again.
+
     Dynamic compositional and configurable renderer path combinations
       Tunable combinations ->
         Different Light Volumes      x
@@ -60,7 +60,7 @@
     I'm just learning about software renderer and shaders in my freetime.
     I think using graphics API is overrated and writing own software renderer is cool.
     For simplicity I'm gonna use SDL2, and all the rendering computation should happend 
-    solely on the CPU, maybe I can use OpenCL where it makes sense
+    solely on the CPU, maybe accelerating computations using NVidia's stdexec might be good idea.
     The goal is to learn something.
   
     Might implement followings exercises
