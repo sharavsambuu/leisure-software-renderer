@@ -90,6 +90,7 @@ constexpr uint32_t kDefaultTileSize = 16;
 constexpr uint32_t kMaxLightsPerTile = 128;
 constexpr uint32_t kMaxLights = 768;
 constexpr uint32_t kDefaultLightCount = 384;
+constexpr float kDefaultLightRangeScale = 0.72f;
 constexpr int kSceneOccW = 320;
 constexpr int kSceneOccH = 180;
 constexpr int kLightOccW = 320;
@@ -109,6 +110,8 @@ constexpr uint32_t kMaxLocalShadowLayers = kMaxSpotShadowMaps + (kMaxPointShadow
 constexpr uint32_t kWorkerPoolRingSize = 2;
 constexpr uint32_t kMaxGpuPassTimestampQueries = 128;
 constexpr const char* kAppName = "HelloRenderingPaths";
+constexpr const char* kCustomPassSsaoForward = "ssao_forward";
+constexpr const char* kCustomPassFxaa = "fxaa";
 
 struct Vertex
 {
@@ -684,6 +687,15 @@ uint32_t semantic_debug_mode_for_semantic(shs::PassSemantic semantic)
     return 0u;
 }
 
+shs::RenderPathPassEntry make_custom_render_path_pass_entry(const char* id, bool required)
+{
+    shs::RenderPathPassEntry out{};
+    out.id = id ? id : "";
+    out.pass_id = shs::PassId::Unknown;
+    out.required = required;
+    return out;
+}
+
 glm::vec3 safe_perp_axis(const glm::vec3& v)
 {
     if (std::abs(v.y) < 0.9f) return glm::vec3(0.0f, 1.0f, 0.0f);
@@ -871,7 +883,8 @@ private:
         std::fprintf(stderr, "  F2         : cycle rendering path (Forward/Forward+/Deferred/TiledDeferred/ClusteredForward)\n");
         std::fprintf(stderr, "  F3         : cycle composed presets ({path + technique + post-stack variant})\n");
         std::fprintf(stderr, "  F4         : cycle rendering-technique recipe (PBR/Blinn)\n");
-        std::fprintf(stderr, "  F5         : cycle framebuffer debug preset (final/albedo/normal/material/depth/ao/light-grid/light-clusters/shadow/hdr/ldr/motion/dof-coc/dof-blur/dof-factor)\n");
+        std::fprintf(stderr, "  F5         : cycle forward-focused debug targets (final/albedo/normal/material/depth/ao/shadow/hdr/ldr)\n");
+        std::fprintf(stderr, "  I          : cycle full framebuffer debug preset set (advanced)\n");
         std::fprintf(stderr, "  Tab        : cycle rendering path (alias)\n");
         std::fprintf(stderr, "  F6         : toggle Vulkan culler backend (gpu / disabled)\n");
         std::fprintf(stderr, "  F7         : toggle light debug wireframe draw\n");
@@ -889,7 +902,7 @@ private:
         std::fprintf(stderr, "  9/0        : sun shadow strength -/+ (when F12 is on)\n");
         std::fprintf(stderr, "  R          : reset light tuning\n");
         std::fprintf(stderr, "  +/-        : decrease/increase active light count\n");
-        std::fprintf(stderr, "  Title bar  : shows composition, path/technique state, culling/debug stats, CPU/GPU pass timing state, rebuild counters, and frame ms\n\n");
+        std::fprintf(stderr, "  Title bar  : compact view (path, tech, debug target, lights, draws, culling, frame ms)\n\n");
         std::fprintf(stderr, "  Phase-I    : set `SHS_PHASE_I=1` for VK/SW parity JSONL (includes SW runtime sampling by default)\n\n");
         std::fprintf(stderr, "  Phase-F    : set `SHS_PHASE_F=1` for auto matrix benchmark -> JSONL artifacts (+ optional PPM snapshots)\n\n");
         std::fprintf(stderr, "  Phase-G    : set `SHS_PHASE_G=1` for timed soak auto-cycle -> JSONL churn/rebuild metrics + acceptance verdict\n\n");
@@ -2767,7 +2780,7 @@ private:
         std::uniform_real_distribution<float> rad(3.0f * shs::units::meter, 14.0f * shs::units::meter);
         std::uniform_real_distribution<float> hgt(1.6f * shs::units::meter, 4.8f * shs::units::meter);
         std::uniform_real_distribution<float> spd(0.18f, 0.85f);
-        std::uniform_real_distribution<float> radius(3.0f * shs::units::meter, 6.8f * shs::units::meter);
+        std::uniform_real_distribution<float> radius(2.4f * shs::units::meter, 5.6f * shs::units::meter);
         std::uniform_real_distribution<float> inner_deg(12.0f, 20.0f);
         std::uniform_real_distribution<float> outer_extra_deg(6.0f, 14.0f);
         std::uniform_real_distribution<float> area_extent(0.45f * shs::units::meter, 1.25f * shs::units::meter);
@@ -5498,6 +5511,45 @@ private:
             shs::make_standard_pass_contract_registry_for_backend(shs::RenderBackendType::Vulkan);
         pass_contract_registry_sw_ =
             shs::make_standard_pass_contract_registry_for_backend(shs::RenderBackendType::Software);
+
+        auto register_custom_contracts = [](shs::PassFactoryRegistry& registry, shs::RenderBackendType backend) {
+            const uint32_t backend_mask = shs::PassFactoryRegistry::backend_bit(backend);
+
+            shs::TechniquePassContract ssao_forward_contract{};
+            ssao_forward_contract.role = shs::TechniquePassRole::PostProcess;
+            ssao_forward_contract.supported_modes_mask = shs::technique_mode_bit(shs::TechniqueMode::Forward);
+            ssao_forward_contract.requires_depth_prepass = true;
+            ssao_forward_contract.semantics = {
+                shs::read_semantic(shs::PassSemantic::Depth, shs::ContractDomain::Any, "depth"),
+                shs::write_semantic(shs::PassSemantic::AmbientOcclusion, shs::ContractDomain::Any, "ao")
+            };
+            registry.register_factory(kCustomPassSsaoForward, []() -> std::unique_ptr<shs::IRenderPass> {
+                return nullptr;
+            });
+            registry.register_descriptor(
+                kCustomPassSsaoForward,
+                ssao_forward_contract,
+                backend_mask,
+                true);
+
+            shs::TechniquePassContract fxaa_contract{};
+            fxaa_contract.role = shs::TechniquePassRole::PostProcess;
+            fxaa_contract.supported_modes_mask = shs::technique_mode_bit(shs::TechniqueMode::Forward);
+            fxaa_contract.semantics = {
+                shs::read_write_semantic(shs::PassSemantic::ColorLDR, shs::ContractDomain::Any, "ldr")
+            };
+            registry.register_factory(kCustomPassFxaa, []() -> std::unique_ptr<shs::IRenderPass> {
+                return nullptr;
+            });
+            registry.register_descriptor(
+                kCustomPassFxaa,
+                fxaa_contract,
+                backend_mask,
+                true);
+        };
+        register_custom_contracts(pass_contract_registry_, shs::RenderBackendType::Vulkan);
+        register_custom_contracts(pass_contract_registry_sw_, shs::RenderBackendType::Software);
+
         if (pass_contract_registry_.ids().empty())
         {
             std::fprintf(stderr, "[render-path][stress][error] Standard pass contract registry is empty.\n");
@@ -5589,41 +5641,24 @@ private:
         std::fprintf(stderr, "[render-path][debug] Semantic debug: %s (%s)\n", state, semantic_name);
     }
 
-    void cycle_framebuffer_debug_target()
+    template <size_t N>
+    void cycle_framebuffer_debug_target_from_cycle(
+        const std::array<FramebufferDebugPreset, N>& cycle,
+        const char* trigger_label)
     {
-        constexpr std::array<FramebufferDebugPreset, 15> kCycle = {
-            FramebufferDebugPreset::FinalComposite,
-            FramebufferDebugPreset::Albedo,
-            FramebufferDebugPreset::Normal,
-            FramebufferDebugPreset::Material,
-            FramebufferDebugPreset::Depth,
-            FramebufferDebugPreset::AmbientOcclusion,
-            FramebufferDebugPreset::LightGrid,
-            FramebufferDebugPreset::LightClusters,
-            FramebufferDebugPreset::Shadow,
-            FramebufferDebugPreset::ColorHDR,
-            FramebufferDebugPreset::ColorLDR,
-            FramebufferDebugPreset::Motion,
-            FramebufferDebugPreset::DoFCircleOfConfusion,
-            FramebufferDebugPreset::DoFBlur,
-            FramebufferDebugPreset::DoFFactor
-        };
-
         auto cycle_index = [&](FramebufferDebugPreset preset) -> int {
-            for (size_t i = 0; i < kCycle.size(); ++i)
+            for (size_t i = 0; i < cycle.size(); ++i)
             {
-                if (kCycle[i] == preset) return static_cast<int>(i);
+                if (cycle[i] == preset) return static_cast<int>(i);
             }
             return -1;
         };
 
         int idx = cycle_index(framebuffer_debug_preset_);
-        if (idx < 0)
-        {
-            idx = 0;
-        }
-        const size_t next = (static_cast<size_t>(idx) + 1u) % kCycle.size();
-        framebuffer_debug_preset_ = kCycle[next];
+        const size_t next = (idx < 0)
+            ? 0u
+            : ((static_cast<size_t>(idx) + 1u) % cycle.size());
+        framebuffer_debug_preset_ = cycle[next];
 
         const bool enabled = framebuffer_debug_preset_ != FramebufferDebugPreset::FinalComposite;
         const bool needs_motion = framebuffer_debug_preset_requires_motion_pass(framebuffer_debug_preset_);
@@ -5662,7 +5697,8 @@ private:
         const char* status = enabled ? (supported ? "ready" : "missing-pass") : "idle";
         std::fprintf(
             stderr,
-            "[render-path][debug] Framebuffer debug (F5): %s (%s, %s)\n",
+            "[render-path][debug] Framebuffer debug (%s): %s (%s, %s)\n",
+            trigger_label,
             state,
             framebuffer_debug_preset_name(framebuffer_debug_preset_),
             status);
@@ -5673,6 +5709,44 @@ private:
                 "[render-path][debug] Auto-switched to DoF-capable composition: %s\n",
                 active_composition_recipe_.name.c_str());
         }
+    }
+
+    void cycle_framebuffer_debug_target(const char* trigger_label = "F5")
+    {
+        constexpr std::array<FramebufferDebugPreset, 15> kCycle = {
+            FramebufferDebugPreset::FinalComposite,
+            FramebufferDebugPreset::Albedo,
+            FramebufferDebugPreset::Normal,
+            FramebufferDebugPreset::Material,
+            FramebufferDebugPreset::Depth,
+            FramebufferDebugPreset::AmbientOcclusion,
+            FramebufferDebugPreset::LightGrid,
+            FramebufferDebugPreset::LightClusters,
+            FramebufferDebugPreset::Shadow,
+            FramebufferDebugPreset::ColorHDR,
+            FramebufferDebugPreset::ColorLDR,
+            FramebufferDebugPreset::Motion,
+            FramebufferDebugPreset::DoFCircleOfConfusion,
+            FramebufferDebugPreset::DoFBlur,
+            FramebufferDebugPreset::DoFFactor
+        };
+        cycle_framebuffer_debug_target_from_cycle(kCycle, trigger_label);
+    }
+
+    void cycle_forward_framebuffer_debug_target(const char* trigger_label = "I")
+    {
+        constexpr std::array<FramebufferDebugPreset, 9> kForwardCycle = {
+            FramebufferDebugPreset::FinalComposite,
+            FramebufferDebugPreset::Albedo,
+            FramebufferDebugPreset::Normal,
+            FramebufferDebugPreset::Material,
+            FramebufferDebugPreset::Depth,
+            FramebufferDebugPreset::AmbientOcclusion,
+            FramebufferDebugPreset::Shadow,
+            FramebufferDebugPreset::ColorHDR,
+            FramebufferDebugPreset::ColorLDR
+        };
+        cycle_framebuffer_debug_target_from_cycle(kForwardCycle, trigger_label);
     }
 
     uint32_t active_semantic_debug_mode() const
@@ -5805,9 +5879,10 @@ private:
     {
         init_render_path_registry();
         
-        // Explicitly setup Forward Classic + SSAO
+        // Explicitly setup demo-local forward chain with working shadow + SSAO side-path:
+        // ShadowMap -> DepthPrepass -> GBuffer -> SSAO -> SceneForward -> Tonemap -> LightCulling -> FXAA
         shs::RenderCompositionRecipe recipe{};
-        recipe.name = "forward_classic_ssao";
+        recipe.name = "forward_shadow_ssao_scene_tonemap_lightcull_fxaa";
         recipe.path_preset = shs::RenderPathPreset::Forward;
         recipe.technique_preset = shs::RenderTechniquePreset::PBR;
         recipe.post_stack = shs::RenderCompositionPostStackPreset::Default;
@@ -5818,13 +5893,19 @@ private:
             "path_vk",
             "tech_vk");
 
-        // Override pass chain to include SSAO
+        resolved.path_recipe.wants_shadows = true;
+        resolved.path_recipe.runtime_defaults.enable_shadows = true;
+
+        // Requested pass order.
         resolved.path_recipe.pass_chain = {
             shs::make_render_path_pass_entry(shs::PassId::ShadowMap, true),
             shs::make_render_path_pass_entry(shs::PassId::DepthPrepass, true),
+            shs::make_render_path_pass_entry(shs::PassId::GBuffer, true),
             shs::make_render_path_pass_entry(shs::PassId::SSAO, true),
             shs::make_render_path_pass_entry(shs::PassId::PBRForward, true),
-            shs::make_render_path_pass_entry(shs::PassId::Tonemap, true)
+            shs::make_render_path_pass_entry(shs::PassId::Tonemap, true),
+            shs::make_render_path_pass_entry(shs::PassId::LightCulling, true),
+            make_custom_render_path_pass_entry(kCustomPassFxaa, true)
         };
 
         active_composition_recipe_ = recipe;
@@ -6160,7 +6241,7 @@ private:
         camera_ubo_.view_proj = camera_ubo_.proj * camera_ubo_.view;
         temporal_state_.current_view_proj = camera_ubo_.view_proj;
         camera_ubo_.camera_pos_time = glm::vec4(cam_pos, t);
-        camera_ubo_.sun_dir_intensity = glm::vec4(glm::normalize(glm::vec3(-0.35f, -1.0f, -0.18f)), 1.45f);
+        camera_ubo_.sun_dir_intensity = glm::vec4(glm::normalize(glm::vec3(-0.35f, -1.0f, -0.18f)), 0.78f);
         camera_ubo_.screen_tile_lightcount = glm::uvec4(w, h, tile_w_, active_light_count_);
         camera_ubo_.params = glm::uvec4(tile_h_, kMaxLightsPerTile, light_tile_size_, static_cast<uint32_t>(culling_mode_));
         const uint32_t semantic_debug_mode = active_semantic_debug_mode();
@@ -8039,6 +8120,39 @@ private:
         return true;
     }
 
+    bool execute_pass_ssao_forward(FramePassExecutionContext& ctx, const shs::RenderPathCompiledPass& pass)
+    {
+        (void)pass;
+        if (!ctx.fi) return false;
+        if (ctx.ssao_pass_executed) return true;
+
+        // Forward-only placeholder SSAO pass: keep AO buffer valid without GBuffer dependency.
+        if (ao_target_.render_pass != VK_NULL_HANDLE && ao_target_.framebuffer != VK_NULL_HANDLE)
+        {
+            begin_render_pass_ssao(ctx.fi->cmd);
+            vkCmdEndRenderPass(ctx.fi->cmd);
+            if (!emit_graph_barrier_ssao_to_consumer(ctx.fi->cmd))
+            {
+                cmd_memory_barrier(
+                    ctx.fi->cmd,
+                    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                    VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                    VK_ACCESS_SHADER_READ_BIT);
+            }
+        }
+
+        if (!ssao_forward_placeholder_note_emitted_)
+        {
+            std::fprintf(
+                stderr,
+                "[render-path][ssao_forward] Using depth-only placeholder SSAO pass (no GBuffer normals).\n");
+            ssao_forward_placeholder_note_emitted_ = true;
+        }
+        ctx.ssao_pass_executed = true;
+        return true;
+    }
+
     bool execute_pass_deferred_lighting(FramePassExecutionContext& ctx, const shs::RenderPathCompiledPass& pass)
     {
         if (!ctx.fi) return false;
@@ -8286,6 +8400,20 @@ private:
         return true;
     }
 
+    bool execute_pass_fxaa(FramePassExecutionContext& ctx, const shs::RenderPathCompiledPass& pass)
+    {
+        (void)ctx;
+        (void)pass;
+        if (!fxaa_placeholder_note_emitted_)
+        {
+            std::fprintf(
+                stderr,
+                "[render-path][fxaa] Using placeholder pass. Hook a fullscreen FXAA shader here.\n");
+            fxaa_placeholder_note_emitted_ = true;
+        }
+        return true;
+    }
+
     bool execute_pass_noop(FramePassExecutionContext& ctx, const shs::RenderPathCompiledPass& pass)
     {
         (void)ctx;
@@ -8348,6 +8476,22 @@ private:
         if (!ok)
         {
             std::fprintf(stderr, "[render-path][dispatch][error] Failed to register standard pass handlers.\n");
+        }
+        if (!frame_pass_dispatcher_.register_handler(
+                kCustomPassSsaoForward,
+                wrap([this](FramePassExecutionContext& c, const shs::RenderPathCompiledPass& p) {
+                    return execute_pass_ssao_forward(c, p);
+                })))
+        {
+            std::fprintf(stderr, "[render-path][dispatch][error] Failed to register custom pass '%s'.\n", kCustomPassSsaoForward);
+        }
+        if (!frame_pass_dispatcher_.register_handler(
+                kCustomPassFxaa,
+                wrap([this](FramePassExecutionContext& c, const shs::RenderPathCompiledPass& p) {
+                    return execute_pass_fxaa(c, p);
+                })))
+        {
+            std::fprintf(stderr, "[render-path][dispatch][error] Failed to register custom pass '%s'.\n", kCustomPassFxaa);
         }
     }
 
@@ -8565,192 +8709,38 @@ private:
 
     void update_window_title(float avg_ms)
     {
-        const char* mode_name = shs::technique_mode_name(active_technique_);
         const char* light_tech_name = lighting_technique_name(render_technique_preset_);
-        const char* composition_name = active_composition_recipe_.name.empty()
-            ? "n/a"
-            : active_composition_recipe_.name.c_str();
-        const char* post_stack_name =
-            shs::render_composition_post_stack_preset_name(active_composition_recipe_.post_stack);
         const shs::RenderPathRecipe& active_recipe = render_path_executor_.active_recipe();
-        const shs::RenderPathResourcePlan& resource_plan = render_path_executor_.active_resource_plan();
         const char* recipe_name = active_recipe.name.empty() ? "n/a" : active_recipe.name.c_str();
-        const char* recipe_status = render_path_executor_.active_plan_valid() ? "OK" : "Fallback";
         const char* cull_name = shs::light_culling_mode_name(culling_mode_);
         const char* culler_backend = vulkan_culler_backend_name(vulkan_culler_backend_);
-        const char* rec_mode = use_multithread_recording_ ? "MT-secondary" : "inline";
-        const float switch_in = auto_cycle_technique_ ? std::max(0.0f, kTechniqueSwitchPeriodSec - technique_switch_accum_sec_) : 0.0f;
-        const size_t comp_total = composition_cycle_order_.size();
-        const size_t comp_slot = (comp_total > 0u) ? (active_composition_index_ % comp_total) + 1u : 0u;
-        const char* phase_f_state = "off";
-        if (phase_f_config_.enabled)
-        {
-            switch (phase_f_stage_)
-            {
-                case PhaseFBenchmarkStage::Warmup: phase_f_state = "warmup"; break;
-                case PhaseFBenchmarkStage::Sample: phase_f_state = "sample"; break;
-                case PhaseFBenchmarkStage::AwaitSnapshot: phase_f_state = "snapshot"; break;
-                case PhaseFBenchmarkStage::Disabled:
-                default: phase_f_state = phase_f_finished_ ? "done" : "idle"; break;
-            }
-        }
-        const size_t phase_f_total = phase_f_plan_indices_.size();
-        const size_t phase_f_slot =
-            (phase_f_total > 0u && phase_f_active_entry_slot_ < phase_f_total) ? (phase_f_active_entry_slot_ + 1u) : 0u;
-        const char* phase_g_state = "off";
-        if (phase_g_config_.enabled)
-        {
-            if (phase_g_state_.finished) phase_g_state = "done";
-            else if (phase_g_state_.started) phase_g_state = "run";
-            else phase_g_state = "idle";
-        }
-        const double avg_refs = (cull_debug_list_count_ > 0)
-            ? static_cast<double>(cull_debug_total_refs_) / static_cast<double>(cull_debug_list_count_)
-            : 0.0;
         const uint32_t visible_draws = visible_instance_count_ + (floor_visible_ ? 1u : 0u);
         const uint32_t total_draws = static_cast<uint32_t>(instances_.size()) + 1u;
-        const uint32_t culled_total = (active_light_count_ > visible_light_count_) ? (active_light_count_ - visible_light_count_) : 0u;
         const bool framebuffer_debug_enabled = framebuffer_debug_preset_ != FramebufferDebugPreset::FinalComposite;
         const bool framebuffer_debug_supported =
             (!framebuffer_debug_preset_requires_motion_pass(framebuffer_debug_preset_) || active_motion_blur_pass_enabled()) &&
             (!framebuffer_debug_preset_requires_dof_pass(framebuffer_debug_preset_) || active_depth_of_field_pass_enabled());
-        const char* framebuffer_debug_state = framebuffer_debug_enabled ? "on" : "off";
         const char* framebuffer_debug_name = framebuffer_debug_preset_name(framebuffer_debug_preset_);
-        const char* framebuffer_debug_availability = framebuffer_debug_enabled
-            ? (framebuffer_debug_supported ? "ready" : "missing")
-            : "idle";
-        const bool semantic_debug_has_resource = semantic_debug_enabled_ &&
-            (shs::find_render_path_resource_by_semantic(resource_plan, active_semantic_debug_) != nullptr);
-        const char* semantic_debug_state = semantic_debug_enabled_ ? "on" : "off";
-        const char* semantic_debug_name = semantic_debug_enabled_
-            ? shs::pass_semantic_name(active_semantic_debug_)
-            : "none";
-        const char* semantic_debug_availability = semantic_debug_enabled_
-            ? (semantic_debug_has_resource ? "ready" : "missing")
-            : (semantic_debug_targets_.empty() ? "n/a" : "idle");
-        const bool deferred_mode =
-            (active_technique_ == shs::TechniqueMode::Deferred) ||
-            (active_technique_ == shs::TechniqueMode::TiledDeferred);
-        const char* deferred_state = deferred_mode
-            ? (frame_deferred_emulated_scene_pass_ ? "emul" : "native")
-            : "n/a";
-        const bool temporal_copy_supported = supports_swapchain_history_copy();
-        const bool temporal_enabled = active_taa_pass_enabled() && temporal_settings_.accumulation_enabled;
-        const char* temporal_jitter_state = temporal_enabled
-            ? (temporal_copy_supported ? "on" : "fallback")
+        const char* framebuffer_debug_state = framebuffer_debug_enabled
+            ? (framebuffer_debug_supported ? "on" : "missing")
             : "off";
-        const char* taa_state = frame_taa_pass_executed_ ? "on" : "off";
-        const char* dispatch_slowest_pass_name =
-            dispatch_slowest_pass_id_.empty() ? "n/a" : dispatch_slowest_pass_id_.c_str();
-        const char* gpu_slowest_pass_name =
-            gpu_pass_slowest_id_.empty() ? "n/a" : gpu_pass_slowest_id_.c_str();
-        const char* gpu_timing_state =
-            gpu_pass_timing_state_.empty() ? "n/a" : gpu_pass_timing_state_.c_str();
-        const double gpu_total_ms = gpu_pass_timing_valid_ ? gpu_pass_total_ms_ : 0.0;
-        const double gpu_slowest_ms = gpu_pass_timing_valid_ ? gpu_pass_slowest_ms_ : 0.0;
-        const char* target_rebuild_reason =
-            render_target_last_rebuild_reason_.empty() ? "none" : render_target_last_rebuild_reason_.c_str();
-        const char* pipeline_rebuild_reason =
-            pipeline_last_rebuild_reason_.empty() ? "none" : pipeline_last_rebuild_reason_.c_str();
 
-        char title[1024];
+        char title[320];
         std::snprintf(
             title,
             sizeof(title),
-            "%s | comp:%s[%zu/%zu] pst:%s pf:%s[%zu/%zu] pg:%s[c:%llu] | light:%s exp:%.2f g:%.2f | rpath:%s(%s) mode:%s def:%s[g:%s a:%s l:%s t:%s m:%s d:%s] | tmp:%s j(%.3f,%.3f) | dbg:F5 %s/%s(%s) F8 %s/%s(%s) | cull:%s(%s) | rec:%s rsrc:%zu bind:%zu br:%u/%u lay:%u alias:%u/%u gbr:%u fb:%u cpu:%.2fms slow:%s %.2f gpu:%s %.2f slow:%s %.2f s:%u r:%u | rb:t%llu(%s) p%llu(%s) sg:%llu | lights:%u/%u[p:%u s:%u r:%u t:%u] | lvol:%s occ:%s/%s lobj:%s culled:%u[f:%u o:%u p:%u] | shad:sun:%s(%.2f) spot:%u point:%u | cfg:orb%.2f h%.1f r%.2f i%.2f | draws:%u/%u | tile:%ux%u sz:%u z:%u | refs:%llu avg:%.1f max:%u nz:%u/%u | lightsw:%s %.1fs | %.2f ms",
+            "%s | path:%s | tech:%s | dbg:%s(%s) | lights:%u/%u | draws:%u/%u | cull:%s/%s | %.2f ms",
             kAppName,
-            composition_name,
-            comp_slot,
-            comp_total,
-            post_stack_name,
-            phase_f_state,
-            phase_f_slot,
-            phase_f_total,
-            phase_g_state,
-            static_cast<unsigned long long>(phase_g_state_.cycles),
-            light_tech_name,
-            tonemap_exposure_,
-            tonemap_gamma_,
             recipe_name,
-            recipe_status,
-            mode_name,
-            deferred_state,
-            frame_gbuffer_pass_executed_ ? "on" : "off",
-            frame_ssao_pass_executed_ ? "on" : "off",
-            frame_deferred_lighting_pass_executed_ ? "on" : "off",
-            taa_state,
-            frame_motion_blur_pass_executed_ ? "on" : "off",
-            frame_depth_of_field_pass_executed_ ? "on" : "off",
-            temporal_jitter_state,
-            temporal_state_.jitter_ndc.x,
-            temporal_state_.jitter_ndc.y,
-            framebuffer_debug_state,
+            light_tech_name,
             framebuffer_debug_name,
-            framebuffer_debug_availability,
-            semantic_debug_state,
-            semantic_debug_name,
-            semantic_debug_availability,
-            cull_name,
-            culler_backend,
-            rec_mode,
-            resource_plan.resources.size(),
-            resource_plan.pass_bindings.size(),
-            barrier_edge_count_,
-            barrier_memory_edge_count_,
-            barrier_layout_edge_count_,
-            barrier_alias_class_count_,
-            barrier_alias_slot_count_,
-            frame_graph_barrier_edges_emitted_,
-            frame_graph_barrier_fallback_count_,
-            dispatch_total_cpu_ms_,
-            dispatch_slowest_pass_name,
-            dispatch_slowest_pass_cpu_ms_,
-            gpu_timing_state,
-            gpu_total_ms,
-            gpu_slowest_pass_name,
-            gpu_slowest_ms,
-            gpu_pass_sample_count_,
-            gpu_pass_rejected_sample_count_,
-            static_cast<unsigned long long>(render_target_rebuild_count_),
-            target_rebuild_reason,
-            static_cast<unsigned long long>(pipeline_rebuild_count_),
-            pipeline_rebuild_reason,
-            static_cast<unsigned long long>(swapchain_generation_change_count_),
+            framebuffer_debug_state,
             visible_light_count_,
             active_light_count_,
-            point_count_active_,
-            spot_count_active_,
-            rect_count_active_,
-            tube_count_active_,
-            show_light_volumes_debug_ ? "on" : "off",
-            enable_scene_occlusion_ ? "on" : "off",
-            enable_light_occlusion_ ? "on" : "off",
-            shs::light_object_cull_mode_name(light_object_cull_mode_),
-            culled_total,
-            light_frustum_rejected_,
-            light_occlusion_rejected_,
-            light_prefilter_rejected_,
-            (shadow_settings_.enable && enable_sun_shadow_) ? "on" : "off",
-            sun_shadow_strength_,
-            spot_shadow_count_,
-            point_shadow_count_,
-            light_orbit_scale_,
-            light_height_bias_,
-            light_range_scale_,
-            light_intensity_scale_,
             visible_draws,
             total_draws,
-            tile_w_,
-            tile_h_,
-            light_tile_size_,
-            cluster_z_slices_,
-            static_cast<unsigned long long>(cull_debug_total_refs_),
-            avg_refs,
-            cull_debug_max_list_size_,
-            cull_debug_non_empty_lists_,
-            cull_debug_list_count_,
-            auto_cycle_technique_ ? "auto" : "manual",
-            switch_in,
+            cull_name,
+            culler_backend,
             avg_ms);
         SDL_SetWindowTitle(win_, title);
     }
@@ -8954,6 +8944,9 @@ private:
                 case SDLK_F5:
                     cycle_framebuffer_debug_target();
                     break;
+                case SDLK_i:
+                    cycle_forward_framebuffer_debug_target();
+                    break;
                 case SDLK_F6:
                     vulkan_culler_backend_ =
                         (vulkan_culler_backend_ == VulkanCullerBackend::GpuCompute)
@@ -9031,10 +9024,10 @@ private:
                 case SDLK_r:
                     light_orbit_scale_ = 1.0f;
                     light_height_bias_ = 0.0f;
-                    light_range_scale_ = 1.0f;
+                    light_range_scale_ = kDefaultLightRangeScale;
                     light_intensity_scale_ = 1.0f;
-                    enable_sun_shadow_ = false;
-                    sun_shadow_strength_ = 0.0f;
+                    enable_sun_shadow_ = true;
+                    sun_shadow_strength_ = 0.42f;
                     break;
                 case SDLK_MINUS:
                 case SDLK_KP_MINUS:
@@ -9236,10 +9229,10 @@ private:
     uint32_t light_prefilter_rejected_ = 0;
     float light_orbit_scale_ = 1.0f;
     float light_height_bias_ = 0.0f;
-    float light_range_scale_ = 1.0f;
+    float light_range_scale_ = kDefaultLightRangeScale;
     float light_intensity_scale_ = 1.0f;
-    bool enable_sun_shadow_ = false;
-    float sun_shadow_strength_ = 0.0f;
+    bool enable_sun_shadow_ = true;
+    float sun_shadow_strength_ = 0.42f;
     bool use_forward_plus_ = true;
     shs::LightCullingMode culling_mode_ = shs::LightCullingMode::Tiled;
     uint32_t light_tile_size_ = kDefaultTileSize;
@@ -9347,6 +9340,8 @@ private:
     bool composition_depth_of_field_enabled_ = true;
     shs::RenderPathTemporalSettings temporal_settings_{};
     shs::RenderPathTemporalFrameState temporal_state_{};
+    bool ssao_forward_placeholder_note_emitted_ = false;
+    bool fxaa_placeholder_note_emitted_ = false;
     float technique_switch_accum_sec_ = 0.0f;
     bool auto_cycle_technique_ = false;
     bool use_multithread_recording_ = false;

@@ -45,6 +45,7 @@ layout(set = 0, binding = 3, std430) readonly buffer TileIndices
     uint tile_indices[];
 };
 
+layout(set = 0, binding = 5) uniform sampler2D u_depth_tex;
 layout(set = 0, binding = 6) uniform sampler2D u_sun_shadow_map;
 layout(set = 0, binding = 7) uniform sampler2DArray u_local_shadow_map;
 layout(set = 0, binding = 8) uniform sampler2DArray u_point_shadow_faces;
@@ -202,6 +203,36 @@ float depth01_to_view(float d, float near_z, float far_z)
     float f = max(far_z, n + 0.01);
     float denom = max(f - d * (f - n), 1e-5);
     return (n * f) / denom;
+}
+
+float eval_depth_ao(vec2 uv)
+{
+    vec2 tex_size = vec2(textureSize(u_depth_tex, 0));
+    if (tex_size.x <= 1.0 || tex_size.y <= 1.0) return 1.0;
+    vec2 texel = 1.0 / tex_size;
+
+    float d_center = texture(u_depth_tex, uv).r;
+    if (d_center >= 0.9999) return 1.0;
+    float vz_center = depth01_to_view(d_center, ubo.depth_params.x, ubo.depth_params.y);
+
+    const vec2 taps[8] = vec2[](
+        vec2(-1.0, 0.0), vec2(1.0, 0.0), vec2(0.0, -1.0), vec2(0.0, 1.0),
+        vec2(-1.0, -1.0), vec2(1.0, -1.0), vec2(-1.0, 1.0), vec2(1.0, 1.0)
+    );
+
+    float occ = 0.0;
+    for (int i = 0; i < 8; ++i)
+    {
+        vec2 uv_n = clamp(uv + taps[i] * texel * 2.0, vec2(0.0), vec2(1.0));
+        float d_n = texture(u_depth_tex, uv_n).r;
+        if (d_n >= 0.9999) continue;
+        float vz_n = depth01_to_view(d_n, ubo.depth_params.x, ubo.depth_params.y);
+        float delta = max(vz_center - vz_n, 0.0);
+        occ += clamp(delta * 0.80, 0.0, 1.0);
+    }
+
+    float ao = 1.0 - (occ / 8.0) * 0.72;
+    return clamp(ao, 0.28, 1.0);
 }
 
 float sample_shadow_pcf_2d(
@@ -514,6 +545,9 @@ void main()
     float metallic = clamp(pc.material_params.x, 0.0, 1.0);
     float roughness = clamp(pc.material_params.y, 0.04, 1.0);
     float ao = clamp(pc.material_params.z, 0.0, 1.0);
+    vec2 ao_uv = gl_FragCoord.xy / vec2(textureSize(u_depth_tex, 0));
+    ao *= eval_depth_ao(ao_uv);
+    ao = clamp(ao, 0.0, 1.0);
     uint lighting_technique = ubo.culling_params.y;
     uint semantic_debug = ubo.culling_params.z;
 
