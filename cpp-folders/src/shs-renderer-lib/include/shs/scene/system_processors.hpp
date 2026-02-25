@@ -13,6 +13,7 @@
 #include <memory>
 #include <utility>
 #include <vector>
+#include <functional>
 
 #include "shs/core/context.hpp"
 #include "shs/frame/frame_params.hpp"
@@ -32,32 +33,32 @@ namespace shs
         FrameParams* frame = nullptr;
     };
 
-    class ILogicSystem
+    // VOP: Logic systems are just functions that mutate context/external state.
+    // No "ISystem" inheritance. State should be managed by the caller (closures/structs).
+    using LogicSystemTickFn = std::function<void(LogicSystemContext&)>;
+
+    struct LogicSystem
     {
-    public:
-        virtual ~ILogicSystem() = default;
-        virtual void tick(LogicSystemContext& ctx) = 0;
+        std::string name;
+        LogicSystemTickFn tick;
     };
 
     class LogicSystemProcessor
     {
     public:
-        template <typename TSystem, typename... Args>
-        TSystem& add_system(Args&&... args)
+        // Use add("name", [&state](auto& ctx) { state.tick(ctx); }) pattern.
+        void add(std::string name, LogicSystemTickFn fn)
         {
-            auto s = std::make_unique<TSystem>(std::forward<Args>(args)...);
-            TSystem& ref = *s;
-            systems_.push_back(std::move(s));
-            return ref;
+            systems_.push_back({std::move(name), std::move(fn)});
         }
 
         void tick(LogicSystemContext& ctx)
         {
-            for (auto& s : systems_) s->tick(ctx);
+            for (auto& s : systems_) s.tick(ctx);
         }
 
     private:
-        std::vector<std::unique_ptr<ILogicSystem>> systems_{};
+        std::vector<LogicSystem> systems_{};
     };
 
     struct RenderSystemContext
@@ -68,46 +69,29 @@ namespace shs
         RTRegistry* rtr = nullptr;
     };
 
-    class IRenderSystem
+    // VOP: Render systems are just functions.
+    using RenderSystemDrawFn = std::function<void(RenderSystemContext&)>;
+
+    struct RenderSystem
     {
-    public:
-        virtual ~IRenderSystem() = default;
-        virtual void render(RenderSystemContext& ctx) = 0;
+        std::string name;
+        RenderSystemDrawFn render;
     };
 
     class RenderSystemProcessor
     {
     public:
-        template <typename TSystem, typename... Args>
-        TSystem& add_system(Args&&... args)
+        void add(std::string name, RenderSystemDrawFn fn)
         {
-            auto s = std::make_unique<TSystem>(std::forward<Args>(args)...);
-            TSystem& ref = *s;
-            systems_.push_back(std::move(s));
-            return ref;
+            systems_.push_back({std::move(name), std::move(fn)});
         }
 
         void render(RenderSystemContext& ctx)
         {
-            for (auto& s : systems_) s->render(ctx);
+            for (auto& s : systems_) s.render(ctx);
         }
 
     private:
-        std::vector<std::unique_ptr<IRenderSystem>> systems_{};
-    };
-
-    class PipelineRenderSystem final : public IRenderSystem
-    {
-    public:
-        explicit PipelineRenderSystem(PluggablePipeline* pipeline) : pipeline_(pipeline) {}
-
-        void render(RenderSystemContext& ctx) override
-        {
-            if (!pipeline_ || !ctx.ctx || !ctx.scene || !ctx.frame || !ctx.rtr) return;
-            pipeline_->execute(*ctx.ctx, *ctx.scene, *ctx.frame, *ctx.rtr);
-        }
-
-    private:
-        PluggablePipeline* pipeline_ = nullptr;
+        std::vector<RenderSystem> systems_{};
     };
 }

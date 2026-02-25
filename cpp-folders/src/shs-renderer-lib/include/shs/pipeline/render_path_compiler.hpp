@@ -1,11 +1,11 @@
 #pragma once
 
 /*
-    SHS RENDERER SAN
+    SHS РЕНДЕРЕР САН
 
-    FILE: render_path_compiler.hpp
-    MODULE: pipeline
-    PURPOSE: Recipe validation + compilation into an executable pass chain plan.
+    ФАЙЛ: render_path_compiler.hpp
+    МОДУЛЬ: pipeline
+    ЗОРИЛГО: Рендер жорыг техникийн хувьд зөв эсэхийг шалгах (validation) болон гүйцэтгэх боломжтой дараалал болгон хөрвүүлэх (compilation).
 */
 
 

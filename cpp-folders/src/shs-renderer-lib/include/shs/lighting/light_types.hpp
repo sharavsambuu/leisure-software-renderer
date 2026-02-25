@@ -5,8 +5,8 @@
 
     ФАЙЛ: light_types.hpp
     МОДУЛЬ: lighting
-    ЗОРИЛГО: Орчин үеийн гэрлийн төрлүүд, culling bound семантик, GPU pack форматыг
-            нэг цэгт тодорхойлж, Vulkan/Software backend-д өргөтгөх суурь болгоно.
+    ЗОРИЛГО: Орчин үеийн гэрлийн төрлүүд, далдлах (culling) геометр дүрсүүд болон 
+            GPU санах ойд шахах форматыг тодорхойлно.
 */
 
 #include <algorithm>
@@ -123,7 +123,7 @@ namespace shs
     {
         LocalLightCommon common{};
         glm::vec3 direction_ws{0.0f, -1.0f, 0.0f};
-        // Local X axis on emitter plane.
+        // Ялгаруулагчийн хавтгай дахь локал X тэнхлэг.
         glm::vec3 right_ws{1.0f, 0.0f, 0.0f};
         glm::vec2 half_extents{1.0f, 1.0f};
     };
@@ -136,8 +136,8 @@ namespace shs
         float radius = 0.25f;
     };
 
-    // std430-compatible generic local-light payload.
-    // Fragment/compute shader аль аль нь энэ бүтэц дээр ажиллана.
+    // std430-тэй нийцэх локал гэрлийн (local light) өгөгдлийн бүтэц.
+    // Fragment болон compute shader аль аль нь энэ бүтэц дээр ажиллана.
     struct alignas(16) CullingLightGPU
     {
         // xyz: position ws, w: range
@@ -246,7 +246,8 @@ namespace shs
         out.type_shape_flags.y = static_cast<uint32_t>(source_shape);
     }
 
-    // Note: These helpers provide geometry bounds for GPU packing and broad-phase culling.
+    // Санамж: Эдгээр туслах функцүүд нь GPU-д багцлах болон өргөн хүрээгээр далдлах
+    // (broad-phase culling) зориулалтаар геометрийн хязгааруудыг үүсгэнэ.
     inline Sphere point_light_culling_sphere(const PointLight& point)
     {
         return Sphere{

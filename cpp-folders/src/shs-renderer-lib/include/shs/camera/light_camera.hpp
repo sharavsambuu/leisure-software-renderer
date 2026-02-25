@@ -69,8 +69,8 @@ namespace shs
         l -= m; r += m; b -= m; t += m;
         n -= m; f += m;
 
-        // Stabilize directional shadows by snapping the ortho XY center
-        // to shadow texel increments in light space.
+        // Сүүдрийн зургийн тогтворжилтыг хангах зорилгоор, гэрлийн орон зай дахь 
+        // ортограф төвийг сүүдрийн текселийн алхамтай уялдуулан тохируулж байна.
         if (shadow_map_resolution > 0u)
         {
             const float span_x = std::max(r - l, 1e-5f);

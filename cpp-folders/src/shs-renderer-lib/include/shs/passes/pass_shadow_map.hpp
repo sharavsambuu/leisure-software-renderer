@@ -5,8 +5,7 @@
 
     ФАЙЛ: pass_shadow_map.hpp
     МОДУЛЬ: passes
-    ЗОРИЛГО: Энэ файл нь shs-renderer-lib-ийн passes модульд хамаарах төрөл/функцийн
-            интерфэйс эсвэл хэрэгжүүлэлтийг тодорхойлно.
+    ЗОРИЛГО: Сүүдрийн зураглал (shadow map) гаргаж авах рендеринг давхарга.
 */
 
 
@@ -77,7 +76,7 @@ namespace shs
                 return glm::vec3(u, v, w);
             };
 
-            // Shadow camera фрустум таслахгүйн тулд world AABB-г консерватив байдлаар цуглуулна.
+            // Сүүдрийн камерын харагдацын пирамидыг (frustum) таслахгүйн тулд ертөнцийн AABB-г багтаамжтайгаар (conservative) цуглуулна.
             AABB scene_aabb{};
             bool has_any_shadow_caster = false;
             auto& mesh_bounds_cache = ctx.shadow.mesh_bounds_cache;
@@ -136,12 +135,12 @@ namespace shs
                 scene_aabb,
                 10.0f,
                 static_cast<uint32_t>(std::max(shadow->w, 1)));
-            // Энэ frame-ийн shadow sampling-д хэрэгтэй runtime төлөвийг context-д хадгална.
+            // Энэн кадр дээрх сүүдрийн түүвэрлэлтэд (shadow sampling) хэрэгтэй ажиллах үеийн төлөвийг context-д хадгална.
             ctx.shadow.map = shadow;
             ctx.shadow.light_viewproj = light_cam_.viewproj;
             ctx.shadow.valid = true;
 
-            // Shadow map нь depth-only буфер тул зөвхөн хамгийн ойрын z01-ийг үлдээнэ.
+            // Shadow map нь зөвхөн гүний (depth) буфер тул хамгийн ойрын z01 цэгийг үлдээнэ.
             for (const auto& item : in.scene->items)
             {
                 if (!item.visible || !item.casts_shadow) continue;

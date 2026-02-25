@@ -3060,7 +3060,7 @@ namespace
     }
 
     // Subaru машинд deterministic төлөвт автомат жолоодлого (Cruise/Turn/Recover/Idle) хэрэгжүүлнэ.
-    class SubaruCruiseSystem final : public shs::ILogicSystem
+    class SubaruCruiseSystem final
     {
     public:
         enum class DriveState : uint8_t
@@ -3129,7 +3129,7 @@ namespace
             return glm::normalize(glm::vec3(std::cos(current_yaw_), 0.0f, std::sin(current_yaw_)));
         }
 
-        void tick(shs::LogicSystemContext& ctx) override
+        void tick(shs::LogicSystemContext& ctx)
         {
             if (!ctx.objects) return;
             auto* obj = ctx.objects->find(object_name_);
@@ -3402,7 +3402,7 @@ namespace
     };
 
     // Follow mode асаалттай үед камерыг машины араас зөөлөн дагуулах логик систем.
-    class FollowCameraSystem final : public shs::ILogicSystem
+    class FollowCameraSystem final
     {
     public:
         FollowCameraSystem(
@@ -3423,7 +3423,7 @@ namespace
             , smoothing_(smoothing)
         {}
 
-        void tick(shs::LogicSystemContext& ctx) override
+        void tick(shs::LogicSystemContext& ctx)
         {
             if (!rig_ || !enabled_ || !(*enabled_) || !ctx.objects) return;
             const auto* target = ctx.objects->find(target_name_);
@@ -3462,7 +3462,7 @@ namespace
     };
 
     // Monkey объектод эргэлт + босоо чиглэлийн жижиг савлалт өгнө.
-    class MonkeyWiggleSystem final : public shs::ILogicSystem
+    class MonkeyWiggleSystem final
     {
     public:
         MonkeyWiggleSystem(std::string object_name, float spin_rps, float bob_amp, float bob_hz)
@@ -3472,7 +3472,7 @@ namespace
             , bob_hz_(bob_hz)
         {}
 
-        void tick(shs::LogicSystemContext& ctx) override
+        void tick(shs::LogicSystemContext& ctx)
         {
             if (!ctx.objects) return;
             auto* obj = ctx.objects->find(object_name_);
@@ -3707,7 +3707,8 @@ int main()
     glm::vec3 chase_forward{1.0f, 0.0f, 0.0f};
     glm::vec3 prev_subaru_pos{0.0f};
     bool has_prev_subaru_pos = false;
-    auto& subaru_ai = logic_systems.add_system<SubaruCruiseSystem>(
+
+    SubaruCruiseSystem subaru_ai(
         "subaru",
         plane_extent * 0.48f,
         -0.95f,
@@ -3716,7 +3717,10 @@ int main()
         SUBARU_VISUAL_FORWARD_AXIS,
         0.0f
     );
-    logic_systems.add_system<MonkeyWiggleSystem>("monkey", 0.32f, 0.22f, 1.9f);
+    logic_systems.add("subaru", [&](auto& ctx) { subaru_ai.tick(ctx); });
+
+    MonkeyWiggleSystem monkey_sys("monkey", 0.32f, 0.22f, 1.9f);
+    logic_systems.add("monkey", [&](auto& ctx) { monkey_sys.tick(ctx); });
 
     if (const auto* subaru_init = objects.find("subaru"))
     {

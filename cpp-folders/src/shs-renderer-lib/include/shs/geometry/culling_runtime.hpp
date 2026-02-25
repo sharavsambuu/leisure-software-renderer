@@ -5,9 +5,9 @@
 
     ФАЙЛ: culling_runtime.hpp
     МОДУЛЬ: geometry
-    ЗОРИЛГО: Frustum/Occlusion culling-д зориулсан runtime abstraction layer.
-            Нэгэн жигд request/result/stats төрөл, мөн stable_id дээр
-            суурилсан visibility history (hysteresis) хадгална.
+    ЗОРИЛГО: Харагдахгүй объектуудыг ялгах (Frustum/Occlusion culling) үйл явцын ажиллах үеийн давхарга.
+            Нэгэн жигд хүсэлт/үр дүн/статистик төрлүүдтэй бөгөөд объект бүрийн тогтмол дугаар (stable_id) дээр
+            суурилан өмнөх фрэймийн харагдацын түүхийг (hysteresis) хадгална.
 */
 
 #if defined(SHS_HAS_JOLT) && ((SHS_HAS_JOLT + 0) == 1)

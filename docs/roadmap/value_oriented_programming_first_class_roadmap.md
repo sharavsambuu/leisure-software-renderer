@@ -117,8 +117,10 @@ Apply C++20 features aggressively where they increase value-semantics clarity:
 4. Prefer `std::ranges` for deterministic pipeline/list transforms when allocation behavior stays explicit.
 5. Expand `constexpr` mapping tables for pass/resource semantic conversions.
 6. Keep coroutines runtime-edge only (job/task orchestration), not planner state mutation.
-7. Remove planner-side `dynamic_cast` and mutable `static` caches.
+7. Introduce `std::pmr` with per-frame arena allocators to guarantee zero-heap-allocation planners.
+8. Remove planner-side `dynamic_cast` and mutable `static` caches.
    - In progress: removed backend policy `dynamic_cast` from render-path capability resolution; continue auditing for remaining planner-side dynamic type branches.
+9. Adopt `std::expected` (or `tl::expected`) to formalize error states in planner diagnostics instead of asserting or crashing.
 
 Review rule:
 
@@ -190,7 +192,14 @@ Only step 5 is side-effecting.
 
 1. Add C++20-first coding checklist to VOP reviews (`span/string_view/concepts/ranges/constexpr`).
 2. Replace planner-side legacy patterns (`dynamic_cast`, hidden caches, ownership-opaque pointer switching).
-3. Complete compatibility-wrapper retirement once core + demos consume value APIs end-to-end.
+3. Introduce memory-safe zero-cost planners using `std::pmr` and `constexpr` string string hashing for IDs.
+4. Complete compatibility-wrapper retirement once core + demos consume value APIs end-to-end.
+
+## Phase 8: DOD and Wait-Free Execution (Next Frontier)
+
+1. **SoA Refactor:** Convert AoS arrays in hot paths (culling/physics) to Structure of Arrays (SoA) to maximize cache-line efficiency.
+2. **Generational Handles:** Replace pointer-based object references with `uint32_t` generational indices.
+3. **Wait-Free Spans:** Enforce that multithreaded simulation jobs are pure functions receiving read-only inputs (`std::span<const T>`) and restricted to exclusive write outputs (`std::span<U>`), eliminating atomic locks entirely.
 
 ## Deliverables
 

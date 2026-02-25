@@ -40,29 +40,6 @@ namespace shs
          * @brief Оролтын төлөвөөр камерын байрлал болон өнцгийг шинэчилнэ.
          */
         void update(const PlatformInputState& input, float dt)
-        {
-            if (input.right_mouse_down || input.left_mouse_down)
-            {
-                float mdx = input.mouse_dx;
-                float mdy = input.mouse_dy;
-
-                // Spike filtering
-                if (std::abs(mdx) > kMouseSpikeThreshold || std::abs(mdy) > kMouseSpikeThreshold)
-                {
-                    mdx = 0.0f;
-                    mdy = 0.0f;
-                }
-                mdx = std::clamp(mdx, -kMouseDeltaClamp, kMouseDeltaClamp);
-                mdy = std::clamp(mdy, -kMouseDeltaClamp, kMouseDeltaClamp);
-
-                // LH convention: Mouse X delta negates yaw (looking right increases yaw in RH, but we are LH +Z)
-                // Note: hello_culling_sw used: yaw -= mdx * look_speed
-                yaw -= mdx * look_speed;
-                pitch -= mdy * look_speed;
-                pitch = std::clamp(pitch, -glm::half_pi<float>() + 0.01f, glm::half_pi<float>() - 0.01f);
-            }
-
-            const glm::vec3 fwd = forward_from_yaw_pitch(yaw, pitch);
             const glm::vec3 right = right_from_forward(fwd);
             const glm::vec3 up{0.0f, 1.0f, 0.0f};
 

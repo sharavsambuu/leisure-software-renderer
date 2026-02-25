@@ -5,8 +5,8 @@
 
     ФАЙЛ: scene_types.hpp
     МОДУЛЬ: scene
-    ЗОРИЛГО: Энэ файл нь shs-renderer-lib-ийн scene модульд хамаарах төрөл/функцийн
-            интерфэйс эсвэл хэрэгжүүлэлтийг тодорхойлно.
+    ЗОРИЛГО: Орчин үеийн (modern) пасс болон пайплайн (pipeline) API-уудад зориулсан
+            үндсэн рендеринг ба ертөнцийн (scene) гэрээ болон төрлүүд.
 */
 
 
@@ -16,7 +16,7 @@
 
 namespace shs
 {
-    // Canonical render-scene contract used by modern pass/pipeline APIs.
+    // Орчин үеийн пасс болон пайплайнуудын ашиглах ертөнцийн үндсэн бүтэц.
     class ISkyModel;
     class ResourceRegistry;
     struct LightSet;

@@ -9,12 +9,12 @@
             SHS (LH, +Z forward) ↔ Jolt (RH, -Z forward) хоорондын
             бүх coordinate system conversion-ийг нэг цэгт нэгтгэнэ.
 
-    CONVENTION:
-        SHS:  Left-handed, Y-up, +Z = forward
-        Jolt: Right-handed, Y-up, -Z = forward
-        Conversion: negate Z for positions/directions.
-                    negate X,Y for quaternions.
-                    conjugate matrices by S = diag(1,1,-1,1).
+    СТАНДАРТ (CONVENTION):
+        SHS:  Зүүн гарын дүрэм (Left-handed), Y нь дээшээ, +Z нь урагшаа
+        Jolt: Баруун гарын дүрэм (Right-handed), Y нь дээшээ, -Z нь урагшаа
+        Хөрвүүлэлт: Байрлал/чиглэлийн Z утгыг эсрэгээр солино (negate Z).
+                    Кватернионы (quaternion) X, Y утгыг эсрэгээр солино.
+                    Матрицуудыг S = diag(1,1,-1,1) диагональ матрицаар үржиж хөрвүүлнэ (conjugate).
 */
 
 #if defined(SHS_HAS_JOLT) && ((SHS_HAS_JOLT + 0) == 1)
@@ -45,9 +45,9 @@
 namespace shs::jolt
 {
     // =========================================================================
-    //  Unit mapping
-    //  SHS and Jolt are both configured to use SI-like units.
-    //  Distance scaling is intentionally 1:1.
+    //  Хэмжигдэхүүний хөрвүүлэлт
+    //  SHS болон Jolt нь хоёул SI (Олон улсын) нэгжийн систем ашиглана.
+    //  Зайн масштаб нь зориуд 1:1 харьцаатай байна.
     // =========================================================================
 
     inline constexpr float kDistanceScaleShsToJolt = 1.0f;
@@ -74,7 +74,7 @@ namespace shs::jolt
     }
 
     // =========================================================================
-    //  Position / Direction conversion  (Z-negate)
+    //  Байрлал болон Чиглэлийн хөрвүүлэлт (Z утгыг эсрэгээр солих)
     // =========================================================================
 
     inline JPH::Vec3 to_jph(const glm::vec3& v) noexcept
@@ -93,32 +93,14 @@ namespace shs::jolt
             -to_shs_distance(v.GetZ()));
     }
 
-
-    // =========================================================================
-    //  Quaternion conversion  (negate X,Y = Z-flip conjugation)
-    // =========================================================================
-
-    inline JPH::Quat to_jph(const glm::quat& q) noexcept
-    {
-        return JPH::Quat(-q.x, -q.y, q.z, q.w);
-    }
-
-    inline glm::quat to_glm(const JPH::Quat& q) noexcept
-    {
-        return glm::quat(q.GetW(), -q.GetX(), -q.GetY(), q.GetZ());
-    }
-
-
-    // =========================================================================
-    //  4×4 Matrix conversion:  M_jolt = S · M_shs · S
-    //  where S = diag(1, 1, -1, 1).  S is its own inverse.
-    //  This negates row 2 and column 2 of the 4×4 matrix.
-    // =========================================================================
-
     inline JPH::Mat44 to_jph(const glm::mat4& m) noexcept
     {
-        // GLM is column-major: m[col][row]
-        // After S·M·S conjugation:
+        // Matrix change of basis: M' = S M S^-1
+        // Since S = diag(1, 1, -1, 1), S = S^-1
+        // Thus M' = S M S.
+        // This corresponds to negating the elements of 'm' where the row and column
+        // indices have exactly one '2' (which is the Z axis).
+        // Therefore:
         //   columns 0,1,3: negate row 2  (the z component)
         //   column 2: negate rows 0,1,3  (keep row 2)
 

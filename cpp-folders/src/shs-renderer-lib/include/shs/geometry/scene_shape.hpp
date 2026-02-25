@@ -52,7 +52,7 @@ namespace shs
         //  Concept satisfaction: FastCullable (HasBoundingSphere)
         // -----------------------------------------------------------------
 
-        /// Returns conservative bounding sphere in SHS LH space.
+        /// SHS LH орон зай дахь аюулгүй хамарсан бөмбөрцгийг (bounding sphere) буцаана.
         Sphere bounding_sphere() const
         {
             if (!shape) return Sphere{};
@@ -71,7 +71,7 @@ namespace shs
         //  Concept satisfaction: HasWorldAABB
         // -----------------------------------------------------------------
 
-        /// Returns world-space AABB in SHS LH space.
+        /// SHS LH орон зай дахь ертөнцийн хязгаарын хайрцгийг (world-space AABB) буцаана.
         AABB world_aabb() const
         {
             if (!shape) return AABB{};
@@ -81,10 +81,10 @@ namespace shs
         }
     };
 
-    // Static assertions that SceneShape satisfies our concepts.
-    static_assert(Cullable<SceneShape>, "SceneShape must satisfy Cullable");
-    static_assert(FastCullable<SceneShape>, "SceneShape must satisfy FastCullable");
-    static_assert(HasWorldAABB<SceneShape>, "SceneShape must satisfy HasWorldAABB");
+    // SceneShape нь Cullable болон FastCullable дүрмүүдийг (concepts) хангасан байхыг батлах статик шалгалт.
+    static_assert(Cullable<SceneShape>, "SceneShape нь Cullable концептийг хангасан байх ёстой");
+    static_assert(FastCullable<SceneShape>, "SceneShape нь FastCullable концептийг хангасан байх ёстой");
+    static_assert(HasWorldAABB<SceneShape>, "SceneShape нь HasWorldAABB концептийг хангасан байх ёстой");
 }
 
 #endif // SHS_HAS_JOLT

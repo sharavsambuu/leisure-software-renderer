@@ -9,9 +9,9 @@
             ConvexCell (tile/cluster/cascade) болон Frustum дотор
             shape classify хийх C++20 concept-constrained функцүүд.
 
-    CONVENTION:
-        Бүх coordinate-ууд SHS LH space дотор ажиллана.
-        Jolt shape-ийн world bounds-ийг LH руу хөрвүүлж тест хийнэ.
+    СТАНДАРТ (CONVENTION):
+        Бүх координатууд SHS-ийн зүүн гарын дүрэмтэй (LH space) орон зайд ажиллана.
+        Jolt shape-ийн ертөнцийн давхаргын хязгаарыг (world bounds) LH рүү хөрвүүлж шалгана.
 */
 
 #if defined(SHS_HAS_JOLT) && ((SHS_HAS_JOLT + 0) == 1)
@@ -39,8 +39,8 @@
 namespace shs
 {
     // =========================================================================
-    //  CullingCell — lightweight tile/cluster/cascade cell
-    //  Equivalent to the old ConvexCell but designed for Jolt-based pipeline.
+    //  CullingCell — хөнгөн жинтэй хавтан (tile)/багц (cluster)/бууралт (cascade) шалгах нүд
+    //  Хуучин ConvexCell-тэй ижил боловч Jolt-д суурилсан шугамд зориулагдсан.
     // =========================================================================
 
     inline constexpr uint32_t k_culling_cell_max_planes = 16u;

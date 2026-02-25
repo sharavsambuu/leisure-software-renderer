@@ -1,11 +1,11 @@
 #pragma once
 
 /*
-    SHS RENDERER SAN
+    SHS РЕНДЕРЕР САН
 
-    FILE: render_path_recipe.hpp
-    MODULE: pipeline
-    PURPOSE: Data-first recipe schema for dynamic render path composition.
+    ФАЙЛ: render_path_recipe.hpp
+    МОДУЛЬ: pipeline
+    ЗОРИЛГО: Динамик рендер замыг (render path) бүрдүүлэх өгөгдөл төвтэй (data-first) жор ба загвар.
 */
 
 

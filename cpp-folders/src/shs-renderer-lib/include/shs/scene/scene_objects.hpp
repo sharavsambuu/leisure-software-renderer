@@ -5,8 +5,8 @@
 
     ФАЙЛ: scene_objects.hpp
     МОДУЛЬ: scene
-    ЗОРИЛГО: Энэ файл нь shs-renderer-lib-ийн scene модульд хамаарах төрөл/функцийн
-            интерфэйс эсвэл хэрэгжүүлэлтийг тодорхойлно.
+    ЗОРИЛГО: Рендерлэх объектуудыг (SceneObject) удирдах, хадгалах, өгөгдлийн бүтцийг 
+            тодорхойлох болон объект бүрийн тогтмол дугаар (stable_object_id) үүсгэх логик.
 */
 
 
@@ -79,7 +79,7 @@ namespace shs
     private:
         static uint64_t stable_object_id(const std::string& name)
         {
-            // FNV-1a 64-bit hash for stable cross-frame object keys.
+            // FNV-1a 64-bit системээр фрэйм хооронд тогтвортой байх объектын дугаар үүсгэх.
             uint64_t h = 1469598103934665603ull;
             for (unsigned char c : name)
             {

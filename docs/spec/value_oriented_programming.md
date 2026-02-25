@@ -41,6 +41,8 @@ Use pure value transforms by default. Keep side effects at boundaries.
 5. Compile/plan/reduce stages must be deterministic for identical inputs.
 6. Value objects must encode complete data contracts needed by execution edges.
 7. Prefer C++20 value-centric language/library features when they improve clarity and safety without adding hidden cost.
+8. **DOD Memory Layout:** Hot-path data (physics/culling) must use Structure of Arrays (SoA) and generational index handles (e.g., `uint32_t`), avoiding pointer-chasing and Array of Structures (AoS).
+9. **Wait-Free Span Contract:** Multi-threaded jobs must be pure functions that take an immutable `std::span<const T>` and write exclusively to a non-overlapping `std::span<U>`. No locks or atomic spins allowed inside simulation/rendering workloads.
 
 ## 4. Forbidden Patterns
 
@@ -49,6 +51,7 @@ Use pure value transforms by default. Keep side effects at boundaries.
 3. Mutating global runtime state during what is documented as a planning pass.
 4. Side-effect code that silently overrides resolved plan values.
 5. Unstable output ordering in planner/reducer results when stable ordering is practical.
+6. Using standard heap allocation (`new`/`std::vector`) for per-frame planner transients. (Use `std::pmr::vector` with a per-frame Bump/Arena Allocator instead).
 
 ## 5. Allowed Exceptions
 
@@ -91,9 +94,11 @@ Use pure value transforms by default. Keep side effects at boundaries.
 Recommended by default in new core APIs:
 
 - `std::span` for non-owning contiguous data flow across reducers/planners.
-- `std::string_view` for pass/recipe IDs and lookup keys where ownership is external.
+- `std::string_view` boundary parsing, with **`constexpr` string hashing** (e.g., FNV-1a) for internal ID lookups.
+- `std::pmr` (Polymorphic Memory Resources) for zero-cost planner arrays backed by frame-scoped arena allocators.
 - `concept`/`requires` for compile-time contracts in planning and conversion utilities.
 - `std::variant` + `std::visit` for explicit action/state unions.
+- C++23 `std::expected` (or backport `tl::expected`) to treat errors as values. Planners missing hints/attachments must return explicit failure types instead of crashing/asserting.
 - `constexpr` helpers/tables for deterministic mapping logic.
 - `std::ranges` algorithms/views in planning code only when they do not hide allocations or hurt readability.
 

@@ -5,7 +5,8 @@
 
     ФАЙЛ: frustum_culling.hpp
     МОДУЛЬ: geometry
-    ЗОРИЛГО: Frustum extraction болон sphere/box culling utility.
+    ЗОРИЛГО: Матрицаас харагдацын пирамидын 6 гадаргууг (Frustum extraction) гаргаж авах 
+            болон бөмбөрцөг/хайрцгийг шалгаж ялгах функцүүд.
 */
 
 #include <algorithm>
@@ -46,8 +47,8 @@ namespace shs
 
     inline Frustum extract_frustum_planes(const glm::mat4& view_proj)
     {
-        // GLM column-major matrix:
-        // plane extraction from clip-space row combinations.
+        // GLM матрицын баганаар унших бүтэц (column-major):
+        // Хэтийн төлөвийн орон зайн (clip-space) мөрүүдийн нийлбэрээр гадаргууг гаргаж авна.
         const glm::vec4 r0(view_proj[0][0], view_proj[1][0], view_proj[2][0], view_proj[3][0]);
         const glm::vec4 r1(view_proj[0][1], view_proj[1][1], view_proj[2][1], view_proj[3][1]);
         const glm::vec4 r2(view_proj[0][2], view_proj[1][2], view_proj[2][2], view_proj[3][2]);

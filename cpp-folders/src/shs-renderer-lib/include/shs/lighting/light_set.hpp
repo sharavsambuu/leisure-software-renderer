@@ -5,8 +5,8 @@
 
     ФАЙЛ: light_set.hpp
     МОДУЛЬ: lighting
-    ЗОРИЛГО: Төрөлжсөн гэрлүүдийг нэгтгээд culling-д бэлэн GPU payload руу
-            flatten хийх extendable container семантик.
+    ЗОРИЛГО: Төрөлжсөн гэрлүүдийг нэгтгээд culling-д бэлэн GPU өгөгдөл хуулах санамж руу
+            (payload) угсарч өрөх бүтцэд зориулагдсан сав (container).
 */
 
 #include <algorithm>
@@ -68,9 +68,9 @@ namespace shs
             append(tube_areas, [](const TubeAreaLight& l) { return make_tube_area_culling_light(l); });
         }
 
-        // Overlay Jolt-backed (or any FastCullable-like) bounds onto the packed lights.
-        // Source ordering must match flatten_cullable_gpu order:
-        // points -> spots -> rect_areas -> tube_areas.
+        // Jolt-ийн (эсвэл FastCullable-тэй төстэй) хязгаарыг багцалсан гэрлүүд дээр давхарлаж (overlay) өгнө.
+        // Эх үүсвэрийн дараалал нь flatten_cullable_gpu функцийн дараалалтай таарах ёстой:
+        // цэг (points) -> спот (spots) -> тэгш өнцөгт (rect_areas) -> хоолой хэлбэрт (tube_areas).
         template<LightCullSphereSource T>
         void flatten_cullable_gpu(
             std::vector<CullingLightGPU>& out,

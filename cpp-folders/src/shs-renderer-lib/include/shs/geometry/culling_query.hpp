@@ -5,8 +5,8 @@
 
     ФАЙЛ: culling_query.hpp
     МОДУЛЬ: geometry
-    ЗОРИЛГО: ShapeVolume vs ConvexCell нийтлэг classify API
-            (Outside / Intersecting / Inside).
+    ЗОРИЛГО: ShapeVolume болон ConvexCell хоорондын огтлолцлыг шалгах нийтлэг API
+            (Гадна талд [Outside] / Огтлолцсон [Intersecting] / Дотор талд [Inside] байгааг тодорхойлно).
 */
 
 #include <algorithm>
@@ -144,7 +144,7 @@ namespace shs
 
     inline float support_max_dot(const SweptOBB& swept, const glm::vec3& dir)
     {
-        // SweptOBB-ийг endpoint OBB хоёрын convex hull гэж семантикчилбал support нь max(h0, h1).
+        // SweptOBB-ийг эхлэл болон төгсгөлийн OBB хоёрын convex hull гэж үзвэл support нь max(h0, h1) байна.
         return std::max(support_max_dot(swept.at_t0, dir), support_max_dot(swept.at_t1, dir));
     }
 

@@ -271,8 +271,8 @@ namespace shs
             if (device_lost_) return;
             const uint32_t cur = current_frame_ % kMaxFramesInFlight;
 
-            // Reset only when we are ready to submit; this avoids leaving the
-            // fence unsignaled if frame recording bails out after begin_frame().
+            // Зөвхөн submit хийхэд бэлэн болсон үед л reset хийнэ; энэ нь begin_frame() хийгээд
+            // дуусгалгүй гарсан үед fence-ийг unsignaled (мэдээлэгдээгүй) орхихоос сэргийлнэ.
             const VkResult reset_fence = vkResetFences(device_, 1, &inflight_fences_[cur]);
             if (reset_fence == VK_ERROR_DEVICE_LOST)
             {
@@ -355,7 +355,7 @@ namespace shs
                     compute_wait_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
                     compute_wait_info.semaphore = compute_finished_[cur];
                     compute_wait_info.value = 0;
-                    compute_wait_info.stageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT; // The graphics queue waits for compute before fragment shading
+                    compute_wait_info.stageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT; // Graphics queue нь fragment shading-ийн өмнө compute-ийг хүлээнэ
                     compute_wait_info.deviceIndex = 0;
                     wait_infos.push_back(compute_wait_info);
                 }
@@ -428,8 +428,8 @@ namespace shs
             }
             if (submit_res != VK_SUCCESS)
             {
-                // The fence was reset above and would remain unsignaled on submit failure.
-                // Recover to a signaled fence so the next frame does not block forever.
+                // Дээрх fence-ийг reset хийсэн байгаа бөгөөд submit амжилтгүй болбол unsignaled хэвээрээ үлдэнэ.
+                // Дараагийн фрэйм шууд гацахгүй байхын тулд fence-ийг signlaed хэлбэрээр нь сэргээж авна.
                 (void)restore_signaled_inflight_fence(cur);
                 return;
             }
@@ -462,9 +462,9 @@ namespace shs
         }
 
 #ifdef SHS_HAS_VULKAN
-        // Demos currently update many resources in-place each frame.
-        // Keep two frames in flight to maximize GPU utilization and allow the CPU to 
-        // parallelize recording while the GPU executes the previous frame.
+        // Demo-ууд одоогоор фрэйм бүрд олон resource-уудыг өнгөлөгдөж буй байрлалд (in-place) шинэчилж байна.
+        // GPU ашиглалтыг нэмэгдүүлж, GPU өмнөх фрэймийг хийх хооронд CPU зэрэгцэн (parallelize) ажиллах 
+        // боломж олгохын тулд хоёр фрэймийг in-flight маягаар хадгална.
         static constexpr uint32_t kMaxFramesInFlight = 2;
 
         VkDevice device() const { return device_; }
@@ -966,7 +966,7 @@ namespace shs
             ci.pApplicationInfo = &app;
             ci.enabledLayerCount = static_cast<uint32_t>(layers_.size());
             ci.ppEnabledLayerNames = layers_.empty() ? nullptr : layers_.data();
-            // MoltenVK portability drivers require both extension + enumerate flag.
+            // MoltenVK portability driver-ууд нь extension болон enumerate тугийг хоёуланг нь шаарддаг.
             constexpr const char* kPortabilityEnumExt = "VK_KHR_portability_enumeration";
             if (add_instance_ext_if_supported(kPortabilityEnumExt))
             {
@@ -1019,13 +1019,13 @@ namespace shs
                 if (props[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) out.graphics = i;
                 if ((props[i].queueFlags & VK_QUEUE_COMPUTE_BIT) && !(props[i].queueFlags & VK_QUEUE_GRAPHICS_BIT))
                 {
-                    out.compute = i; // Prefer dedicated async compute queue
+                    out.compute = i; // Зориулалтын async compute queue-г илүүд үзнэ
                 }
                 VkBool32 present = VK_FALSE;
                 vkGetPhysicalDeviceSurfaceSupportKHR(gpu, i, surface_, &present);
                 if (present) out.present = i;
             }
-            // Fallback: If no dedicated compute queue found, fallback to the graphics queue handling compute
+            // Нөөц (Fallback): Хэрэв зориулалтын compute queue олдохгүй бол compute-ийг ажиллуулдаг graphics queue-г нөөц болгон ашиглана.
             if (!out.compute.has_value() && out.graphics.has_value())
             {
                 if (props[out.graphics.value()].queueFlags & VK_QUEUE_COMPUTE_BIT)
@@ -1212,9 +1212,9 @@ namespace shs
 
                 VkPhysicalDeviceDescriptorIndexingFeatures descriptor_features{};
                 descriptor_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
-                // Chain for both the KHR-extension path and the Vulkan 1.3 native path so that
-                // vkGetPhysicalDeviceFeatures2 populates the sub-feature flags and vkCreateDevice
-                // sees them in the pNext chain and enables them.
+                // KHR өргөтгөл (extension) болон Vulkan 1.3 native замын аль алиных нь хувьд
+                // vkGetPhysicalDeviceFeatures2-ээр дэд боломжуудын утгыг авч vkCreateDevice
+                // дуудахдаа pNext дотор залгаж өгнө.
                 if (use_descriptor_ext || (is_1_3_or_higher && want_descriptor_indexing && has_descriptor_indexing))
                 {
                     descriptor_features.pNext = features2.pNext;
@@ -1287,8 +1287,8 @@ namespace shs
                     timeline_feature_enabled = true;
                 }
 
-                // Cover both the KHR-extension path (use_descriptor_ext) and the Vulkan 1.3
-                // native path (where we also chained descriptor_features into pNext).
+                // KHR өргөтгөл (use_descriptor_ext) болон Vulkan 1.3 native замын аль алиныг нь
+                // шалгаж оруулна (native үед бид descriptor_features бүтцийг pNext-д залгасан байгаа).
                 if (use_descriptor_ext || (is_1_3_or_higher && want_descriptor_indexing && has_descriptor_indexing))
                 {
                     const bool has_runtime_array = descriptor_features.runtimeDescriptorArray == VK_TRUE;
@@ -1319,8 +1319,8 @@ namespace shs
                     sync2_feature_enabled = true;
                 }
 
-                // For Vulkan 1.3+ native path, read feature support from v13_features.
-                // The KHR extension booleans above are not populated in this path.
+                // Vulkan 1.3+ native хувилбарт v13_features-ээс дэмжигдсэн эсэхийг нь шалгах.
+                // Дээр заасан KHR өргөтгөлийн boolean-ууд энэ замд ашиглагдахгүй.
 #if defined(VK_API_VERSION_1_3) || defined(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES)
                 if (is_1_3_or_higher)
                 {
@@ -1334,9 +1334,9 @@ namespace shs
                     }
                     if (v13_features.inlineUniformBlock == VK_TRUE)
                     {
-                        // inline uniform block available — no separate flag needed
+                        // inline uniform block боломжтой - тусдаа туг (flag) хэрэггүй
                     }
-                    // timeline semaphore is core in 1.2+; for 1.3 it is always available.
+                    // timeline semaphore нь 1.2+ аас хойш шууд орсон ба 1.3 дээр үргэлж боломжтой байдаг.
                     timeline_feature_enabled = true;
                 }
 #endif
@@ -1353,7 +1353,7 @@ namespace shs
                 if (use_mesh_ext && mesh_features.meshShader == VK_TRUE)
                 {
                     mesh_features.meshShader = VK_TRUE;
-                    mesh_features.taskShader = VK_TRUE; // Request task shader as well
+                    mesh_features.taskShader = VK_TRUE; // Task shader ч бас шаардана
                     mesh_feature_enabled = true;
                 }
 
@@ -1389,7 +1389,7 @@ namespace shs
                 return true;
             };
 
-            // Attempt strategy:
+            // Төхөөрөмж үүсгэх оролдлого (стратеги):
             bool want_ray = request_ray_bundle_;
             if (!try_create_device(true, true, true, true, want_ray, true))
             {
@@ -2172,7 +2172,7 @@ namespace shs
             
             void cleanup(VkDevice device) {
                 if (pool != VK_NULL_HANDLE) {
-                    // command buffers are freed automatically when the pool is destroyed
+                    // command buffer-ууд нь command pool устгагдах үед автоматаар чөлөөгдөнө
                     vkDestroyCommandPool(device, pool, nullptr);
                     pool = VK_NULL_HANDLE;
                 }
@@ -2229,8 +2229,8 @@ namespace shs
             allocatorInfo.instance = instance_;
             allocatorInfo.vulkanApiVersion = VK_API_VERSION_1_3;
 
-            // Optional: integration with Volition or other function pointers if needed, 
-            // but standard vcpkg/static link works with default pointers.
+            // Нэмэлт (Optional): Хэрэв шаардлагатай бол өөр функц заагчуудтай (function pointers) 
+            // интеграци хийж болно. Харин vcpkg эсвэл статик холболтын үед үндсэн заагчууд нь ажиллана.
             VmaVulkanFunctions vulkanFunctions = {};
             vulkanFunctions.vkGetInstanceProcAddr = &vkGetInstanceProcAddr;
             vulkanFunctions.vkGetDeviceProcAddr = &vkGetDeviceProcAddr;

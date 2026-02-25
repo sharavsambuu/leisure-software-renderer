@@ -3,8 +3,8 @@
 
     ФАЙЛ: pass_context.hpp
     МОДУЛЬ: passes
-    ЗОРИЛГО: Энэ файл нь shs-renderer-lib-ийн passes модульд хамаарах төрөл/функцийн
-            интерфэйс эсвэл хэрэгжүүлэлтийг тодорхойлно.
+    ЗОРИЛГО: Рендеринг пассууд хооронд дамжих ерөнхий контекст. 
+            Камерын тогтмол хувьсагчид болон глобал (жинхэнэ) төлөвүүдийг агуулна.
 */
 
 
@@ -25,7 +25,7 @@ namespace shs
     struct PassContext
     {
         // --- App / Engine context ---
-        Context* ctx = nullptr;          // Цонх, input, timing, device гэх мэт (demo-гийн үндсэн context)
+        Context* ctx = nullptr;          // Цонх, гаралт/оролт (input), цаг хэмжигч (timing), төхөөрөмж (device) гэх мэт (demo-гийн үндсэн context)
 
         // Нэг кадрын үндсэн render target.
         DefaultRT* rt = nullptr;
@@ -105,7 +105,7 @@ namespace shs
             return renderer_resources_hub;
         }
 
-        // --- Debug knobs (optional) ---
-        int debug_view = 0;              // 0=final, 1=shadow, 2=depth, ... гэх мэт
+        // --- Debug тохиргоо (сонголттой) ---
+        int debug_view = 0;              // 0=сүүлчийн гаралтын зураг, 1=сүүдэр, 2=гүн, ... гэх мэт
     };
 } // namespace shs

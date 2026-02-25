@@ -24,6 +24,8 @@
 
 namespace shs
 {
+    // Рендерлэлтийн үеийн гүйцэтгэл болон дебаг мэдээллийг хадгалах бүтэц.
+    // Хэдэн гурвалжин зурагдсан, ямар функц хэр удаан ажилласан зэргийг хянана.
     struct RenderDebugStats
     {
         uint64_t tri_input = 0;
@@ -54,6 +56,8 @@ namespace shs
         }
     };
 
+    // Сүүдрийн зураглал (Shadow Map) болон сүүдэр тооцоолох үеийн кэш санах ойн төлөв.
+    // Объектуудын хязгаарын хайрцаг (Bounding Box)-ийг дахин дахин тооцоолохгүйн тулд кэш ашигладаг.
     struct ShadowRuntimeState
     {
         using MeshBoundsPair = std::pair<glm::vec3, glm::vec3>;
@@ -75,6 +79,8 @@ namespace shs
         }
     };
 
+    // Өмнөх фрэймийн рендер төлөвийг хадгалах бүтэц. 
+    // Хөдөлгөөний бүдэгрүүлэлт (Motion Blur) зэрэг өмнөх мэдээлэл шаарддаг эффектүүдэд ашиглана.
     struct RenderHistoryState
     {
         std::unordered_map<uint64_t, glm::mat4> prev_model_by_object{};
@@ -87,6 +93,8 @@ namespace shs
         }
     };
 
+    // TAA (Temporal Anti-Aliasing) буюу цагийн зурвасын ирмэг толигоржуулалтын төлөв.
+    // Өмнөх фрэймийн өнгийг одоогийн өнгөтэй хольж ирмэгийн арзгарыг дарна.
     struct TemporalAARuntimeState
     {
         std::vector<Color> history{};
@@ -103,6 +111,8 @@ namespace shs
         }
     };
 
+    // Системийн ерөнхий контекст. Хамгийн чухал сангуудын холбоосыг 
+    // болон ажиллах үеийн төлөвүүдийг хадгална.
     struct Context
     {
         IJobSystem* job_system = nullptr;

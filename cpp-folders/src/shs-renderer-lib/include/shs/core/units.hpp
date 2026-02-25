@@ -1,38 +1,38 @@
 #pragma once
 
 /*
-    SHS RENDERER SAN
+    SHS РЕНДЕРЕР САН
 
-    FILE: units.hpp
-    MODULE: core
-    PURPOSE: Canonical unit conventions shared across renderer and Jolt integration.
+    ФАЙЛ: units.hpp
+    МОДУЛЬ: core
+    ЗОРИЛГО: Рендерер болон Jolt физикийн интеграцийн хооронд хуваалцах үндсэн нэгжүүдийн стандартыг тодорхойлно.
 
-    Base convention:
-        - Distance: meter
-        - Mass: kilogram
-        - Time: second
-        - Angle: radian
+    Үндсэн нэгжүүд:
+        - Урт/Зай: метр (meter)
+        - Жин: килограмм (kilogram)
+        - Хугацаа: секунд (second)
+        - Өнцөг: радиан (radian)
 */
 
 #include <glm/glm.hpp>
 
 namespace shs::units
 {
-    // Base SI units used by SHS runtime conventions.
+    // SHS-ийн ажиллах үед ашиглагдах SI (Олон улсын нэгжийн систем) суурь нэгжүүд.
     inline constexpr float meter = 1.0f;
     inline constexpr float kilogram = 1.0f;
     inline constexpr float second = 1.0f;
     inline constexpr float radian = 1.0f;
 
-    // Common derived scales.
+    // Түгээмэл хэрэглэгдэх уламжлагдсан хэмжигдэхүүнүүд.
     inline constexpr float centimeter = 0.01f * meter;
     inline constexpr float millimeter = 0.001f * meter;
     inline constexpr float degree = 0.017453292519943295769f; // pi / 180
 
-    // Standard Earth gravity magnitude in m/s^2.
+    // Дэлхийн татах хүчний хурдатгалын стандарт хэмжээ (м/с^2).
     inline constexpr float gravity_mps2 = 9.81f;
 
-    // SHS world convention is +Y up, so gravity points to -Y.
+    // SHS ертөнцийн координатын системд +Y тэнхлэг дээшээ заадаг тул татах хүч нь -Y рүү чиглэнэ.
     inline constexpr glm::vec3 gravity_world_y_down()
     {
         return glm::vec3(0.0f, -gravity_mps2, 0.0f);
