@@ -104,9 +104,10 @@ To prevent "direction drift," all shading math remains in **SHS World Space**.
 
 ---
 
-## 7. Constitutional Link: VOP
-
-This document is Constitution I. SHS renderer also defines Constitution II for Value-Oriented Programming (VOP).
-
-- **Constitution II**: `docs/spec/value_oriented_programming.md`
-- **Constitutional rule of thumb**: keep pure value transforms in the center, keep backend side effects at execution boundaries.
+## 7. Constitutional Links
+ 
+ This document is Constitution I. SHS renderer also defines Constitution II for Value-Oriented Programming (VOP) and Constitution III for Data-Oriented Design (DOD).
+ 
+ - **Constitution II (VOP)**: `docs/roadmap/value_oriented_programming_first_class_roadmap.md` (*Note: Currently tracked as a roadmap, soon to be a formal spec*)
+ - **Constitution III (DOD & ECS)**: `docs/spec/dod_ecs_architecture.md`
+ - **Constitutional rule of thumb**: keep pure value transforms in the center, keep backend side effects at execution boundaries, and prioritize cache-friendly Data-Oriented Design (SoA, ECS) for logic.

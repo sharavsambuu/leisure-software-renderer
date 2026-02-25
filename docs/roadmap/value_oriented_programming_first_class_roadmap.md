@@ -195,11 +195,22 @@ Only step 5 is side-effecting.
 3. Introduce memory-safe zero-cost planners using `std::pmr` and `constexpr` string string hashing for IDs.
 4. Complete compatibility-wrapper retirement once core + demos consume value APIs end-to-end.
 
-## Phase 8: DOD and Wait-Free Execution (Next Frontier)
+## Phase 8: Data-Oriented Design (DOD) & ECS
 
-1. **SoA Refactor:** Convert AoS arrays in hot paths (culling/physics) to Structure of Arrays (SoA) to maximize cache-line efficiency.
-2. **Generational Handles:** Replace pointer-based object references with `uint32_t` generational indices.
-3. **Wait-Free Spans:** Enforce that multithreaded simulation jobs are pure functions receiving read-only inputs (`std::span<const T>`) and restricted to exclusive write outputs (`std::span<U>`), eliminating atomic locks entirely.
+To achieve the ultimate CPU cache utilization described in [Constitution III](../spec/dod_ecs_architecture.md), the high-level OOP systems must be fully transitioned to DOD:
+
+1. **ECS Architecture Implementation:** Replace all derived `ILogicSystem` and `IRenderSystem` classes with pure ECS Systems (stateless functions operating on SoA components).
+2. **SoA Refactor:** Convert AoS arrays in hot paths (culling/physics, transform hierarchies) to Structure of Arrays (SoA).
+3. **Generational Handles:** Replace all pointer-based object references (`std::shared_ptr`, raw pointers) with `uint32_t` or `uint64_t` generational indices.
+4. **Wait-Free Spans:** Enforce that multithreaded simulation jobs are pure functions receiving read-only inputs (`std::span<const T>`) and restricted to exclusive write outputs (`std::span<U>`), eliminating atomic locks entirely.
+
+## Phase 9: The id Tech Endgame (GPU-Driven & Zero-Lock)
+
+The ultimate evolution of the engine, maximizing concurrency by eliminating all OS locks and pushing visibility/culling logic entirely to the GPU:
+
+1. **Lock-Free Job Queues:** Replace `std::mutex` scheduling with lock-free atomic queues (MPMC or Work-Stealing).
+2. **Per-Frame Arena Allocators:** Integrate `std::pmr::monotonic_buffer_resource` across all simulation jobs. Pre-allocate per-frame memory to achieve a strictly Zero-Allocation (`malloc`/`new` free) update loop.
+3. **GPU-Driven Rendering:** Migrate fine-grained culling (frustum/occlusion) and draw command generation (`vkCmdDrawIndexedIndirect`) entirely to Vulkan Compute Shaders, delegating only broad-phase updates to the CPU ECS.
 
 ## Deliverables
 
