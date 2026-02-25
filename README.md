@@ -1,4 +1,10 @@
 
+# Warning
+
+  This is an AI slop, coding is generated through the vibe coding.
+  Only the ideas and architectural compositions are mine.
+
+
 # Tasks to mess around in the near future
 
     Tune tiles and cluster density
@@ -9,6 +15,7 @@
       Try to implement advanced tile or clustered software renderer paths
       If this is accomplished, renderer is definitely ready for the Angstrom future
       kinda feeling like PS3 Cell SPUs ideas comes back again.
+    Explore Wait-Free Data Flow Architecture, structured Task-Graph with Work-Stealing, Wait-Free Task Graph
 
     Dynamic compositional and configurable renderer path combinations
       Tunable combinations ->
