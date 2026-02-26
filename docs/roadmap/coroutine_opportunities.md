@@ -7,9 +7,14 @@ VOP alignment note:
 - Coroutines should stay on runtime/effect edges and must not introduce planner-side hidden mutation.
 
 ## 0. VOP Boundary Rules for Coroutines
-1. Do use coroutines for runtime scheduling, GPU waits, and async I/O orchestration.
+1. Do use coroutines for runtime scheduling, Virtual SPU task dispatch, GPU waits, and async I/O orchestration.
 2. Do not use coroutines to mutate planning/reducer state machines in hidden or non-deterministic ways.
 3. Keep planner/reducer layers as explicit value transforms; coroutine handles/promises should not leak into planning contracts.
+
+## 0.5 Virtual SPU Job System
+Coroutines are the primary scheduling primitive for the **Angstrom Era** Virtual SPU model. 
+- **Stackless Tasks**: Each render tile or compute job is a stackless coroutine submitted to a persistent `jthread` worker.
+- **Always-Busy / Non-Blocking**: Replaces traditional mutex/semaphore synchronization with `co_await` on job completion. If a job is blocked by a dependency, the worker doesn't wait; it suspends the job and immediately moves to the next one in its mailbox.
 
 ## 1. Logic → Coroutine Scripts
 Replace the callback-based `StateMachine` with sequential coroutine scripts for "Patrol -> Chase -> Attack" logic.
