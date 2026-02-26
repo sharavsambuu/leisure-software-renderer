@@ -19,11 +19,20 @@ A fundamental pillar of the Angstrom Era is the bet that **General-Purpose Silic
 3.  **ASIC-Like Performance**: By using **Data-Oriented Design (DOD)** and persistent workers, we achieve the throughput of specialized hardware while retaining the programmability of C++.
 4.  **Always-Busy / Non-Blocking Execution**: Adopting the **id Tech** philosophy where workers never "wait." A Virtual SPU never hits a blocking barrier; it either processes a task or suspends a coroutine to immediately pick up the next available job piece.
 
+## The Technical Anchor: Coherence and Ownership
+
+Even in a world of abundant cores, the physical constraint remains the **Memory Hierarchy**. To prevent 1,000 cores from collapsing into a **Coherence Storm**, the architecture enforces four strict disciplines:
+
+- **Ownership**: Each core (Virtual SPU) has absolute ownership over its regional data domain (e.g., a specific tile). Cross-core writes are forbidden.
+- **Isolation**: Work is partitioned to minimize dependency on global state.
+- **Locality**: Persistent workers ensure that ownership domains map directly to local cache hierarchies.
+- **Deterministic Scheduling**: The coroutine DAG ensures that data flows through the system in a predictable, contention-free sequence.
+
 ## The Execution Unit: Virtual SPUs (`std::jthread`)
 
 The **Virtual SPU** is the heart of the execution. We model these units using C++20 `std::jthread`. Unlike traditional threads, these units are:
 
-- **Persistent**: A Virtual SPU "lives" for the duration of the frame or application, eliminating the overhead of frequent OS-level context switching for transient tasks.
+- **Persistent**: A Virtual SPU "lives" for the duration of the frame or application, eliminating frequent thread creation and preserving cache residency for owned data domains.
 - **Cooperative**: Using `std::stop_token` to handle graceful interruption and state-safe shutdown.
 - **Cache-Aligned**: By pinning Virtual SPUs to specific hardware cores, we maintain extreme cache locality, ensuring that regional tile data stays in the L1/L2 caches of the "owning" core.
 
@@ -35,7 +44,7 @@ In our architecture, the frame graph is expressed as a series of awaited tasks. 
 
 1.  **Job Composition**: Coroutines allow us to suspend execution at dependency boundaries (e.g., waiting for all culling tiles to complete).
 2.  **Mailbox Dispatch**: The scheduler "pushes" job handles into the mailboxes of idle Virtual SPUs.
-3.  **Non-Blocking / Always-Busy Pipelines**: The combination of `jthreads` and coroutines enables a zero-allocation, lock-free, and non-blocking data pipeline. If a job hits a dependency, it yields control, allowing the Virtual SPU to stay 100% busy on other available work.
+3.  **Non-Blocking / Always-Busy Pipelines**: The combination of `jthreads` and coroutines enables a zero-allocation, lock-free, and non-blocking data pipeline. If a job hits a dependency, it yields control, allowing the Virtual SPU to stay 100% busy on other available work. **This requires bounded lock-free mailboxes and custom coroutine allocators to prevent hidden heap traffic.**
 
 ## The Dual Backend Strategy
 
@@ -67,4 +76,4 @@ Every new feature (e.g., clustered shading, soft shadows) must survive this pipe
 
 ## The Angstrom-Era Guarantee
 
-By aligning the engine logic with persistent `jthreads` and stackless coroutines, `shs-renderer-lib` ensures that when hardware inevitably pivots to thousand-core unified APUs, the engine will instantly and natively scale across all available silicon with the same precision and control once reserved for the PS3 Cell SPUs.
+By aligning the engine logic with persistent `jthreads` and stackless coroutines, `shs-renderer-lib` ensures that when hardware inevitably pivots to thousand-core unified APUs, the engine will scale proportionally with core availability under bounded memory constraints, with the same precision and control once reserved for the PS3 Cell SPUs.
