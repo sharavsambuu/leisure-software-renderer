@@ -242,9 +242,8 @@
     Parallelizing the Naughty Dog Engine Using Fibers
       - https://www.youtube.com/watch?v=HIVBhKj7gQU
       - https://www.createursdemondes.fr/wp-content/uploads/2015/03/parallelizing_the_naughty_dog_engine_using_fibers.pdf
-    Tinyrenderer project
-      - https://github.com/ssloy/tinyrenderer
-      - https://github.com/ssloy/tinyrenderer/wiki
+    SBCL Fibers: Lightweight Cooperative Threads
+    https://atgreen.github.io/repl-yell/posts/sbcl-fibers/
     SDL2 Tutorial and links
       - https://www.youtube.com/watch?v=gOXg1ImX5j0
       - https://github.com/aminosbh/sdl2-samples-and-projects
