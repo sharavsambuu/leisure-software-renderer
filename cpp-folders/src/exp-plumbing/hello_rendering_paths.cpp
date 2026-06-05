@@ -8840,10 +8840,17 @@ private:
 
         if (e.type == SDL_MOUSEMOTION)
         {
-            pending_input_events_.push_back(
-                shs::make_mouse_delta_input_event(
-                    static_cast<float>(e.motion.xrel),
-                    static_cast<float>(e.motion.yrel)));
+            if (skip_next_mouse_delta_)
+            {
+                skip_next_mouse_delta_ = false;
+            }
+            else
+            {
+                pending_input_events_.push_back(
+                    shs::make_mouse_delta_input_event(
+                        static_cast<float>(e.motion.xrel),
+                        static_cast<float>(e.motion.yrel)));
+            }
         }
 
         if (e.type == SDL_KEYDOWN)
@@ -8997,12 +9004,16 @@ private:
             input_latch_ = shs::reduce_runtime_input_latch(input_latch_, pending_input_events_);
             pending_input_events_.clear();
 
-            const bool look_drag = input_latch_.left_mouse_down || input_latch_.right_mouse_down;
+            const bool look_drag = input_latch_.left_mouse_down;
             if (look_drag != relative_mouse_mode_)
             {
                 relative_mouse_mode_ = look_drag;
                 SDL_SetRelativeMouseMode(relative_mouse_mode_ ? SDL_TRUE : SDL_FALSE);
                 input_latch_ = shs::clear_runtime_input_frame_deltas(input_latch_);
+                if (relative_mouse_mode_)
+                {
+                    skip_next_mouse_delta_ = true;
+                }
             }
 
             auto now = clock::now();
@@ -9350,6 +9361,7 @@ private:
     std::vector<shs::RuntimeInputEvent> pending_input_events_{};
     bool pending_quit_action_ = false;
     bool relative_mouse_mode_ = false;
+    bool skip_next_mouse_delta_ = false;
     shs::RuntimeState runtime_state_{};
     std::vector<shs::RuntimeAction> runtime_actions_{};
     bool runtime_state_initialized_ = false;
