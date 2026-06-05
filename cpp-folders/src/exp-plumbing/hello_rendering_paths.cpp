@@ -487,7 +487,8 @@ struct FreeCamera
         float mouse_dy,
         float dt)
     {
-        if (left_mouse_down || right_mouse_down)
+        (void)right_mouse_down;
+        if (left_mouse_down)
         {
             float mdx = mouse_dx;
             float mdy = mouse_dy;
@@ -498,8 +499,8 @@ struct FreeCamera
             }
             mdx = std::clamp(mdx, -kMouseDeltaClamp, kMouseDeltaClamp);
             mdy = std::clamp(mdy, -kMouseDeltaClamp, kMouseDeltaClamp);
-            yaw -= mdx * look_speed;
-            pitch -= mdy * look_speed;
+            yaw += mdx * look_speed;
+            pitch += mdy * look_speed;
             pitch = std::clamp(pitch, -glm::half_pi<float>() + 0.01f, glm::half_pi<float>() - 0.01f);
         }
 
@@ -552,7 +553,7 @@ shs::InputState make_runtime_input_state(
     out.descend = latch.descend;
     out.boost = latch.boost;
 
-    const bool look_active = latch.left_mouse_down || latch.right_mouse_down;
+    const bool look_active = latch.left_mouse_down;
     out.look_active = look_active;
     float mdx = latch.mouse_dx_accum;
     float mdy = latch.mouse_dy_accum;
@@ -561,8 +562,8 @@ shs::InputState make_runtime_input_state(
         mdx = 0.0f;
         mdy = 0.0f;
     }
-    out.look_dx = -std::clamp(mdx, -FreeCamera::kMouseDeltaClamp, FreeCamera::kMouseDeltaClamp);
-    out.look_dy = std::clamp(mdy, -FreeCamera::kMouseDeltaClamp, FreeCamera::kMouseDeltaClamp);
+    out.look_dx = std::clamp(mdx, -FreeCamera::kMouseDeltaClamp, FreeCamera::kMouseDeltaClamp);
+    out.look_dy = -std::clamp(mdy, -FreeCamera::kMouseDeltaClamp, FreeCamera::kMouseDeltaClamp);
     out.quit = pending_quit_action || latch.quit_requested;
     return out;
 }
