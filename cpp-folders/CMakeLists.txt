@@ -89,6 +89,7 @@ add_subdirectory("src/hello-pixel-primitives")
 add_subdirectory("src/hello-shaders")
 add_subdirectory("src/hello-parallelization")
 add_subdirectory("src/hello-3d-primitives")
+add_subdirectory("src/hello-3d-demos")
 add_subdirectory("src/hello-render-target")
 add_subdirectory("src/hello-other-exps")
 

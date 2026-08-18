@@ -68,6 +68,7 @@
 #include <cstdlib>
 #include <string>
 #include <algorithm>
+#include <array>
 #include <queue>
 #include <list>
 #include <optional>
@@ -194,6 +195,74 @@ namespace shs
         }
         static inline float clampf(float v, float lo, float hi) { return clamp(v, lo, hi); }
         static inline int clampi(int v, int lo, int hi) { return (int)clamp((float)v, (float)lo, (float)hi); }
+    }
+
+    // ==========================================
+    // SOFTWARE RASTERIZATION CONTRACTS
+    // ==========================================
+    namespace Raster {
+        // Screen space has a top-left origin. Make the required winding an
+        // explicit per-draw decision instead of relying on implicit signs.
+        enum class FrontFace { Clockwise, CounterClockwise };
+
+        static inline bool is_front_facing_screen(float signed_area, FrontFace front_face) {
+            return front_face == FrontFace::Clockwise ? signed_area < 0.0f : signed_area > 0.0f;
+        }
+
+        // NDC depth is post-divide and therefore affine in screen-space.
+        // Do not apply a second perspective correction to these values.
+        static inline float interpolate_ndc_depth(const glm::vec3& barycentric,
+                                                  float z0, float z1, float z2) {
+            return barycentric.x * z0 + barycentric.y * z1 + barycentric.z * z2;
+        }
+
+        struct FrustumClipPolygon {
+            std::array<glm::vec4, 8> vertices{};
+            int count = 0;
+        };
+
+        // Homogeneous Sutherland-Hodgman clipping for the [-w,+w] clip volume
+        // used by GLM's *_NO projections, including perspectiveLH_NO.
+        static inline FrustumClipPolygon clip_triangle_to_frustum(const glm::vec4& c0,
+                                                                   const glm::vec4& c1,
+                                                                   const glm::vec4& c2) {
+            FrustumClipPolygon current{};
+            current.vertices[0] = c0;
+            current.vertices[1] = c1;
+            current.vertices[2] = c2;
+            current.count = 3;
+
+            const auto plane_distance = [](const glm::vec4& p, int plane) {
+                switch (plane) {
+                    case 0: return p.x + p.w; // left
+                    case 1: return p.w - p.x; // right
+                    case 2: return p.y + p.w; // bottom
+                    case 3: return p.w - p.y; // top
+                    case 4: return p.z + p.w; // near
+                    default: return p.w - p.z; // far
+                }
+            };
+
+            for (int plane = 0; plane < 6 && current.count > 0; ++plane) {
+                FrustumClipPolygon next{};
+                for (int i = 0; i < current.count; ++i) {
+                    const glm::vec4& a = current.vertices[i];
+                    const glm::vec4& b = current.vertices[(i + 1) % current.count];
+                    float da = plane_distance(a, plane);
+                    float db = plane_distance(b, plane);
+                    bool a_inside = da >= 0.0f;
+                    bool b_inside = db >= 0.0f;
+
+                    if (a_inside != b_inside) {
+                        float t = da / (da - db);
+                        next.vertices[next.count++] = a + (b - a) * t;
+                    }
+                    if (b_inside) next.vertices[next.count++] = b;
+                }
+                current = next;
+            }
+            return current;
+        }
     }
 
     // ==========================================
