@@ -51,20 +51,47 @@ static const glm::vec3 SUN_DIR_WORLD   = glm::normalize(glm::vec3(0.45f, -0.85f,
 // PHASE 1: PMR FRAME MEMORY ARENA (Constitution II, Rule 6 & 8)
 // ============================================================================
 namespace vop {
-    struct FrameMemoryResource {
-        static constexpr size_t POOL_SIZE = 8 * 1024 * 1024; // 8 MB frame arena
-        std::unique_ptr<uint8_t[]> memory_pool;
-        std::pmr::monotonic_buffer_resource arena;
+    // Cross-platform, MSVC-safe linear bump allocator for per-frame transients
+    class FrameMemoryResource : public std::pmr::memory_resource {
+    public:
+        static constexpr size_t CAPACITY = 8 * 1024 * 1024; // 8 MB
 
         FrameMemoryResource()
-            : memory_pool(std::make_unique<uint8_t[]>(POOL_SIZE)),
-              arena(memory_pool.get(), POOL_SIZE, std::pmr::null_memory_resource()) {}
-
-        inline void reset() {
-            arena.release(); // O(1) pointer reset per frame
+            : buffer_(std::make_unique<uint8_t[]>(CAPACITY)), offset_(0) {
         }
 
-        inline std::pmr::memory_resource* get() { return &arena; }
+        inline void reset() noexcept {
+            offset_ = 0; // True O(1) instant reset
+        }
+
+        inline std::pmr::memory_resource* get() noexcept { return this; }
+
+    protected:
+        void* do_allocate(size_t bytes, size_t alignment) override {
+            size_t current = offset_;
+            size_t aligned = (current + (alignment - 1)) & ~(alignment - 1);
+            if (aligned + bytes > CAPACITY) {
+                // Safe fallback to default heap if frame exceeds 8MB
+                return std::pmr::get_default_resource()->allocate(bytes, alignment);
+            }
+            offset_ = aligned + bytes;
+            return buffer_.get() + aligned;
+        }
+
+        void do_deallocate(void* p, size_t bytes, size_t alignment) noexcept override {
+            // Fallback allocations are freed; arena allocations are no-op
+            if (p < buffer_.get() || p >= buffer_.get() + CAPACITY) {
+                std::pmr::get_default_resource()->deallocate(p, bytes, alignment);
+            }
+        }
+
+        bool do_is_equal(const std::pmr::memory_resource& other) const noexcept override {
+            return this == &other;
+        }
+
+    private:
+        std::unique_ptr<uint8_t[]> buffer_;
+        size_t offset_ = 0;
     };
 }
 
@@ -661,10 +688,10 @@ namespace vop {
 
     // Pure World Reducer: (State, Commands, dt) -> (NextState, Events)
     static WorldStepResult reduce_world(
-        const WorldSnapshot&               prev,
+        const WorldSnapshot& prev,
         std::span<const UserCommand>       commands,
         float                              dt,
-        std::pmr::memory_resource*         frame_arena
+        std::pmr::memory_resource* frame_arena
     ) {
         WorldStepResult result(std::pmr::get_default_resource(), frame_arena);
         result.next_world.player = prev.player;
