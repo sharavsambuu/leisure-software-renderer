@@ -1,79 +1,117 @@
+
+---
+
 # Roadmap: The Angstrom-Era Software Renderer (Virtual SPU)
 
-This roadmap outlines the visionary, long-term trajectory for `shs-renderer-lib`'s software backend. It details the transition to a massive, many-core "Virtual SPU" architecture powered by C++20 `jthreads` and stackless coroutines, preparing the engine for the "Angstrom Era" of hardware.
+This roadmap outlines the visionary, long-term trajectory for **`shs-renderer-lib`’s** software backend. It details the transition to a massive, many-core **"Virtual SPU"** architecture powered by C++20 `std::jthread`, wide SIMD vector pipelines, Data-Oriented Design (DOD), and a structured coroutine DAG, preparing the engine for the "Angstrom Era" of hardware.
+
+---
 
 ## The Vision: Return of the PS3 Cell SPUs
+In the early 2000s, the PlayStation 3 introduced the Cell Broadband Engine. It was notoriously difficult to program because developers could no longer rely on a single, monolithic CPU thread. They had to explicitly marshal data to and from tiny, localized Synergistic Processing Elements (SPUs) and dispatch pure compute jobs with software-managed scratchpads (Local Stores).
 
-In the early 2000s, the PlayStation 3 introduced the Cell Broadband Engine. It was notoriously difficult to program because developers could no longer rely on a single, monolithic CPU thread. They had to explicitly marshal data to and from tiny, localized Synergistic Processing Elements (SPUs) and dispatch pure compute jobs.
+The hardware industry is rapidly iterating toward a modern, PC-scale equivalent of this architecture. In the "Angstrom Era," the line between CPU and GPU blurs entirely through unified-memory Systems on a Chip (SoCs) where hundreds to thousands of cores share a massive pool of global RAM.
 
-The hardware industry is rapidly iterating toward a modern, PC-scale equivalent of this architecture. In the "Angstrom Era," the line between CPU and GPU will blur entirely. I anticipate Systems on a Chip (SoCs) where thousands of smaller CPU cores share a massive pool of global RAM.
+In this future, the software renderer is reborn as a **Massive Virtual SPU Array**. Each core is modeled not as a transient OS task, but as a persistent, cooperative **Virtual SPU** (represented by a `std::jthread` and dedicated SIMD vector registers) that "occupies" a physical core, manages its own cache-line-aligned local scratchpad, and executes work dispatched through a zero-allocation, coroutine-based job system.
 
-In this future, the software renderer is reborn as a **Massive Virtual SPU Array**. Each core is modeled not as a transient task, but as a persistent, cooperative **Virtual SPU** (represented by a `std::jthread`) that "occupies" a core and waits for work to be dispatched through a coroutine-based job system.
+---
 
 ## The Philosophy: General-Purpose vs. ASICs
+A fundamental pillar of the Angstrom Era is the bet that **Flexible, Vector-Driven General Silicon beats Fixed-Function Silicon (ASICs) at scale**.
 
-A fundamental pillar of the Angstrom Era is the bet that **General-Purpose Silicon beats Fixed-Function Silicon (ASICs)** at scale.
+* **Software-Defined Rendering:** GPUs rely on fixed ASICs (rasterizers, samplers, fixed blend units) that are "frozen" in silicon. By using persistent Virtual SPUs on high-throughput vector cores, we gain 100% flexibility to invent new rendering paradigms (such as Visibility Buffers, software meshlet culling, and custom subpixel rasterization) without hardware restrictions.
+* **Zero-Copy Engine Integration:** Traditional GPU pipelines suffer from heavy marshalling, driver translation layers, and API command-ring stalls. By running the renderer on the same unified silicon as the game's simulation, the Virtual SPUs read contiguous Entity Component System (ECS) arrays directly with **zero translation layers and zero memory copies**.
+* **Deterministic Frame Pacing:** Eliminating GPU drivers and hardware state machine black-boxes eliminates runtime pipeline compilation hitches, driver memory defragmentation stalls, and frame pacing jitter. Every frame executes with microsecond-level predictability.
+* **Unified Resource Pool:** Instead of hitting "black box" bottlenecks in a fixed-function pipeline, the Virtual SPU model treats all silicon as a unified pool that can be rebalanced dynamically (e.g., reallocating 80% of workers to geometry culling or physics simulation if that stage becomes the frame bottleneck).
+* **ASIC-Like Performance through VOP & DOD:** By combining Data-Oriented Design (DOD) with Vector-Oriented Programming (VOP) across native vector lanes (AVX-512, ARM SVE2), we achieve the raw throughput of specialized hardware while retaining the full expressive power of C++.
+* **Always-Busy / Non-Blocking Execution:** Adopting the id Tech philosophy where workers never "wait." A Virtual SPU never hits a blocking OS barrier; it either processes a stream of micro-tasks or yields at pass boundaries to immediately pick up the next available execution piece.
 
-1.  **Software-Defined Rendering**: GPUs rely on fixed ASICs (rasterizers, samplers) that are "frozen" in silicon. By using `jthreads` on general-purpose cores, we gain 100% flexibility to invent new rendering paradigms without hardware restrictions.
-2.  **Unified Resource Pool**: Instead of hitting "black box" bottlenecks in a fixed-function pipeline, the Virtual SPU model treats all silicon as a unified pool that can be rebalanced dynamically (e.g., spinning up more Culling workers if that stage becomes the bottleneck).
-3.  **ASIC-Like Performance**: By using **Data-Oriented Design (DOD)** and persistent workers, we achieve the throughput of specialized hardware while retaining the programmability of C++.
-4.  **Always-Busy / Non-Blocking Execution**: Adopting the **id Tech** philosophy where workers never "wait." A Virtual SPU never hits a blocking barrier; it either processes a task or suspends a coroutine to immediately pick up the next available job piece.
+---
 
 ## The Technical Anchor: Coherence and Ownership
+Even in a world of abundant cores, the physical constraint remains the **Memory Hierarchy and Interconnect Bandwidth**. To prevent 1,000 cores from collapsing into a Coherence Storm, the architecture enforces four strict disciplines:
 
-Even in a world of abundant cores, the physical constraint remains the **Memory Hierarchy**. To prevent 1,000 cores from collapsing into a **Coherence Storm**, the architecture enforces four strict disciplines:
+1. **Ownership:** Each core (Virtual SPU) has absolute, exclusive ownership over its regional data domain (a specific screen tile and its local depth/visibility buffer). Cross-core writes are strictly forbidden.
+2. **Isolation (Emulated Local Stores):** Every Virtual SPU is allocated a dedicated, cache-line-aligned ($64\text{ B}/128\text{ B}$) scratchpad arena. Work is executed purely within the core's private L1/L2 cache. Finished frame tiles bypass intermediate cache thrashing via **Non-Temporal Streaming Stores** (`_mm512_stream_*` / `STNP`).
+3. **Locality & SoA Layouts:** Data is strictly marshaled as Structure-of-Arrays (SoA) and Array-of-Structures-of-Arrays (AoSoA), ensuring every byte pulled into an L1 cache line is directly consumed by SIMD vector instructions.
+4. **Deterministic Scheduling:** The frame DAG ensures that data flows through the system in a predictable, contention-free sequence with zero false sharing.
 
-- **Ownership**: Each core (Virtual SPU) has absolute ownership over its regional data domain (e.g., a specific tile). Cross-core writes are forbidden.
-- **Isolation**: Work is partitioned to minimize dependency on global state.
-- **Locality**: Persistent workers ensure that ownership domains map directly to local cache hierarchies.
-- **Deterministic Scheduling**: The coroutine DAG ensures that data flows through the system in a predictable, contention-free sequence.
+---
 
 ## The Execution Unit: Virtual SPUs (`std::jthread`)
+The Virtual SPU is the heart of the execution. We model these units using C++20 `std::jthread` combined with wide SIMD execution abstractions. Unlike traditional threads, these units are:
 
-The **Virtual SPU** is the heart of the execution. We model these units using C++20 `std::jthread`. Unlike traditional threads, these units are:
+* **Persistent:** A Virtual SPU "lives" for the entire duration of the engine instance, completely eliminating thread-creation overhead and maintaining warm cache residency for owned scratchpad arenas.
+* **Vector-Driven:** Each Virtual SPU processes geometric clusters, edge equations, and shading samples across 8-wide, 16-wide, or 32-wide SIMD lanes using Vector-Oriented Programming.
+* **Cooperative:** Using `std::stop_token` to handle graceful interruption and state-safe shutdown.
+* **Cache-Aligned & Pinned:** By pinning Virtual SPUs to specific hardware cores (and respecting NUMA / Performance vs. Efficient core topologies), we maintain extreme locality, ensuring that regional tile data stays in the L1/L2 caches of the "owning" core.
 
-- **Persistent**: A Virtual SPU "lives" for the duration of the frame or application, eliminating frequent thread creation and preserving cache residency for owned data domains.
-- **Cooperative**: Using `std::stop_token` to handle graceful interruption and state-safe shutdown.
-- **Cache-Aligned**: By pinning Virtual SPUs to specific hardware cores, we maintain extreme cache locality, ensuring that regional tile data stays in the L1/L2 caches of the "owning" core.
+---
 
-## The Scheduler: Stackless Coroutines
+## The Scheduler: Stackless Coroutines & Two-Tier Execution
+Rather than relying on heavy external runtime schedulers, we use **C++20 Stackless Coroutines** as our macro scheduling primitive, paired with a lock-free micro-task pipeline:
 
-Rather than relying on a complex external dataflow library, we use **C++20 Stackless Coroutines** as the primary scheduling primitive.
+* **Job Composition:** Coroutines allow the frame to cleanly suspend execution at major dependency boundaries (e.g., waiting for all meshlet cluster-culling passes to complete before initiating tile rasterization).
+* **Two-Tier Dispatch:**
+  * **Macro Tier:** C++20 coroutines coordinate coarse frame passes (`co_await DepthPass()`, `co_await VisibilityPass()`) without blocking worker threads.
+  * **Micro Tier:** Inside each pass, fine-grained tasks (meshlets, $16\times16$ raster tiles) are pushed into lock-free, zero-allocation work-stealing queues (Chase-Lev deques) for immediate Virtual SPU consumption.
+* **Non-Blocking / Always-Busy Pipelines:** The combination of persistent `std::jthread` workers and coroutine-driven pass graphs enables a zero-allocation, lock-free, and non-blocking data pipeline. If a worker finishes its local queue, it steals pending tile chunks from neighboring queues, keeping execution units 100% utilized.
 
-In our architecture, the frame graph is expressed as a series of awaited tasks. This allows us to write "sequential-looking" code that actually executes as a wait-free DAG:
+---
 
-1.  **Job Composition**: Coroutines allow us to suspend execution at dependency boundaries (e.g., waiting for all culling tiles to complete).
-2.  **Mailbox Dispatch**: The scheduler "pushes" job handles into the mailboxes of idle Virtual SPUs.
-3.  **Non-Blocking / Always-Busy Pipelines**: The combination of `jthreads` and coroutines enables a zero-allocation, lock-free, and non-blocking data pipeline. If a job hits a dependency, it yields control, allowing the Virtual SPU to stay 100% busy on other available work. **This requires bounded lock-free mailboxes and custom coroutine allocators to prevent hidden heap traffic.**
+## The Modern Rendering Paradigm: Meshlets & Visibility Buffer
+To maximize the throughput of our Virtual SPUs, the engine adopts a modern, bandwidth-efficient rendering pipeline:
+
+* **Cluster-Based Geometry (Meshlets):** Geometries are partitioned into fixed-size meshlets (64 vertices, 128 triangles), allowing full SIMD frustum culling, normal-cone backface culling, and Hierarchical-Z (HZB) occlusion rejection *before* rasterization.
+* **Fixed-Point Tile Rasterization:** Rasterization is performed using $16.16$ fixed-point arithmetic with SIMD edge functions, evaluating full pixel blocks simultaneously with subpixel precision.
+* **Compact Visibility Buffer (V-Buffer):** Instead of allocating heavy G-Buffers across main memory, the rasterizer writes a compact 64-bit visibility payload (Meshlet ID, Primitive ID, Barycentrics) into the tile's L1/L2 scratchpad.
+* **Tile-Based In-Cache Shading:** Shading, material evaluation, and lighting are evaluated strictly once per visible pixel directly within the tile’s local cache before streaming the final resolved color to RAM.
+
+---
 
 ## The Dual Backend Strategy
+Rather than maintaining a separate "reference" and "experimental" software path, the Angstrom Era adopts a **Binary Backend Architecture**. Since the primary software renderer is built to scale across all available silicon, it becomes both the definitive truth and the performance vanguard:
 
-Rather than maintaining a separate "reference" and "experimental" software path, the Angstrom Era adopts a **Binary Backend Architecture**. Since the primary software renderer is built to scale across all available silicon, it becomes the definitive truth and the performance vanguard simultaneously.
+* **`sw_backend` (The Angstrom Core):** The high-performance software renderer mapping frame logic onto a dedicated pool of persistent vector `std::jthread` Virtual SPUs. It serves as both the pixel-perfect reference and the many-core performance path.
+* **`vk_backend` (The Silicon Heavyweight):** The state-of-the-art backend targeting modern discrete GPUs via hardware acceleration and Vulkan 1.3+ compute/mesh pipelines.
 
-1. **`sw_backend` (The Angstrom Core):** The high-performance software renderer mapping frame logic onto a dedicated pool of persistent `jthread` Virtual SPUs. It serves as both the pixel-perfect reference and the many-core performance path.
-2. **`vk_backend` (The Silicon Heavyweight):** The state-of-the-art backend targeting modern discrete GPUs via hardware acceleration.
+---
 
-### The Feature Validation Loop
-Every new feature (e.g., clustered shading, soft shadows) must survive this pipeline:
-*   **Step 1 (Consistency):** Logic and math validated across the **Angstrom Core** (`sw_backend`).
-*   **Step 2 (Hardware):** API execution and performance validated on the GPU (`vk_backend`).
+## The Feature Validation Loop
+Every new feature (e.g., clustered shading, soft shadows, visibility passes) must survive this pipeline:
 
-## Phase 1: Virtual SPU Infrastructure
+* **Step 1 (Consistency):** Logic, math, and bit-exact fixed-point rasterization validated across the Angstrom Core (`sw_backend`).
+* **Step 2 (Hardware):** API execution, memory layout, and hardware baseline validated on the GPU (`vk_backend`).
 
-1.  **Drop-In `VirtualSPUPool`**: Implement a pool of persistent `std::jthread` workers with lock-free inbound mailboxes.
-2.  **Coroutine Job Bridge**: Establish the boilerplate for stackless coroutine handles that can be submitted to the Virtual SPU pool.
-3.  **Tile-Based Dispatch**: Rewrite the software rasterizer to be strictly tile-based, where each tile is an independent coroutine task.
+---
 
-## Phase 2: Wait-Free Data Pipelines
+## Phased Implementation Roadmap
 
-1.  **Structured Concurrency**: Replace manual threading barriers with structured coroutine `awaits`.
-2.  **Memory Bounding**: Every coroutine task must receive pre-allocated `std::span` outputs, ensuring a strictly zero-allocation pipeline.
+### Phase 1: Virtual SPU Infrastructure & Local Stores
+- [ ] Implement persistent `std::jthread` worker pool with hardware core pinning and NUMA awareness.
+- [ ] Build thread-local, cache-line-aligned ($64\text{ B}/128\text{ B}$) linear **Scratchpad Allocators** to emulate SPU Local Stores.
+- [ ] Establish the cross-platform SIMD vector abstraction (AVX2 / AVX-512 / ARM NEON & SVE2).
+- [ ] Implement Non-Temporal Streaming Store resolve routines (`_mm512_stream_*` / `STNP`) to bypass cache pollution.
 
-## Phase 3: Hardware Scalability Testing
+### Phase 2: DOD Ingestion, Meshlets & Wait-Free Pipelines
+- [ ] Implement zero-copy SoA / AoSoA data streamers bridging ECS components directly to Virtual SPUs.
+- [ ] Implement geometry pre-clustering into uniform **Meshlets** (64v / 128p).
+- [ ] Build SIMD cluster-level frustum, normal-cone, and Hierarchical-Z (HZB) occlusion culling.
+- [ ] Establish the structured C++20 Coroutine Frame Graph bridge for high-level pass coordination.
+- [ ] Implement zero-allocation lock-free work-stealing queues for micro-task distribution across Virtual SPUs.
 
-1.  **High-Core-Count Topologies**: Benchmarking the `jthread` scheduler on 64+, 128+, and 256+ core topologies (Threadripper/Epyc) to ensure linear scaling.
-2.  **Core Affinity Tuning**: Researching OS-specific core pinning strategies to minimize cross-CCX (Core Complex) latency.
+### Phase 3: Fixed-Point Rasterizer & Visibility Buffer
+- [ ] Build a 16-wide fixed-point SIMD tile rasterizer with subpixel precision.
+- [ ] Implement the compact 64-bit Visibility Buffer output pipeline entirely within thread-local scratchpads.
+- [ ] Implement in-cache Tile-Based Deferred Shading (TBDR) and SIMD-accelerated texture block decompression (BCn / ASTC).
+- [ ] Integrate C++23 `std::mdspan` for Morton (Z-curve) swizzled texture and framebuffer access.
+
+### Phase 4: Hardware Scalability Testing & Validation
+- [ ] Benchmark the Virtual SPU scheduler across 32, 64, 128, and 256+ core topologies (Threadripper / EPYC / High-Density APUs) to ensure linear scaling.
+- [ ] Tune core affinity for heterogeneous architectures (Performance cores for SIMD rasterization vs. Efficient cores for async tasks/culling).
+- [ ] Run cross-backend automated image regression tests between `sw_backend` and `vk_backend`.
+
+---
 
 ## The Angstrom-Era Guarantee
-
-By aligning the engine logic with persistent `jthreads` and stackless coroutines, `shs-renderer-lib` ensures that when hardware inevitably pivots to thousand-core unified APUs, the engine will scale proportionally with core availability under bounded memory constraints, with the same precision and control once reserved for the PS3 Cell SPUs.
+By aligning the engine logic with persistent `std::jthread` Virtual SPUs, explicit Local Store memory discipline, wide SIMD execution, Data-Oriented Design, and stackless coroutine DAGs, **`shs-renderer-lib`** ensures that when hardware pivots to thousand-core unified APUs, the engine will scale proportionally with core availability under bounded memory constraints—bringing the precision, control, and throughput once reserved for the PS3 Cell SPUs into the modern era of computing.
