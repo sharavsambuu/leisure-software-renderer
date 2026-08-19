@@ -101,13 +101,14 @@ To prevent "direction drift," all shading math remains in **SHS World Space**.
 1. **Z-Flip**: Neglect of the Z-flip when passing SHS AABBs to Jolt for culling.
 2. **Sun Direction**: Mixing up "to scene" vs "to light" directions. Always use `sun_dir_to_scene_ws`.
 3. **NDC Mapping**: Forgetting the `[-1, 1]` to `[0, 1]` conversion when porting software shadow logic to Vulkan.
+4. **2D Canvas vs. Screen Space in HUDs**: Forgetting the `y_canvas = (HEIGHT - 1) - y_screen` conversion when rendering 2D vector text or health bars alongside 3D projected screen coordinates.
 
 ---
 
 ## 7. Constitutional Links
  
  This document is Constitution I. SHS renderer also defines Constitution II for Value-Oriented Programming (VOP) and Constitution III for Data-Oriented Design (DOD).
- 
- - **Constitution II (VOP)**: `docs/roadmap/value_oriented_programming_first_class_roadmap.md` (*Note: Currently tracked as a roadmap, soon to be a formal spec*)
+
+ - **Constitution II (VOP & DOD)**: `docs/spec/value_oriented_programming.md` (Formal Specification)
  - **Constitution III (DOD & ECS)**: `docs/spec/dod_ecs_architecture.md`
  - **Constitutional rule of thumb**: keep pure value transforms in the center, keep backend side effects at execution boundaries, and prioritize cache-friendly Data-Oriented Design (SoA, ECS) for logic.

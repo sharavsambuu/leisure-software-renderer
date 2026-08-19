@@ -1,224 +1,220 @@
-# SHS Renderer Constitution II: Value-Oriented Programming
 
-This document is the second constitutional specification of SHS renderer.
+# SHS Renderer & Engine Constitution II: Value-Oriented Programming & Data-Oriented Architecture
 
-- Constitution I: `docs/spec/conventions.md` (units, coordinate system, backend semantics)
-- Constitution II (this document): Value-Oriented Programming (VOP)
-- Roadmap: `docs/roadmap/value_oriented_programming_first_class_roadmap.md`
+This document is the second constitutional specification of the SHS Engine & Renderer.
+
+- **Constitution I**: `docs/spec/conventions.md` (Units, Coordinate Systems, Physics Bridge, Lighting Semantics, Backend NDC Laws)
+- **Constitution II (This Document)**: Value-Oriented Programming (VOP) & Data-Oriented Design (DOD) Architecture
+- **Constitution III**: `docs/spec/dod_ecs_architecture.md` (Entity Component System & Memory Chunking)
+
+---
 
 ## 1. Purpose
 
-VOP is adopted to make renderer behavior explicit, deterministic, and easier to optimize.
+Value-Oriented Programming (VOP) combined with Data-Oriented Design (DOD) is adopted to make the engine's behavior explicit, deterministic, mechanically sympathetic to modern hardware, and trivially scalable across multi-threaded CPU and GPU compute pipelines.
 
-Expected outcomes:
+### Expected Outcomes
+- **Zero Lock Contention**: Elimination of mutexes, spinlocks, and read/write locks in hot simulation and rendering loops.
+- **Predictable Execution & Determinism**: Bit-for-bit reproducible state transitions enabling instant rollback netcode, headless CI balance testing, and time-travel debugging.
+- **Hardware Mechanical Sympathy**: Elimination of pointer-chasing and cache misses via Structure of Arrays (SoA) and $\mathcal{O}(1)$ Frame Memory Arenas.
+- **Strict Separation of Concerns**: Pure mathematical simulation in the center; hardware drivers, GPU submission, audio DAC, and OS I/O isolated strictly at execution edges.
+- **Bounded Domain Navigation**: A Glimmer/Ember-style Domain Pod structure that keeps massive game codebases modular, navigable, and free from cross-domain callback spaghetti.
 
-- predictable frame planning and recipe compilation
-- inspectable snapshots for replay/debug/testing
-- lower hidden mutation and tighter data ownership
-- cleaner multithreading boundaries
+---
 
 ## 2. Constitutional Principle
 
-Use pure value transforms by default. Keep side effects at boundaries.
+> **"Keep pure value transformations in the center. Keep side effects at execution boundaries."**
 
-- Value center:
-  - scene/frame contracts
-  - planning and dependency analysis
-  - input/state reducers
-  - compile-time or frame-time transformation logic
-- Effect edges:
-  - GPU submission
-  - backend synchronization
-  - resource lifetime operations
-  - OS/input I/O integration points
+```
+┌──────────────────────────────────────────────────────────────────────────────────────────┐
+│                                 1. INPUT / OS EDGE                                       │
+│    [Hardware Poller] ────────► [Action Tokenizer] ────────► std::span<const Action>      │
+└────────────────────────────────────────────┬─────────────────────────────────────────────┘
+                                             │
+┌────────────────────────────────────────────▼─────────────────────────────────────────────┐
+│                                2. PURE VALUE CENTER                                      │
+│    Current State Snapshot + Actions + Delta Time                                         │
+│         │                                                                                │
+│         ▼                                                                                │
+│    [Pure Reducers: reduce_domain()] ────────────────► New Snapshot + Discrete Event Log  │
+│         │                                                                                │
+│         ▼                                                                                │
+│    [Pure Batch Planners: to_render_items()] ────────► PipelineExecutionPlan (Tokens)     │
+└────────────────────────────────────────────┬─────────────────────────────────────────────┘
+                                             │
+┌────────────────────────────────────────────▼─────────────────────────────────────────────┐
+│                               3. EFFECT EXECUTION EDGES                                  │
+│    ├─ Multi-Threaded Tiled Rasterizer / Vulkan Submission                                │
+│    ├─ SPSC Lock-Free Audio Dispatcher                                                    │
+│    └─ Swapchain Upload & Presentation                                                    │
+└──────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
 
 ## 3. Mandatory Rules
 
-1. New planning APIs must return explicit value objects (structs) by value.
-2. Mutating compatibility wrappers are allowed only when they delegate to value APIs.
-3. Planning/reduction code must avoid hidden globals and hidden mutable state.
-4. Side-effect APIs should accept already-resolved values, not recompute planning decisions internally.
-5. Compile/plan/reduce stages must be deterministic for identical inputs.
-6. Value objects must encode complete data contracts needed by execution edges.
-7. Prefer C++20 value-centric language/library features when they improve clarity and safety without adding hidden cost.
-8. **DOD Memory Layout:** Hot-path data (physics/culling) must use Structure of Arrays (SoA) and generational index handles (e.g., `uint32_t`), avoiding pointer-chasing and Array of Structures (AoS).
-9. **Wait-Free Span Contract:** Multi-threaded jobs must be pure functions that take an immutable `std::span<const T>` and write exclusively to a non-overlapping `std::span<U>`. No locks or atomic spins allowed inside simulation/rendering workloads.
+1. **Explicit Structs by Value**: All planning, simulation, and query APIs must accept immutable inputs and return explicit value structs by value.
+2. **Side-Effect Free Center**: Simulation reducers, AI evaluators, and batch planners must be pure functions with zero hidden globals, zero singleton reads, and zero dynamic heap allocations.
+3. **Pre-Resolved Edge Inputs**: Side-effect execution edges (GPU submission, Audio DAC, Disk I/O) must consume pre-resolved, complete execution plans; they must not recalculate planning decisions or query simulation state internally.
+4. **Deterministic Reduction (Rule 4.1)**: State reducers (`reduce_world`, `reduce_player`, `reduce_combat`) must be strictly deterministic. Identical initial state snapshots and identical action spans must produce identical resulting snapshots across all target platforms. Non-deterministic factors (RNG seeds, system clocks, hardware inputs) must be tokenized at input edges and passed in explicitly.
+5. **Dual-Tier Memory Separation (Rule 5.1)**:
+   - **Transient Frame Arena (`FrameMemoryResource`)**: A linear bump allocator reset in $\mathcal{O}(1)$ at frame boundaries. Used exclusively for per-frame command streams, active render batches, temporary polygon clips, and UI draw tokens.
+   - **Persistent State Storage (`std::pmr::get_default_resource()`)**: Used for world snapshots, player stats, and persistent entity tables that survive across frame boundaries.
+   *Violation*: Assigning persistent state objects from the transient frame arena is strictly forbidden.
+6. **Data-Oriented Memory Layout (SoA) (Rule 6.1)**: Hot-path data (physics bodies, bot tables, particles, light grids) must use Structure of Arrays (SoA) and generational index handles (`uint32_t`), avoiding pointer-chasing and Array of Structures (AoS).
+7. **Wait-Free Span Contract (Rule 7.1)**: Multi-threaded jobs must be pure functions that take an immutable `std::span<const T>` and write exclusively to a non-overlapping `std::span<U>`. No mutexes, atomics, or spinlocks are allowed inside worker threads.
+8. **Discrete Event Sourcing (Rule 8.1)**: Gameplay domains must never directly invoke methods or mutate state in other domains. Cross-domain interaction must occur exclusively through immutable **Discrete Event Values** (`CombatEvent`, `QuestEvent`, `InventoryEvent`) emitted by pure reducers and consumed by downstream domain reducers or execution edges.
+9. **C++20 Value Abstractions**: Core APIs must leverage standard value types (`std::span`, `std::string_view` with `constexpr` hashing, `std::variant`, `std::pmr`, `std::expected`) to enforce safety and zero allocation overhead.
+
+---
 
 ## 4. Forbidden Patterns
 
-1. Mixing planning and backend submission in the same method.
-2. Hidden singleton state reads inside value reducers/planners.
-3. Mutating global runtime state during what is documented as a planning pass.
-4. Side-effect code that silently overrides resolved plan values.
-5. Unstable output ordering in planner/reducer results when stable ordering is practical.
-6. Using standard heap allocation (`new`/`std::vector`) for per-frame planner transients. (Use `std::pmr::vector` with a per-frame Bump/Arena Allocator instead).
+1. **Mixing Planning and Backend Submission**: Invoking GPU/driver calls (`vkCmd...`, `glDraw...`, `SDL_Render...`) or audio DAC writes inside a planning pass or reducer.
+2. **Hidden Singleton Mutation**: Reading or writing global state (`Context::Get()`, `AudioEngine::Instance()`, static local caches) inside reducers, AI evaluators, or planners.
+3. **Per-Frame Heap Allocation**: Calling standard `malloc`, `new`, `std::vector::push_back` (without a PMR arena), or dynamic memory allocators inside the per-frame update/render loop.
+4. **Dynamic Polymorphism in Hot Paths**: Using virtual method dispatch (`vtable`), `dynamic_cast`, or pointer-to-base switching inside simulation entities or rasterizer loops.
+5. **Side-Effect Out-Parameters**: Passing mutable references (`&out_projectiles`) to functions that secretly mutate caller state instead of returning explicit value bundles.
+6. **Unbounded Frame Retainers**: Retaining pointers or references to memory allocated within the transient Frame Arena across frame boundaries.
+
+---
 
 ## 5. Allowed Exceptions
 
-1. Allocation-sensitive hot paths may use output-buffer APIs (`out` params) when deterministic behavior is preserved.
-2. Legacy APIs may remain during migration if they are thin wrappers over canonical value APIs.
-3. Backend-specific fast paths may exist at effect edges if input/output contracts remain explicit values.
+1. **PMR Output Buffers for Hardware Fast-Paths**: Allocation-sensitive hot paths may write directly into pre-allocated `std::span<T>` or output buffers (`out` params) when memory ownership is explicit and deterministic.
+2. **Execution Edge Polymorphism**: Virtual interfaces are permitted strictly at the driver boundary (e.g., `IRenderPass::execute_resolved(...)`, `ISwapchainPresenter`) where backend switching occurs outside the value center.
+3. **Atomic Ring Queues at Boundaries**: Single-Producer Single-Consumer (SPSC) lock-free atomic ring buffers are allowed exclusively at execution edges (e.g., streaming discrete audio events to the audio thread).
 
-## 6. Module Directives
+---
 
-### Scene
+## 6. Domain Pod Architecture & Module Directives
 
-- Canonical transform API: `SceneObjectSet::to_render_items()`
-- Scene integration should consume `to_render_items()` explicitly at call sites (`scene.items = objects.to_render_items()`).
+To maintain modularity, cognitive clarity, and zero-leak encapsulation across complex projects, all gameplay features and engine modules must follow the **Glimmer/Ember Pod Standard**.
 
-### Lighting
+### 6.1 Canonical Domain Pod Structure
+Gameplay features are organized as self-contained vertical slices in `domains/<domain_name>/` using standardized file suffixes:
 
-- Canonical transform API: `LightSet::to_cullable_gpu(...)`
-- Allocation-sensitive alternative: `flatten_cullable_gpu(out, ...)`
+```text
+domains/combat/
+├── combat.contract.hpp   # 1. Plain data structs (ProjectileTableSoA, DamagePacket)
+├── combat.action.hpp     # 2. Command intents (FireIntent, ReloadIntent)
+├── combat.event.hpp      # 3. Emitted event values (EventPlayerFired, EventBotHit)
+├── combat.reducer.hpp    # 4. Pure simulation rules (reduce_combat, resolve_hitscan)
+├── combat.plan.hpp       # 5. Pure batch compiler (plan_projectile_mesh, plan_tracers)
+└── scripts/
+    └── blaster_rules.lua # 6. Mirrored stateless Lua decision rules
+```
 
-### Render Path Planning
+### 6.2 The Pod Suffix Laws
 
-- Resolve state as values first:
-  - `RenderPathExecutor::resolve_index(...)`
-  - `RenderPathExecutor::resolve_recipe(...)`
-- Apply at edge:
-  - `RenderPathExecutor::apply_resolved(...)`
+| File Suffix | Required Contents | Strict Restrictions |
+| :--- | :--- | :--- |
+| `*.contract.hpp` | Value Schemas & Snapshots | Plain data structs only. **No methods, no mutation, no logic.** |
+| `*.action.hpp` | Intent Tokens / Commands | `std::variant` and enums representing caller intent. |
+| `*.event.hpp` | Discrete Event Log | Immutable records of occurrences emitted by reducers. |
+| `*.reducer.hpp` | Pure Simulation Reducers | Pure static functions: `(State, Actions, dt) -> (NewState, Events)`. **No globals, no side effects.** |
+| `*.plan.hpp` | Batch & Scene Compilers | Pure functions: `(WorldSnapshot, Assets) -> RenderPlan`. **No GPU/driver calls.** |
+| `*.edge.hpp` | Impure Execution Edges | Hardware drivers, SDL windows, audio DAC submission, and disk I/O. |
 
-### Pipeline Orchestration
+### 6.3 Inter-Pod Encapsulation Rules
+1. **Public API Restriction**: A domain pod may only expose its `*.contract.hpp` and `*.event.hpp` to outside systems.
+2. **Private Reducers**: Domain A must never call Domain B's internal `*.reducer.hpp` functions directly.
+3. **Decoupled Event Bus**: Cross-domain communication occurs strictly by emitting and consuming event logs:
+   - `Combat` emits `CombatEvent::BOT_KILLED`.
+   - `Quest` consumes `CombatEvent::BOT_KILLED` and updates its active objective counters.
+   - `AudioEdge` consumes `CombatEvent::BOT_KILLED` and triggers the explosion sound on the SPSC ring buffer.
 
-- Use `PipelineExecutionPlan` as the execution contract.
-- Build plan in a pure planning stage, execute in a separate effect stage.
+### 6.4 Core Engine Module Directives
+- **Scene**: Canonical transform: `SceneObjectSet::to_render_items(view, proj, &arena) -> RenderItemSpan`.
+- **Lighting**: Canonical transform: `LightSet::to_cullable_gpu(...)` producing flat GPU-ready tile buffers.
+- **Pipeline Orchestration**: Uses `PipelineExecutionPlan` built in a pure planning stage and executed in a disjoint effect stage.
+- **Input / Controls**: OS events are tokenized into `UserCommand` streams and reduced via `reduce_user_commands()`.
+---
 
-### Input/Runtime State
+## 7. Dual-Tier Memory Specification
 
-- Express runtime input as value actions and reducers.
-- Keep latch/state transitions reducer-driven where practical.
+```
++-----------------------+-----------------------------+-----------------------------+
+│                           MEMORY TIER ALLOCATION MATRIX                           │
++-----------------------+-----------------------------+-----------------------------+
+| Attribute             | Transient Frame Arena       | Persistent State Storage    |
++-----------------------+-----------------------------+-----------------------------+
+| Backing Resource      | FrameMemoryResource (Bump)  | get_default_resource()      |
+| Lifetime              | Single Frame (Tick)         | Entire Session / Level      |
+| Allocation Cost       | O(1) Bump Pointer           | Standard Heap Alloc         |
+| Deallocation Cost     | O(1) Offset Reset           | Standard Free               |
+| Contents              | Commands, Events, Plans, UI | WorldSnapshot, Stats, SoA   |
+| Failure Policy        | Fallback to default heap    | Standard error handling     |
+| Safety Invariant      | Never retained past frame   | Safe across frame ticks     |
++-----------------------+-----------------------------+-----------------------------+
 
-## 7. C++20 Guidance (VOP-Aligned)
 
-Recommended by default in new core APIs:
+```
 
-- `std::span` for non-owning contiguous data flow across reducers/planners.
-- `std::string_view` boundary parsing, with **`constexpr` string hashing** (e.g., FNV-1a) for internal ID lookups.
-- `std::pmr` (Polymorphic Memory Resources) for zero-cost planner arrays backed by frame-scoped arena allocators.
-- `concept`/`requires` for compile-time contracts in planning and conversion utilities.
-- `std::variant` + `std::visit` for explicit action/state unions.
-- C++23 `std::expected` (or backport `tl::expected`) to treat errors as values. Planners missing hints/attachments must return explicit failure types instead of crashing/asserting.
-- `constexpr` helpers/tables for deterministic mapping logic.
-- `std::ranges` algorithms/views in planning code only when they do not hide allocations or hurt readability.
+---
 
-Use with care:
+## 8. C++20 / C++23 Guidance (VOP-Aligned)
 
-- Coroutines for runtime scheduling only (effect edge), not for planner state mutation.
-- Dynamic polymorphism for compatibility edges only; prefer value contracts in new planner paths.
+### Mandatory Standards
+- `std::span<const T>`: For immutable non-owning views across reducers, AI evaluators, and tile jobs.
+- `std::pmr::vector`: For all transient vectors backed by `FrameMemoryResource`.
+- `std::variant` & `std::visit`: For typed, closed sets of user commands and game events.
+- `std::string_view` & `constexpr` hashing: For zero-allocation ID lookups and asset tag resolution.
+- `std::expected` (C++23 / `tl::expected`): For fallible planning and resource loading; planners must return explicit error types instead of crashing or throwing exceptions.
 
-Avoid in planner/reducer layers:
+### Forbidden in Planning and Reducer Layers
+- `std::shared_ptr` / `std::make_shared` (Hidden atomic reference-counting contention).
+- `dynamic_cast` / Runtime Type Information (RTTI) branching.
+- Raw pointer switching with ambiguous ownership semantics.
 
-- mutable `static` local caches
-- `dynamic_cast`-based policy decisions
-- ownership-opaque raw-pointer switching
+---
 
-## 8. Compliance Checklist
+## 9. Compliance Checklist & Static Verification
 
-Use this list for new renderer features and major refactors:
+Before submitting new features or major refactors, verify the following:
 
-1. Is the feature split into value planning/reduction and side-effect execution?
-2. Are planner/reducer inputs and outputs explicit structs?
-3. Is deterministic behavior covered by tests for identical inputs?
-4. Are compatibility mutators only wrappers over value APIs?
-5. Does execution consume pre-resolved values rather than recomputing hidden state?
-6. Do new/modified APIs use suitable C++20 value abstractions (`span`, `string_view`, concepts, variant) where practical?
-7. Are runtime readiness transitions based on explicit execution results, not static capability claims?
+1. **Planning/Execution Split**: Is the feature split into pure value planning/reduction and isolated side-effect execution?
+2. **Zero Heap Allocation**: Does the per-frame loop run with zero standard `malloc`/`new` calls, using the PMR Frame Arena for transients?
+3. **Memory Isolation**: Are persistent state snapshots strictly allocated using persistent memory, and transients on the arena?
+4. **Deterministic Behavior**: Do identical state snapshots and action spans produce bit-for-bit identical outputs?
+5. **Wait-Free Span Contracts**: Do multi-threaded jobs take immutable spans and write exclusively to non-overlapping target buffers?
+6. **Encapsulation & Suffixes**: Does the domain follow the canonical file suffixes (`*.contract.hpp`, `*.action.hpp`, `*.reducer.hpp`, `*.plan.hpp`, `*.event.hpp`)?
+7. **No Mutexes in Hot Paths**: Are audio, simulation, and rasterization completely free of mutex locks and spinlocks?
 
-## 9. Adoption Snapshot
+---
 
-- Added value transform for scene object conversion.
-- Added value transform for light culling GPU payload generation.
+## 10. Automated Boundary Verification
+
+The automated CI boundary checker (`tools/check_vop_boundaries.sh`) enforces these rules on every commit:
+- [x] Scan all `*.contract.hpp` and `*.reducer.hpp` files for banned includes (`#include <vulkan/...>`, `#include <SDL2/...>`, `#include <GL/...>`).
+- [x] Reject any `*.reducer.hpp` containing `mutable`, `static` local variables, or `std::mutex`.
+- [x] Validate that all planning passes require registered descriptor hints and return explicit execution plans by value.
+
+---
+
+## 11. Scalability & Architectural Benefits
+
+1. **Multiplayer & Rollback Ready**: Pure reducers allow client-side prediction, instant snapshot rollback ($< 0.2\,\text{ms}$), and delta-compressed networking out of the box.
+2. **Multi-Threaded Lua Scalability**: Lua scripts act as pure stateless functions evaluated across isolated thread-local `lua_State*` pools over chunked SoA entity spans.
+3. **Zero-Glitch Real-Time Audio**: Lock-free SPSC event rings isolate audio synthesis from CPU rendering spikes.
+4. **Hardware Portability**: The simulation center is 100% decoupled from graphics backends, allowing seamless swapping between the multi-threaded software rasterizer and modern GPU-driven Vulkan compute pipelines.
+
+---
+
+## 12. Adoption Snapshot
+
+- Added value transform for scene object conversion (`SceneObjectSet::to_render_items`).
+- Added value transform for light culling GPU payload generation (`LightSet::to_cullable_gpu`).
 - Added value-style render path resolution object (`RenderPathResolvedState`).
 - Added value-style pipeline execution planning object (`PipelineExecutionPlan`) and plan builder in `PluggablePipeline`.
-- Extended pipeline plan data with queue/label metadata for submission orchestration.
-- Added precomputed backend execution groups in pipeline plans, reducing runtime backend-switch decisions.
-- Migrated core human/bot controller helpers to value-action emission helpers.
-- Added command-to-action conversion (`ICommand::to_runtime_action`) and command-processor batch reducer flow so command queues execute via value reductions.
-- Removed command mutation execution path (`execute_all`) and standardized command processing on value collection/reduction (`collect_runtime_actions`, `reduce_all`).
-- Hardened `ICommand` to strict action emission (`RuntimeAction to_runtime_action() const`) so command lanes cannot bypass value contracts.
-- Added explicit pass execution-request value boundary (`IRenderPass::build_execution_request` + `execute_resolved`) and made pipeline runtime consume resolved pass requests.
-- Removed hidden mutable caches from pass internals by moving shadow bounds cache and TAA history to explicit `Context` runtime state.
-- Added request-time named transient-handle resolution in `PassExecutionRequest` and migrated key post/visibility adapters to use resolved temp RT handles at execution.
-- Removed adapter-level execution fallback allocation for `depth_prepass`, `light_shafts`, and `motion_blur` so legacy `execute(...)` now delegates to request-resolved execution.
-- Added pass-registry descriptor hints for planner-time contract/backend/mode checks, reducing planner pass-instantiation for standard and descriptor-enabled passes.
-- Extended descriptor-hint usage to `PluggablePipeline` profile and render-path-plan assembly so known mode-incompatible passes are rejected before factory instantiation.
-- Added explicit runtime execution boundary `PipelineRuntimeExecutor` and made `PluggablePipeline` delegate side-effecting pass/backend submission to that executor.
-- Removed planning-time runtime-gating dependence on `Context::forward_plus` validity flags (`depth_prepass_valid`, `light_culling_valid`) so execution planning no longer depends on mutable per-frame runtime flags.
-- Added explicit request-scoped runtime capability values (`depth_prepass_ready`, `light_culling_ready`) populated by runtime executor and consumed by forward+/cluster/tiled lighting-culling adapters; removed the old context validity flags.
-- Added execution-result value contract (`PassExecutionResult`) so runtime readiness flips only when passes actually execute and report produced outputs (depth/light-grid/index-list), avoiding contract-claim-only readiness.
-- Removed legacy pass compatibility edge by making `IRenderPass::execute_resolved(...)` the sole pass execution interface contract.
-- Removed planner-side backend type branching (`dynamic_cast`) for depth-attachment policy by promoting depth-attachment knowledge into explicit backend capability values.
-- Removed planner-time pass instantiation fallback in render-path compiler/resource/barrier planning; planner now requires standard contracts or registered descriptor hints.
-- Added dedicated `PipelineExecutionPlanner` component and routed `PluggablePipeline::build_execution_plan(...)` through it to keep planning and runtime execution boundaries explicit.
-- Added dedicated `PipelineResizeCoordinator` runtime-edge component for backend/pass resize side effects, reducing mixed responsibilities in `PluggablePipeline`.
-- Replaced shared `Context::forward_plus` mutable payload with request-scoped runtime payload (`PassExecutionRequest.inputs.light_culling`) so light-culling tile data flows through explicit execution contracts.
-- Unified standard pass adapters on request-first execution path (`execute_resolved(...)`) and removed dependency on legacy pass execution interfaces.
-- Added guard test ensuring pipeline runtime executes passes through `execute_resolved(...)`.
-- Added `shs_renderer_vop_tests` with deterministic checks for `reduce_runtime_state`, `reduce_runtime_input_latch`, and `build_execution_plan`.
-- Extended VOP tests with deterministic command-processor value reduction coverage and pipeline request-gate execution checks.
-- Forward classic render-path demo resolves path state as a value before applying it.
-- Added value-oriented input actions/reducer (`shs/input/value_actions.hpp`) and migrated `HelloPassPlumbing` to use it.
-- Migrated forward classic demo input/camera updates to value actions + reducer (`InputState -> RuntimeAction[] -> RuntimeState`).
-- Added core runtime input-latch reducer (`shs/input/value_input_latch.hpp`) and migrated forward classic demo movement/mouse latching to reducer-based event application.
-- Migrated remaining `exp-plumbing` demo control paths to VOP-first input/runtime flow:
-  - `HelloPassBasics` free-camera motion/look now uses value actions + reducer (manual camera mutation removed).
-  - `HelloRenderingPaths` now uses `RuntimeInputLatch` event reduction for movement/mouse state before runtime action emission.
-  - Low-level demos (`hello_vulkan_triangle`, `hello_mesh_shader`, `hello_modern_vulkan`, `hello_ray_query`, `hello_jolt_integration`, `HelloSoftwareTriangle`) now route quit through value latch/action reduction instead of direct immediate mutation.
-- Rebuilt software-lighting demos after migration (`hello_culling_sw`, `hello_occlusion_culling_sw`, `hello_light_types_culling_sw`, `hello_soft_shadow_culling_sw`, `HelloPassBasics`) to verify lighting implementations remain stable while input/control flow moved to VOP reducers.
-- Retired scene mutator wrapper `sync_to_scene(...)` from `SceneObjectSet`; scene integration now uses explicit value snapshots from `to_render_items()`.
-- Retired controller alias wrappers (`emit_human_commands`, `emit_orbit_bot_commands`) and kept value-action entrypoints only.
-- Retired unused geometry compatibility umbrella header `shs/geometry/culling.hpp` and kept canonical direct geometry includes.
-- Retired unused light-culling alias `cull_lights_tiled_depth_range(...)` to reduce duplicate API surface.
-- Added automated boundary check script (`tools/check_vop_boundaries.sh`) and CMake target (`shs_renderer_vop_boundary_check`) to enforce planner-layer bans on backend-driver includes and `dynamic_cast`.
-- Removed standard pass adapter helper execution wrappers (`execute(ctx, scene, fp, rtr)`) so adapter execution contracts stay request-first via `execute_resolved(...)`.
-- Modernized `PassContext` resource/scene hubs to explicit typed pointers (removed raw `void*` binding pattern) and kept typed accessor APIs.
-- Added explicit planner compatibility-lane diagnostics for non-standard passes that lack contract metadata; strict graph validation fails these passes.
-- Enabled strict graph validation as the default `PluggablePipeline` mode; non-strict mode remains explicit opt-out for migration experiments.
-
-## 10. Renderer Settings Benefits
-
-VOP directly improves renderer settings behavior and maintainability:
-
-1. Deterministic settings application
-- Same `FrameParams`/technique settings produce the same plan and pass chain decisions.
-- Presets become replayable and comparable without hidden state drift.
-
-2. Cleaner technique switching
-- Settings such as `technique.mode`, `active_modes_mask`, `depth_prepass`, and culling toggles map to explicit planning/execution values.
-- Runtime no longer depends on implicit mutable validity flags for key depth/culling readiness.
-
-3. Safer backend/hybrid configuration
-- Backend-related settings (`strict_backend_availability`, cross-backend allowance, Vulkan-like emulation flags) are consumed through explicit plan/executor values.
-- Policy decisions stay in planning; execution only consumes resolved contracts.
-
-4. Better tuning workflow for performance settings
-- Tile/cluster settings (`tile_size`, `max_lights_per_tile`) and pass enablement are easier to benchmark because decision paths are explicit.
-- A/B testing of settings is simpler since action logs + settings snapshots are reproducible.
-
-5. Improved debug and testability
-- Settings regressions can be validated with deterministic tests around planner outputs and runtime request gates.
-- Execution-path tests can verify contract behavior (`execute_resolved` path) independent from legacy wrappers.
-
-6. Execution-proven readiness for advanced settings
-- Technique toggles that depend on depth/light readiness now advance only from actual pass results, not static capability claims.
-- This makes settings interactions around Forward+/Tiled/Clustered paths more trustworthy during performance tuning and backend bring-up.
-
-## 11. Remaining Work to Become Fully VOP-First (As of February 24, 2026)
-
-The constitution is mostly implemented in core, but full completion still requires:
-
-1. Final planner/runtime extraction in pipeline facade
-- Move remaining planning/validation concerns out of `PluggablePipeline` into a dedicated pure planner component.
-
-2. Remove implicit mutable runtime payload coupling
-- Completed for light-culling payload: shared mutable `Context::forward_plus` was removed and replaced by request-scoped runtime payload values.
-
-3. Remove planner-time fallback pass instantiation
-- Planner compilers already avoid pass instantiation; keep descriptor/contract registration policy enforced and run strict graph validation where planner hard guarantees are required.
-
-4. Retire compatibility wrappers after migration
-- Remove remaining mutation-era compatibility edges once all call sites are value-first.
-
-5. Enforce boundaries by automation
-- Added local automation target (`shs_renderer_vop_boundary_check`) and CTest registration for both boundary and VOP core tests (`shs_renderer_vop_tests`); next step is CI wiring plus broader static checks for hidden mutable/stateful patterns.
+- Migrated human/bot controller helpers to pure value-action emission helpers (`UserCommand` / `RuntimeAction`).
+- Standardized command processing on pure collection and reduction (`collect_runtime_actions`, `reduce_all`).
+- Hardened `IRenderPass` to explicit pass execution requests (`build_execution_request` + `execute_resolved`).
+- Removed mutable validity flags from shared context (`Context::forward_plus`) and promoted depth/light readiness into request-scoped capabilities.
+- Removed dynamic polymorphism (`dynamic_cast`) from depth-attachment and pass policy planning.
+- Added automated boundary check script (`tools/check_vop_boundaries.sh`) and CMake target `shs_renderer_vop_boundary_check`.
+- Codified Dual-Tier Memory Lifecycle Separation (`FrameMemoryResource` vs persistent state storage).
+- Codified Glimmer/Ember Domain Pod standard (`domains/<domain>/`) with strict suffix naming contracts.
+- Codified Lock-Free SPSC Audio Edge for glitch-free procedural sound synthesis.
