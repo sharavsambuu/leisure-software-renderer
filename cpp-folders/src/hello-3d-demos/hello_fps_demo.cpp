@@ -1559,12 +1559,12 @@ int main(int argc, char* argv[]) {
             }
 
             std::ostringstream ss;
-            ss << "VOP FPS Талбар | FPS: " << (int)((float)frame_count / fps_timer)
-                << " | Цус: " << current_world.player.hp
-                << " | Оноо: " << current_world.player.score
-                << " | Устгасан: " << current_world.player.kills
-                << " | Амьд дайсан: " << alive_count << "/4"
-                << " | [WASD: Хөдлөх, Space: Үсрэх, F/LMB: Буудах, Хулгана: Харах]";
+            ss << "VOP FPS Arena | FPS: " << (int)((float)frame_count / fps_timer)
+                << " | Blood: " << current_world.player.hp
+                << " | Score: " << current_world.player.score
+                << " | Deleted: " << current_world.player.kills
+                << " | Enemies Alive: " << alive_count << "/4"
+                << " | [WASD: move, Space: Jump, F/LMB: Shoot, Mouse: view]";
             SDL_SetWindowTitle(window, ss.str().c_str());
             frame_count = 0;
             fps_timer = 0.0f;
