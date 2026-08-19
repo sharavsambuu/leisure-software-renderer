@@ -87,7 +87,7 @@ namespace tetris {
     };
 
     // PURE 3D BATCH & SCENE PLANNER
-    static PipelineExecutionPlan plan_tetris_scene(
+    static inline PipelineExecutionPlan plan_tetris_scene(
         const TetrisSnapshot&       world,
         const ShatterParticleSoA&   particles,
         int                         canvas_w,
@@ -98,16 +98,16 @@ namespace tetris {
         PipelineExecutionPlan plan(arena);
         plan.triangles.reserve(4000);
 
-        // Camera stationed in front of the 3D Matrix Well
-        glm::vec3 eye = glm::vec3(0.0f, 10.2f, -17.2f);
+        // Camera stationed with proper vertical clearance for the bottom row
+        glm::vec3 eye = glm::vec3(0.0f, 10.6f, -18.4f);
         if (camera_shake > 0.0f) {
             eye.y -= camera_shake * 0.35f;
             eye.x += (std::sin(world.game_time * 60.0f) * camera_shake * 0.15f);
         }
 
-        glm::vec3 target = glm::vec3(0.0f, 9.8f, 0.0f);
+        glm::vec3 target = glm::vec3(0.0f, 9.6f, 0.0f);
         plan.view_matrix = glm::lookAtLH(eye, target, glm::vec3(0, 1, 0));
-        plan.proj_matrix = glm::perspectiveLH_NO(glm::radians(62.0f), (float)canvas_w / (float)canvas_h, 0.15f, 150.0f);
+        plan.proj_matrix = glm::perspectiveLH_NO(glm::radians(60.0f), (float)canvas_w / (float)canvas_h, 0.15f, 150.0f);
         plan.vp_matrix   = plan.proj_matrix * plan.view_matrix;
 
         std::vector<LowPolyTriangle> tris;
@@ -117,21 +117,21 @@ namespace tetris {
         glm::vec3 L       = -SUN_DIR;
 
         // 1. PLAYFIELD MATRIX WELL CONTAINER
-        shs::Color rail_col  = shs::Color{ 60,  70,  90, 255 };
-        shs::Color trim_col  = shs::Color{ 40, 180, 240, 255 };
-        shs::Color bg_grid   = shs::Color{ 18,  22,  30, 255 };
+        shs::Color rail_col = shs::Color{ 60,  70,  90, 255 };
+        shs::Color trim_col = shs::Color{ 40, 180, 240, 255 };
+        shs::Color bg_grid  = shs::Color{ 18,  22,  30, 255 };
 
         // Backplane
         MeshGen::add_box(tris, glm::vec3(0.0f, 9.5f, 0.60f), glm::vec3(10.2f, 20.2f, 0.1f), bg_grid, bg_grid, bg_grid);
 
         // Left, Right, and Bottom Rails
-        MeshGen::add_box(tris, glm::vec3(-5.35f, 9.5f, 0.0f), glm::vec3(0.5f, 20.4f, 1.1f), trim_col, rail_col, rail_col);
-        MeshGen::add_box(tris, glm::vec3( 5.35f, 9.5f, 0.0f), glm::vec3(0.5f, 20.4f, 1.1f), trim_col, rail_col, rail_col);
-        MeshGen::add_box(tris, glm::vec3( 0.0f, -0.7f, 0.0f), glm::vec3(11.2f, 0.5f,  1.1f), trim_col, rail_col, rail_col);
+        MeshGen::add_box(tris, glm::vec3(-5.35f,  9.5f, 0.0f), glm::vec3(0.5f, 20.4f, 1.1f), trim_col, rail_col, rail_col);
+        MeshGen::add_box(tris, glm::vec3( 5.35f,  9.5f, 0.0f), glm::vec3(0.5f, 20.4f, 1.1f), trim_col, rail_col, rail_col);
+        MeshGen::add_box(tris, glm::vec3(  0.0f, -0.7f, 0.0f), glm::vec3(11.2f, 0.5f, 1.1f), trim_col, rail_col, rail_col);
 
         // Pedestal Floor
         shs::Color floor_top = shs::Color{ 25, 30, 42, 255 };
-        shs::Color floor_side= shs::Color{ 14, 16, 22, 255 };
+        shs::Color floor_side = shs::Color{ 14, 16, 22, 255 };
         MeshGen::add_box(tris, glm::vec3(0.0f, -1.2f, 1.0f), glm::vec3(26.0f, 0.6f, 14.0f), floor_top, floor_side, floor_side);
 
         // 2. RESTING MATRIX VOXEL BLOCKS
@@ -178,22 +178,22 @@ namespace tetris {
             }
         }
 
-        // 5. 3D FLOATING HOLD & NEXT QUEUE PODS
+        // 5. 3D FLOATING HOLD & NEXT QUEUE PODS (Always render platforms)
         auto add_preview_piece = [&](PieceType type, glm::vec3 pod_center) {
-            if (type == PieceType::None) return;
+            // Hovering pedestal disc is ALWAYS drawn
+            MeshGen::add_box(tris, pod_center - glm::vec3(0, 1.2f, 0), glm::vec3(3.8f, 0.25f, 3.8f), trim_col, rail_col, rail_col);
+
+            if (type == PieceType::None) return; // Skip piece blocks if empty
             shs::Color col = get_piece_color(type);
             auto blocks = get_piece_blocks(type, 0);
-
-            // Hovering pedestal disc
-            MeshGen::add_box(tris, pod_center - glm::vec3(0, 1.2f, 0), glm::vec3(3.8f, 0.25f, 3.8f), trim_col, rail_col, rail_col);
 
             for (const auto& b : blocks) {
                 glm::vec3 bp = pod_center + glm::vec3((float)b.x * 0.7f - 0.35f, (float)b.y * 0.7f, 0.0f);
                 MeshGen::add_box(tris, bp, glm::vec3(0.62f, 0.62f, 0.62f), col, col, col);
             }
-        };
+            };
 
-        // Left Pod: HOLD
+        // Left Pod: HOLD (Always visible)
         add_preview_piece(world.hold_piece, glm::vec3(-8.6f, 15.5f, 0.5f));
 
         // Right Pods: NEXT QUEUE (Top 3)
@@ -219,18 +219,18 @@ namespace tetris {
             if (len < 1e-6f) continue;
             N /= len;
 
-            float NdotL   = std::max(0.0f, glm::dot(N, L));
+            float NdotL = std::max(0.0f, glm::dot(N, L));
             float diffuse = NdotL * 0.70f + 0.30f;
             float ambient = std::max(0.0f, N.y) * 0.20f + 0.15f;
 
             glm::vec3 base_col = glm::vec3(tri.color.r, tri.color.g, tri.color.b) / 255.0f;
-            glm::vec3 lit_rgb  = base_col * (diffuse * glm::vec3(1.0f, 0.98f, 0.92f) + ambient * glm::vec3(0.50f, 0.70f, 1.0f));
+            glm::vec3 lit_rgb = base_col * (diffuse * glm::vec3(1.0f, 0.98f, 0.92f) + ambient * glm::vec3(0.50f, 0.70f, 1.0f));
 
             plan.triangles.push_back({
                 c0, c1, c2,
                 shs::rgb01_to_color(lit_rgb),
                 tri.depth_bias
-            });
+                });
         }
 
         return plan;

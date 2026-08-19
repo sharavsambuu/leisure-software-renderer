@@ -233,7 +233,7 @@ namespace vop {
 }
 
 // ============================================================================
-// 2D HUD RENDERING
+// 2D RETRO HUD & 2X COMPACT FONT
 // ============================================================================
 static void draw_line_screen(shs::Canvas& c, int x0, int y0, int x1, int y1, shs::Color col) {
     int dx = std::abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
@@ -268,7 +268,90 @@ static void draw_rect_border(shs::Canvas& c, int x, int y, int w, int h, shs::Co
     }
 }
 
-static void draw_digit(shs::Canvas& c, int x, int y, int d, int w, int h, shs::Color col) {
+// Compact 5x7 ASCII font glyphs
+static const uint8_t FONT_5X7[][5] = {
+    {0x00,0x00,0x00,0x00,0x00}, // Space
+    {0x00,0x00,0x5F,0x00,0x00}, // !
+    {0x00,0x07,0x00,0x07,0x00}, // "
+    {0x14,0x7F,0x14,0x7F,0x14}, // #
+    {0x24,0x2A,0x7F,0x2A,0x12}, // $
+    {0x23,0x13,0x08,0x64,0x62}, // %
+    {0x36,0x49,0x55,0x22,0x50}, // &
+    {0x00,0x05,0x03,0x00,0x00}, // '
+    {0x00,0x1C,0x22,0x41,0x00}, // (
+    {0x00,0x41,0x22,0x1C,0x00}, // )
+    {0x08,0x2A,0x1C,0x2A,0x08}, // *
+    {0x08,0x08,0x3E,0x08,0x08}, // +
+    {0x00,0x50,0x30,0x00,0x00}, // ,
+    {0x08,0x08,0x08,0x08,0x08}, // -
+    {0x00,0x60,0x60,0x00,0x00}, // .
+    {0x20,0x10,0x08,0x04,0x02}, // /
+    {0x3E,0x51,0x49,0x45,0x3E}, // 0
+    {0x00,0x42,0x7F,0x40,0x00}, // 1
+    {0x42,0x61,0x51,0x49,0x46}, // 2
+    {0x21,0x41,0x45,0x4B,0x31}, // 3
+    {0x18,0x14,0x12,0x7F,0x10}, // 4
+    {0x27,0x45,0x45,0x45,0x39}, // 5
+    {0x3C,0x4A,0x49,0x49,0x30}, // 6
+    {0x01,0x71,0x09,0x05,0x03}, // 7
+    {0x36,0x49,0x49,0x49,0x36}, // 8
+    {0x06,0x49,0x49,0x29,0x1E}, // 9
+    {0x00,0x36,0x36,0x00,0x00}, // :
+    {0x00,0x56,0x36,0x00,0x00}, // ;
+    {0x08,0x14,0x22,0x41,0x00}, // <
+    {0x14,0x14,0x14,0x14,0x14}, // =
+    {0x00,0x41,0x22,0x14,0x08}, // >
+    {0x02,0x01,0x51,0x09,0x06}, // ?
+    {0x32,0x49,0x79,0x41,0x3E}, // @
+    {0x7E,0x11,0x11,0x11,0x7E}, // A
+    {0x7F,0x49,0x49,0x49,0x36}, // B
+    {0x3E,0x41,0x41,0x41,0x22}, // C
+    {0x7F,0x41,0x41,0x22,0x1C}, // D
+    {0x7F,0x49,0x49,0x49,0x41}, // E
+    {0x7F,0x09,0x09,0x09,0x01}, // F
+    {0x3E,0x41,0x49,0x49,0x7A}, // G
+    {0x7F,0x08,0x08,0x08,0x7F}, // H
+    {0x00,0x41,0x7F,0x41,0x00}, // I
+    {0x20,0x40,0x41,0x3F,0x01}, // J
+    {0x7F,0x08,0x14,0x22,0x41}, // K
+    {0x7F,0x40,0x40,0x40,0x40}, // L
+    {0x7F,0x02,0x0C,0x02,0x7F}, // M
+    {0x7F,0x04,0x08,0x10,0x7F}, // N
+    {0x3E,0x41,0x41,0x41,0x3E}, // O
+    {0x7F,0x09,0x09,0x09,0x06}, // P
+    {0x3E,0x41,0x51,0x21,0x5E}, // Q
+    {0x7F,0x09,0x19,0x29,0x46}, // R
+    {0x46,0x49,0x49,0x49,0x31}, // S
+    {0x01,0x01,0x7F,0x01,0x01}, // T
+    {0x3F,0x40,0x40,0x40,0x3F}, // U
+    {0x1F,0x20,0x40,0x20,0x1F}, // V
+    {0x7F,0x20,0x18,0x20,0x7F}, // W
+    {0x63,0x14,0x08,0x14,0x63}, // X
+    {0x07,0x08,0x70,0x08,0x07}, // Y
+    {0x61,0x51,0x49,0x45,0x43}  // Z
+};
+
+static void draw_text(shs::Canvas& c, int x, int y, const std::string& str, shs::Color col, int scale = 2) {
+    int cur_x = x;
+    for (char ch : str) {
+        char upper = (ch >= 'a' && ch <= 'z') ? (ch - 'a' + 'A') : ch;
+        if (upper >= ' ' && upper <= 'Z') {
+            int idx = upper - ' ';
+            for (int col_i = 0; col_i < 5; ++col_i) {
+                uint8_t bits = FONT_5X7[idx][col_i];
+                for (int row_i = 0; row_i < 7; ++row_i) {
+                    if (bits & (1 << row_i)) {
+                        draw_rect_fill(c, cur_x + col_i * scale, y + row_i * scale, scale, scale, col);
+                    }
+                }
+            }
+        }
+        cur_x += (5 + 1) * scale;
+    }
+}
+
+// Bold 7-segment digit drawing with 2px thick strokes
+static void draw_digit_bold(shs::Canvas& c, int x, int y, int d, int w, int h, shs::Color col) {
     static const uint8_t segs[10] = {
         0b00111111, 0b00000110, 0b01011011, 0b01001111, 0b01100110,
         0b01101101, 0b01111101, 0b00000111, 0b01111111, 0b01101111
@@ -276,58 +359,102 @@ static void draw_digit(shs::Canvas& c, int x, int y, int d, int w, int h, shs::C
     if (d < 0 || d > 9) return;
     uint8_t mask = segs[d];
     int my = y + h / 2;
-    if (mask & (1 << 0)) draw_line_screen(c, x, y, x + w, y, col);
-    if (mask & (1 << 1)) draw_line_screen(c, x + w, y, x + w, my, col);
-    if (mask & (1 << 2)) draw_line_screen(c, x + w, my, x + w, y + h, col);
-    if (mask & (1 << 3)) draw_line_screen(c, x, y + h, x + w, y + h, col);
-    if (mask & (1 << 4)) draw_line_screen(c, x, my, x, y + h, col);
-    if (mask & (1 << 5)) draw_line_screen(c, x, y, x, my, col);
-    if (mask & (1 << 6)) draw_line_screen(c, x, my, x + w, my, col);
+
+    auto h_seg = [&](int sx, int sy) { draw_rect_fill(c, sx, sy, w, 2, col); };
+    auto v_seg = [&](int sx, int sy, int len) { draw_rect_fill(c, sx, sy, 2, len, col); };
+
+    if (mask & (1 << 0)) h_seg(x, y);                      // top
+    if (mask & (1 << 1)) v_seg(x + w - 2, y, my - y);      // top-right
+    if (mask & (1 << 2)) v_seg(x + w - 2, my, y + h - my); // bot-right
+    if (mask & (1 << 3)) h_seg(x, y + h - 2);              // bottom
+    if (mask & (1 << 4)) v_seg(x, my, y + h - my);         // bot-left
+    if (mask & (1 << 5)) v_seg(x, y, my - y);              // top-left
+    if (mask & (1 << 6)) h_seg(x, my - 1);                 // middle
 }
 
-static void draw_number(shs::Canvas& c, int x, int y, int val, int digits, shs::Color col) {
-    int w = 10, h = 18, gap = 5;
+static void draw_number_bold(shs::Canvas& c, int x, int y, int val, int digits, shs::Color col) {
+    int w = 12, h = 20, gap = 5;
     for (int i = digits - 1; i >= 0; --i) {
         int d = val % 10;
         val /= 10;
-        draw_digit(c, x + i * (w + gap), y, d, w, h, col);
+        draw_digit_bold(c, x + i * (w + gap), y, d, w, h, col);
     }
 }
 
+// Polished HUD with 2x scale and proper alignment
 static void draw_hud(shs::Canvas& canvas, const tetris::TetrisSnapshot& state) {
     int W = canvas.get_width();
     int H = canvas.get_height();
 
-    // Top Right: SCORE & HIGH SCORE
-    int sx = W - 220, sy = 25;
-    draw_rect_fill(canvas, sx, sy, 195, 80, shs::Color{ 15, 18, 26, 230 });
-    draw_rect_border(canvas, sx, sy, 195, 80, shs::Color{ 60, 140, 220, 255 });
-    draw_number(canvas, sx + 20, sy + 15, state.score, 6, shs::Color{ 255, 225, 45, 255 });
-    draw_number(canvas, sx + 20, sy + 45, state.high_score, 6, shs::Color{ 160, 175, 195, 255 });
+    // ------------------------------------------------------------------------
+    // 1. TOP RIGHT: SCORE CARD
+    // ------------------------------------------------------------------------
+    int sx = W - 265, sy = 18, sw = 245, sh = 88;
+    draw_rect_fill(canvas, sx, sy, sw, sh, shs::Color{ 15, 18, 26, 230 });
+    draw_rect_border(canvas, sx, sy, sw, sh, shs::Color{ 60, 140, 220, 255 });
 
-    // Top Left: OBJECTIVE PROGRESS BAR
-    int ox = 30, oy = 25, ow = 220, oh = 18;
-    draw_rect_fill(canvas, ox - 4, oy - 4, ow + 8, oh + 45, shs::Color{ 15, 18, 26, 230 });
-    draw_rect_border(canvas, ox - 4, oy - 4, ow + 8, oh + 45, shs::Color{ 60, 140, 220, 255 });
+    draw_text(canvas, sx + 14, sy + 14, "SCORE", shs::Color{ 255, 225, 45, 255 }, 2);
+    draw_number_bold(canvas, sx + 125, sy + 12, state.score, 6, shs::Color{ 255, 225, 45, 255 });
 
+    draw_text(canvas, sx + 14, sy + 48, "BEST", shs::Color{ 140, 155, 175, 255 }, 2);
+    draw_number_bold(canvas, sx + 125, sy + 46, state.high_score, 6, shs::Color{ 140, 155, 175, 255 });
+
+    // ------------------------------------------------------------------------
+    // 2. TOP LEFT: GOAL & STATS CARD
+    // ------------------------------------------------------------------------
+    int ox = 20, oy = 18, ow = 280, oh = 88;
+    draw_rect_fill(canvas, ox, oy, ow, oh, shs::Color{ 15, 18, 26, 230 });
+    draw_rect_border(canvas, ox, oy, ow, oh, shs::Color{ 60, 140, 220, 255 });
+
+    // Target Progress Bar
+    draw_text(canvas, ox + 14, oy + 12, "GOAL", shs::Color{ 45, 220, 120, 255 }, 2);
+    int bar_x = ox + 75, bar_y = oy + 12, bar_w = ow - 90, bar_h = 14;
     float progress = glm::clamp((float)state.score / (float)state.target_score, 0.0f, 1.0f);
-    draw_rect_fill(canvas, ox, oy, ow, oh, shs::Color{ 35, 40, 52, 255 });
-    draw_rect_fill(canvas, ox, oy, (int)(progress * (float)ow), oh, shs::Color{ 45, 220, 120, 255 });
-    draw_number(canvas, ox + 15, oy + 28, state.lines_cleared, 3, shs::Color{ 40, 220, 240, 255 });
-    draw_number(canvas, ox + 120, oy + 28, state.level, 2, shs::Color{ 255, 140, 35, 255 });
+    draw_rect_fill(canvas, bar_x, bar_y, bar_w, bar_h, shs::Color{ 35, 40, 52, 255 });
+    draw_rect_fill(canvas, bar_x, bar_y, (int)(progress * (float)bar_w), bar_h, shs::Color{ 45, 220, 120, 255 });
+    draw_rect_border(canvas, bar_x, bar_y, bar_w, bar_h, shs::Color{ 80, 95, 115, 255 });
 
-    // Hold & Next Glass Card Frames
-    draw_rect_border(canvas, 45, 85, 140, 140, shs::Color{ 40, 180, 240, 180 });
-    draw_rect_border(canvas, W - 185, 85, 140, 380, shs::Color{ 40, 180, 240, 180 });
+    // Lines & Level
+    draw_text(canvas, ox + 14, oy + 48, "LINES", shs::Color{ 40, 220, 240, 255 }, 2);
+    draw_number_bold(canvas, ox + 85, oy + 46, state.lines_cleared, 3, shs::Color{ 40, 220, 240, 255 });
 
-    // Game Over / Victory Modal
+    draw_text(canvas, ox + 165, oy + 48, "LVL", shs::Color{ 255, 140, 35, 255 }, 2);
+    draw_number_bold(canvas, ox + 225, oy + 46, state.level, 2, shs::Color{ 255, 140, 35, 255 });
+
+    // ------------------------------------------------------------------------
+    // 3. 3D PLATFORM LABELS (Centered above shelves)
+    // ------------------------------------------------------------------------
+    draw_text(canvas, 105, 120, "HOLD [C]", shs::Color{ 80, 200, 255, 240 }, 2);
+    draw_text(canvas, W - 200, 120, "NEXT", shs::Color{ 80, 200, 255, 240 }, 2);
+
+    // ------------------------------------------------------------------------
+    // 4. NON-INTRUSIVE BOTTOM CONTROLS FOOTER
+    // ------------------------------------------------------------------------
+    draw_text(canvas, (W - 860) / 2, H - 24, "A/D: MOVE | W: ROTATE | S: DROP | SPACE: HARD DROP | C: HOLD | R: RETRY", shs::Color{ 140, 155, 175, 220 }, 2);
+
+    // ------------------------------------------------------------------------
+    // 5. GAME OVER / VICTORY MODAL OVERLAY
+    // ------------------------------------------------------------------------
     if (state.game_over || state.victory) {
-        int mw = 420, mh = 180;
+        int mw = 460, mh = 200;
         int mx = (W - mw) / 2, my = (H - mh) / 2;
-        draw_rect_fill(canvas, mx, my, mw, mh, shs::Color{ 12, 15, 22, 245 });
+
+        draw_rect_fill(canvas, mx, my, mw, mh, shs::Color{ 10, 12, 18, 245 });
         shs::Color bc = state.victory ? shs::Color{ 45, 240, 110, 255 } : shs::Color{ 245, 55, 55, 255 };
         draw_rect_border(canvas, mx, my, mw, mh, bc);
-        draw_number(canvas, mx + 150, my + 60, state.score, 6, shs::Color{ 255, 230, 80, 255 });
+        draw_rect_border(canvas, mx + 2, my + 2, mw - 4, mh - 4, bc);
+
+        if (state.victory) {
+            draw_text(canvas, mx + 80, my + 25, "OBJECTIVE COMPLETE!", shs::Color{ 45, 240, 110, 255 }, 2);
+        }
+        else {
+            draw_text(canvas, mx + 155, my + 25, "GAME OVER", shs::Color{ 245, 55, 55, 255 }, 2);
+        }
+
+        draw_text(canvas, mx + 80, my + 80, "FINAL SCORE:", shs::Color{ 220, 220, 220, 255 }, 2);
+        draw_number_bold(canvas, mx + 240, my + 76, state.score, 6, shs::Color{ 255, 230, 80, 255 });
+
+        draw_text(canvas, mx + 105, my + 140, "PRESS [R] TO RETRY", shs::Color{ 140, 160, 190, 255 }, 2);
     }
 }
 

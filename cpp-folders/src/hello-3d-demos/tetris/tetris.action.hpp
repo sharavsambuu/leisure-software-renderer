@@ -40,13 +40,13 @@ namespace tetris {
         for (const auto& cmd : commands) {
             std::visit([&out](auto&& c) {
                 using T = std::decay_t<decltype(c)>;
-                if constexpr (std::is_same_v<T, MoveLeftIntent>)    out.move_x -= 1;
-                else if constexpr (std::is_same_v<T, MoveRightIntent>)  out.move_x += 1;
-                else if constexpr (std::is_same_v<T, RotateCWIntent>)   out.rotate_dir += 1;
-                else if constexpr (std::is_same_v<T, RotateCCWIntent>)  out.rotate_dir -= 1;
-                else if constexpr (std::is_same_v<T, SoftDropIntent>)   out.soft_drop = true;
-                else if constexpr (std::is_same_v<T, HardDropIntent>)   out.hard_drop = true;
-                else if constexpr (std::is_same_v<T, HoldPieceIntent>)  out.hold_pressed = true;
+                if constexpr (std::is_same_v<T, MoveLeftIntent>)        out.move_x       -= 1;
+                else if constexpr (std::is_same_v<T, MoveRightIntent>)  out.move_x       += 1;
+                else if constexpr (std::is_same_v<T, RotateCWIntent>)   out.rotate_dir   += 1;
+                else if constexpr (std::is_same_v<T, RotateCCWIntent>)  out.rotate_dir   -= 1;
+                else if constexpr (std::is_same_v<T, SoftDropIntent>)   out.soft_drop     = true;
+                else if constexpr (std::is_same_v<T, HardDropIntent>)   out.hard_drop     = true;
+                else if constexpr (std::is_same_v<T, HoldPieceIntent>)  out.hold_pressed  = true;
                 else if constexpr (std::is_same_v<T, RestartIntent>)    out.reset_pressed = true;
             }, cmd);
         }
