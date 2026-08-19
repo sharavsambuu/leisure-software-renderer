@@ -1,4 +1,5 @@
 
+
 ---
 
 # Roadmap: The Angstrom-Era Software Renderer (Virtual SPU)
@@ -41,6 +42,7 @@ Even in a world of abundant cores, the physical constraint remains the **Memory 
 ## The Execution Unit: Virtual SPUs (`std::jthread`)
 The Virtual SPU is the heart of the execution. We model these units using C++20 `std::jthread` combined with wide SIMD execution abstractions. Unlike traditional threads, these units are:
 
+* **Singular & Unified:** **Exactly one persistent thread pool exists** (1 `std::jthread` per hardware core). There are no competing secondary pools for coroutines or background tasks, eliminating CPU oversubscription and OS context switches.
 * **Persistent:** A Virtual SPU "lives" for the entire duration of the engine instance, completely eliminating thread-creation overhead and maintaining warm cache residency for owned scratchpad arenas.
 * **Vector-Driven:** Each Virtual SPU processes geometric clusters, edge equations, and shading samples across 8-wide, 16-wide, or 32-wide SIMD lanes using Vector-Oriented Programming.
 * **Cooperative:** Using `std::stop_token` to handle graceful interruption and state-safe shutdown.
@@ -48,14 +50,14 @@ The Virtual SPU is the heart of the execution. We model these units using C++20 
 
 ---
 
-## The Scheduler: Stackless Coroutines & Two-Tier Execution
-Rather than relying on heavy external runtime schedulers, we use **C++20 Stackless Coroutines** as our macro scheduling primitive, paired with a lock-free micro-task pipeline:
+## The Scheduler: Stackless Coroutines on a Unified Job Core
+Rather than creating separate execution engines, the scheduler uses a **Layered Two-Tier Model** where coroutines serve as an ergonomic syntax layer directly on top of the unified work-stealing job pool:
 
-* **Job Composition:** Coroutines allow the frame to cleanly suspend execution at major dependency boundaries (e.g., waiting for all meshlet cluster-culling passes to complete before initiating tile rasterization).
-* **Two-Tier Dispatch:**
-  * **Macro Tier:** C++20 coroutines coordinate coarse frame passes (`co_await DepthPass()`, `co_await VisibilityPass()`) without blocking worker threads.
-  * **Micro Tier:** Inside each pass, fine-grained tasks (meshlets, $16\times16$ raster tiles) are pushed into lock-free, zero-allocation work-stealing queues (Chase-Lev deques) for immediate Virtual SPU consumption.
-* **Non-Blocking / Always-Busy Pipelines:** The combination of persistent `std::jthread` workers and coroutine-driven pass graphs enables a zero-allocation, lock-free, and non-blocking data pipeline. If a worker finishes its local queue, it steals pending tile chunks from neighboring queues, keeping execution units 100% utilized.
+* **The Unified Job Core:** All executable units are represented as lightweight `Job` payloads (`void(*execute)(void*)`). A coroutine resumption (`coroutine_handle<>::resume`) is fundamentally treated as just another standard `Job` pushed into the work-stealing queue.
+* **Two-Tier Layering:**
+  * **Macro Tier (Coroutine Frame DAG):** High-level rendering passes are written as sequential `co_await` operations (`co_await DepthPass()`, `co_await VisibilityPass()`).
+  * **Micro Tier (Lock-Free Work Stealing):** When an awaited pass executes, it fans out hundreds of raw micro-tasks (tile chunks, meshlets) to the persistent `VirtualSPUPool`. An atomic latch tracks progress; once the counter reaches zero, the completing worker submits the parent coroutine's resumption handle back into the unified queue.
+* **Non-Blocking / Always-Busy Execution:** Workers never block on mutexes or OS conditionals. When a worker drains its local queue, it steals micro-tasks from neighboring workers, ensuring 100% vector unit saturation.
 
 ---
 
@@ -87,18 +89,18 @@ Every new feature (e.g., clustered shading, soft shadows, visibility passes) mus
 
 ## Phased Implementation Roadmap
 
-### Phase 1: Virtual SPU Infrastructure & Local Stores
-- [ ] Implement persistent `std::jthread` worker pool with hardware core pinning and NUMA awareness.
+### Phase 1: Unified Virtual SPU Infrastructure & Local Stores
+- [ ] Implement the singular, persistent `std::jthread` worker pool (`VirtualSPUPool`) with hardware core pinning and NUMA awareness.
+- [ ] Build the underlying zero-allocation lock-free work-stealing job deque (`Job{ void(*)(void*), void* }`).
 - [ ] Build thread-local, cache-line-aligned ($64\text{ B}/128\text{ B}$) linear **Scratchpad Allocators** to emulate SPU Local Stores.
 - [ ] Establish the cross-platform SIMD vector abstraction (AVX2 / AVX-512 / ARM NEON & SVE2).
 - [ ] Implement Non-Temporal Streaming Store resolve routines (`_mm512_stream_*` / `STNP`) to bypass cache pollution.
 
-### Phase 2: DOD Ingestion, Meshlets & Wait-Free Pipelines
+### Phase 2: Coroutine Bridge, DOD Ingestion & Meshlets
+- [ ] Implement the C++20 Coroutine Awaiter Bridge (`ParallelForBatch` / atomic completion latches that submit `coroutine_handle::resume` as a standard `Job`).
 - [ ] Implement zero-copy SoA / AoSoA data streamers bridging ECS components directly to Virtual SPUs.
 - [ ] Implement geometry pre-clustering into uniform **Meshlets** (64v / 128p).
 - [ ] Build SIMD cluster-level frustum, normal-cone, and Hierarchical-Z (HZB) occlusion culling.
-- [ ] Establish the structured C++20 Coroutine Frame Graph bridge for high-level pass coordination.
-- [ ] Implement zero-allocation lock-free work-stealing queues for micro-task distribution across Virtual SPUs.
 
 ### Phase 3: Fixed-Point Rasterizer & Visibility Buffer
 - [ ] Build a 16-wide fixed-point SIMD tile rasterizer with subpixel precision.
@@ -114,4 +116,4 @@ Every new feature (e.g., clustered shading, soft shadows, visibility passes) mus
 ---
 
 ## The Angstrom-Era Guarantee
-By aligning the engine logic with persistent `std::jthread` Virtual SPUs, explicit Local Store memory discipline, wide SIMD execution, Data-Oriented Design, and stackless coroutine DAGs, **`shs-renderer-lib`** ensures that when hardware pivots to thousand-core unified APUs, the engine will scale proportionally with core availability under bounded memory constraints—bringing the precision, control, and throughput once reserved for the PS3 Cell SPUs into the modern era of computing.
+By aligning the engine logic with persistent `std::jthread` Virtual SPUs, a singular unified work-stealing core, explicit Local Store memory discipline, wide SIMD execution, Data-Oriented Design, and stackless coroutine DAGs, **`shs-renderer-lib`** ensures that when hardware pivots to thousand-core unified APUs, the engine will scale proportionally with core availability under bounded memory constraints—bringing the precision, control, and throughput once reserved for the PS3 Cell SPUs into the modern era of computing.
