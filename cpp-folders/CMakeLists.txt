@@ -23,6 +23,7 @@ endif()
 
 
 FIND_PACKAGE(Threads COMPONENTS REQUIRED)
+#FIND_PACKAGE(Lua 5.5 REQUIRED)
 
 include(FetchContent)
 
@@ -34,13 +35,13 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(stb)
 
 
-message(STATUS "Fetching Entt")
-FetchContent_Declare(
-    entt
-    GIT_REPOSITORY https://github.com/skypjack/entt.git
-    GIT_TAG        main
-)
-FetchContent_MakeAvailable(entt)
+#message(STATUS "Fetching Entt")
+#FetchContent_Declare(
+#    entt
+#    GIT_REPOSITORY https://github.com/skypjack/entt.git
+#    GIT_TAG        main
+#)
+#FetchContent_MakeAvailable(entt)
 
 message(STATUS "Fetching XSIMD")
 FetchContent_Declare(
@@ -67,8 +68,13 @@ set(INTERPROCEDURAL_OPTIMIZATION OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(JoltPhysics)
 
 # VulkanMemoryAllocator via vcpkg
+message(STATUS "Fetching VulkanMemoryAllocator library...")
 find_package(VulkanMemoryAllocator CONFIG REQUIRED)
 
+
+# Lua 5.5
+message(STATUS "Fetching Lua 5.5 library...")
+find_package(Lua 5.5)
 
 #
 # Too slow to fetch on my machine

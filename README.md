@@ -153,6 +153,8 @@
     sudo vcpkg install assimp
     sudo vcpkg install joltphysics
     sudo vcpkg install vulkan-memory-allocator
+    sudo vcpkg install lua
+
 
     
     Compilation steps on ubuntu 24.04
@@ -196,6 +198,7 @@
     vcpkg install "assimp:arm64-osx"
     vcpkg install "joltphysics:arm64-osx"
     vcpkg install "vulkan-memory-allocator:arm64-osx"
+    vcpkg install "lua:arm64-osx"
 
 
     cd cpp-folders && mkdir build && cd build
@@ -224,6 +227,7 @@
     vcpkg install assimp
     vcpkg install joltphysics
     vcpkg install vulkan-memory-allocator:x64-windows
+    vcpkg install lua:x64-windows@5.5.1
 
 
     Use CMake-GUI with Visual Studio 17 2022
