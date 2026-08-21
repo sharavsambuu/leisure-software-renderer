@@ -61,6 +61,51 @@ cd /home/sharavsambuu/src/dev/leisure-software-renderer/cpp-folders/build && cd 
 
 - Demos are the `hello-*` targets; each produces an executable under its own subdir of `build/src/`.
 
+## Nested sub-CMake project structure (validated)
+
+The `cpp-folders/src/hello-3d-demos/` aggregator is a **multi-root CMake layout**: one top-level
+aggregator plus one self-contained `CMakeLists.txt` per demo pod (`fps/`, `plane/`, `tetris/`,
+`snake/`). Shared dependencies are defined once in the parent and exposed to every subdir; each
+demo owns its own internal include paths.
+
+### Responsibilities split (do NOT duplicate)
+
+- **Parent aggregator** (`hello-3d-demos/CMakeLists.txt`) — defines shared targets/aliases and adds
+  only the **pod roots** (`fps`, `plane`, `tetris`, `snake`) to the global include path, plus the
+  shared renderer library + fetched deps (stb/xsimd/Jolt) + vcpkg-provided packages. It must NOT list
+  any demo's internal subdirs — those belong in each demo's own file.
+- **Per-demo** (`hello-3d-demos/<demo>/CMakeLists.txt`) — defines its executable, compile options,
+  link libraries, platform flags, and the **internal include dirs** for its own pod (e.g. `domains/`,
+  `edges/`, `config/`). It must NOT redefine shared targets (`find_package` + aliases) or re-add the
+  parent's demo roots — that causes "target already exists" / duplicate-include errors.
+
+### How internal includes resolve
+
+Each source header uses **bare** cross-subdir includes (e.g. `"snake.contract.hpp"`,
+`"../config/levels/snake_level_01.hpp"`, `"shs_renderer.hpp"`). The demo's own `CMakeLists.txt` adds
+the specific subdirs that are actually referenced, using `${CMAKE_CURRENT_LIST_DIR}` so the paths stay
+correct regardless of where CMake is invoked from:
+
+```cmake
+include_directories(${CMAKE_CURRENT_LIST_DIR}/snake/domains/matrix)
+include_directories(${CMAKE_CURRENT_LIST_DIR}/snake/config/levels)
+include_directories(${CMAKE_CURRENT_LIST_DIR}/snake/domains/spatial_fx)
+```
+
+- Only list dirs that a source header actually `#include`s. Verify with:
+  ```bash
+  wsl -e bash -lc "cd /home/sharavsambuu/src/dev/leisure-software-renderer/cpp-folders/src/hello-3d-demos && grep -rn '#include' --include='*.hpp' --include='*.cpp' . | grep '<demo-name>'"
+  ```
+- Subdirs referenced by **no** source header (e.g. `snake/domains/environment`, `snake/edges/rasterizer`)
+  are intentionally omitted — dead dirs on the include path only mask future mistakes.
+- The shared renderer (`shs_renderer.hpp`) is inherited from the parent's global include path; do not
+  re-add it in the demo file (it would duplicate the include).
+
+### Reconfiguring after a CMake change
+
+If you edited any `CMakeLists.txt` (parent or per-demo), re-run step 1 (`cmake ..`) before building,
+or the new targets/include paths will not appear. This is incremental and safe to repeat.
+
 ## Agent workflow (step by step)
 
 1. **Read before you run.** For any non-trivial change, first `read_file`/`search_files` the target and its neighbors. Do not guess a shell command to "discover" state — it burns tokens and returns wrong results here.

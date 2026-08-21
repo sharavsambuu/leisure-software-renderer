@@ -6,6 +6,9 @@
 # NOTE: All shared dependencies and alias definitions are handled in the parent
 # CMakeLists.txt to avoid "target already exists" errors. This file only defines
 # its own executable, compile options, link libraries, and platform flags.
+# Include paths for within-pod headers (e.g. "snake.contract.hpp", "shs_renderer.hpp")
+# are provided globally by the parent aggregator — no relative ("../../../...") includes
+# are used in source headers.
 # =============================================================================
 
 cmake_minimum_required(VERSION 3.28)
@@ -17,6 +20,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # --- Dependencies (shared across all demos — defined in parent CMakeLists.txt) ---
 find_package(SDL2 CONFIG REQUIRED)
+find_package(SDL2_mixer CONFIG QUIET)   # optional: audio pod is standalone; only linked if available
 find_package(glm CONFIG REQUIRED)
 find_package(assimp CONFIG REQUIRED)
 
@@ -28,12 +32,20 @@ include_directories(${HelloSHSRenderer_SOURCE_DIR}/)
 
 include_directories(${stb_SOURCE_DIR}/)
 
-# --- Main executable: Hello3DSnake (multi-file domain pod architecture) ---
-# Note: include_directories("${CMAKE_CURRENT_LIST_DIR}/../") adds the parent of CMakeLists.txt,
-# so that relative includes like "snake.contract.hpp" resolve correctly from any file
-# under snake/ (e.g., from domains/config/difficulty.hpp → ../matrix/snake.contract.hpp).
-include_directories("${CMAKE_CURRENT_LIST_DIR}/../")
+# --- Snake internal subdirs: add each snake subdir to the global include path so that
+# bare cross-subdir includes resolve from any file under snake/, mirroring tetris's
+# within-pod flat-include convention. Only dirs actually referenced by a source header
+# are listed (verified via grep of #include directives):
+#   - "snake.contract.hpp"          -> each domain/edge subdir itself
+#   - "../config/levels/snake_level_01.hpp"  + "../../../config/..." -> config/levels
+#   - "../matrix/snake.event.hpp"   -> domains/matrix
+#   - "snake_level_01.hpp"         -> domains/spatial_fx (same-dir)
+# Dead dirs (domains/environment, edges/rasterizer) are intentionally omitted.
+include_directories(${CMAKE_CURRENT_LIST_DIR}/snake/domains/matrix)
+include_directories(${CMAKE_CURRENT_LIST_DIR}/snake/config/levels)
+include_directories(${CMAKE_CURRENT_LIST_DIR}/snake/domains/spatial_fx)
 
+# --- Main executable: Hello3DSnake (multi-file domain pod architecture) ---
 add_executable(Hello3DSnake
     hello_3d_snake.cpp
     domains/matrix/snake.contract.hpp
@@ -41,6 +53,8 @@ add_executable(Hello3DSnake
     domains/matrix/snake.event.hpp
     domains/matrix/snake.reducer.hpp
     domains/spatial_fx/snake.plan.hpp
+    edges/input/snake.input.hpp          # input edge (SDL boundary -> SnakeCommand)
+    domains/progression/snake.contract.hpp  # ScoreState
 )
 
 # --- Compile options (shared across demos for consistency) ---
@@ -52,6 +66,13 @@ target_compile_options(Hello3DSnake PRIVATE
 target_compile_definitions(Hello3DSnake PRIVATE GLM_ENABLE_EXPERIMENTAL)
 
 # --- Link libraries ---
+# SDL2_mixer is optional: the audio pod (edges/audio/snake.audio.hpp) uses SDL_LoadWAV/SDL_SaveWAV/
+# SDL_PlayAudioBuffer, but main does not include it. Only link if vcpkg provided the package so the
+# demo builds even when mixer is unavailable; add "SDL2_mixer::SDL2_mixer" to the list once installed.
+if (TARGET SDL2_mixer::SDL2_mixer)
+    target_link_libraries(Hello3DSnake PRIVATE SDL2_mixer::SDL2_mixer)   # audio edge SFX (optional)
+endif()
+
 target_link_libraries(Hello3DSnake PRIVATE
     SDL2::SDL2
     glm::glm

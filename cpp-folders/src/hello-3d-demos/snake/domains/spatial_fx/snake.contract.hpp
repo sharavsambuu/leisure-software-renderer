@@ -9,19 +9,17 @@
 
 namespace snake::spatial_fx {
 
-    // Face: one render-ready triangle (world-space) with a base color that the rasterizer lights.
-    struct Face {
-        glm::vec4 v0{ 0.0f, 0.0f, 0.0f, 1.0f };   // world-space corner (w = 1)
-        glm::vec4 v1{ 0.0f, 0.0f, 0.0f, 1.0f };
-        glm::vec4 v2{ 0.0f, 0.0f, 0.0f, 1.0f };
-        glm::vec3 normal{ 0.0f, 1.0f, 0.0f };      // unit outward normal (world space) — used for flat shading
-        shs::Color color;                           // base/face color (Lambert-lit by the renderer)
-        float depth_bias = 0.0f;                    // per-face z-buffer bias (food/snake pop above tiles)
+    // PipelineExecutionPlan: render-ready geometry for one frame. Zero game logic — consumed by the rasterizer.
+    // Canonical renderer format (see docs/spec/conventions.md): clip-space corners + pre-shaded color + depth bias.
+    struct PipelineExecutionPlan {
+        std::pmr::vector<ProcessedTriangle> triangles;   // all visible faces across board, walls, food, snake + FX
+        glm::mat4 vp_matrix = glm::mat4(1.0f);           // shared per-frame camera matrix (world→clip) for all triangles
     };
 
-    // PipelineExecutionPlan: render-ready geometry for one frame. Zero game logic — consumed by the rasterizer.
-    struct PipelineExecutionPlan {
-        std::pmr::vector<Face> faces;   // all visible faces across board, walls, food, snake + FX
+    struct ProcessedTriangle {
+        glm::vec4  c0, c1, c2;
+        shs::Color lit_color;
+        float      depth_bias;
     };
 
     // Camera params for the orbiting top-down view of the semi-3D board.

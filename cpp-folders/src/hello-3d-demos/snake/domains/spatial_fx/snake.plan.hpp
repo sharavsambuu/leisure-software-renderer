@@ -2,12 +2,20 @@
 
 // snake plan — builds a render-ready triangle list (clip-space corners + pre-shaded colors) for one frame.
 // Mirrors tetris::plan_tetris_scene: world-space boxes → vp transform → Lambert diffuse shading. Pure function;
-// never touches SDL or game state.
+// never touches SDL or game state. Output is the canonical PipelineExecutionPlan{triangles} consumed by main's
+// tiled rasterizer (see docs/spec/conventions.md).
 #include <glm/glm.hpp>
-#include "../../../hello-shs-renderer/shs_renderer.hpp"   // shs::Color, shs::Math
-#include "snake.contract.hpp"                              // Face, PipelineExecutionPlan
+#include <glm/gtc/matrix_transform.hpp>
+#include "shs_renderer.hpp"   // shs::Color, shs::Math (shared renderer from hello-3d-primitives)
+#include "snake.contract.hpp"                              // PipelineExecutionPlan{triangles}, ShatterParticleSoA
+#include "snake_level_01.hpp"       // arena bounds (GRID_W/H) + food table
 
 namespace snake::spatial_fx {
+
+    // Arena center in world space — derived from the level data so no free-function helper is needed.
+    inline glm::vec3 level_arena_center(const SnakeLevel01& level) {
+        return level.arena_center;
+    }
 
     struct LowPolyTriangle {
         glm::vec3  p0, p1, p2;
@@ -59,14 +67,21 @@ namespace snake::spatial_fx {
         const SnakeLevel01& level,
         ShatterParticleSoA& particles)
     {
-        PipelineExecutionPlan plan(std::pmr::get_default_resource());
+        PipelineExecutionPlan plan;
 
         float cell = 1.0f;   // world-space size of one grid cell (matches level arena)
-        glm::vec3 arena_center = level_arena_center();
+        glm::vec3 arena_center = level_arena_center(level);
         const int GW = level.GRID_W, GH = level.GRID_H;
 
         std::vector<LowPolyTriangle> tris;
         tris.reserve(4000);
+
+        // Orbiting top-down camera: elevated eye that slowly yaws around the arena center.
+        float yaw = 0.6f * snap.body.position.size();   // slow rotation proportional to body length (visual)
+        glm::vec3 eye = arena_center + glm::vec3(std::sin(yaw) * 14.0f, 9.0f, std::cos(yaw) * 14.0f);
+        plan.view_matrix = glm::lookAtLH(eye, arena_center, glm::vec3(0, 1, 0));
+        plan.proj_matrix = glm::perspectiveLH_NO(glm::radians(60.0f), 1.0f, 0.15f, 120.0f);
+        plan.vp_matrix   = plan.proj_matrix * plan.view_matrix;
 
         // 1. Board tiles — every empty cell is a semi-3D extruded box (checkerboard top color).
         for (int y = 0; y < GH; ++y) {
@@ -138,17 +153,6 @@ namespace snake::spatial_fx {
         }
 
         return plan;
-    }
-
-    // Camera params for the orbiting top-down view of the semi-3D board (driven by main's frame timer).
-    inline SnakeCameraParams snake_camera_params(const SnakeLevel01& level, float time_sec) {
-        SnakeCameraParams cam;
-        float speed = 0.25f;   // radians/sec — slow, gentle orbit around the arena center
-        cam.orbit_angle = time_sec * speed;
-        float r = 13.0f;       // orbital radius above the board
-        glm::vec3 offset(std::cos(cam.orbit_angle) * r, std::sin(cam.orbit_angle) * r, 6.0f);
-        cam.position = level_arena_center(level) + offset;   // orbit around arena center
-        return cam;
     }
 
 } // namespace snake::spatial_fx

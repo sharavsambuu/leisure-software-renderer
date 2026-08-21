@@ -3,6 +3,7 @@
 // snake contract: defines the core gameplay vocabulary and state machine for the 3D snake demo.
 #include <cstdint>
 #include <array>
+#include <memory_resource>
 #include <glm/glm.hpp>
 
 namespace snake::matrix {
@@ -13,7 +14,7 @@ namespace snake::matrix {
     // SnakeCommand: a single queued intent for the current tick.
     struct SnakeCommand {
         uint32_t tick = 0;
-        SnakeCommandType type = SnakeCommandType::NONE;   // NONE is invalid (guarded by input edge)
+        SnakeCommandType type = SnakeCommandType::LEFT;   // default is invalid (guarded by input edge)
         float strength = 1.0f;
     };
 
