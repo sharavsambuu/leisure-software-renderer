@@ -227,7 +227,7 @@
     vcpkg install assimp
     vcpkg install joltphysics
     vcpkg install vulkan-memory-allocator:x64-windows
-    vcpkg install lua:x64-windows@5.5.1
+    vcpkg install lua:x64-windows
 
 
     Use CMake-GUI with Visual Studio 17 2022
