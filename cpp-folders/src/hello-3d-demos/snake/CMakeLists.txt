@@ -60,7 +60,9 @@ target_link_libraries(Hello3DSnake PRIVATE
 
 # --- Platform-specific optimizations ---
 if (MSVC)
-    target_compile_options(Hello3DSnake PRIVATE /O2 /fp:fast /arch:AVX2)
+    target_compile_options(Hello3DSnake PRIVATE 
+        $<$<NOT:$<CONFIG:Debug>>:/O2 /fp:fast /arch:AVX2>
+    )
 elseif(APPLE AND CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
     target_compile_options(Hello3DSnake PRIVATE -O3 -ffast-math)
 else()

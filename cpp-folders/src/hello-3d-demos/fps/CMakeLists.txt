@@ -51,7 +51,10 @@ target_link_libraries(HelloFPSDemo PRIVATE
 
 # --- Platform-specific optimizations ---
 if (MSVC)
-    target_compile_options(HelloFPSDemo PRIVATE /O2 /fp:fast /arch:AVX2)
+    # Appends the flags only if the configuration is NOT Debug
+    target_compile_options(HelloFPSDemo PRIVATE 
+        $<$<NOT:$<CONFIG:Debug>>:/O2 /fp:fast /arch:AVX2>
+    )
 elseif(APPLE AND CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
     target_compile_options(HelloFPSDemo PRIVATE -O3 -ffast-math)
 else()

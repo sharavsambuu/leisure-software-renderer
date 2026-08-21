@@ -51,11 +51,15 @@ target_link_libraries(HelloPlaneDemo PRIVATE
 
 # --- Platform-specific optimizations ---
 if (MSVC)
-    target_compile_options(HelloPlaneDemo PRIVATE /O2 /fp:fast /arch:AVX2)
+    target_compile_options(HelloPlaneDemo PRIVATE 
+        $<$<NOT:$<CONFIG:Debug>>:/O2 /fp:fast /arch:AVX2>
+    )
 elseif(APPLE AND CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
     target_compile_options(HelloPlaneDemo PRIVATE -O3 -ffast-math)
 else()
     target_compile_options(HelloPlaneDemo PRIVATE -O3 -ffast-math -mavx2 -mfma)
 endif()
+
+
 
 message(STATUS ">>> Building HelloPlaneDemo...")
