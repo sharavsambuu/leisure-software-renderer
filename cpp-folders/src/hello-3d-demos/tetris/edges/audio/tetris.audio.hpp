@@ -16,7 +16,9 @@ enum SoundType : uint8_t {
     SND_TETRIS_FOUR = 5,
     SND_HOLD        = 6,
     SND_GAME_OVER   = 7,
-    SND_TICK        = 8   // blitz clock threshold tick (30s boundaries)
+    SND_TICK        = 8,  // blitz clock threshold tick (30s boundaries)
+    SND_MENU_MOVE   = 9,  // session menu cursor blip
+    SND_MENU_CONFIRM= 10  // session menu confirm blip
 };
 
 struct AudioEventRing {
@@ -51,8 +53,16 @@ struct TetrisAudioSynth {
     static const int MAX_VOICES = 12;
     SoundVoice       voices[MAX_VOICES];
     AudioEventRing   event_queue;
+    std::atomic<bool> enabled{ true };   // session sound on/off (thread-safe:
+                                         // read on the SDL callback thread)
 
-    inline void play(SoundType type) { event_queue.push(type); }
+    inline void set_enabled(bool on) { enabled.store(on, std::memory_order_relaxed); }
+    inline bool is_enabled() const   { return enabled.load(std::memory_order_relaxed); }
+
+    inline void play(SoundType type) {
+        if (!enabled.load(std::memory_order_relaxed)) return;   // muted: drop early
+        event_queue.push(type);
+    }
 
     void mix(float* stream, int frames, int channels, int sample_rate) {
         SoundType new_type;
@@ -64,12 +74,21 @@ struct TetrisAudioSynth {
                     voices[i].time     = 0.0f;
                     voices[i].phase    = 0.0f;
                     voices[i].active   = true;
-                    voices[i].duration = (new_type == SND_TETRIS_FOUR) ? 0.45f
-                                       : (new_type == SND_TICK)        ? 0.09f
-                                                                       : 0.12f;
+                    voices[i].duration = (new_type == SND_TETRIS_FOUR)  ? 0.45f
+                                       : (new_type == SND_TICK)         ? 0.09f
+                                       : (new_type == SND_MENU_MOVE)    ? 0.06f
+                                       : (new_type == SND_MENU_CONFIRM) ? 0.14f
+                                                                        : 0.12f;
                     break;
                 }
             }
+        }
+
+        // Muted mid-voice: silence everything immediately (kill switch).
+        if (!enabled.load(std::memory_order_relaxed)) {
+            for (int v = 0; v < MAX_VOICES; ++v) voices[v].active = false;
+            for (int f = 0; f < frames * channels; ++f) stream[f] = 0.0f;
+            return;
         }
 
         float dt = 1.0f / (float)sample_rate;
@@ -115,6 +134,14 @@ struct TetrisAudioSynth {
                     case SND_TICK:
                         vox.phase += 1250.0f * dt;
                         sample += std::sin(vox.phase * glm::two_pi<float>()) * env * 0.18f;
+                        break;
+                    case SND_MENU_MOVE:
+                        vox.phase += 740.0f * dt;
+                        sample += std::sin(vox.phase * glm::two_pi<float>()) * env * 0.10f;
+                        break;
+                    case SND_MENU_CONFIRM:
+                        vox.phase += (520.0f + p * 260.0f) * dt;
+                        sample += std::sin(vox.phase * glm::two_pi<float>()) * env * 0.16f;
                         break;
                     default: break;
                 }

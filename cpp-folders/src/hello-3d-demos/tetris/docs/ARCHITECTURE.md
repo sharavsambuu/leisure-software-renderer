@@ -302,23 +302,25 @@ With this setup:
 
 ```text
 tetris/
-├── hello_3d_tetris.cpp        # main edge (331 lines): SDL lifecycle, arena, wiring,
+├── hello_3d_tetris.cpp        # main edge (~600 lines): SDL lifecycle, per-frame PMR arena, session wiring,
 │                              # event→sound map, headless hooks
 ├── verify.sh                  # reproducible headless verification battery
 ├── CMakeLists.txt             # single -I root; target-scoped include order
 ├── config/
 │   ├── rules.hpp              # tetris::config::Rules — every gameplay number
-│   └── levels/marathon_01.hpp # tetris::config::Marathon01 — level definition
+│   ├── levels/marathon_01.hpp # tetris::config level definitions (marathon_01, blitz_120)
+│   └── campaign/main_campaign.hpp # ordered stage manifest {rules factory, script_path, display_name}
 ├── domains/
 │   ├── matrix/                # contract / action / event / reducer (pure grid rulebook)
 │   ├── progression/           # contract / event / reducer (event-fed scoring)
-│   └── spatial_fx/            # contract / reducer / plan (vocabulary + fx + planner)
+│   ├── spatial_fx/            # contract / reducer / plan (vocabulary + fx + planner)
+│   └── session/                # contract / action / reducer (meta screen state machine)
 ├── edges/
 │   ├── input/tetris.input.hpp     # SDL polling → intent tokens
 │   ├── audio/tetris.audio.hpp     # verbatim synth port (12 voices, SPSC ring)
 │   ├── rasterizer/tetris.rasterizer.hpp # screen-space helpers (tetris::raster::vop)
-│   ├── ui/tetris.hud.hpp          # Mongolian UTF-8 font engine + draw_hud(m, sc)
-│   └── lua/lua.edge.hpp           # StatelessLuaEvaluator — UNWIRED (see §4)
+│   ├── ui/tetris.hud.hpp          # Mongolian UTF-8 font engine + HUD/menu screen projections
+│   └── lua/lua.edge.hpp           # StatelessLuaEvaluator — wired via ScriptHooks bridges (see §4)
 └── docs/                      # ARCHITECTURE.md · TODOS.md · STATUS.md
 ```
 

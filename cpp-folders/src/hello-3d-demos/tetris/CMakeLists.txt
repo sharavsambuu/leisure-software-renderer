@@ -59,6 +59,9 @@ add_executable(Hello3DTetris
     domains/spatial_fx/spatial_fx.contract.hpp
     domains/spatial_fx/spatial_fx.reducer.hpp
     domains/spatial_fx/spatial_fx.plan.hpp
+    domains/session/session.contract.hpp
+    domains/session/session.action.hpp
+    domains/session/session.reducer.hpp
     edges/input/tetris.input.hpp
     edges/audio/tetris.audio.hpp
     edges/rasterizer/tetris.rasterizer.hpp

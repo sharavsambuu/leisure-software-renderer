@@ -13,6 +13,7 @@
 #include <domains/matrix/matrix.contract.hpp>
 #include <domains/progression/progression.contract.hpp>
 #include <domains/progression/progression.event.hpp>
+#include <domains/session/session.contract.hpp>
 
 namespace tetris::ui {
 
@@ -77,8 +78,8 @@ static const char* TXT_BEST        = "\xD0\x94\xD0\xAD\xD0\xAD\xD0\x94";
 static const char* TXT_GOAL        = "\xD0\x97\xD0\x9E\xD0\xA0\xD0\x98\xD0\x9B\xD0\x93\xD0\x9E"; 
 // МӨР
 static const char* TXT_LINES       = "\xD0\x9C\xD3\xA8\xD0\xA0";                     
-// ҮЕ
-static const char* TXT_LEVEL       = "\xD0\xAE\xD0\x95";                             
+// ҮЕ  (үе = level/stage; \xD2\xAE is Ү — \xD0\xAE would render Ю)
+static const char* TXT_LEVEL       = "\xD2\xAE\xD0\x95";                             
 // НӨӨЦ [C]
 static const char* TXT_HOLD        = "\xD0\x9D\xD3\xA8\xD3\xA8\xD0\xA6 [C]";         
 // ДАРААГИЙН
@@ -96,12 +97,15 @@ static const char* TXT_FOOTER      = "A/D: \xD0\xA5\xD3\xA8\xD0\x94\xD0\x9B\xD3\
 // --- L1/L2 additions --------------------------------------------------------
 // ЦАГ (time)
 static const char* TXT_TIME        = "\xD0\xA6\xD0\x90\xD0\x93";
-// ХУРДАА! (hurry!)
-static const char* TXT_HURRY       = "\xD0\xA5\xD0\xA3\xD0\xA0\xD0\x94\xD0\x90\xD0\x90!";
+// ХУРДАЦГАА! (hurry up! — imperative; "хурдаа" is not a word)
+static const char* TXT_HURRY       = "\xD0\xA5\xD0\xA3\xD0\xA0\xD0\x94\xD0\x90\xD0\xA6\xD0\x93\xD0\x90\xD0\x90!";
 // КОМБО (combo)
 static const char* TXT_COMBO       = "\xD0\x9A\xD0\x9E\xD0\x9C\xD0\x91\xD0\x9E";
-// МАКС КОМБО (max combo)
-static const char* TXT_MAX_COMBO   = "\xD0\x9C\xD0\x90\xD0\x9A\xD0\xA1 \xD0\x9A\xD0\x9E\xD0\x9C\xD0\x91\xD0\x9E";
+// ДЭЭД КОМБО (best combo — matches ДЭЭД = best on the score card)
+static const char* TXT_MAX_COMBO   = "\xD0\x94\xD0\xAD\xD0\xAD\xD0\x94 \xD0\x9A\xD0\x9E\xD0\x9C\xD0\x91\xD0\x9E";
+// [R] - ДАРААГИЙН ҮЕ (next level — shown on the victory modal when a
+// further campaign stage exists; R advances instead of restarting)
+static const char* TXT_NEXT_STAGE  = "[R] - \xD0\x94\xD0\x90\xD0\xA0\xD0\x90\xD0\x90\xD0\x93\xD0\x98\xD0\x99\xD0\x9D \xD2\xAE\xD0\x95";
 // НЭМЭЛТ ЦАГ (bonus time collected)
 static const char* TXT_BONUS_TIME  = "\xD0\x9D\xD0\xAD\xD0\x9C\xD0\xAD\xD0\x9B\xD0\xA2 \xD0\xA6\xD0\x90\xD0\x93";
 // МӨР ОНОО (line-clear points)
@@ -110,6 +114,43 @@ static const char* TXT_CLEAR_SCORE = "\xD0\x9C\xD3\xA8\xD0\xA0 \xD0\x9E\xD0\x9D\
 static const char* TXT_DROP_SCORE  = "\xD0\xA3\xD0\x9D\xD0\x90\xD0\x9B\xD0\xA2 \xD0\x9E\xD0\x9D\xD0\x9E\xD0\x9E";
 // ЦАГ ДУУСЛАА (time up)
 static const char* TXT_TIME_UP     = "\xD0\xA6\xD0\x90\xD0\x93 \xD0\x94\xD0\xA3\xD0\xA3\xD0\xA1\xD0\x9B\xD0\x90\xD0\x90";
+
+// --- Session / menu strings -------------------------------------------------
+// ТЕТРИС (logo)
+static const char* TXT_LOGO        = "\xD0\xA2\xD0\x95\xD0\xA2\xD0\xA0\xD0\x98\xD0\xA1";
+// ЭХЛҮҮЛЭХ (start)
+static const char* TXT_START       = "\xD0\xAD\xD0\xA5\xD0\x9B\xD2\xAE\xD2\xAE\xD0\x9B\xD0\xAD\xD0\xA5";
+// ҮЕ СОНГОХ (select level)
+static const char* TXT_SELECT_LVL  = "\xD2\xAE\xD0\x95 \xD0\xA1\xD0\x9E\xD0\x9D\xD0\x93\xD0\x9E\xD0\xA5";
+// ДУУН (sound)
+static const char* TXT_SOUND       = "\xD0\x94\xD0\xA3\xD0\xA3\xD0\x9D";
+// ИДЭВХТЭЙ (on)
+static const char* TXT_ON          = "\xD0\x98\xD0\x94\xD0\xAD\xD0\x92\xD0\xA5\xD0\xA2\xD0\xAD\xD0\x99";
+// ИДЭВХГҮЙ (off)
+static const char* TXT_OFF         = "\xD0\x98\xD0\x94\xD0\xAD\xD0\x92\xD0\xA5\xD0\x93\xD2\xAE\xD0\x99";
+// ГАРАХ (exit)
+static const char* TXT_EXIT        = "\xD0\x93\xD0\x90\xD0\xA0\xD0\x90\xD0\xA5";
+// ҮРГЭЛЖЛҮҮЛЭХ (resume)
+static const char* TXT_RESUME      = "\xD2\xAE\xD0\xA0\xD0\x93\xD0\xAD\xD0\x9B\xD0\x96\xD0\x9B\xD2\xAE\xD2\xAE\xD0\x9B\xD0\xAD\xD0\xA5";
+// ДАХИН ЭХЛҮҮЛЭХ (restart stage)
+static const char* TXT_RESTART     = "\xD0\x94\xD0\x90\xD0\xA5\xD0\x98\xD0\x9D \xD0\xAD\xD0\xA5\xD0\x9B\xD2\xAE\xD2\xAE\xD0\x9B\xD0\xAD\xD0\xA5";
+// ТҮР ЗОГСООХ (paused)
+static const char* TXT_PAUSED      = "\xD0\xA2\xD2\xAE\xD0\xA0 \xD0\x97\xD0\x9E\xD0\x93\xD0\xA1\xD0\x9E\xD0\x9E\xD0\xA5";
+// ТҮГЖЭЭ (locked)
+static const char* TXT_LOCKED      = "\xD0\xA2\xD2\xAE\xD0\x93\xD0\x96\xD0\xAD\xD0\xAD";
+// БУЦАХ (back to title)
+static const char* TXT_BACK        = "\xD0\x91\xD0\xA3\xD0\xA6\xD0\x90\xD0\xA5";
+// ДАРААГИЙН ҮЕ (next level, plain — menu row form)
+static const char* TXT_NEXT_PLAIN  = "\xD0\x94\xD0\x90\xD0\xA0\xD0\x90\xD0\x90\xD0\x93\xD0\x98\xD0\x99\xD0\x9D \xD2\xAE\xD0\x95";
+// ЦЭВЭР C++ (pure-C++ tier tag)
+static const char* TAG_PURE        = "\xD0\xA6\xD0\xAD\xD0\x92\xD0\xAD\xD0\xA0 C++";
+// СКРИПТТЭЙ (Lua-scripted tier tag)
+static const char* TAG_SCRIPTED    = "\xD0\xA1\xD0\x9A\xD0\xA0\xD0\x98\xD0\x9F\xD0\xA2\xD0\xA2\xD0\xAD\xD0\x99";
+// Footer hints: "W/S - СОНГОХ", "ENTER - БАТАЛГАА", "ESC - БУЦАХ", "M - ДУУН"
+static const char* HINT_NAV        = "W/S/A/D - \xD0\xA1\xD0\x9E\xD0\x9D\xD0\x93\xD0\x9E\xD0\xA5";
+static const char* HINT_CONFIRM    = "ENTER - \xD0\x91\xD0\x90\xD0\xA2\xD0\x90\xD0\x9B\xD0\x93\xD0\x90\xD0\x90";
+static const char* HINT_BACK       = "ESC/P - \xD0\x91\xD0\xA3\xD0\xA6\xD0\x90\xD0\xA5";
+static const char* HINT_SOUND      = "M - \xD0\x94\xD0\xA3\xD0\xA3\xD0\x9D";
 
 // Line drawing
 static void draw_line_screen(shs::Canvas& c, int x0, int y0, int x1, int y1, shs::Color col) {
@@ -443,7 +484,8 @@ static void step_hud(HudState& hud,
             break;
         case progression::ProgressionEventType::COMBO_STREAK: {
             char buf[24];
-            std::snprintf(buf, sizeof(buf), "COMBO x%d", ev.combo);
+            std::snprintf(buf, sizeof(buf),
+                          "\xD0\x9A\xD0\x9E\xD0\x9C\xD0\x91\xD0\x9E x%d", ev.combo);
             hud.spawn_floater(buf, shs::Color{ 40, 220, 240, 255 });
             break;
         }
@@ -470,7 +512,8 @@ static void step_hud(HudState& hud,
 // MONGOLIAN CYRILLIC HUD (Layout & Presentation)
 // ============================================================================
 static void draw_hud(shs::Canvas& canvas, const matrix::MatrixSnapshot& m,
-                     const progression::ScoreState& sc, HudState& hud) {
+                     const progression::ScoreState& sc, HudState& hud,
+                     bool campaign_has_next = false) {
     int W = canvas.get_width();
     int H = canvas.get_height();
 
@@ -705,10 +748,217 @@ static void draw_hud(shs::Canvas& canvas, const matrix::MatrixSnapshot& m,
             draw_text(canvas, mx + 45, my + 218, TXT_DROP_SCORE, shs::Color{ 150, 160, 175, 255 }, 2);
             draw_number_bold(canvas, mx + 210, my + 214, sc.score_drops, 6, shs::Color{ 150, 160, 175, 255 });
 
-            draw_text_centered(canvas, W / 2, my + 262, TXT_RETRY, shs::Color{ 140, 160, 190, 255 }, 2);
+            // Victory over a non-final stage: R rolls into the next campaign
+            // stage (main consumes it); otherwise the usual retry hint.
+            const char* hint = (sc.victory && campaign_has_next) ? TXT_NEXT_STAGE : TXT_RETRY;
+            draw_text_centered(canvas, W / 2, my + 262, hint, shs::Color{ 140, 160, 190, 255 }, 2);
         } else {
-            draw_text_centered(canvas, W / 2, my + 140, TXT_RETRY, shs::Color{ 140, 160, 190, 255 }, 2);
+            const char* hint = (sc.victory && campaign_has_next) ? TXT_NEXT_STAGE : TXT_RETRY;
+            draw_text_centered(canvas, W / 2, my + 140, hint, shs::Color{ 140, 160, 190, 255 }, 2);
         }
     }
+}
+
+// ============================================================================
+// SESSION MENU RENDERERS (pure projections of SessionSnapshot — M1)
+// ============================================================================
+
+struct MenuItem {
+    const char* label;
+    bool        enabled = true;
+};
+
+// Vertical menu list with a pulsing gold cursor chip. Rows are centered on cx.
+static void draw_menu_list(shs::Canvas& canvas, int cx, int y0,
+                           const MenuItem* items, int count, int cursor,
+                           float anim_time) {
+    const int row_h = 48;
+    for (int i = 0; i < count; ++i) {
+        const int  y   = y0 + i * row_h;
+        const bool sel = (i == cursor);
+        const shs::Color col = !items[i].enabled ? shs::Color{ 95, 105, 120, 255 }
+                             : sel               ? shs::Color{ 255, 205, 70, 255 }
+                                                 : shs::Color{ 185, 198, 215, 255 };
+        if (sel) {
+            const float pulse = 0.5f + 0.5f * std::sin(anim_time * 6.0f);
+            const int   bw    = text_width_px(items[i].label, 2) + 64;
+            draw_rect_fill(canvas, cx - bw / 2, y - 8, bw, 36, shs::Color{ 28, 23, 10, 235 });
+            draw_rect_border(canvas, cx - bw / 2, y - 8, bw, 36,
+                             shs::Color{ (uint8_t)(215 + 40 * pulse),
+                                         (uint8_t)(165 + 60 * pulse), 50, 255 });
+            if (std::sin(anim_time * 8.0f) > -0.3f) {
+                draw_text(canvas, cx - bw / 2 + 14, y, ">", col, 2);
+                draw_text(canvas, cx + bw / 2 - 26, y, "<", col, 2);
+            }
+        }
+        draw_text_centered(canvas, cx, y, items[i].label, col, 2);
+    }
+}
+
+// TITLE: drifting tetromino silhouettes + logo + [start / sound / exit].
+static void draw_title_screen(shs::Canvas& canvas, const session::SessionSnapshot& s) {
+    const int W = canvas.get_width(), H = canvas.get_height();
+
+    // Deterministic attract background: four tetromino shapes drifting down.
+    static const int SHAPE[4][4][2] = {
+        { {0,0},{1,0},{2,0},{3,0} },   // I
+        { {0,0},{1,0},{0,1},{1,1} },   // O
+        { {0,0},{1,0},{2,0},{1,1} },   // T
+        { {0,0},{1,0},{2,0},{2,1} },   // L
+    };
+    static const shs::Color DRIFT_COL[4] = {
+        shs::Color{ 40, 220, 240, 60 }, shs::Color{ 255, 225, 45, 55 },
+        shs::Color{ 185, 70, 240, 55 }, shs::Color{ 45, 110, 245, 55 },
+    };
+    for (int k = 0; k < 10; ++k) {
+        const float spd  = 0.020f + 0.013f * (k % 4);
+        const float ph   = 0.37f * k;
+        float fx = 0.11f * (k % 7) + 0.03f * std::sin(s.anim_time * 0.35f + ph);
+        float fy = 0.16f * k + s.anim_time * spd;
+        fx = fx - std::floor(fx);
+        fy = fy - std::floor(fy);
+        const int cs = 16 + 6 * (k % 3);
+        const int bx = (int)(fx * W), by = (int)(fy * H);
+        const auto& cells = SHAPE[k % 4];
+        for (int ci = 0; ci < 4; ++ci) {
+            draw_rect_border(canvas, bx + cells[ci][0] * cs, by + cells[ci][1] * cs,
+                             cs, cs, DRIFT_COL[k % 4]);
+        }
+    }
+
+    // Logo + accent bar.
+    draw_text_centered(canvas, W / 2, (int)(H * 0.14f), TXT_LOGO,
+                       shs::Color{ 255, 210, 60, 255 }, 8);
+    const int lw = text_width_px(TXT_LOGO, 8);
+    draw_rect_fill(canvas, W / 2 - lw / 2, (int)(H * 0.14f) + 66, lw, 4,
+                   shs::Color{ 60, 140, 220, 255 });
+
+    char snd_buf[48];
+    std::snprintf(snd_buf, sizeof(snd_buf), "%s: %s", TXT_SOUND,
+                  s.sound_enabled ? TXT_ON : TXT_OFF);
+    MenuItem items[session::TITLE_MENU_COUNT] = {
+        { TXT_START },
+        { snd_buf   },
+        { TXT_EXIT  },
+    };
+    draw_menu_list(canvas, W / 2, (int)(H * 0.50f), items, session::TITLE_MENU_COUNT,
+                   s.cursor, s.anim_time);
+
+    char foot[128];
+    std::snprintf(foot, sizeof(foot), "%s   |   %s   |   %s",
+                  HINT_NAV, HINT_CONFIRM, HINT_SOUND);
+    draw_text_centered(canvas, W / 2, H - 30, foot, shs::Color{ 130, 145, 165, 220 }, 2);
+}
+
+// LEVEL SELECT: carousel card over the manifest stages.
+static void draw_level_select(shs::Canvas& canvas, const session::SessionSnapshot& s,
+                              const char* const* names, const char* const* tiers,
+                              int count) {
+    const int W = canvas.get_width(), H = canvas.get_height();
+    draw_rect_fill_dithered(canvas, 0, 0, W, H, shs::Color{ 8, 10, 15, 140 },
+                            (int)(s.anim_time * 20.0f));
+
+    draw_text_centered(canvas, W / 2, (int)(H * 0.16f), TXT_SELECT_LVL,
+                       shs::Color{ 80, 200, 255, 255 }, 4);
+
+    const int cw = 660, chh = 260;
+    const int cx = (W - cw) / 2, cy = (int)(H * 0.32f);
+    draw_rect_fill(canvas, cx, cy, cw, chh, shs::Color{ 13, 16, 24, 240 });
+    draw_rect_border(canvas, cx, cy, cw, chh, shs::Color{ 60, 140, 220, 255 });
+    draw_rect_border(canvas, cx + 3, cy + 3, cw - 6, chh - 6, shs::Color{ 35, 60, 90, 255 });
+
+    const int idx = ((s.stage_cursor % count) + count) % count;
+    char idx_buf[24];
+    std::snprintf(idx_buf, sizeof(idx_buf), "%d / %d", idx + 1, count);
+
+    draw_text_centered(canvas, W / 2, cy + 42, names[idx], shs::Color{ 255, 210, 60, 255 }, 4);
+    draw_text_centered(canvas, W / 2, cy + 96, tiers[idx], shs::Color{ 140, 155, 175, 255 }, 2);
+
+    // Progress dots (one per stage; filled up to the cursor).
+    const int dots_w = count * 30;
+    for (int i = 0; i < count; ++i) {
+        const int dx = W / 2 - dots_w / 2 + i * 30 + 8;
+        const shs::Color dc = (i == idx) ? shs::Color{ 255, 205, 70, 255 }
+                                         : shs::Color{ 70, 85, 105, 255 };
+        draw_rect_fill(canvas, dx, cy + 150, 14, 14, dc);
+    }
+
+    // Side arrows.
+    draw_text_centered(canvas, cx - 44, cy + chh / 2 - 14, "<", shs::Color{ 80, 200, 255, 255 }, 3);
+    draw_text_centered(canvas, cx + cw + 22, cy + chh / 2 - 14, ">", shs::Color{ 80, 200, 255, 255 }, 3);
+
+    char foot[128];
+    std::snprintf(foot, sizeof(foot), "%s   |   %s   |   %s",
+                  HINT_NAV, HINT_CONFIRM, HINT_BACK);
+    draw_text_centered(canvas, W / 2, H - 30, foot, shs::Color{ 130, 145, 165, 220 }, 2);
+}
+
+// PAUSED: dimmed frozen board + pause menu.
+static void draw_pause_overlay(shs::Canvas& canvas, const session::SessionSnapshot& s) {
+    const int W = canvas.get_width(), H = canvas.get_height();
+    draw_rect_fill_dithered(canvas, 0, 0, W, H, shs::Color{ 6, 8, 12, 150 },
+                            (int)(s.anim_time * 24.0f));
+
+    const int pw = 520, ph = 380;
+    const int px = (W - pw) / 2, py = (H - ph) / 2;
+    draw_rect_fill(canvas, px, py, pw, ph, shs::Color{ 12, 14, 21, 245 });
+    draw_rect_border(canvas, px, py, pw, ph, shs::Color{ 60, 140, 220, 255 });
+    draw_text_centered(canvas, W / 2, py + 26, TXT_PAUSED, shs::Color{ 80, 200, 255, 255 }, 3);
+
+    char snd_buf[48];
+    std::snprintf(snd_buf, sizeof(snd_buf), "%s: %s", TXT_SOUND,
+                  s.sound_enabled ? TXT_ON : TXT_OFF);
+    MenuItem items[session::PAUSE_MENU_COUNT] = {
+        { TXT_RESUME },
+        { TXT_RESTART },
+        { TXT_SELECT_LVL },
+        { snd_buf },
+        { TXT_EXIT },
+    };
+    draw_menu_list(canvas, W / 2, py + 84, items, session::PAUSE_MENU_COUNT,
+                   s.cursor, s.anim_time);
+}
+
+// RESULTS: end-of-run breakdown + contextual next/retry/select/title menu.
+static void draw_results_screen(shs::Canvas& canvas, const session::SessionSnapshot& s) {
+    const int W = canvas.get_width(), H = canvas.get_height();
+    draw_rect_fill_dithered(canvas, 0, 0, W, H, shs::Color{ 8, 10, 15, 150 },
+                            (int)(s.anim_time * 20.0f));
+
+    const int pw = 600, ph = 430;
+    const int px = (W - pw) / 2, py = (H - ph) / 2;
+    draw_rect_fill(canvas, px, py, pw, ph, shs::Color{ 10, 12, 18, 248 });
+    const shs::Color bc = s.run_victory ? shs::Color{ 45, 240, 110, 255 }
+                        : s.run_time_up ? shs::Color{ 255, 180, 40, 255 }
+                                        : shs::Color{ 245, 55, 55, 255 };
+    draw_rect_border(canvas, px, py, pw, ph, bc);
+    draw_rect_border(canvas, px + 2, py + 2, pw - 4, ph - 4, bc);
+
+    if      (s.run_victory) draw_text_centered(canvas, W / 2, py + 24, TXT_VICTORY, shs::Color{ 45, 240, 110, 255 }, 2);
+    else if (s.run_time_up) draw_text_centered(canvas, W / 2, py + 24, TXT_TIME_UP,  shs::Color{ 255, 180, 40, 255 }, 2);
+    else                    draw_text_centered(canvas, W / 2, py + 24, TXT_GAME_OVER, shs::Color{ 245, 55, 55, 255 }, 2);
+
+    draw_text(canvas, px + 60, py + 78, TXT_FINAL_SCORE, shs::Color{ 220, 220, 220, 255 }, 2);
+    draw_number_bold(canvas, px + 320, py + 74, s.final_score, 6, shs::Color{ 255, 230, 80, 255 });
+
+    draw_text(canvas, px + 60, py + 116, TXT_LINES, shs::Color{ 40, 220, 240, 255 }, 2);
+    draw_number_bold(canvas, px + 320, py + 112, s.final_lines, 3, shs::Color{ 40, 220, 240, 255 });
+
+    draw_text(canvas, px + 60, py + 154, TXT_MAX_COMBO, shs::Color{ 185, 70, 240, 255 }, 2);
+    draw_number_bold(canvas, px + 320, py + 150, s.final_max_combo, 2, shs::Color{ 185, 70, 240, 255 });
+
+    char tbuf[16];
+    format_clock(tbuf, sizeof(tbuf), s.final_seconds);
+    draw_text(canvas, px + 60, py + 192, TXT_TIME, shs::Color{ 255, 180, 40, 255 }, 2);
+    draw_text(canvas, px + 320, py + 192, tbuf, shs::Color{ 255, 180, 40, 255 }, 2);
+
+    const bool has_next = s.run_victory && (s.current_stage + 1 < s.stage_count);
+    MenuItem items[session::RESULTS_MENU_BASE + 1] = {
+        { has_next ? TXT_NEXT_PLAIN : TXT_RESTART },
+        { TXT_SELECT_LVL },
+        { TXT_BACK },
+    };
+    draw_menu_list(canvas, W / 2, py + 250, items, session::RESULTS_MENU_BASE + 1,
+                   s.cursor, s.anim_time);
 }
 } // namespace tetris::ui

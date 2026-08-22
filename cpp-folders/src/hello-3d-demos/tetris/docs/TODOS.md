@@ -29,6 +29,7 @@ lands; keep prose minimal and point at the owning doc instead of duplicating.
 | Pod 5 `environment` | ⬜ PENDING — diorama + reactive mood lighting (Part 4 · L5) |
 | Edges `input` / `audio` / `rasterizer` / `ui` | ✅ DONE — one subdirectory per edge (`edges/<name>/tetris.<name>.hpp`) |
 | Edge `lua` | ✅ DONE — sandboxed stateless evaluator wired into the loop via `ScriptHooks` function-pointer bridges; blitz script boots from the campaign manifest |
+| Pod 6 session | DONE 2026-08-23 — TITLE/LEVEL_SELECT/PLAYING/PAUSED/RESULTS state machine; pure reducer, zero SDL refs |
 | Thin main + `verify.sh` | ✅ DONE — determinism / behavioral-delta / purity gates all PASS |
 | Docs integration | ✅ DONE 2026-08-22 — deduplicated to 3 files; see STATUS.md §0 |
 
@@ -365,21 +366,22 @@ Environment:
 
 ### Meta-layer (currently missing from the demo)
 
-**M1 · Session pod (menus without OOP UI frameworks)**
+**M1 · Session pod (menus without OOP UI frameworks) [DONE 2026-08-23]**
 
-- [ ] `domains/session/`: contract (`SessionSnapshot{screen: TITLE|LEVEL_SELECT|PLAYING|PAUSED|RESULTS, cursor_index, unlocked_stages, current_stage}`), action (NavUp/NavDown/Confirm/Back intents), reducer (pure screen state machine)
-- [ ] Menu rendering = ui-edge projection of SessionSnapshot (same suffix discipline, headless-testable)
-- [ ] Menu input reuses the existing intent-token pipeline through the input edge
+- [x] `domains/session/`: contract (`SessionSnapshot{screen: TITLE|LEVEL_SELECT|PLAYING|PAUSED|RESULTS, cursor_index, unlocked_stages, current_stage}`), action (NavUp/NavDown/Confirm/Back intents), reducer (pure screen state machine)
+- [x] Menu rendering = ui-edge projection of SessionSnapshot (same suffix discipline, headless-testable)
+- [x] Menu input reuses the existing intent-token pipeline through the input edge
 
 Menu GUI:
-- [ ] Animated title screen: falling-tetromino attract background (planner-driven, zero new systems)
-- [ ] Level-select carousel cards previewing each level's palette/mood
-- [ ] Pause overlay: dim + resume/restart/quit rows (projection of SessionSnapshot)
+- [x] Animated title screen: falling-tetromino attract background (planner-driven, zero new systems)
+- [ ] Level-select carousel cards previewing each level's palette/mood — name/tier-tag/progress dots shipped; palette preview pending L3+
+- [x] Pause overlay: dim + resume/restart/quit rows (projection of SessionSnapshot)
+- [x] Wiring: session step precedes gameplay pods; STAGE_SELECTED/RUN_RESTART drive load_stage() FULL resets; SOUND_TOGGLED gates the synth; NAV_MOVED/CONFIRMED play menu blips; run-end latch feeds RESULTS its contextual first row (next-stage vs retry); high score survives restarts
 
 **M2 · Campaign manifest (level-by-level progression)**
 
 - [ ] `config/campaign/main_campaign.hpp` (or `.lua`) — ordered stages `{level_id, config/script refs, unlock_requirement}`
-- [ ] Session consumes each stage's `VICTORY` event → advance `current_stage`, unlock next
+- [x] Session consumes each stage's `VICTORY` event → advance `current_stage`, unlock next (2026-08-22: victory dwells 3s on the results modal, then auto-advances with a FULL state reset — board/score/HUD/FX/fresh script sandbox/window title; R skips the dwell. Linear advance satisfies `unlock_after`.)
 
 Progression GUI:
 - [ ] Campaign track: node map with locked/unlocked/completed states
@@ -387,7 +389,7 @@ Progression GUI:
 
 **M3 · Congrats flow**
 
-- [ ] RESULTS screen projection (score/high/lines from ScoreState)
+- [x] RESULTS screen projection (score/high/lines from ScoreState)
 - [ ] Celebration overlay + fireworks hook fired on `VICTORY`
 - [ ] Optional `scripts/results/congrats.lua` — message + particle recipe picker per stage (localization-friendly)
 
@@ -401,7 +403,7 @@ Results GUI:
 - [ ] **B.** L3 Garbage Canyon generator scripts + seed-determinism gate
 - [ ] **C.** Powerups pod + L4 Cyber Storm
 - [ ] **D.** Environment pod + L5 Encore Finale
-- [ ] **E.** Session pod + campaign manifest + congrats overlay (menus / progression / results)
+- [ ] **E.** Session pod + campaign manifest + congrats overlay (menus / progression / results) — session pod + menus + RESULTS screen DONE 2026-08-23 (all gates PASS); remaining: fireworks/congrats flavor + palette-preview cards
 
 ---
 

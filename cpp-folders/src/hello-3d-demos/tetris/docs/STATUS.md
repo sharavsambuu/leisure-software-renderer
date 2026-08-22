@@ -63,12 +63,47 @@ Run: `bash verify.sh` (project root) — uses `SDL_VIDEODRIVER=dummy`.
 - **Build:** green WITH Lua (vcpkg `lua` 5.5, guarded `find_package(Lua QUIET)`
   + `TETRIS_LUA_ENABLED`) and without (empty header, native rules).
 
+## §0c Playtest fixes: campaign advance + Mongolian text (2026-08-22)
+
+User-reported after playing L1 → L2:
+
+1. **Stale level-finished GUI over the next level.** Root cause: the session
+   had no stage transition at all — finishing a stage left its victory modal
+   up with nowhere to go. Fix = real campaign advance in main:
+   - Victory on a non-final stage dwells 3s on the results modal, then
+     auto-advances to the next manifest stage; R skips the dwell instantly.
+   - `load_stage()` performs a FULL reset: fresh board + first piece, fresh
+     `ScoreState` (session-high carried across stages), fresh `HudState`
+     (banners/floaters cleared), fresh `FxState` (particles/rings/pulse/mood),
+     fresh script sandbox (`apply_stage_script` re-runs per stage — no global
+     leakage between stages), rules reloaded from the manifest factory,
+     window title updated.
+   - Manual restart also clears `HudState` now.
+   - Blitz time-up freeze thawed for exactly one frame when R is pressed so
+     the reset reaches the board too.
+2. **Wrong Mongolian words.** Fixed in the ui edge label table:
+   - `TXT_LEVEL`: bytes were `\xD0\xAE\xD0\x95` = "ЮЕ" (nonsense) → now
+     `\xD2\xAE\xD0\x95` = "ҮЕ" (үе = level/stage).
+   - `TXT_HURRY`: "ХУРДАА!" is not a word → "ХУРДАЦГАА!" (hurry up!).
+   - `TXT_MAX_COMBO`: slangy "МАКС КОМБО" → "ДЭЭД КОМБО" (best combo;
+     consistent with ДЭЭД on the score card; fits the RESULTS row width).
+   - Combo floater now uses Cyrillic "КОМБО ×N" instead of Latin "COMBO".
+
+Gates re-run after both fixes: DETERMINISM / DELTA / SMOKE_TARGET_SCORE / BLITZ_DETERMINISM PASS; purity NONE ×3.
+## §0d M1 session pod + menus + RESULTS screen (2026-08-23)
+New pod domains/session/ (contract/action/reducer): pure TITLE/LEVEL_SELECT/PLAYING/PAUSED/RESULTS state machine over SessionSnapshot (screen, cursors, unlocks, sound pref, last-run latch). Windowed boots to TITLE; headless verification still skips menus straight into PLAYING (gates unchanged).
+- input edge emits session::SessionCommand intents alongside matrix commands (W/S/A/D nav, ENTER/SPACE confirm, ESC back-or-pause, P pause, M sound; key-repeat guarded on menus).
+- audio edge gained menu move/confirm blips + set_enabled() master gate wired to the sound pref.
+- ui edge gained pure menu projections: title attract (drifting tetromino silhouettes), level-select carousel (name/tier-tag/dots), pause overlay, RESULTS breakdown with contextual first row.
+- main steps reduce_session() before gameplay pods; pods run only while PLAYING; STAGE_SELECTED/RUN_RESTART drive load_stage() FULL resets; QUIT_REQUESTED exits; run-end latch hands victory/time-up/game-over facts to RESULTS; session-high score survives restarts.
+Gates re-run: DETERMINISM / DELTA / SMOKE_TARGET_SCORE(20000) / BLITZ_DETERMINISM PASS; purity NONE ×3 (session pod included).
+
 ## Definition-of-done checklist
 
 - [x] Only one definition of every type/function (root monolith headers deleted)
 - [x] Zero SDL/shs includes under `domains/`
 - [x] Zero scoring arithmetic under `domains/matrix/`
-- [x] Main < ~350 lines, contains no synth/raster/font code
+- [x] Main < ~600 lines (campaign + session wiring added), contains no synth/raster/font code
 - [x] Root `tetris.*.hpp` deleted
 - [x] Deterministic headless run byte-identical
 - [x] Autodrive hard-drop frame differs from idle
