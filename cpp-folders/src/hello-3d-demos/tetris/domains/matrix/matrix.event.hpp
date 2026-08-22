@@ -1,34 +1,30 @@
 #pragma once
+// tetris/domains/matrix/matrix.event.hpp — RAW FACTS (tetris::matrix)
+// Discrete occurrences emitted by the grid rulebook. NO point deltas here —
+// scoring is derived by the progression pod from these facts (Rule 8.1).
+#include <cstdint>
+#include <glm/glm.hpp>
 
-#include "matrix.contract.hpp"
+namespace tetris::matrix {
 
-namespace tetris {
-    namespace matrix {
+    enum class MatrixEventType : uint8_t {
+        PIECE_SPAWNED,
+        PIECE_MOVED,
+        PIECE_ROTATED,
+        PIECE_LOCK_IMPACT,
+        HARD_DROP_SLAM,
+        SOFT_DROP,
+        LINES_CLEARED,
+        HOLD_SWAPPED,
+        GAME_OVER
+    };
 
-        // ============================================================================
-        // Discrete Event Types: Immutable records emitted by reduce_matrix().
-        // Consumed by progression (scoring) and spatial_fx (particles/camera shake).
-        // ============================================================================
+    struct MatrixEvent {
+        MatrixEventType type;
+        uint8_t         lines_cleared_count = 0;
+        uint8_t         cleared_rows[4]{ 0, 0, 0, 0 };
+        glm::vec3       world_position{ 0.0f };
+        int             cells = 0;   // dropped (hard) / stepped (soft) cell count
+    };
 
-        enum class MatrixEventType : uint8_t {
-            PIECE_SPAWNED,           // New piece spawned at spawn gate
-            PIECE_MOVED,             // Horizontal wall kick or soft move
-            PIECE_ROTATED,           // SRS rotation succeeded (with optional kick)
-            HOLD_SWAPPED,            // Hold + swap completed
-            HARD_DROP_SLAM,          // Instant lock with score delta
-            GRAVITY_STEP,            // Piece moved down one row by gravity
-            PIECE_LOCK_IMPACT,       // Active piece locked into grid
-            LINES_CLEARED,           // Rows cleared — triggers shatter particles, camera shake
-            COMBO_STREAK            // Consecutive lines without zeroing
-        };
-
-        struct MatrixEvent {
-            MatrixEventType type;
-            int32_t score_delta = 0;          // For HARD_DROP_SLAM, LINES_CLEARED
-            glm::vec3 world_position{0.0f};   // World-space position of impact
-            uint8_t lines_cleared_count = 0;
-            std::array<int, 4> cleared_rows;  // Row indices (top-to-bottom) for TETRIS FIVE
-        };
-
-    } // namespace matrix
-} // namespace tetris
+} // namespace tetris::matrix

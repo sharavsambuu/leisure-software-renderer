@@ -1,790 +1,267 @@
-﻿#define SDL_MAIN_HANDLED
+// SDL on Windows redefines `main` to `SDL_main`; SDL_MAIN_HANDLED opts out
+// so the plain main() below links (matches snake/tetris/plane demos).
+#define SDL_MAIN_HANDLED
 
-#include <iostream>
-#include <vector>
-#include <cmath>
-#include <algorithm>
-#include <cstdint>
-#include <sstream>
-#include <atomic>
-#include <thread>
-#include <span>
-#include <memory_resource>
+// ============================================================================
+// Hello3DTetris — MAIN ENTRY EDGE
+// Owns: SDL lifecycle (window/audio), per-frame PMR arena, loop wiring,
+// presentation, and the event→sound map. All simulation/render/HUD logic
+// lives in domain pods and execution edges.
+//
+// Headless verification hooks (deterministic, display-less):
+//   --screenshot <path.bmp>   render N frames, save BMP, exit (no window)
+//   --frame=N                 frame count for the above (default 60)
+//   --autodrive-harddrop      inject ONE synthetic HardDropIntent at frame 30
+// ============================================================================
 
 #include <SDL2/SDL.h>
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
+
+#include <algorithm>
+#include <cstdint>
+#include <iostream>
+#include <memory_resource>
+#include <span>
+#include <string>
+#include <thread>
 
 #include "shs_renderer.hpp"
-#include "tetris.contract.hpp"
-#include "tetris.action.hpp"
-#include "tetris.event.hpp"
-#include "tetris.reducer.hpp"
-#include "tetris.plan.hpp"
 
-// Window & Rasterizer Config
-static const int CANVAS_WIDTH  = 1280;
-static const int CANVAS_HEIGHT = 720;
-static const int TILE_SIZE_X   = 80;
-static const int TILE_SIZE_Y   = 80;
-static const int THREAD_COUNT  = std::max(2u, std::thread::hardware_concurrency() > 2 ? std::thread::hardware_concurrency() - 2 : 2u);
+#include <config/rules.hpp>
+#include <config/levels/marathon_01.hpp>
 
-// ============================================================================
-// PMR FRAME ARENA (Constitution II)
-// ============================================================================
-namespace vop {
-    class FrameMemoryResource : public std::pmr::memory_resource {
+#include <domains/matrix/matrix.contract.hpp>
+#include <domains/matrix/matrix.action.hpp>
+#include <domains/matrix/matrix.reducer.hpp>
+#include <domains/progression/progression.reducer.hpp>
+#include <domains/spatial_fx/spatial_fx.reducer.hpp>
+#include <domains/spatial_fx/spatial_fx.plan.hpp>
+
+#include <edges/input/tetris.input.hpp>
+#include <edges/audio/tetris.audio.hpp>
+#include <edges/rasterizer/tetris.rasterizer.hpp>
+#include <edges/ui/tetris.hud.hpp>
+
+namespace {
+
+    using namespace tetris;
+
+    // Audio synth instance lives at file scope: the SDL callback thread
+    // dereferences it for the lifetime of the audio device.
+    audio::TetrisAudioSynth g_audio;
+
+    constexpr int CANVAS_WIDTH  = 1280;
+    constexpr int CANVAS_HEIGHT = 720;
+    constexpr int TILE_SIZE_X   = 80;
+    constexpr int TILE_SIZE_Y   = 80;
+
+    unsigned thread_count() {
+        const unsigned hw = std::thread::hardware_concurrency();
+        return hw > 2 ? hw - 2 : std::max(2u, hw);
+    }
+
+    // Per-frame linear PMR arena (O(1) reset).
+    class FrameMemoryResource final : public std::pmr::memory_resource {
     public:
-        static constexpr size_t CAPACITY = 8 * 1024 * 1024; // 8 MB
-        FrameMemoryResource() : buffer_(std::make_unique<uint8_t[]>(CAPACITY)), offset_(0) {}
-        inline void reset() noexcept { offset_ = 0; }
-        inline std::pmr::memory_resource* get() noexcept { return this; }
+        FrameMemoryResource() : buffer_(std::make_unique<std::byte[]>(kCapacity)) {}
+
+        void   reset() noexcept { offset_ = 0; }
+        std::pmr::memory_resource* get() noexcept { return this; }
+
     protected:
         void* do_allocate(size_t bytes, size_t alignment) override {
-            uintptr_t base = reinterpret_cast<uintptr_t>(buffer_.get());
-            uintptr_t current_addr = base + offset_;
-            uintptr_t aligned_addr = (current_addr + (alignment - 1)) & ~(alignment - 1);
-            size_t new_offset = (aligned_addr - base) + bytes;
-            if (new_offset > CAPACITY) return std::pmr::get_default_resource()->allocate(bytes, alignment);
-            offset_ = new_offset;
-            return reinterpret_cast<void*>(aligned_addr);
+            auto aligned = [](size_t v, size_t a) { return (v + a - 1) & ~(a - 1); };
+            const size_t base = aligned(offset_, alignment);
+            if (base + bytes > kCapacity) throw std::bad_alloc();
+            offset_ = base + bytes;
+            return buffer_.get() + base;
         }
-        void do_deallocate(void* p, size_t bytes, size_t alignment) noexcept override {
-            uintptr_t base = reinterpret_cast<uintptr_t>(buffer_.get());
-            uintptr_t ptr  = reinterpret_cast<uintptr_t>(p);
-            if (ptr < base || ptr >= base + CAPACITY) std::pmr::get_default_resource()->deallocate(p, bytes, alignment);
+        void do_deallocate(void*, size_t, size_t) noexcept override {}
+        bool do_is_equal(const memory_resource& other) const noexcept override {
+            return this == &other;
         }
-        bool do_is_equal(const std::pmr::memory_resource& other) const noexcept override { return this == &other; }
+
     private:
-        std::unique_ptr<uint8_t[]> buffer_;
+        static constexpr size_t kCapacity = 8ull * 1024ull * 1024ull;
+        std::unique_ptr<std::byte[]> buffer_;
         size_t offset_ = 0;
     };
-}
 
-// ============================================================================
-// LOCK-FREE PROCEDURAL AUDIO ENGINE
-// ============================================================================
-enum SoundType : uint8_t {
-    SND_NONE        = 0,
-    SND_MOVE        = 1,
-    SND_ROTATE      = 2,
-    SND_DROP_SLAM   = 3,
-    SND_LINE_CLEAR  = 4,
-    SND_TETRIS_FOUR = 5,
-    SND_HOLD        = 6,
-    SND_GAME_OVER   = 7
-};
+} // namespace
 
-struct AudioEventRing {
-    static const uint32_t CAP = 64;
-    SoundType buffer[CAP]{};
-    alignas(64) std::atomic<uint32_t> write_idx{ 0 };
-    alignas(64) uint32_t              read_idx { 0 };
-
-    inline void push(SoundType type) {
-        uint32_t wi = write_idx.load(std::memory_order_relaxed);
-        buffer[wi % CAP] = type;
-        write_idx.store(wi + 1, std::memory_order_release);
-    }
-    inline bool pop(SoundType& out) {
-        uint32_t wi = write_idx.load(std::memory_order_acquire);
-        if (read_idx == wi) return false;
-        out = buffer[read_idx % CAP];
-        read_idx++;
-        return true;
-    }
-};
-
-struct SoundVoice {
-    SoundType type     = SND_NONE;
-    float     time     = 0.0f;
-    float     duration = 0.1f;
-    float     phase    = 0.0f;
-    bool      active   = false;
-};
-
-struct TetrisAudioSynth {
-    static const int MAX_VOICES = 12;
-    SoundVoice       voices[MAX_VOICES];
-    AudioEventRing   event_queue;
-
-    inline void play(SoundType type) { event_queue.push(type); }
-
-    void mix(float* stream, int frames, int channels, int sample_rate) {
-        SoundType new_type;
-        while (event_queue.pop(new_type)) {
-            if (new_type == SND_NONE) continue;
-            for (int i = 0; i < MAX_VOICES; ++i) {
-                if (!voices[i].active) {
-                    voices[i].type     = new_type;
-                    voices[i].time     = 0.0f;
-                    voices[i].phase    = 0.0f;
-                    voices[i].active   = true;
-                    voices[i].duration = (new_type == SND_TETRIS_FOUR) ? 0.45f : 0.12f;
-                    break;
-                }
-            }
-        }
-
-        float dt = 1.0f / (float)sample_rate;
-        for (int f = 0; f < frames; ++f) {
-            float sample = 0.0f;
-            for (int v = 0; v < MAX_VOICES; ++v) {
-                if (!voices[v].active) continue;
-                SoundVoice& vox = voices[v];
-                vox.time += dt;
-                float p = vox.time / vox.duration;
-                if (p >= 1.0f) { vox.active = false; continue; }
-
-                float env = (1.0f - p);
-                switch (vox.type) {
-                    case SND_MOVE:
-                        vox.phase += 400.0f * dt;
-                        sample += std::sin(vox.phase * glm::two_pi<float>()) * env * 0.12f;
-                        break;
-                    case SND_ROTATE:
-                        vox.phase += (600.0f + p * 200.0f) * dt;
-                        sample += std::sin(vox.phase * glm::two_pi<float>()) * env * 0.14f;
-                        break;
-                    case SND_DROP_SLAM:
-                        vox.phase += (140.0f - p * 80.0f) * dt;
-                        sample += std::sin(vox.phase * glm::two_pi<float>()) * env * 0.28f;
-                        break;
-                    case SND_LINE_CLEAR:
-                        vox.phase += (523.25f + p * 400.0f) * dt; // C5 to G5
-                        sample += std::sin(vox.phase * glm::two_pi<float>()) * env * 0.22f;
-                        break;
-                    case SND_TETRIS_FOUR:
-                        vox.phase += (659.25f + std::sin(p * 20.0f) * 100.0f) * dt;
-                        sample += std::sin(vox.phase * glm::two_pi<float>()) * env * 0.30f;
-                        break;
-                    case SND_HOLD:
-                        vox.phase += (320.0f + p * 150.0f) * dt;
-                        sample += std::sin(vox.phase * glm::two_pi<float>()) * env * 0.15f;
-                        break;
-                    case SND_GAME_OVER:
-                        vox.phase += (220.0f - p * 140.0f) * dt;
-                        sample += std::sin(vox.phase * glm::two_pi<float>()) * env * 0.25f;
-                        break;
-                    default: break;
-                }
-            }
-            sample = std::tanh(sample);
-            for (int c = 0; c < channels; ++c) stream[f * channels + c] = sample;
-        }
-    }
-};
-
-static TetrisAudioSynth g_audio;
-static void audio_callback(void* userdata, Uint8* stream, int len) {
-    TetrisAudioSynth* synth = reinterpret_cast<TetrisAudioSynth*>(userdata);
-    float* out = reinterpret_cast<float*>(stream);
-    synth->mix(out, len / (int)(sizeof(float) * 2), 2, 44100);
-}
-
-// ============================================================================
-// MULTITHREADED TILED RASTERIZER (Constitution III)
-// ============================================================================
-namespace vop {
-    static inline glm::vec4 clip_to_screen_vec4(const glm::vec4& clip, int W, int H) {
-        float inv_w = 1.0f / clip.w;
-        glm::vec3 ndc = glm::vec3(clip) * inv_w;
-        return glm::vec4(
-            (ndc.x + 1.0f) * 0.5f * (float)(W - 1),
-            (1.0f - ndc.y) * 0.5f * (float)(H - 1),
-            ndc.z,
-            inv_w
-        );
-    }
-
-    static void rasterize_triangle_tile(
-        shs::Canvas& canvas, shs::ZBuffer& z_buffer,
-        const glm::vec4& sc0, const glm::vec4& sc1, const glm::vec4& sc2,
-        shs::Color lit_color, float depth_bias,
-        glm::ivec2 tile_min, glm::ivec2 tile_max
-    ) {
-        glm::vec2 v0(sc0.x, sc0.y), v1(sc1.x, sc1.y), v2(sc2.x, sc2.y);
-        float area = (v1.x - v0.x) * (v2.y - v0.y) - (v1.y - v0.y) * (v2.x - v0.x);
-        if (!shs::Raster::is_front_facing_screen(area, shs::Raster::FrontFace::CounterClockwise)) return;
-
-        glm::vec2 bboxmin = glm::max(glm::vec2(tile_min), glm::min(v0, glm::min(v1, v2)));
-        glm::vec2 bboxmax = glm::min(glm::vec2(tile_max), glm::max(v0, glm::max(v1, v2)));
-        if (bboxmin.x > bboxmax.x || bboxmin.y > bboxmax.y) return;
-
-        std::vector<glm::vec2> v2d = { v0, v1, v2 };
-        int min_x = (int)bboxmin.x, max_x = (int)bboxmax.x;
-        int min_y = (int)bboxmin.y, max_y = (int)bboxmax.y;
-
-        for (int py = min_y; py <= max_y; ++py) {
-            for (int px = min_x; px <= max_x; ++px) {
-                glm::vec3 bc = shs::Canvas::barycentric_coordinate(glm::vec2((float)px + 0.5f, (float)py + 0.5f), v2d);
-                if (bc.x < 0.0f || bc.y < 0.0f || bc.z < 0.0f) continue;
-
-                float interp_z = shs::Raster::interpolate_ndc_depth(bc, sc0.z, sc1.z, sc2.z);
-                float final_z  = interp_z + depth_bias;
-                if (final_z < -1.0f || final_z > 1.0f) continue;
-
-                if (z_buffer.test_and_set_depth_screen_space(px, py, final_z)) {
-                    canvas.draw_pixel_screen_space(px, py, lit_color);
-                }
-            }
-        }
-    }
-}
-
-
-// ============================================================================
-// 2D CYRILLIC MONGOLIAN RETRO HUD & UTF-8 FONT ENGINE
-// ============================================================================
-
-// 1. Immutable UTF-8 Mongolian String Constants (Immune to compiler codepage conversion)
-// 
-// These weird characters are raw hexadecimal UTF-8 bytes of Cyrillic Mongolian letter
-// 
-// ============================================================================
-// MONGOLIAN CYRILLIC UTF - 8 LOOKUP TABLE(35 LETTERS)                      
-// --------------------- + ----------------------------------------------------
-// Letter(Upper / Lower) | UTF - 8 Hex Escape(Upper / Lower)                  
-// --------------------- + ----------------------------------------------------
-//  А / а                | \xD0\x90 / \xD0\xB0                                
-//  Б / б                | \xD0\x91 / \xD0\xB1
-//  В / в                | \xD0\x92 / \xD0\xB2
-//  Г / г                | \xD0\x93 / \xD0\xB3
-//  Д / д                | \xD0\x94 / \xD0\xB4
-//  Е / е                | \xD0\x95 / \xD0\xB5
-//  Ё / ё                | \xD0\x81 / \xD1\x91
-//  Ж / ж                | \xD0\x96 / \xD0\xB6
-//  З / з                | \xD0\x97 / \xD0\xB7
-//  И / и                | \xD0\x98 / \xD0\xB8
-//  Й / й                | \xD0\x99 / \xD0\xB9
-//  К / к                | \xD0\x9A / \xD0\xBA
-//  Л / л                | \xD0\x9B / \xD0\xBB
-//  М / м                | \xD0\x9C / \xD0\xBC
-//  Н / н                | \xD0\x9D / \xD0\xBD
-//  О / о                | \xD0\x9E / \xD0\xBE
-//  Ө / ө(Special)       | \xD3\xA8 / \xD3\xA9
-//  П / п                | \xD0\x9F / \xD0\xBF
-//  Р / р                | \xD0\xA0 / \xD1\x80
-//  С / с                | \xD0\xA1 / \xD1\x81
-//  Т / т                | \xD0\xA2 / \xD1\x82
-//  У / у                | \xD0\xA3 / \xD1\x83
-//  Ү / ү(Special)       | \xD2\xAE / \xD2\xAF
-//  Ф / ф                | \xD0\xA4 / \xD1\x84
-//  Х / х                | \xD0\xA5 / \xD1\x85
-//  Ц / ц                | \xD0\xA6 / \xD1\x86
-//  Ч / ч                | \xD0\xA7 / \xD1\x87
-//  Ш / ш                | \xD0\xA8 / \xD1\x88
-//  Щ / щ                | \xD0\xA9 / \xD1\x89
-//  Ъ / ъ                | \xD0\xAA / \xD1\x8A
-//  Ы / ы                | \xD0\xAB / \xD1\x8B
-//  Ь / ь                | \xD0\xAC / \xD1\x8C
-//  Э / э                | \xD0\xAD / \xD1\x8D
-//  Ю / ю                | \xD0\xAE / \xD1\x8E
-//  Я / я                | \xD0\xAF / \xD1\x8F
-// --------------------- + ----------------------------------------------------
-// 
-// To generate characters on Linux shell:
-//      $ printf "ЗОРИЛГО" | hexdump -ve '1/1 "\\\\x%02X"'
-// To check what's on it
-//      $ printf "\xD0\x97\xD0\x9E\xD0\xA0\xD0\x98\xD0\x9B\xD0\x93\xD0\x9E\n"
-//
-//
-
-// ОНОО
-static const char* TXT_SCORE       = "\xD0\x9E\xD0\x9D\xD0\x9E\xD0\x9E";             
-// ДЭЭД
-static const char* TXT_BEST        = "\xD0\x94\xD0\xAD\xD0\xAD\xD0\x94";             
-// ЗОРИЛГО
-static const char* TXT_GOAL        = "\xD0\x97\xD0\x9E\xD0\xA0\xD0\x98\xD0\x9B\xD0\x93\xD0\x9E"; 
-// МӨР
-static const char* TXT_LINES       = "\xD0\x9C\xD3\xA8\xD0\xA0";                     
-// ҮЕ
-static const char* TXT_LEVEL       = "\xD0\xAE\xD0\x95";                             
-// НӨӨЦ [C]
-static const char* TXT_HOLD        = "\xD0\x9D\xD3\xA8\xD3\xA8\xD0\xA6 [C]";         
-// ДАРААГИЙН
-static const char* TXT_NEXT        = "\xD0\x94\xD0\x90\xD0\xA0\xD0\x90\xD0\x90\xD0\x93\xD0\x98\xD0\x99\xD0\x9D"; 
-// ТОГЛООМ ДУУСЛАА
-static const char* TXT_GAME_OVER   = "\xD0\xA2\xD0\x9E\xD0\x93\xD0\x9B\xD0\x9E\xD0\x9E\xD0\x9C \xD0\x94\xD0\xA3\xD0\xA3\xD0\xA1\xD0\x9B\xD0\x90\xD0\x90"; 
-// ЗОРИЛГО БИЕЛЛЭЭ!
-static const char* TXT_VICTORY     = "\xD0\x97\xD0\x9E\xD0\xA0\xD0\x98\xD0\x9B\xD0\x93\xD0\x9E \xD0\x91\xD0\x98\xD0\x95\xD0\x9B\xD0\x9B\xD0\xAD\xD0\xAD!"; 
-// ЭЦСИЙН ОНОО:
-static const char* TXT_FINAL_SCORE = "\xD0\xAD\xD0\xA6\xD0\xA1\xD0\x98\xD0\x99\xD0\x9D \xD0\x9E\xD0\x9D\xD0\x9E\xD0\x9E:"; 
-// [R] - ДАХИН ТОГЛОХ
-static const char* TXT_RETRY       = "[R] - \xD0\x94\xD0\x90\xD0\xA5\xD0\x98\xD0\x9D \xD0\xA2\xD0\x9E\xD0\x93\xD0\x9B\xD0\x9E\xD0\xA5"; 
-static const char* TXT_FOOTER      = "A/D: \xD0\xA5\xD3\xA8\xD0\x94\xD0\x9B\xD3\xA8\xD0\xA5 | W: \xD0\xAD\xD0\xA0\xD0\x93\xD2\xAE\xD2\xAE\xD0\x9B\xD0\xAD\xD0\xA5 | S: \xD0\x91\xD0\xA3\xD0\xA3\xD0\x9B\xD0\x93\xD0\x90\xD0\xA5 | SPACE: \xD0\xA3\xD0\x9D\xD0\x90\xD0\x93\xD0\x90\xD0\x90\xD0\xA5 | C: \xD0\x9D\xD3\xA8\xD3\xA8\xD0\xA6 | R: \xD0\xAD\xD0\xA5\xD0\x9B\xD0\xAD\xD0\xA5";
-
-// Line drawing
-static void draw_line_screen(shs::Canvas& c, int x0, int y0, int x1, int y1, shs::Color col) {
-    int dx = std::abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
-    int dy = -std::abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
-    int err = dx + dy, e2;
-    for (;;) {
-        c.draw_pixel_screen_space(x0, y0, col);
-        if (x0 == x1 && y0 == y1) break;
-        e2 = 2 * err;
-        if (e2 >= dy) { err += dy; x0 += sx; }
-        if (e2 <= dx) { err += dx; y0 += sy; }
-    }
-}
-
-// Filled rectangle
-static void draw_rect_fill(shs::Canvas& c, int x, int y, int w, int h, shs::Color col) {
-    int x0 = std::max(0, x), y0 = std::max(0, y);
-    int x1 = std::min(c.get_width() - 1, x + w), y1 = std::min(c.get_height() - 1, y + h);
-    for (int py = y0; py <= y1; ++py) {
-        for (int px = x0; px <= x1; ++px) c.draw_pixel_screen_space(px, py, col);
-    }
-}
-
-// Rectangle outline
-static void draw_rect_border(shs::Canvas& c, int x, int y, int w, int h, shs::Color col) {
-    int x1 = std::min(c.get_width() - 1, x + w), y1 = std::min(c.get_height() - 1, y + h);
-    for (int px = std::max(0, x); px <= x1; ++px) {
-        c.draw_pixel_screen_space(px, y, col);
-        c.draw_pixel_screen_space(px, y1, col);
-    }
-    for (int py = std::max(0, y); py <= y1; ++py) {
-        c.draw_pixel_screen_space(x, py, col);
-        c.draw_pixel_screen_space(x1, py, col);
-    }
-}
-
-// Standard ASCII Font Glyphs (ASCII 32 to 90)
-static const uint8_t FONT_ASCII[][5] = {
-    {0x00,0x00,0x00,0x00,0x00}, // Space
-    {0x00,0x00,0x5F,0x00,0x00}, // !
-    {0x00,0x07,0x00,0x07,0x00}, // "
-    {0x14,0x7F,0x14,0x7F,0x14}, // #
-    {0x24,0x2A,0x7F,0x2A,0x12}, // $
-    {0x23,0x13,0x08,0x64,0x62}, // %
-    {0x36,0x49,0x55,0x22,0x50}, // &
-    {0x00,0x05,0x03,0x00,0x00}, // '
-    {0x00,0x1C,0x22,0x41,0x00}, // (
-    {0x00,0x41,0x22,0x1C,0x00}, // )
-    {0x08,0x2A,0x1C,0x2A,0x08}, // *
-    {0x08,0x08,0x3E,0x08,0x08}, // +
-    {0x00,0x50,0x30,0x00,0x00}, // ,
-    {0x08,0x08,0x08,0x08,0x08}, // -
-    {0x00,0x60,0x60,0x00,0x00}, // .
-    {0x20,0x10,0x08,0x04,0x02}, // /
-    {0x3E,0x51,0x49,0x45,0x3E}, // 0
-    {0x00,0x42,0x7F,0x40,0x00}, // 1
-    {0x42,0x61,0x51,0x49,0x46}, // 2
-    {0x21,0x41,0x45,0x4B,0x31}, // 3
-    {0x18,0x14,0x12,0x7F,0x10}, // 4
-    {0x27,0x45,0x45,0x45,0x39}, // 5
-    {0x3C,0x4A,0x49,0x49,0x30}, // 6
-    {0x01,0x71,0x09,0x05,0x03}, // 7
-    {0x36,0x49,0x49,0x49,0x36}, // 8
-    {0x06,0x49,0x49,0x29,0x1E}, // 9
-    {0x00,0x36,0x36,0x00,0x00}, // :
-    {0x00,0x56,0x36,0x00,0x00}, // ;
-    {0x08,0x14,0x22,0x41,0x00}, // <
-    {0x14,0x14,0x14,0x14,0x14}, // =
-    {0x00,0x41,0x22,0x14,0x08}, // >
-    {0x02,0x01,0x51,0x09,0x06}, // ?
-    {0x32,0x49,0x79,0x41,0x3E}, // @
-    {0x7E,0x11,0x11,0x11,0x7E}, // A
-    {0x7F,0x49,0x49,0x49,0x36}, // B
-    {0x3E,0x41,0x41,0x41,0x22}, // C
-    {0x7F,0x41,0x41,0x22,0x1C}, // D
-    {0x7F,0x49,0x49,0x49,0x41}, // E
-    {0x7F,0x09,0x09,0x09,0x01}, // F
-    {0x3E,0x41,0x49,0x49,0x7A}, // G
-    {0x7F,0x08,0x08,0x08,0x7F}, // H
-    {0x00,0x41,0x7F,0x41,0x00}, // I
-    {0x20,0x40,0x41,0x3F,0x01}, // J
-    {0x7F,0x08,0x14,0x22,0x41}, // K
-    {0x7F,0x40,0x40,0x40,0x40}, // L
-    {0x7F,0x02,0x0C,0x02,0x7F}, // M
-    {0x7F,0x04,0x08,0x10,0x7F}, // N
-    {0x3E,0x41,0x41,0x41,0x3E}, // O
-    {0x7F,0x09,0x09,0x09,0x06}, // P
-    {0x3E,0x41,0x51,0x21,0x5E}, // Q
-    {0x7F,0x09,0x19,0x29,0x46}, // R
-    {0x46,0x49,0x49,0x49,0x31}, // S
-    {0x01,0x01,0x7F,0x01,0x01}, // T
-    {0x3F,0x40,0x40,0x40,0x3F}, // U
-    {0x1F,0x20,0x40,0x20,0x1F}, // V
-    {0x7F,0x20,0x18,0x20,0x7F}, // W
-    {0x63,0x14,0x08,0x14,0x63}, // X
-    {0x07,0x08,0x70,0x08,0x07}, // Y
-    {0x61,0x51,0x49,0x45,0x43}  // Z
-};
-
-// Complete Cyrillic Font Glyphs (35 Mongolian Letters)
-static const uint8_t FONT_CYRILLIC[][5] = {
-    {0x7E,0x11,0x11,0x11,0x7E}, // 0:  А
-    {0x7F,0x49,0x49,0x49,0x31}, // 1:  Б
-    {0x7F,0x49,0x49,0x49,0x36}, // 2:  В
-    {0x7F,0x01,0x01,0x01,0x01}, // 3:  Г
-    {0x60,0x3E,0x21,0x3E,0x60}, // 4:  Д
-    {0x7F,0x49,0x49,0x49,0x41}, // 5:  Е
-    {0x77,0x08,0x7F,0x08,0x77}, // 6:  Ж
-    {0x21,0x41,0x45,0x4B,0x31}, // 7:  З
-    {0x7F,0x20,0x10,0x08,0x7F}, // 8:  И
-    {0x7D,0x21,0x12,0x09,0x7D}, // 9:  Й
-    {0x7F,0x08,0x14,0x22,0x41}, // 10: К
-    {0x70,0x0E,0x01,0x01,0x7F}, // 11: Л
-    {0x7F,0x02,0x0C,0x02,0x7F}, // 12: М
-    {0x7F,0x08,0x08,0x08,0x7F}, // 13: Н
-    {0x3E,0x41,0x41,0x41,0x3E}, // 14: О
-    {0x7F,0x01,0x01,0x01,0x7F}, // 15: П
-    {0x7F,0x09,0x09,0x09,0x06}, // 16: Р
-    {0x3E,0x41,0x41,0x41,0x22}, // 17: С
-    {0x01,0x01,0x7F,0x01,0x01}, // 18: Т
-    {0x07,0x08,0x70,0x08,0x07}, // 19: У
-    {0x1C,0x22,0x7F,0x22,0x1C}, // 20: Ф
-    {0x63,0x14,0x08,0x14,0x63}, // 21: Х
-    {0x7F,0x40,0x40,0x7F,0x60}, // 22: Ц
-    {0x07,0x04,0x04,0x04,0x7F}, // 23: Ч
-    {0x7F,0x40,0x7F,0x40,0x7F}, // 24: Ш
-    {0x7F,0x40,0x7F,0x7F,0x60}, // 25: Щ
-    {0x01,0x7F,0x48,0x48,0x30}, // 26: Ъ
-    {0x7F,0x48,0x30,0x00,0x7F}, // 27: Ы
-    {0x7F,0x48,0x48,0x48,0x30}, // 28: Ь
-    {0x22,0x41,0x49,0x49,0x3E}, // 29: Э
-    {0x7F,0x08,0x3E,0x41,0x3E}, // 30: Ю
-    {0x46,0x29,0x19,0x09,0x7F}, // 31: Я
-    {0x7D,0x48,0x49,0x48,0x41}, // 32: Ё
-    {0x3E,0x49,0x49,0x49,0x3E}, // 33: Ө
-    {0x07,0x08,0x7F,0x08,0x07}  // 34: Ү
-};
-
-// Codepoint to Font Glyph Resolver
-static const uint8_t* get_font_glyph(uint32_t cp) {
-    if (cp >= ' ' && cp <= 'Z') return FONT_ASCII[cp - ' '];
-    if (cp >= 'a' && cp <= 'z') return FONT_ASCII[cp - 'a' + ('A' - ' ')];
-    if (cp == '[') return FONT_ASCII['(' - ' '];
-    if (cp == ']') return FONT_ASCII[')' - ' '];
-    if (cp == '|') return FONT_ASCII['/' - ' '];
-    if (cp == '_') return FONT_ASCII['-' - ' '];
-
-    // Cyrillic Lowercase to Uppercase Normalization
-    if (cp >= 0x0430 && cp <= 0x044F) cp -= 0x20;
-    if (cp == 0x0451) cp = 0x0401; // ё -> Ё
-    if (cp == 0x04E9) cp = 0x04E8; // ө -> Ө
-    if (cp == 0x04AF) cp = 0x04AE; // ү -> Ү
-
-    // Cyrillic Unicode Mapping
-    if (cp >= 0x0410 && cp <= 0x042F) return FONT_CYRILLIC[cp - 0x0410];
-    if (cp == 0x0401) return FONT_CYRILLIC[32]; // Ё
-    if (cp == 0x04E8) return FONT_CYRILLIC[33]; // Ө
-    if (cp == 0x04AE) return FONT_CYRILLIC[34]; // Ү
-
-    return FONT_ASCII['?' - ' '];
-}
-
-// UTF-8 Text Drawing Function
-static void draw_text(shs::Canvas& c, int x, int y, const char* str, shs::Color col, int scale = 2) {
-    if (!str) return;
-    int cur_x = x;
-    const unsigned char* p = (const unsigned char*)str;
-
-    while (*p) {
-        uint32_t cp = 0;
-        unsigned char c0 = *p++;
-
-        if (c0 < 0x80) {
-            // 1-byte ASCII
-            cp = c0;
-        }
-        else if ((c0 & 0xE0) == 0xC0 && *p && (*p & 0xC0) == 0x80) {
-            // 2-byte UTF-8 Sequence
-            unsigned char c1 = *p++;
-            cp = ((c0 & 0x1F) << 6) | (c1 & 0x3F);
-        }
-        else if ((c0 & 0xF0) == 0xE0 && *p && (*(p + 1)) && (*p & 0xC0) == 0x80 && (*(p + 1) & 0xC0) == 0x80) {
-            // 3-byte UTF-8 Sequence
-            unsigned char c1 = *p++;
-            unsigned char c2 = *p++;
-            cp = ((c0 & 0x0F) << 12) | ((c1 & 0x3F) << 6) | (c2 & 0x3F);
-        }
-        else {
-            cp = c0;
-        }
-
-        const uint8_t* glyph = get_font_glyph(cp);
-        if (glyph) {
-            for (int col_i = 0; col_i < 5; ++col_i) {
-                uint8_t bits = glyph[col_i];
-                for (int row_i = 0; row_i < 7; ++row_i) {
-                    if (bits & (1 << row_i)) {
-                        draw_rect_fill(c, cur_x + col_i * scale, y + row_i * scale, scale, scale, col);
-                    }
-                }
-            }
-        }
-        cur_x += (5 + 1) * scale;
-    }
-}
-
-// Bold 7-segment digit drawing (2px stroke thickness)
-static void draw_digit_bold(shs::Canvas& c, int x, int y, int d, int w, int h, shs::Color col) {
-    static const uint8_t segs[10] = {
-        0b00111111, 0b00000110, 0b01011011, 0b01001111, 0b01100110,
-        0b01101101, 0b01111101, 0b00000111, 0b01111111, 0b01101111
-    };
-    if (d < 0 || d > 9) return;
-    uint8_t mask = segs[d];
-    int my = y + h / 2;
-
-    auto h_seg = [&](int sx, int sy) { draw_rect_fill(c, sx, sy, w, 2, col); };
-    auto v_seg = [&](int sx, int sy, int len) { draw_rect_fill(c, sx, sy, 2, len, col); };
-
-    if (mask & (1 << 0)) h_seg(x, y);
-    if (mask & (1 << 1)) v_seg(x + w - 2, y, my - y);
-    if (mask & (1 << 2)) v_seg(x + w - 2, my, y + h - my);
-    if (mask & (1 << 3)) h_seg(x, y + h - 2);
-    if (mask & (1 << 4)) v_seg(x, my, y + h - my);
-    if (mask & (1 << 5)) v_seg(x, y, my - y);
-    if (mask & (1 << 6)) h_seg(x, my - 1);
-}
-
-// Multi-digit integer drawer
-static void draw_number_bold(shs::Canvas& c, int x, int y, int val, int digits, shs::Color col) {
-    int w = 12, h = 20, gap = 5;
-    for (int i = digits - 1; i >= 0; --i) {
-        int d = val % 10;
-        val /= 10;
-        draw_digit_bold(c, x + i * (w + gap), y, d, w, h, col);
-    }
-}
-
-// ============================================================================
-// MONGOLIAN CYRILLIC HUD (Layout & Presentation)
-// ============================================================================
-static void draw_hud(shs::Canvas& canvas, const tetris::TetrisSnapshot& state) {
-    int W = canvas.get_width();
-    int H = canvas.get_height();
-
-    // ------------------------------------------------------------------------
-    // 1. TOP RIGHT: SCORE CARD (ОНОО / ДЭЭД)
-    // ------------------------------------------------------------------------
-    int sx = W - 265, sy = 18, sw = 245, sh = 88;
-    draw_rect_fill(canvas, sx, sy, sw, sh, shs::Color{ 15, 18, 26, 230 });
-    draw_rect_border(canvas, sx, sy, sw, sh, shs::Color{ 60, 140, 220, 255 });
-
-    draw_text(canvas, sx + 14, sy + 14, TXT_SCORE, shs::Color{ 255, 225, 45, 255 }, 2);
-    draw_number_bold(canvas, sx + 125, sy + 12, state.score, 6, shs::Color{ 255, 225, 45, 255 });
-
-    draw_text(canvas, sx + 14, sy + 48, TXT_BEST, shs::Color{ 140, 155, 175, 255 }, 2);
-    draw_number_bold(canvas, sx + 125, sy + 46, state.high_score, 6, shs::Color{ 140, 155, 175, 255 });
-
-    // ------------------------------------------------------------------------
-    // 2. TOP LEFT: GOAL & STATS CARD (ЗОРИЛГО / МӨР / ҮЕ)
-    // ------------------------------------------------------------------------
-    int ox = 20, oy = 18, ow = 280, oh = 88;
-    draw_rect_fill(canvas, ox, oy, ow, oh, shs::Color{ 15, 18, 26, 230 });
-    draw_rect_border(canvas, ox, oy, ow, oh, shs::Color{ 60, 140, 220, 255 });
-
-    // Target Progress Bar
-    draw_text(canvas, ox + 12, oy + 12, TXT_GOAL, shs::Color{ 45, 220, 120, 255 }, 2);
-    int bar_x = ox + 105, bar_y = oy + 12, bar_w = ow - 120, bar_h = 14;
-    float progress = glm::clamp((float)state.score / (float)state.target_score, 0.0f, 1.0f);
-    draw_rect_fill(canvas, bar_x, bar_y, bar_w, bar_h, shs::Color{ 35, 40, 52, 255 });
-    draw_rect_fill(canvas, bar_x, bar_y, (int)(progress * (float)bar_w), bar_h, shs::Color{ 45, 220, 120, 255 });
-    draw_rect_border(canvas, bar_x, bar_y, bar_w, bar_h, shs::Color{ 80, 95, 115, 255 });
-
-    // Lines & Level
-    draw_text(canvas, ox + 14, oy + 48, TXT_LINES, shs::Color{ 40, 220, 240, 255 }, 2);
-    draw_number_bold(canvas, ox + 65, oy + 46, state.lines_cleared, 3, shs::Color{ 40, 220, 240, 255 });
-
-    draw_text(canvas, ox + 155, oy + 48, TXT_LEVEL, shs::Color{ 255, 140, 35, 255 }, 2);
-    draw_number_bold(canvas, ox + 205, oy + 46, state.level, 2, shs::Color{ 255, 140, 35, 255 });
-
-    // ------------------------------------------------------------------------
-    // 3. 3D PLATFORM LABELS (НӨӨЦ / ДАРААГИЙН)
-    // ------------------------------------------------------------------------
-    draw_text(canvas, 95, 120, TXT_HOLD, shs::Color{ 80, 200, 255, 240 }, 2);
-    draw_text(canvas, W - 230, 120, TXT_NEXT, shs::Color{ 80, 200, 255, 240 }, 2);
-
-    // ------------------------------------------------------------------------
-    // 4. BOTTOM CONTROLS FOOTER
-    // ------------------------------------------------------------------------
-    draw_text(canvas, (W - 980) / 2, H - 24, TXT_FOOTER, shs::Color{ 140, 155, 175, 220 }, 2);
-
-    // ------------------------------------------------------------------------
-    // 5. GAME OVER / VICTORY MODAL OVERLAY
-    // ------------------------------------------------------------------------
-    if (state.game_over || state.victory) {
-        int mw = 480, mh = 200;
-        int mx = (W - mw) / 2, my = (H - mh) / 2;
-
-        draw_rect_fill(canvas, mx, my, mw, mh, shs::Color{ 10, 12, 18, 245 });
-        shs::Color bc = state.victory ? shs::Color{ 45, 240, 110, 255 } : shs::Color{ 245, 55, 55, 255 };
-        draw_rect_border(canvas, mx, my, mw, mh, bc);
-        draw_rect_border(canvas, mx + 2, my + 2, mw - 4, mh - 4, bc);
-
-        if (state.victory) {
-            draw_text(canvas, mx + 90, my + 25, TXT_VICTORY, shs::Color{ 45, 240, 110, 255 }, 2);
-        }
-        else {
-            draw_text(canvas, mx + 95, my + 25, TXT_GAME_OVER, shs::Color{ 245, 55, 55, 255 }, 2);
-        }
-
-        draw_text(canvas, mx + 80, my + 80, TXT_FINAL_SCORE, shs::Color{ 220, 220, 220, 255 }, 2);
-        draw_number_bold(canvas, mx + 260, my + 76, state.score, 6, shs::Color{ 255, 230, 80, 255 });
-
-        draw_text(canvas, mx + 115, my + 140, TXT_RETRY, shs::Color{ 140, 160, 190, 255 }, 2);
-    }
-}
-
-
-// ============================================================================
-// MAIN ENTRY EDGE
-// ============================================================================
 int main(int argc, char* argv[]) {
-    (void)argc; (void)argv;
+    // --- CLI parsing ----------------------------------------------------------
+    std::string screenshot_path;
+    int         screenshot_frame = -1;
+    bool        autodrive_drop   = false;
 
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER) < 0) {
-        std::cerr << "SDL_Init failed: " << SDL_GetError() << std::endl;
-        return 1;
+    for (int i = 1; i < argc; ++i) {
+        const std::string arg = argv[i];
+        if (arg == "--screenshot" && i + 1 < argc) {
+            screenshot_path = argv[++i];
+            screenshot_frame = 60;
+        } else if (arg.rfind("--frame=", 0) == 0) {
+            screenshot_frame = std::atoi(arg.c_str() + 8);
+        } else if (arg == "--autodrive-harddrop") {
+            autodrive_drop = true;
+        }
+    }
+    const bool headless = (screenshot_frame >= 0);
+
+    // --- Config -----------------------------------------------------------------
+    const config::Rules rules = config::Marathon01::make_rules();
+
+    // --- SDL lifecycle ------------------------------------------------------------
+    Uint32 sdl_flags = SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_AUDIO;
+    if (SDL_Init(sdl_flags) < 0) {
+        if (headless) {
+            sdl_flags &= ~static_cast<Uint32>(SDL_INIT_AUDIO);
+            if (SDL_Init(sdl_flags) < 0) {
+                std::cerr << "SDL_Init error: " << SDL_GetError() << std::endl;
+                return 1;
+            }
+        } else {
+            std::cerr << "SDL_Init error: " << SDL_GetError() << std::endl;
+            return 1;
+        }
     }
 
-    SDL_Window* window = SDL_CreateWindow(
-        "SHS Renderer - Semi-3D Low-Poly Cyber Tetris",
-        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-        CANVAS_WIDTH, CANVAS_HEIGHT, SDL_WINDOW_SHOWN
-    );
+    SDL_Window*       window         = nullptr;
+    SDL_Renderer*     sdl_renderer   = nullptr;
+    SDL_Texture*      screen_texture = nullptr;
+    SDL_Surface*      screen_surface = nullptr;
+    SDL_AudioDeviceID audio_dev      = 0;
 
-    SDL_Renderer* sdl_renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
-    SDL_Texture* screen_texture = SDL_CreateTexture(
-        sdl_renderer, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STREAMING,
-        CANVAS_WIDTH, CANVAS_HEIGHT
-    );
-    SDL_Surface* screen_surface = SDL_CreateRGBSurfaceWithFormat(0, CANVAS_WIDTH, CANVAS_HEIGHT, 32, SDL_PIXELFORMAT_RGBA32);
+    if (!headless) {
+        window         = SDL_CreateWindow("SHS Renderer - Semi-3D Low-Poly Cyber Tetris",
+                                          SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+                                          CANVAS_WIDTH, CANVAS_HEIGHT, SDL_WINDOW_SHOWN);
+        sdl_renderer   = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+        screen_texture = SDL_CreateTexture(sdl_renderer, SDL_PIXELFORMAT_RGBA32,
+                                           SDL_TEXTUREACCESS_STREAMING, CANVAS_WIDTH, CANVAS_HEIGHT);
+        screen_surface = SDL_CreateRGBSurfaceWithFormat(0, CANVAS_WIDTH, CANVAS_HEIGHT, 32,
+                                                        SDL_PIXELFORMAT_RGBA32);
 
-    // Audio Setup
-    SDL_AudioSpec want{}, have{};
-    want.freq     = 44100;
-    want.format   = AUDIO_F32SYS;
-    want.channels = 2;
-    want.samples  = 2048;
-    want.callback = audio_callback;
-    want.userdata = &g_audio;
+        SDL_AudioSpec want{}, have{};
+        want.freq     = 44100;
+        want.format   = AUDIO_F32SYS;
+        want.channels = 2;
+        want.samples  = 2048;
+        want.callback = audio::audio_callback;
+        want.userdata = &g_audio;
 
-    SDL_AudioDeviceID audio_dev = SDL_OpenAudioDevice(nullptr, 0, &want, &have, 0);
-    if (audio_dev) SDL_PauseAudioDevice(audio_dev, 0);
+        audio_dev = SDL_OpenAudioDevice(nullptr, 0, &want, &have, 0);
+        if (audio_dev) SDL_PauseAudioDevice(audio_dev, 0);
+    }
 
-    shs::Canvas   canvas(CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{ 14, 16, 22, 255 });
-    shs::ZBuffer  z_buffer(CANVAS_WIDTH, CANVAS_HEIGHT, -1.0f, 1.0f);
+    // --- Renderer state -----------------------------------------------------------
+    shs::Canvas  canvas(CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{ 14, 16, 22, 255 });
+    shs::ZBuffer z_buffer(CANVAS_WIDTH, CANVAS_HEIGHT, -1.0f, 1.0f);
 
-    shs::Job::ThreadedPriorityJobSystem job_system(THREAD_COUNT);
+    shs::Job::ThreadedPriorityJobSystem job_system(static_cast<int>(thread_count()));
     shs::Job::WaitGroup                 wg_render;
 
-    vop::FrameMemoryResource frame_memory;
+    FrameMemoryResource frame_memory;
 
-    // Persistent State
-    tetris::TetrisSnapshot world;
-    world.active.type = tetris::pull_next_piece(world.rng_state, world.next_queue);
+    // --- Persistent pod states ------------------------------------------------------
+    matrix::MatrixSnapshot world;
+    world.active.type = matrix::pull_next_piece(world.rng_state, world.next_queue);
+    world.active.pos  = { 4, 19 };
 
-    tetris::ShatterParticleSoA particles(std::pmr::get_default_resource());
-    float camera_shake = 0.0f;
+    progression::ScoreState score_state;
+    score_state.target_score = rules.target_score;
 
-    bool quit = false;
-    SDL_Event e;
+    spatial_fx::FxState fx(std::pmr::get_default_resource());
+
+    bool   quit  = false;
+    int    frame = 0;
     Uint32 last_tick = SDL_GetTicks();
 
+    // --- Main loop ---------------------------------------------------------------------
     while (!quit) {
-        Uint32 cur_tick = SDL_GetTicks();
-        float dt = (cur_tick - last_tick) / 1000.0f;
-        last_tick = cur_tick;
-        if (dt > 0.05f) dt = 0.05f;
+        float dt;
+        if (headless) {
+            dt = 1.0f / 60.0f; // deterministic stepping for screenshots
+        } else {
+            const Uint32 cur_tick = SDL_GetTicks();
+            dt = (cur_tick - last_tick) / 1000.0f;
+            last_tick = cur_tick;
+            if (dt > 0.05f) dt = 0.05f;
+        }
 
         frame_memory.reset();
-        auto* arena = frame_memory.get();
+        std::pmr::memory_resource* arena = frame_memory.get();
 
-        // 1. INPUT POLLING
-        std::pmr::vector<tetris::TetrisCommand> commands(arena);
-        while (SDL_PollEvent(&e)) {
-            if (e.type == SDL_QUIT) quit = true;
-            if (e.type == SDL_KEYDOWN) {
-                if (e.key.keysym.sym == SDLK_ESCAPE) quit = true;
-                if (e.key.keysym.sym == SDLK_r)     commands.push_back(tetris::RestartIntent{});
-                if (e.key.keysym.sym == SDLK_LEFT  || e.key.keysym.sym == SDLK_a) commands.push_back(tetris::MoveLeftIntent{});
-                if (e.key.keysym.sym == SDLK_RIGHT || e.key.keysym.sym == SDLK_d) commands.push_back(tetris::MoveRightIntent{});
-                if (e.key.keysym.sym == SDLK_UP    || e.key.keysym.sym == SDLK_w) commands.push_back(tetris::RotateCWIntent{});
-                if (e.key.keysym.sym == SDLK_z)     commands.push_back(tetris::RotateCCWIntent{});
-                if (e.key.keysym.sym == SDLK_DOWN  || e.key.keysym.sym == SDLK_s) commands.push_back(tetris::SoftDropIntent{});
-                if (e.key.keysym.sym == SDLK_SPACE) commands.push_back(tetris::HardDropIntent{});
-                if (e.key.keysym.sym == SDLK_c     || e.key.keysym.sym == SDLK_LSHIFT) commands.push_back(tetris::HoldPieceIntent{});
-            }
+        // 1. INPUT EDGE
+        input::InputState in = input::poll_input(arena);
+        quit = quit || in.quit;
+        if (autodrive_drop && frame == 30) in.commands.push_back(matrix::HardDropIntent{});
+
+        // Restart preservation: high score survives a manual reset (main-edge duty)
+        bool restart_requested = false;
+        for (const auto& cmd : in.commands) {
+            if (std::holds_alternative<matrix::RestartIntent>(cmd)) restart_requested = true;
         }
 
-        // 2. PURE REDUCTION (Calling reduce_tetris)
-        tetris::TetrisStepResult step = tetris::reduce_tetris(world, commands, dt, arena);
-        world = step.next_state;
+        // Gravity cadence wired from progression level through pure config math
+        world.drop_interval = rules.gravity_for_level(score_state.level);
 
-        // 3. DISCRETE EVENT CONSUMPTION
-        if (camera_shake > 0.0f) camera_shake = std::max(0.0f, camera_shake - dt * 4.0f);
+        // 2. PURE SIMULATION CORE
+        matrix::MatrixStepResult step = matrix::reduce_matrix(
+            world,
+            std::span<const matrix::TetrisCommand>(in.commands.data(), in.commands.size()),
+            dt, arena
+        );
+        world = std::move(step.next_state);
 
-        for (const auto& ev : step.events) {
-            switch (ev.type) {
-                case tetris::TetrisEventType::PIECE_MOVED:       g_audio.play(SND_MOVE); break;
-                case tetris::TetrisEventType::PIECE_ROTATED:     g_audio.play(SND_ROTATE); break;
-                case tetris::TetrisEventType::PIECE_LOCK_IMPACT: g_audio.play(SND_DROP_SLAM); break;
-                case tetris::TetrisEventType::HOLD_SWAPPED:      g_audio.play(SND_HOLD); break;
-                case tetris::TetrisEventType::GAME_OVER:         g_audio.play(SND_GAME_OVER); break;
-                case tetris::TetrisEventType::HARD_DROP_SLAM:
-                    g_audio.play(SND_DROP_SLAM);
-                    camera_shake = 0.35f;
-                    break;
-                case tetris::TetrisEventType::LINES_CLEARED:
-                    if (ev.lines_cleared_count >= 4) {
-                        g_audio.play(SND_TETRIS_FOUR);
-                        camera_shake = 0.65f;
-                    } else {
-                        g_audio.play(SND_LINE_CLEAR);
-                        camera_shake = 0.25f;
-                    }
-                    // Spawn 3D Shatter Voxel Particles
-                    for (int i = 0; i < ev.lines_cleared_count; ++i) {
-                        float row_y = (float)ev.cleared_rows[i];
-                        for (int col = 0; col < tetris::GRID_W; ++col) {
-                            glm::vec3 p((float)col - 4.5f, row_y, 0.0f);
-                            glm::vec3 vel(
-                                ((col - 4.5f) * 1.2f) + ((rand() % 100) / 50.0f - 1.0f),
-                                3.0f + ((rand() % 100) / 30.0f),
-                                -2.5f - ((rand() % 100) / 40.0f)
-                            );
-                            particles.add(p, vel, shs::Color{ 40, 220, 240, 255 }, 1.2f);
-                        }
-                    }
+        // 3. EVENT-FED PROGRESSION
+        if (restart_requested) {
+            const int preserved_high = score_state.high_score;
+            score_state = progression::ScoreState{};
+            score_state.target_score = rules.target_score;
+            score_state.high_score   = preserved_high;
+        }
+        progression::ProgressionStep prog = progression::reduce_progression(
+            std::span<const matrix::MatrixEvent>(step.events.data(), step.events.size()),
+            score_state, rules, arena
+        );
+        score_state = std::move(prog.next);
+
+        // 4. FX STEP (particles + camera spring, deterministic xorshift)
+        spatial_fx::step_fx(fx,
+            std::span<const matrix::MatrixEvent>(step.events.data(), step.events.size()), dt);
+
+        // Audio edge mapping (windowed mode only)
+        if (!headless) {
+            for (const auto& ev : step.events) {
+                switch (ev.type) {
+                case matrix::MatrixEventType::PIECE_MOVED:       g_audio.play(audio::SND_MOVE);        break;
+                case matrix::MatrixEventType::PIECE_ROTATED:     g_audio.play(audio::SND_ROTATE);      break;
+                case matrix::MatrixEventType::PIECE_LOCK_IMPACT: g_audio.play(audio::SND_DROP_SLAM);   break;
+                case matrix::MatrixEventType::HOLD_SWAPPED:      g_audio.play(audio::SND_HOLD);        break;
+                case matrix::MatrixEventType::GAME_OVER:         g_audio.play(audio::SND_GAME_OVER);   break;
+                case matrix::MatrixEventType::HARD_DROP_SLAM:    g_audio.play(audio::SND_DROP_SLAM);   break;
+                case matrix::MatrixEventType::LINES_CLEARED:
+                    g_audio.play(ev.lines_cleared_count >= 4 ? audio::SND_TETRIS_FOUR
+                                                             : audio::SND_LINE_CLEAR);
                     break;
                 default: break;
+                }
             }
         }
 
-        // 4. UPDATE PARTICLES
-        for (size_t i = 0; i < particles.position.size();) {
-            particles.position[i] += particles.velocity[i] * dt;
-            particles.velocity[i].y -= 18.0f * dt; // Gravity
-            particles.life[i] -= dt;
-            if (particles.life[i] <= 0.0f) {
-                particles.position.erase(particles.position.begin() + i);
-                particles.velocity.erase(particles.velocity.begin() + i);
-                particles.color.erase(particles.color.begin() + i);
-                particles.life.erase(particles.life.begin() + i);
-            } else {
-                ++i;
-            }
-        }
-
-        // 5. PURE 3D BATCH PLANNER
-        tetris::PipelineExecutionPlan plan = tetris::plan_tetris_scene(
-            world, particles, CANVAS_WIDTH, CANVAS_HEIGHT, camera_shake, arena
+        // 5. PURE SCENE PLANNER
+        spatial_fx::PipelineExecutionPlan plan = spatial_fx::plan_tetris_scene(
+            world, fx, CANVAS_WIDTH, CANVAS_HEIGHT, arena
         );
 
         // 6. TILED PARALLEL RASTERIZATION
         canvas.buffer().clear(shs::Color{ 14, 16, 22, 255 });
         z_buffer.clear();
 
-        int W    = canvas.get_width();
-        int H    = canvas.get_height();
-        int cols = (W + TILE_SIZE_X - 1) / TILE_SIZE_X;
-        int rows = (H + TILE_SIZE_Y - 1) / TILE_SIZE_Y;
+        const int W    = canvas.get_width();
+        const int H    = canvas.get_height();
+        const int cols = (W + TILE_SIZE_X - 1) / TILE_SIZE_X;
+        const int rows = (H + TILE_SIZE_Y - 1) / TILE_SIZE_Y;
 
         wg_render.reset();
         for (int ty = 0; ty < rows; ++ty) {
@@ -792,7 +269,8 @@ int main(int argc, char* argv[]) {
                 wg_render.add(1);
                 job_system.submit({ [&, tx, ty, W, H]() {
                     glm::ivec2 tmin(tx * TILE_SIZE_X, ty * TILE_SIZE_Y);
-                    glm::ivec2 tmax(std::min((tx + 1) * TILE_SIZE_X, W) - 1, std::min((ty + 1) * TILE_SIZE_Y, H) - 1);
+                    glm::ivec2 tmax(std::min((tx + 1) * TILE_SIZE_X, W) - 1,
+                                    std::min((ty + 1) * TILE_SIZE_Y, H) - 1);
 
                     for (const auto& tri : plan.triangles) {
                         const shs::Raster::FrustumClipPolygon poly =
@@ -803,7 +281,8 @@ int main(int argc, char* argv[]) {
                         for (int i = 1; i + 1 < poly.count; ++i) {
                             glm::vec4 s1 = vop::clip_to_screen_vec4(poly.vertices[i], W, H);
                             glm::vec4 s2 = vop::clip_to_screen_vec4(poly.vertices[i + 1], W, H);
-                            vop::rasterize_triangle_tile(canvas, z_buffer, s0, s1, s2, tri.lit_color, tri.depth_bias, tmin, tmax);
+                            vop::rasterize_triangle_tile(canvas, z_buffer, s0, s1, s2,
+                                                         tri.lit_color, tri.depth_bias, tmin, tmax);
                         }
                     }
                     wg_render.done();
@@ -812,8 +291,25 @@ int main(int argc, char* argv[]) {
         }
         wg_render.wait();
 
-        // 7. DRAW 2D HUD
-        draw_hud(canvas, world);
+        // 7. UI EDGE
+        ui::draw_hud(canvas, world, score_state);
+
+        ++frame;
+
+        // Headless exit: save BMP and stop
+        if (headless) {
+            if (frame >= screenshot_frame) {
+                SDL_Surface* shot = SDL_CreateRGBSurfaceWithFormat(0, CANVAS_WIDTH, CANVAS_HEIGHT, 32,
+                                                                   SDL_PIXELFORMAT_RGBA32);
+                shs::Canvas::copy_to_SDLSurface(shot, &canvas);
+                SDL_SaveBMP(shot, screenshot_path.c_str());
+                SDL_FreeSurface(shot);
+                std::cout << "Screenshot saved: " << screenshot_path
+                          << " (frame " << frame << ")" << std::endl;
+                break;
+            }
+            continue;
+        }
 
         // 8. SWAPCHAIN PRESENTATION
         shs::Canvas::copy_to_SDLSurface(screen_surface, &canvas);
@@ -823,11 +319,12 @@ int main(int argc, char* argv[]) {
         SDL_RenderPresent(sdl_renderer);
     }
 
-    if (audio_dev) SDL_CloseAudioDevice(audio_dev);
-    SDL_DestroyTexture(screen_texture);
-    SDL_FreeSurface(screen_surface);
-    SDL_DestroyRenderer(sdl_renderer);
-    SDL_DestroyWindow(window);
+    // --- Cleanup -----------------------------------------------------------------------
+    if (audio_dev)      SDL_CloseAudioDevice(audio_dev);
+    if (screen_surface) SDL_FreeSurface(screen_surface);
+    if (screen_texture) SDL_DestroyTexture(screen_texture);
+    if (sdl_renderer)   SDL_DestroyRenderer(sdl_renderer);
+    if (window)         SDL_DestroyWindow(window);
     SDL_Quit();
 
     return 0;

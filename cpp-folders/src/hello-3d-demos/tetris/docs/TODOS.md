@@ -10,6 +10,25 @@ To thoroughly demonstrate **Value-Oriented Programming (VOP)**, **Data-Oriented 
 
 ---
 
+## Status (as of 2026-08-22)
+
+| Item | State |
+| :--- | :--- |
+| Pod 1 `matrix` | ✅ DONE — contract/action/event/reducer; pure center, zero scoring refs |
+| Pod 2 `progression` | ✅ DONE — event-fed scoring, combos, levels, victory; Lua seam isolated at `compute_line_clear_score()` |
+| Pod 3 `spatial_fx` | ✅ DONE — SoA particles, camera spring, scene planner (`spatial_fx.plan.hpp`) |
+| Pod 4 `powerups` | ⬜ PENDING — arrives together with its `scripts/*.lua` (Part 2) |
+| Pod 5 `environment` | ⬜ PENDING — diorama + reactive mood lighting |
+| Edges `input` / `audio` / `rasterizer` / `ui` | ✅ DONE — one subdirectory per edge (`edges/<name>/tetris.<name>.hpp`) |
+| Edge `lua` | 🟡 SCAFFOLDED — `edges/lua/lua.edge.hpp` compiles into the build, not yet wired into the loop |
+| Thin main + `verify.sh` | ✅ DONE — determinism / behavioral-delta / purity gates all PASS |
+
+Companion docs in this folder: `NOTES.md` (VOP/DOD pod theory + Lua philosophy) and
+`REFACTOR_PROPOSAL.md` (migration record). Repo-root `docs/DETAILS.md` §4 holds the
+concrete Lua wiring design for the next task.
+
+---
+
 # Part 1: The Canonical 5-Pod Suite
 
 ```
@@ -56,6 +75,9 @@ To thoroughly demonstrate **Value-Oriented Programming (VOP)**, **Data-Oriented 
 │   └─ Render Edge: Multi-threaded tiled software rasterizer & swapchain presentation      │
 └──────────────────────────────────────────────────────────────────────────────────────────┘
 ```
+
+*(Pods 4 and 5 above are the planned additions; pods 1–3 and all three execution-edge
+families already exist in code — see the Status table.)*
 
 ---
 
@@ -139,7 +161,7 @@ return BlitzRules
 
 ---
 
-### 2.3 The C++ Lua Edge Wrapper (`edges/lua.edge.hpp`)
+### 2.3 The C++ Lua Edge Wrapper (`edges/lua/lua.edge.hpp`)
 
 In C++, you execute the script by pushing values onto the Lua stack, invoking the function, and popping the resulting struct:
 
@@ -208,59 +230,50 @@ namespace edge {
 
 ---
 
-# Part 3: Complete Project Directory Layout
+# Part 3: Project Directory Layout (as built)
 
 ```text
 hello-3d-demos/tetris/
-├── CMakeLists.txt
-├── hello_3d_tetris.cpp               # Main edge presentation loop
+├── CMakeLists.txt                       # One -I root (demo dir); target-scoped include dirs
+├── verify.sh                            # Headless gates: determinism / delta / purity greps
+├── hello_3d_tetris.cpp                  # Main edge: SDL lifecycle, PMR arena, loop wiring (~330 lines)
 │
-├── domains/                          # 5 Pure Domain Pods
-│   ├── matrix/                       # Pod 1: Core grid simulation
-│   │   ├── matrix.contract.hpp
-│   │   ├── matrix.action.hpp
-│   │   ├── matrix.event.hpp
-│   │   ├── matrix.reducer.hpp
-│   │   └── matrix.plan.hpp
-│   │
-│   ├── progression/                  # Pod 2: Game modes & scoring
-│   │   ├── progression.contract.hpp
-│   │   ├── progression.action.hpp
-│   │   ├── progression.event.hpp
-│   │   ├── progression.reducer.hpp
-│   │   ├── progression.plan.hpp
-│   │   └── scripts/
-│   │       ├── blitz_rules.lua
-│   │       └── marathon_rules.lua
-│   │
-│   ├── spatial_fx/                   # Pod 3: 3D Voxel shatter & Camera spring
-│   │   ├── spatial_fx.contract.hpp
-│   │   ├── spatial_fx.action.hpp
-│   │   ├── spatial_fx.event.hpp
-│   │   ├── spatial_fx.reducer.hpp
-│   │   └── spatial_fx.plan.hpp
-│   │
-│   ├── powerups/                     # Pod 4: Cyber Modifiers (Bomb/Laser/Freeze)
-│   │   ├── powerups.contract.hpp
-│   │   ├── powerups.action.hpp
-│   │   ├── powerups.event.hpp
-│   │   ├── powerups.reducer.hpp
-│   │   ├── powerups.plan.hpp
-│   │   └── scripts/
-│   │       └── cyber_modifiers.lua
-│   │
-│   └── environment/                  # Pod 5: 3D Diorama & Reactive Atmosphere
-│       ├── environment.contract.hpp
-│       ├── environment.action.hpp
-│       ├── environment.event.hpp
-│       ├── environment.reducer.hpp
-│       └── environment.plan.hpp
+├── config/                              # Pure designer-facing tuning data
+│   ├── rules.hpp                        #   tetris::config::Rules + gravity_for_level()
+│   └── levels/marathon_01.hpp           #   Marathon01::make_rules()
 │
-└── edges/                            # Impure Execution Edges
-    ├── audio.edge.hpp                # Lock-free procedural SPSC audio synth
-    ├── rasterizer.edge.hpp           # Tiled parallel software rasterizer
-    ├── lua.edge.hpp                  # Stateless thread-local Lua VM runner
-    └── input.edge.hpp                # SDL2 keyboard/mouse command tokenizer
+├── domains/                             # Pure Value Center (zero SDL, zero global heap)
+│   ├── matrix/                          # Pod 1: core grid simulation        [DONE]
+│   │   ├── matrix.contract.hpp          #   MatrixSnapshot, ActivePiece, pull_next_piece
+│   │   ├── matrix.action.hpp            #   TetrisCommand variant + reduce_tetris_commands
+│   │   ├── matrix.event.hpp             #   MatrixEvent raw facts (LOCK_IMPACT, LINES_CLEARED, …)
+│   │   └── matrix.reducer.hpp           #   reduce_matrix — pure transition, emits events ONLY
+│   │
+│   ├── progression/                     # Pod 2: scoring & modes             [DONE]
+│   │   ├── progression.contract.hpp     #   ScoreState
+│   │   ├── progression.event.hpp        #   ProgressionEvent (SCORE_CHANGED, LEVEL_UP, …)
+│   │   ├── progression.reducer.hpp      #   reduce_progression + compute_line_clear_score [LUA SEAM]
+│   │   └── scripts/                     #   (PENDING) blitz_mode.lua, sprint_40lines.lua
+│   │
+│   ├── spatial_fx/                      # Pod 3: FX + scene planning         [DONE]
+│   │   ├── spatial_fx.contract.hpp      #   FxState, ProcessedTriangle, piece palette
+│   │   ├── spatial_fx.reducer.hpp       #   step_fx — SoA particles, deterministic xorshift
+│   │   └── spatial_fx.plan.hpp          #   plan_tetris_scene → PipelineExecutionPlan
+│   │
+│   ├── powerups/                        # Pod 4: cyber modifiers             [PENDING — lands with scripts/*.lua]
+│   └── environment/                     # Pod 5: diorama + mood lighting     [PENDING]
+│
+├── edges/                               # Impure Execution Edges (SDL appears here ONLY)
+│   ├── input/tetris.input.hpp           #   poll_input → InputState{ pmr commands }
+│   ├── audio/tetris.audio.hpp           #   SPSC ring procedural synth + SDL audio callback
+│   ├── rasterizer/tetris.rasterizer.hpp #   vop:: clip_to_screen_vec4, rasterize_triangle_tile
+│   ├── ui/tetris.hud.hpp                #   draw_hud(canvas, MatrixSnapshot, ScoreState)
+│   └── lua/lua.edge.hpp                 #   StatelessLuaEvaluator            [SCAFFOLDED, unwired]
+│
+└── docs/
+    ├── TODOS.md                         # this file — canonical blueprint + status
+    ├── NOTES.md                         # VOP/DOD pod theory + Lua-in-VOP philosophy
+    └── REFACTOR_PROPOSAL.md             # migration record of the domain-pod refactor
 ```
 
 ---

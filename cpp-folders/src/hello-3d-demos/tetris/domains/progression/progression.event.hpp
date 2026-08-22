@@ -1,33 +1,21 @@
 #pragma once
+// tetris/domains/progression/progression.event.hpp — DERIVED OCCURRENCES (tetris::progression)
+#include <cstdint>
 
-#include "progression.contract.hpp"
+namespace tetris::progression {
 
-namespace tetris {
-    namespace progression {
+    enum class ProgressionEventType : uint8_t {
+        SCORE_CHANGED,
+        COMBO_STREAK,        // reserved for Lua rule layer (Phase: lua.edge)
+        LEVEL_UP,
+        OBJECTIVE_COMPLETED
+    };
 
-        // ============================================================================
-        // Discrete Event Types: Immutable records of occurrences emitted by the reducer.
-        // These events are consumed by other domains (audio, environment) without mutation.
-        // ============================================================================
+    struct ProgressionEvent {
+        ProgressionEventType type;
+        int score_delta = 0;
+        int combo       = 0;
+        int new_level   = 0;
+    };
 
-        enum class ProgressionEventType : uint8_t {
-            SCORE_CHANGED,
-            COMBO_STREAK,
-            LEVEL_UP,
-            MODE_CHANGED,
-            TIME_WARNING,
-            OBJECTIVE_COMPLETED,
-            DANGER_ALERT
-        };
-
-        struct ProgressionEvent {
-            ProgressionEventType type;
-            int32_t score_delta = 0;
-            uint8_t new_level = 1;
-            float time_remaining_seconds = -1.0f;
-            ModeConfig::Type old_mode, new_mode;
-            std::string_view message_tag; // "BlitzComplete", "SprintSurvived", "ComboBusted"
-        };
-
-    } // namespace progression
-} // namespace tetris
+} // namespace tetris::progression

@@ -1,71 +1,122 @@
 #pragma once
-
-#include <cstdint>
-#include <array>
-#include <span>
+// tetris/domains/spatial_fx/spatial_fx.contract.hpp — RENDER VOCABULARY + FX STATE
+// Low-poly authoring primitives, batch planner types, SoA shatter particles,
+// camera-shake spring state, and the piece palette (tetris::spatial_fx).
+#include <memory_resource>
+#include <vector>
+#include <glm/glm.hpp>
 #include "shs_renderer.hpp"
 
-namespace tetris {
-    namespace spatial_fx {
+#include <domains/matrix/matrix.contract.hpp>
 
-        // ============================================================================
-        // POD 3: SPATIAL FX — 3D Voxel Shatter, Camera Spring, Floating Text Popups
-        // Uses Structure-of-Arrays (SoA) for cache-friendly particle updates.
-        // ============================================================================
+namespace tetris::spatial_fx {
+using tetris::matrix::PieceType;
+using tetris::matrix::GRID_W;
+using tetris::matrix::GRID_H;
+using tetris::matrix::VISIBLE_H;
+using tetris::matrix::CELL_SIZE;
+using tetris::matrix::BLOCK_GAP;
 
-        struct Particle {
-            glm::vec3 position;
-            glm::vec3 velocity;
-            glm::vec3 color;
-            float life = 1.2f;
-            uint8_t   age    = 0u;     // Frame counter for deterministic emission
-        };
+    struct LowPolyTriangle {
+        glm::vec3  p0, p1, p2;
+        shs::Color color;
+        float      depth_bias = 0.0f;
 
-        /// SoA-aligned particle table (dense, contiguous).
-        struct ParticleTableSoA {
-            std::pmr::vector<glm::vec3> position;
-            std::pmr::vector<glm::vec3> velocity;
-            std::pmr::vector<glm::vec3> color;
-            std::pmr::vector<float>     life;
+        LowPolyTriangle(glm::vec3 a, glm::vec3 b, glm::vec3 c, shs::Color col, float bias = 0.0f)
+            : p0(a), p1(b), p2(c), color(col), depth_bias(bias) {}
+    };
 
-            explicit ParticleTableSoA(std::pmr::memory_resource* mr)
-                : position(mr), velocity(mr), color(mr), life(mr) {}
+    struct ShatterParticleSoA {
+        std::pmr::vector<glm::vec3> position;
+        std::pmr::vector<glm::vec3> velocity;
+        std::pmr::vector<shs::Color> color;
+        std::pmr::vector<float>     life;
 
-            void add(glm::vec3 pos, glm::vec3 vel, glm::vec3 col, float duration = 1.2f);
+        explicit ShatterParticleSoA(std::pmr::memory_resource* mr)
+            : position(mr), velocity(mr), color(mr), life(mr) {}
 
-            // Bump-alloc append for zero-allocation during particle lifetime
-            inline void push_back(std::pmr::memory_resource* mr,
-                                  const glm::vec3& p, const glm::vec3& v,
-                                  const glm::vec3& c, float dur) {
-                auto ptr = mr->allocate(Particle{}, sizeof(Particle));
-                Particle* part = new (ptr) Particle();
-                part->position  = p;
-                part->velocity  = v;
-                part->color     = c;
-                part->life      = dur;
-                part->age       = 0u;
-                position.push_back(p);
-                velocity.push_back(v);
-                color.push_back(c);
-                life.push_back(dur);
-            }
-        };
+        void add(glm::vec3 pos, glm::vec3 vel, shs::Color col, float duration = 1.2f) {
+            position.push_back(pos);
+            velocity.push_back(vel);
+            color.push_back(col);
+            life.push_back(duration);
+        }
+    };
 
-        /// Camera spring state: smoothly interpolates shake back to zero.
-        struct CameraShakeState {
-            float shake_x = 0.0f;
-            float shake_y = 0.0f;
-            float target_shake = 0.0f; // Set by line-clear or hard drop events
-            bool active = false;
+    namespace MeshGen {
+        static inline void add_quad(
+            std::vector<LowPolyTriangle>& tris,
+            glm::vec3 v0, glm::vec3 v1, glm::vec3 v2, glm::vec3 v3,
+            shs::Color col, float bias = 0.0f
+        ) {
+            tris.emplace_back(v0, v1, v2, col, bias);
+            tris.emplace_back(v0, v2, v3, col, bias);
+        }
 
-            void apply(float dt, std::pmr::vector<float>& out_buffer) {
-                if (!active) return;
-                float decay = 8.0f; // Damping factor per second (~16 Hz)
-                shake_x *= (1.0f - decay * dt);
-                shake_y *= (1.0f - decay * dt);
-                out_buffer.push_back(shake_x); // For renderer edge consumption
-            }
-        };
+        static inline void add_box(
+            std::vector<LowPolyTriangle>& tris,
+            glm::vec3 center, glm::vec3 size,
+            shs::Color c_top, shs::Color c_side, shs::Color c_bot,
+            float bias = 0.0f
+        ) {
+            glm::vec3 h = size * 0.5f;
+            glm::vec3 p000 = center + glm::vec3(-h.x, -h.y, -h.z);
+            glm::vec3 p100 = center + glm::vec3( h.x, -h.y, -h.z);
+            glm::vec3 p110 = center + glm::vec3( h.x,  h.y, -h.z);
+            glm::vec3 p010 = center + glm::vec3(-h.x,  h.y, -h.z);
+            glm::vec3 p001 = center + glm::vec3(-h.x, -h.y,  h.z);
+            glm::vec3 p101 = center + glm::vec3( h.x, -h.y,  h.z);
+            glm::vec3 p111 = center + glm::vec3( h.x,  h.y,  h.z);
+            glm::vec3 p011 = center + glm::vec3(-h.x,  h.y,  h.z);
 
-    } // namespace spatial_fx
-} // namespace tetris
+            add_quad(tris, p001, p101, p111, p011, c_side, bias); // Front (+Z)
+            add_quad(tris, p100, p000, p010, p110, c_side, bias); // Back (-Z)
+            add_quad(tris, p010, p011, p111, p110, c_top , bias); // Top (+Y)
+            add_quad(tris, p000, p100, p101, p001, c_bot , bias); // Bottom (-Y)
+            add_quad(tris, p100, p110, p111, p101, c_side, bias); // Right (+X)
+            add_quad(tris, p000, p001, p011, p010, c_side, bias); // Left (-X)
+        }
+    }
+
+    struct ProcessedTriangle {
+        glm::vec4  c0, c1, c2;
+        shs::Color lit_color;
+        float      depth_bias;
+    };
+
+    struct PipelineExecutionPlan {
+        std::pmr::vector<ProcessedTriangle> triangles;
+        glm::mat4                           view_matrix;
+        glm::mat4                           proj_matrix;
+        glm::mat4                           vp_matrix;
+
+        explicit PipelineExecutionPlan(std::pmr::memory_resource* mr)
+            : triangles(mr) {}
+    };
+
+    // FX lifecycle state (particles + camera spring + fx clock). Long-lived;
+    // stepped in-place each frame by spatial_fx::step_fx.
+    struct FxState {
+        ShatterParticleSoA particles;
+        float              camera_shake = 0.0f;
+        float              time         = 0.0f;
+        uint32_t           rng_state    = 0x9e3779b9u;   // deterministic debris velocities
+
+        explicit FxState(std::pmr::memory_resource* mr) : particles(mr) {}
+    };
+
+    // Piece palette (render vocabulary — moved out of the grid contract).
+    static inline shs::Color get_piece_color(PieceType type) {
+        switch (type) {
+            case PieceType::I: return shs::Color{  40, 220, 240, 255 }; // Cyan
+            case PieceType::O: return shs::Color{ 255, 225,  45, 255 }; // Yellow
+            case PieceType::T: return shs::Color{ 185,  70, 240, 255 }; // Purple
+            case PieceType::S: return shs::Color{  60, 230,  95, 255 }; // Green
+            case PieceType::Z: return shs::Color{ 245,  55,  55, 255 }; // Red
+            case PieceType::J: return shs::Color{  45, 110, 245, 255 }; // Blue
+            case PieceType::L: return shs::Color{ 255, 140,  35, 255 }; // Orange
+            default:           return shs::Color{  80,  90, 105, 255 };
+        }
+    }
+
+} // namespace tetris::spatial_fx

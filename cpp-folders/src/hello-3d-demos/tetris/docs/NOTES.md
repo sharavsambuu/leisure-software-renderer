@@ -1,3 +1,12 @@
+# Domain Pods & Stateless Lua — Design Notes
+
+Reference guide for the VOP/DOD domain-pod architecture used by the hello-3d demos
+(tetris is the reference implementation). Companion documents in this folder:
+`TODOS.md` (canonical 5-pod blueprint, status, Lua integration plan) and
+`REFACTOR_PROPOSAL.md` (how tetris was migrated onto this structure).
+
+---
+
 In **Value-Oriented Programming (VOP)** and **Data-Oriented Design (DOD)**, a Domain Pod is not an "object" or an "asset"—it is a **Self-Contained Mathematical Rulebook** governing a specific facet of game state.
 
 Here is a practical guide on how to define, name, split, and boundary-check domain pods for any game genre.
@@ -65,7 +74,7 @@ Create a new domain if and only if the system passes at least two of these tests
 
 #### ❌ Red Flag 3: The Driver / Hardware Trap
 - **Wrong**: `domains/audio_synth`, `domains/vulkan_renderer`, `domains/sdl_window`.
-- **Right**: Hardware drivers, audio DACs, and GPU submitters belong in **`edges/`** (`audio.edge.hpp`, `rasterizer.edge.hpp`, `input.edge.hpp`), because they are impure execution boundaries, not game simulation domains.
+- **Right**: Hardware drivers, audio DACs, and GPU submitters belong in **`edges/`** (one subdirectory per edge: `edges/audio/tetris.audio.hpp`, `edges/rasterizer/tetris.rasterizer.hpp`, `edges/input/tetris.input.hpp`), because they are impure execution boundaries, not game simulation domains.
 
 #### ❌ Red Flag 4: Synchronous Tight-Loop Coupling
 - If Subsystem A and Subsystem B must mutate the exact same arrays at the exact same microsecond with zero event latency, **they are one single domain**.
