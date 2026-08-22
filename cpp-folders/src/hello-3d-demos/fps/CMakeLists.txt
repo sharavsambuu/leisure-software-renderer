@@ -49,6 +49,8 @@ add_executable(HelloFPSDemo
 target_compile_options(HelloFPSDemo PRIVATE
     $<$<AND:$<CXX_COMPILER_ID:GNU,Clang>,$<NOT:$<CONFIG:Debug>>>:-O3 -march=native -flto>
     $<$<OR:$<CXX_COMPILER_ID:GNU,Clang>,$<CXX_COMPILER_ID:Intel>>:-Wextra -Wall -Wpedantic -Wshadow -Wcast-qual -Wcast-align -Wunused -Wconversion -Wsign-conversion -Wfloat-conversion>
+    $<$<CXX_COMPILER_ID:MSVC>:/MP>                       # parallel compilation (speeds up VS builds)
+    $<$<CXX_COMPILER_ID:MSVC>:/EHsc>
 )
 
 target_compile_definitions(HelloFPSDemo PRIVATE GLM_ENABLE_EXPERIMENTAL)
@@ -63,9 +65,15 @@ target_link_libraries(HelloFPSDemo PRIVATE
 
 # --- Platform-specific optimizations ---
 if (MSVC)
-    # Appends the flags only if the configuration is NOT Debug
+    # Appends the flags only if the configuration is NOT Debug.
+    # /GL + /LTCG = whole-program optimization, the MSVC analogue of the
+    # -O3 -march=native -flto used on Linux — without these, a Release
+    # software rasterizer runs far slower than the Linux build.
     target_compile_options(HelloFPSDemo PRIVATE 
-        $<$<NOT:$<CONFIG:Debug>>:/O2 /fp:fast /arch:AVX2>
+        $<$<NOT:$<CONFIG:Debug>>:/O2 /fp:fast /arch:AVX2 /GL>
+    )
+    target_link_options(HelloFPSDemo PRIVATE
+        $<$<NOT:$<CONFIG:Debug>>:/LTCG>
     )
 elseif(APPLE AND CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
     target_compile_options(HelloFPSDemo PRIVATE -O3 -ffast-math)

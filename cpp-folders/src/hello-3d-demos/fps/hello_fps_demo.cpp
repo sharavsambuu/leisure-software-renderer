@@ -1,4 +1,8 @@
-﻿// ============================================================================
+﻿// SDL on Windows redefines `main` to `SDL_main`; SDL_MAIN_HANDLED opts out so
+// the plain main() below links (matches snake/tetris/plane demos).
+#define SDL_MAIN_HANDLED
+
+// ============================================================================
 // HelloFPSDemo — MAIN ENTRY EDGE
 // Owns: SDL lifecycle (window/audio), per-frame PMR arena, the game loop
 // wiring, and presentation. All simulation/render/HUD logic lives in pods.

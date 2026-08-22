@@ -62,8 +62,14 @@ target_link_libraries(Hello3DTetris PRIVATE
 
 # --- Platform-specific optimizations ---
 if (MSVC)
+    # /GL + /LTCG = whole-program optimization (MSVC analogue of -flto);
+    # without these a Release software rasterizer runs far slower than Linux.
     target_compile_options(Hello3DTetris PRIVATE 
-        $<$<NOT:$<CONFIG:Debug>>:/O2 /fp:fast /arch:AVX2>
+        $<$<NOT:$<CONFIG:Debug>>:/O2 /fp:fast /arch:AVX2 /GL>
+        /MP
+    )
+    target_link_options(Hello3DTetris PRIVATE
+        $<$<NOT:$<CONFIG:Debug>>:/LTCG>
     )
 elseif(APPLE AND CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
     target_compile_options(Hello3DTetris PRIVATE -O3 -ffast-math)
