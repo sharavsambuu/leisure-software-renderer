@@ -146,14 +146,21 @@
 
     export VCPKG_ROOT="/opt/vcpkg"
 
-    sudo vcpkg install sdl2[vulkan] --recurse
-    sudo vcpkg install sdl2-image
-    sudo vcpkg install --recurse sdl2-image[libjpeg-turbo]
-    sudo vcpkg install glm
-    sudo vcpkg install assimp
-    sudo vcpkg install joltphysics
-    sudo vcpkg install vulkan-memory-allocator
-    sudo vcpkg install lua
+    # Required by configure (find_package REQUIRED): missing any of these aborts cmake.
+    sudo vcpkg install "sdl2[vulkan]"               # window/input backend for every demo
+    sudo vcpkg install "sdl2-image[libjpeg-turbo]"  # image loading: REQUIRED for hello-render-target demos
+                                                    # (HelloShadowMapping, HelloWater, HelloIblSkybox*, ...)
+                                                    # NOTE: installs as SDL2_image::SDL2_image-static on x64-linux
+    sudo vcpkg install glm                          # math library used everywhere
+    sudo vcpkg install assimp                       # model loading (hello-3d-primitives / render-target)
+    sudo vcpkg install vulkan-memory-allocator      # REQUIRED at configure time even for CPU-only work
+
+    # Optional / feature-gated:
+    sudo vcpkg install joltphysics                  # physics experiments (exp-plumbing)
+    sudo vcpkg install lua                          # scripting experiments (configure tolerates absence)
+
+    see docs/dev/cpp_compilation_workflow.md for the validated build/test workflow,
+    shell-quoting traps through the Windows->WSL bridge, and CMake/C++ pitfalls before running anything.
 
 
     

@@ -18,14 +18,25 @@ find_package(SDL2_image CONFIG QUIET)   # optional: no demo uses image loading; 
 find_package(glm CONFIG REQUIRED)
 find_package(assimp CONFIG REQUIRED)
 
-# SDL2_image ships either a shared import target (SDL2_image::SDL2_image) or, when built static,
-# an imported "SDL2_image-static" target. The demos link the unified scoped alias SDL2_image::Main.
-# Guard ALL branches: on some vcpkg toolchains neither branch's fallback exists, and add_library ALIAS
-# crashes if it aliases a non-existent target (see issue log). When SDL2_image is not installed we
-# define an unscoped INTERFACE library "SDL2_image_Main" and alias it to the scoped name demos expect.
+# SDL2_image ships either a shared import target (SDL2_image::SDL2_image) or, when built static
+# (vcpkg x64-linux default), a QUALIFIED "SDL2_image::SDL2_image-static" target. The demos link the
+# unified scoped alias SDL2_image::Main.
+#
+# WARNING (validated 2026-08-22): this aggregator runs BEFORE hello-render-target in the root
+# add_subdirectory order, and non-global ALIAS targets created here ARE visible to later-processed
+# sibling directories. If we fall through to the no-op INTERFACE fallback below while SDL2_image IS
+# installed, the name SDL2_image::Main gets poisoned: hello-render-target's own
+# `if(NOT TARGET SDL2_image::Main)` guard then skips creating its real alias, and every target there
+# links WITHOUT libSDL2_image.a → undefined IMG_Init/IMG_Load/IMG_Quit at link time.
+# Hence: check ALL real target shapes first (qualified shared, qualified static, legacy unqualified)
+# and only use the empty fallback when the package is genuinely absent.
 if(TARGET SDL2_image::SDL2_image)
     add_library(SDL2_image::Main ALIAS SDL2_image::SDL2_image)
+elseif(TARGET SDL2_image::SDL2_image-static)
+    # vcpkg static triplet (x64-linux): this is the shape find_package actually provides.
+    add_library(SDL2_image::Main ALIAS SDL2_image::SDL2_image-static)
 elseif(TARGET SDL2_image-static)
+    # Legacy unqualified static name (older SDL2_image config layouts).
     add_library(SDL2_image::Main ALIAS SDL2_image-static)
 else()
     message(STATUS "SDL2_image not found — treating as optional (no demo uses image loading).")

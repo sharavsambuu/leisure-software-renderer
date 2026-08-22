@@ -4,7 +4,7 @@
 // never touches the grid or rendering. Allocation-free.
 #include <algorithm>
 #include "snake.contract.hpp"
-#include "../matrix/snake.event.hpp"   // shared vocabulary (SnakeEventType) — DOD reusable-vocabulary test
+#include "snake.event.hpp"   // shared vocabulary (SnakeEventType) — DOD reusable-vocabulary test
 
 namespace snake::progression {
 

@@ -1,1 +1,5 @@
-_dump.sh
+# Demo-local dev artifacts (verification screenshots / logs written next to sources).
+# The diag scripts themselves live in cpp-folders/_diag_snake/ — ignored at repo root.
+# See docs/DETAILS.md §5 for the verification recipes that use them.
+*.bmp
+*.log

@@ -36,14 +36,15 @@ include_directories(${stb_SOURCE_DIR}/)
 # bare cross-subdir includes resolve from any file under snake/, mirroring tetris's
 # within-pod flat-include convention. Only dirs actually referenced by a source header
 # are listed (verified via grep of #include directives):
-#   - "snake.contract.hpp"          -> each domain/edge subdir itself
-#   - "../config/levels/snake_level_01.hpp"  + "../../../config/..." -> config/levels
-#   - "../matrix/snake.event.hpp"   -> domains/matrix
-#   - "snake_level_01.hpp"         -> domains/spatial_fx (same-dir)
-# Dead dirs (domains/environment, edges/rasterizer) are intentionally omitted.
-include_directories(${CMAKE_CURRENT_LIST_DIR}/snake/domains/matrix)
-include_directories(${CMAKE_CURRENT_LIST_DIR}/snake/config/levels)
-include_directories(${CMAKE_CURRENT_LIST_DIR}/snake/domains/spatial_fx)
+#   - "snake.contract.hpp"  -> domains/matrix (shared command vocabulary for edges + pods)
+#   - "difficulty.hpp"      -> config        (snake::config::Difficulty)
+#   - "snake_level_01.hpp"  -> config/levels (SnakeLevel01 arena + food table)
+# Purged 2026-08-22 (see docs/STATUS.md §0): domains/config dup, domains/matrix/snake.plan.hpp,
+# domains/spatial_fx/snake.reducer.hpp, domains/environment/ — none were included by anything.
+# edges/rasterizer + edges/audio remain on disk as origin-structure slots but stay unwired.
+include_directories(${CMAKE_CURRENT_LIST_DIR}/config)
+include_directories(${CMAKE_CURRENT_LIST_DIR}/config/levels)
+include_directories(${CMAKE_CURRENT_LIST_DIR}/domains/matrix)
 
 # --- Main executable: Hello3DSnake (multi-file domain pod architecture) ---
 add_executable(Hello3DSnake
@@ -52,6 +53,7 @@ add_executable(Hello3DSnake
     domains/matrix/snake.action.hpp
     domains/matrix/snake.event.hpp
     domains/matrix/snake.reducer.hpp
+    domains/spatial_fx/spatial_fx.contract.hpp  # render vocabulary (PipelineExecutionPlan, ShatterParticleSoA)
     domains/spatial_fx/snake.plan.hpp
     edges/input/snake.input.hpp          # input edge (SDL boundary -> SnakeCommand)
     domains/progression/snake.contract.hpp  # ScoreState

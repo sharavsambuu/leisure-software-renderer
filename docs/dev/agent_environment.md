@@ -5,13 +5,18 @@ Written for **AI coding agents**, not humans. Goal: complete the task with the f
 ## START HERE — follow these exactly, do not guess
 - **[HARD RULE] Never use `execute_command` or any shell to read/list/search files.** Use the file tools instead: `read_file`, `write_to_file`, `search_files` with workspace-relative paths (e.g., `docs/spec/conventions.md`). This single rule removes most wasteful CLI text here.
 - **READ-ONLY TASKS → file tools only, no shell.** If the task is "recall X", "read Y", or "survey Z", do it purely with `read_file`/`search_files`. Do NOT run `ls`, `find`, `dir`, PowerShell, or any listing to discover files. The file tools already return full contents; a shell listing is pure waste and can be wrong here (see Anti-recurrence notes).
-- **For anything that must run on Linux** (`cmake`, `make`, `ctest`, `git`), wrap it in:
+- **For anything that must run on Linux** (`cmake`, `make`, `ctest`, `git`), wrap it in ONE of these two
+  validated forms:
 
   ```bash
+  # PREFERRED (--cd sets the Linux cwd natively; no cd-chaining needed):
+  wsl.exe -d Ubuntu-24.04 --cd /home/sharavsambuu/src/dev/leisure-software-renderer -- bash -c "<linux command>"
+
+  # Equivalent classic form:
   wsl -e bash -lc "cd /home/sharavsambuu/src/dev/leisure-software-renderer && <linux command>"
   ```
 
-  Always pass an explicit WSL path inside the string. Never rely on inherited cwd (a bare `wsl` lands in `/mnt/c/Windows`).
+  Always pass an explicit WSL path. Never rely on inherited cwd (a bare `wsl` lands in `/mnt/c/Windows`).
 - **Treat the "UNC paths are not supported" banner as noise.** It prints on every `execute_command`. Ignore it; act only on real output.
 
 ## Hard rules (do not violate)
@@ -45,8 +50,41 @@ Written for **AI coding agents**, not humans. Goal: complete the task with the f
 | Bare `wsl -e bash -lc "pwd"` (no explicit WSL path) | ⚠️ Lands in `/mnt/c/Windows` — succeeds but wrong tree | Always pass an explicit `/home/...` path inside the string. |
 
 ## Current state anchor (do not re-probe this)
-- The build dir `cpp-folders/build` already exists and is configured; VOP tests are registered. **Do not re-run cmake** unless you changed a top-level or per-target `CMakeLists.txt`.
+- TWO configured build dirs exist: `cpp-folders/build` (classic) and `cpp-folders/build_vcpkg`
+  (preferred for demo work). Both are configured with the vcpkg toolchain; VOP tests are registered.
+  **Do not re-run cmake** unless you changed any `CMakeLists.txt` (then `cmake .` inside the build dir).
 - If a command's output looks wrong, suspect the cwd (Windows root), not a broken tool — then fall back to file tools instead of retrying with another path.
+
+## Command templates (copy-paste safe, all validated)
+
+Use these EXACT shapes. Do not improvise variants — nested quotes, embedded newlines, and `$()`
+substitution break silently through the cmd→wsl bridge (details in
+`docs/dev/cpp_compilation_workflow.md` § Shell-quoting traps).
+
+```bash
+# Configure/reconfigure after editing ANY CMakeLists.txt (run INSIDE the build dir):
+wsl.exe -d Ubuntu-24.04 --cd /home/sharavsambuu/src/dev/leisure-software-renderer/cpp-folders/build_vcpkg -- bash -c "cmake . > /tmp/cfg.log 2>&1; echo EXIT=$?; tail -3 /tmp/cfg.log"
+
+# Build ONE target (fast feedback loop while iterating on code):
+wsl.exe -d Ubuntu-24.04 --cd /home/sharavsambuu/src/dev/leisure-software-renderer/cpp-folders/build_vcpkg -- bash -c "cmake --build . --target Hello3DSnake -j$(nproc) > /tmp/b.log 2>&1; echo EXIT=$?; grep -cE 'error:' /tmp/b.log; tail -2 /tmp/b.log"
+
+# Full build (all targets; use when CMake structure changed or before declaring done):
+wsl.exe -d Ubuntu-24.04 --cd /home/sharavsambuu/src/dev/leisure-software-renderer/cpp-folders/build_vcpkg -- bash -c "cmake --build . -j$(nproc) > /tmp/full.log 2>&1; echo EXIT=$?; grep -cE 'error:' /tmp/full.log; tail -3 /tmp/full.log"
+
+# VOP validation tests:
+wsl.exe -d Ubuntu-24.04 --cd /home/sharavsambuu/src/dev/leisure-software-renderer/cpp-folders/build_vcpkg -- bash -c "ctest -R 'shs_renderer_vop_(boundary_check|tests)' --output-on-failure"
+
+# git state (read-only inspection is fine via shell when wrapped):
+wsl.exe -d Ubuntu-24.04 --cd /home/sharavsambuu/src/dev/leisure-software-renderer -- bash -c "git status --short | head -20"
+```
+
+Rules encoded above:
+- **Always redirect verbose output to `/tmp/*.log`, then `grep`/`tail` it.** Full compiler output streamed
+  through the bridge gets truncated; the log+grep pattern never loses data.
+- **Count errors with `grep -cE 'error:'`** and check `EXIT=$?` — but remember exit 0 + plausible-looking
+  output can still mean wrong-cwd execution; verify content mentions real project paths.
+- **Multi-step or quote-heavy diagnostics → write a script file** (`write_to_file`), run it
+  (`-- ... -- bash path/to/script.sh`), delete it afterwards. Never inline them.
 
 ## STOP conditions
 You are done when the task is complete and its success criteria are met by real output from the file tools or a wrapped Linux command. Do **not** add extra verification passes beyond what the task requires (e.g., don't re-list the tree, re-read files you already read, or run redundant checks).
@@ -60,15 +98,6 @@ wsl -e bash -lc "cd /home/sharavsambuu/src/dev/leisure-software-renderer/cpp-fol
 
 - **One explicit path per command.** Never chain multiple filesystem operations expecting a shared cwd; each needs its own explicit WSL path (or use file tools).
 - **Prefer idempotent commands** (`mkdir -p`, incremental `make`). Re-running a build is safe; re-running a destructive command is not — check state first.
-
-## Build / test commands (run from bash, NOT via execute_command)
-```bash
-wsl -e bash -lc "cd /home/sharavsambuu/src/dev/leisure-software-renderer/cpp-folders && mkdir -p build && cd build"
-export VCPKG_ROOT="/opt/vcpkg"
-cmake .. -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake
-make -j20
-ctest -R "shs_renderer_vop_(boundary_check|tests)" --output-on-failure   # run only when the task needs it
-```
 
 ## Related docs
 - Project constitutions (architecture): `docs/spec/conventions.md`, `docs/spec/value_oriented_programming.md`, `docs/spec/dod_ecs_architecture.md`

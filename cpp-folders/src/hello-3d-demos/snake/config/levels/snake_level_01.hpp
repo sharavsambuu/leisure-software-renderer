@@ -12,19 +12,23 @@ namespace snake {
         static constexpr int GRID_H = 20;   // grid height (cells)
 
         glm::ivec2 head_spawn = { 9, 9 };              // initial head cell (bottom-left origin)
-        std::array<glm::ivec2, 3> body_spawn = {
-            { 8, 9 }, { 7, 9 }                          // initial body segments
-        };
+        // NOTE: glm::ivec2 elements REQUIRE double braces here — single-brace elision
+        // fails on GCC with "too many initializers" (see docs/dev/cmake-vcpkg-workflow.md).
+        std::array<glm::ivec2, 2> body_spawn = {{
+            { 8, 9 }, { 7, 9 }                          // initial body segments (excl. head; total length 3)
+        }};
 
         glm::ivec2 dir_spawn = { 1, 0 };               // facing right (+X)
 
         glm::ivec2 food_spawn = { -1, -1 };            // empty until first spawn
-        std::array<glm::ivec2, 8> food_table = {         // deterministic food spawn positions (x,y pairs)
+        std::array<glm::ivec2, 8> food_table = {{       // deterministic food spawn positions (x,y pairs)
             { 3, 3 }, { 16, 3 }, { 10, 16 }, { 4, 15 },
             { 17, 12 }, { 6, 8 }, { 13, 6 }, { 9, 18 }
-        };
+        }};
 
-        glm::vec3 arena_center = { GRID_W * 0.5f - 0.5f, GRID_H * 0.5f - 0.5f, 0.0f }; // world-space center
+        // World-space arena center on the FLOOR plane (Constitution I: LH, +Y up, floor in XZ).
+        // Matches the plan's cell mapping (x, y) -> (x, 0, -y): center = (W/2-0.5, 0, -(H/2-0.5)).
+        glm::vec3 arena_center = { GRID_W * 0.5f - 0.5f, 0.0f, -(GRID_H * 0.5f - 0.5f) };
         float     arena_half_w   = (float)GRID_W * 0.5f;
         float     arena_half_h   = (float)GRID_H * 0.5f;
 

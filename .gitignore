@@ -60,3 +60,10 @@ stress_soak.sh
 build_and_test.sh
 build_fwd.sh
 compile.sh
+
+# Dev-time diagnostic tooling (per-demo pixel-forensics suites, e.g. _diag_snake)
+# and local screenshot/log artifacts they produce. Intentionally NOT tracked —
+# see <demo>/docs/DETAILS.md for what each script does so they can be recreated.
+cpp-folders/_diag_*/
+cpp-folders/**/*.bmp
+cpp-folders/**/*.log

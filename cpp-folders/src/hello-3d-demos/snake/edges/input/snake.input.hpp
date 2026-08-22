@@ -33,7 +33,7 @@ namespace snake::input {
         };
 
         std::pmr::vector<snake::matrix::SnakeCommand> cmds(mr);
-        int n = 0;
+        size_t n = 0;
         if (s.turn_left)  kCommands[n++] = {0u, SnakeCommandType::LEFT, 1.0f};
         if (s.turn_right) kCommands[n++] = {0u, SnakeCommandType::RIGHT, 1.0f};
         if (s.strafe_up)  kCommands[n++] = {0u, SnakeCommandType::UP, 1.0f};
@@ -41,7 +41,7 @@ namespace snake::input {
 
         if (n == 0) return {};   // empty view over the static buffer — no allocation at all
         cmds.resize(n);
-        for (int i = 0; i < n; ++i) cmds[i] = kCommands[i];
+        for (size_t i = 0; i < n; ++i) cmds[i] = kCommands[i];
         return cmds;
     }
 

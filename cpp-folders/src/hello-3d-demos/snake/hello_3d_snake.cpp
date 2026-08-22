@@ -4,6 +4,7 @@
 // vp transform → pre-shaded triangles (PipelineExecutionPlan) → per-tile rasterization with frustum clip +
 // barycentric depth test. No Camera3D / draw_triangle_flat_shading; the tiled path is the canonical one.
 #include <iostream>
+#include <string>
 #include <vector>
 #include <cmath>
 #include <algorithm>
@@ -21,8 +22,15 @@
 #include "shs_renderer.hpp"
 #include "domains/spatial_fx/snake.plan.hpp"   // plan_snake_scene, ShatterParticleSoA
 #include "domains/matrix/snake.contract.hpp"    // SnakeSnapshot, SnakeCommandType, etc.
-#include "domains/progression/snake.contract.hpp"  // ScoreState
+#include "domains/matrix/snake.reducer.hpp"     // reduce_snake, cell_to_world (pure state machine)
+#include "domains/progression/snake.reducer.hpp"   // reduce_progression (ScoreState + events)
 #include "edges/input/snake.input.hpp"          // reduce_input
+
+// Canvas + rasterization tile grid (mirrors tetris's main; the renderer header does not define these).
+static const int CANVAS_WIDTH  = 1280;
+static const int CANVAS_HEIGHT = 720;
+static const int TILE_SIZE_X   = 80;
+static const int TILE_SIZE_Y   = 80;
 
 namespace vop {
     class FrameMemoryResource : public std::pmr::memory_resource {
@@ -75,7 +83,11 @@ static void rasterize_triangle_tile(
 {
     glm::vec2 v0(sc0.x, sc0.y), v1(sc1.x, sc1.y), v2(sc2.x, sc2.y);
     float area = (v1.x - v0.x) * (v2.y - v0.y) - (v1.y - v0.y) * (v2.x - v0.x);
-    if (!shs::Raster::is_front_facing_screen(area, shs::Raster::FrontFace::CounterClockwise)) return;
+    // Clockwise: the plan's view basis is UNMIRRORED (right = cross(fwd, up)); a horizontal
+    // mirror flips screen-space winding, so front faces that passed CCW under the old mirrored
+    // glm::lookAtLH view present CW now. (Everything was culled with CCW — verified by an
+    // all-but-degenerate empty frame after the view fix.)
+    if (!shs::Raster::is_front_facing_screen(area, shs::Raster::FrontFace::Clockwise)) return;
 
     glm::vec2 bboxmin = glm::max(glm::vec2(tile_min), glm::min(v0, glm::min(v1, v2)));
     glm::vec2 bboxmax = glm::min(glm::vec2(tile_max), glm::max(v0, glm::max(v1, v2)));
@@ -105,7 +117,29 @@ static void rasterize_triangle_tile(
 // MAIN ENTRY EDGE
 // ============================================================================
 int main(int argc, char* argv[]) {
-    (void)argc; (void)argv;
+    // Agent verification hooks (composable flags; let a build check rendering/controls without a
+    // display or human):
+    //   --screenshot            render until --frame=N, save the canvas BMP, exit
+    //   --autodrive-up          inject ONE synthetic ArrowUp intent at frame 60
+    //   --autodrive-right       inject ONE synthetic ArrowRight intent at frame 60
+    //   --frame=N               screenshot trigger frame (default 60)
+    //   <bare path>             BMP output path (default /tmp/snake_frame.bmp)
+    // Control proof recipe: run idle at two frames (must be IDENTICAL — no idle decay), then
+    // --autodrive-up past frame 60 (snake centroid must move UP-screen by ~one cell).
+    bool        screenshot_mode  = false;
+    bool        autodrive_up     = false;
+    bool        autodrive_right  = false;
+    const char* screenshot_path  = "/tmp/snake_frame.bmp";
+    int         screenshot_frame = 60;
+    for (int i = 1; i < argc; ++i) {
+        const std::string a = argv[i];
+        if (a == "--screenshot")       screenshot_mode = true;
+        else if (a == "--autodrive-up") autodrive_up = true;
+        else if (a == "--autodrive-right") autodrive_right = true;
+        else if (a.rfind("--frame=", 0) == 0) screenshot_frame = std::atoi(a.c_str() + 8);
+        else                            screenshot_path = argv[i];
+    }
+    int frame_no = 0;   // deterministic frame index for the hooks above
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER) < 0) {
         std::cerr << "SDL_Init failed: " << SDL_GetError() << std::endl;
@@ -129,14 +163,25 @@ int main(int argc, char* argv[]) {
     shs::Canvas   canvas(CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{ 14, 16, 22, 255 });
     shs::ZBuffer  z_buffer(CANVAS_WIDTH, CANVAS_HEIGHT, -1.0f, 1.0f);
 
-    snake::config::Difficulty difficulty;   // default: soft walls (bounce)
-    snake::matrix::SnakeSnapshot snap = snake::matrix::SnakeSnapshot{};   // initial spawn from level data
-    const snake::SnakeLevel01     level{};   // arena bounds + food table (level 01)
+    snake::config::Difficulty difficulty;      // default: soft walls (bounce)
+    const snake::SnakeLevel01 level{};         // arena bounds + food table (level 01)
+
+    // Initial snapshot from the level's spawn data (head + body segments + facing + first food).
+    snake::matrix::SnakeSnapshot snap{};
+    snap.head_pos = level.head_spawn;
+    snap.head_dir = glm::vec2(level.dir_spawn);
+    snap.food.pos = level.food_table[0];
+    snap.body.position.push_back(snake::matrix::cell_to_world(level, level.head_spawn.x, level.head_spawn.y));
+    for (const auto& seg : level.body_spawn) {
+        snap.body.position.push_back(snake::matrix::cell_to_world(level, seg.x, seg.y));
+    }
+
     snake::progression::ScoreState score_state = snake::progression::ScoreState::fresh();
+    bool alive_prev = true;                    // for one-shot death FX / high-score transitions
 
-    ShatterParticleSoA particles(std::pmr::get_default_resource());
+    snake::spatial_fx::ShatterParticleSoA particles(std::pmr::get_default_resource());
 
-    static const int THREAD_COUNT = std::max(2u, std::thread::hardware_concurrency() > 2 ? std::thread::hardware_concurrency() - 2 : 2u);
+    static const int THREAD_COUNT = static_cast<int>(std::max(2u, std::thread::hardware_concurrency() > 2 ? std::thread::hardware_concurrency() - 2 : 2u));
     shs::Job::ThreadedPriorityJobSystem job_system(THREAD_COUNT);
     shs::Job::WaitGroup                 wg_render;
 
@@ -150,17 +195,24 @@ int main(int argc, char* argv[]) {
 
     while (!quit) {
         Uint32 cur_tick = SDL_GetTicks();
-        float dt = (cur_tick - last_tick) / 1000.0f;
+        float dt = static_cast<float>(cur_tick - last_tick) / 1000.0f;
         last_tick = cur_tick;
         if (dt > 0.05f) dt = 0.05f;
 
-        time_sec += dt;   // advance orbiting camera timer
+        time_sec += dt;   // legacy timer (camera is now fixed; kept for future motion features)
+        ++frame_no;
 
         frame_memory.reset();
         auto* arena = frame_memory.get();
 
         // 1. INPUT POLLING → matrix commands
         snake::input::InputState input_state{};
+        if (autodrive_up && frame_no == 60) {
+            input_state.strafe_up = true;   // single-frame synthetic ArrowUp (see main() header)
+        }
+        if (autodrive_right && frame_no == 60) {
+            input_state.turn_right = true;   // single-frame synthetic ArrowRight (see main() header)
+        }
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_QUIT) quit = true;
             if (e.type == SDL_KEYDOWN) {
@@ -177,13 +229,27 @@ int main(int argc, char* argv[]) {
         auto step = snake::matrix::reduce_snake(snap, commands, difficulty, level);
         snap = step.next_state;
 
-        for (const auto& ev : step.events) {
-            switch (ev.type) {
-                case snake::matrix::SnakeEventType::FOOD_EATEN:   score_state.score += 10; break;
-                case snake::matrix::SnakeEventType::SELF_COLLISION:
-                    if (!step.alive) { score_state.high_score = std::max(score_state.high_score, score_state.score); }
-                    break;
-                default: break;
+        // Progression pod consumes matrix events (pure event-driven scoring + speed ramp).
+        score_state = snake::progression::reduce_progression(step.events, score_state);
+        score_state.length = static_cast<int>(snap.body.position.size());
+
+        if (!step.alive && alive_prev) {   // one-shot death transition
+            alive_prev = false;
+            score_state.high_score = std::max(score_state.high_score, score_state.score);
+
+            // Shatter burst at the head (execution-edge FX; deterministic LCG from the level seed).
+            // Floor mapping matches the plan: cell (x,y) -> world (x, ~0.4, -y); debris pops UP (+Y)
+            // and gravity (-Y) pulls it back down onto the board plane.
+            uint32_t rng = level.rng_state;
+            for (int i = 0; i < 40; ++i) {
+                rng = rng * 1664525u + 1013904223u;
+                float ang = static_cast<float>(rng % 720u) / 180.0f * glm::pi<float>();
+                glm::vec2 dir(std::cos(ang), std::sin(ang));
+                float speed = static_cast<float>(rng % 120u) / 30.0f + 1.0f;
+                float up_pop = 2.0f + static_cast<float>(rng % 80u) / 40.0f;
+                particles.add(glm::vec3(float(snap.head_pos.x), 0.4f, -float(snap.head_pos.y)),
+                              glm::vec3(dir.x * speed, up_pop, -dir.y * speed),
+                              shs::Color{ 255, 90, 60, 255 }, 0.8f);
             }
         }
 
@@ -193,17 +259,19 @@ int main(int argc, char* argv[]) {
             particles.velocity[i].y -= 18.0f * dt;   // gravity
             particles.life[i] -= dt;
             if (particles.life[i] <= 0.0f) {
-                particles.position.erase(particles.position.begin() + i);
-                particles.velocity.erase(particles.velocity.begin() + i);
-                particles.color.erase(particles.color.begin() + i);
-                particles.life.erase(particles.life.begin() + i);
+                const auto idx = static_cast<std::ptrdiff_t>(i);
+                particles.position.erase(particles.position.begin() + idx);
+                particles.velocity.erase(particles.velocity.begin() + idx);
+                particles.color.erase(particles.color.begin() + idx);
+                particles.life.erase(particles.life.begin() + idx);
             } else {
                 ++i;
             }
         }
 
         // 4. PURE 3D BATCH PLANNER → pre-shaded triangles (clip-space corners + Lambert colors)
-        auto plan = snake::spatial_fx::plan_snake_scene(snap, commands, difficulty, level, particles);
+        auto plan = snake::spatial_fx::plan_snake_scene(snap, commands, difficulty, level, particles,
+                                                        CANVAS_WIDTH, CANVAS_HEIGHT);
 
         // 5. TILED PARALLEL RASTERIZATION (frustum clip + barycentric depth test per tile)
         canvas.buffer().clear(shs::Color{ 14, 16, 22, 255 });
@@ -229,8 +297,8 @@ int main(int argc, char* argv[]) {
 
                         glm::vec4 s0 = clip_to_screen_vec4(poly.vertices[0], W, H);
                         for (int i = 1; i + 1 < poly.count; ++i) {
-                            glm::vec4 s1 = clip_to_screen_vec4(poly.vertices[i], W, H);
-                            glm::vec4 s2 = clip_to_screen_vec4(poly.vertices[i + 1], W, H);
+                            glm::vec4 s1 = clip_to_screen_vec4(poly.vertices[static_cast<size_t>(i)], W, H);
+                            glm::vec4 s2 = clip_to_screen_vec4(poly.vertices[static_cast<size_t>(i + 1)], W, H);
                             rasterize_triangle_tile(canvas, z_buffer, s0, s1, s2, tri.lit_color, tri.depth_bias, tmin, tmax);
                         }
                     }
@@ -246,13 +314,20 @@ int main(int argc, char* argv[]) {
         SDL_RenderClear(sdl_renderer);
         SDL_RenderCopy(sdl_renderer, screen_texture, NULL, NULL);
         SDL_RenderPresent(sdl_renderer);
-    }
+
+        // Screenshot verification hook (see main() header comment).
+        if (screenshot_mode && frame_no == screenshot_frame) {
+            SDL_SaveBMP(screen_surface, screenshot_path);
+            std::cout << "Screenshot saved: " << screenshot_path << " (frame " << frame_no << ")\n";
+            quit = true;
+        }
+    }   // end main loop
 
     if (sdl_renderer) SDL_DestroyRenderer(sdl_renderer);
     if (screen_texture) SDL_DestroyTexture(screen_texture);
     if (screen_surface) SDL_FreeSurface(screen_surface);
     if (window) SDL_DestroyWindow(window);
-    if (SDL_WasInit(SDL_INIT_AUDIO)) SDL_QuitAudio();
+    if (SDL_WasInit(SDL_INIT_AUDIO)) SDL_QuitSubSystem(SDL_INIT_AUDIO);
     SDL_Quit();
 
     return 0;

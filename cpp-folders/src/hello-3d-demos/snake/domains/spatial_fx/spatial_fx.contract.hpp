@@ -5,21 +5,24 @@
 #include <array>
 #include <memory_resource>
 #include <glm/glm.hpp>
-#include "../../../hello-shs-renderer/shs_renderer.hpp"   // shs::Color, shs::Camera3D
+#include "shs_renderer.hpp"   // shs::Color (shared renderer from hello-shs-renderer; dir is on the global include path via parent aggregator)
 
 namespace snake::spatial_fx {
 
-    // PipelineExecutionPlan: render-ready geometry for one frame. Zero game logic — consumed by the rasterizer.
-    // Canonical renderer format (see docs/spec/conventions.md): clip-space corners + pre-shaded color + depth bias.
-    struct PipelineExecutionPlan {
-        std::pmr::vector<ProcessedTriangle> triangles;   // all visible faces across board, walls, food, snake + FX
-        glm::mat4 vp_matrix = glm::mat4(1.0f);           // shared per-frame camera matrix (world→clip) for all triangles
-    };
-
+    // ProcessedTriangle: canonical renderer format (see docs/spec/conventions.md) — clip-space corners +
+    // pre-shaded color + depth bias. Declared before PipelineExecutionPlan, which stores them by value.
     struct ProcessedTriangle {
         glm::vec4  c0, c1, c2;
         shs::Color lit_color;
         float      depth_bias;
+    };
+
+    // PipelineExecutionPlan: render-ready geometry for one frame. Zero game logic — consumed by the rasterizer.
+    struct PipelineExecutionPlan {
+        std::pmr::vector<ProcessedTriangle> triangles;   // all visible faces across board, walls, food, snake + FX
+        glm::mat4 view_matrix = glm::mat4(1.0f);         // world→view (orbiting top-down camera)
+        glm::mat4 proj_matrix = glm::mat4(1.0f);         // view→clip (perspective)
+        glm::mat4 vp_matrix   = glm::mat4(1.0f);         // shared per-frame camera matrix (world→clip)
     };
 
     // Camera params for the orbiting top-down view of the semi-3D board.

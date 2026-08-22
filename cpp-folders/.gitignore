@@ -57,5 +57,6 @@ test/test_runner
 
 .vscode/
 build
+build_vcpkg/
 
 

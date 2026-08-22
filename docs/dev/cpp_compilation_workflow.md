@@ -2,6 +2,24 @@
 
 This document is written for **AI coding agents** working in this repo. It defines the exact, validated build/test workflow and the corner cases that are easy to get wrong when an agent drives compilation from a Windows shell into WSL Ubuntu 24.04. Read `docs/dev/agent_environment.md` first — it explains why commands behave the way they do here.
 
+## The agent session loop (memorize this; everything below is detail)
+
+For ANY code task in this repo, run this loop — it is the shortest path to a verified result:
+
+1. **Read context first** (file tools, no shell): the target demo's `STATUS.md` if it exists
+   (e.g. `cpp-folders/src/hello-3d-demos/snake/docs/STATUS.md` — canonical per-demo state written by
+   previous agents), plus the files you will edit. Per-demo STATUS.md files override stale
+   IMPLEMENTATION_PLAN.md files.
+2. **Edit** with `write_to_file`/`replace_in_file` only.
+3. **Reconfigure if any CMakeLists.txt changed**: `cmake .` inside the build dir (template below).
+4. **Build ONE target** for fast iteration; **full build** before declaring done.
+5. **Verify from the log**: `EXIT=0`, `grep -cE 'error:'` = 0, and for warning hygiene
+   `grep 'warning:' log | grep -v shs_renderer.hpp | wc -l` = 0 for files you touched.
+6. **Stop.** Do not run redundant verification passes.
+
+If a build fails: read the FIRST error in the log (later ones are usually cascades), check the
+pitfalls list below, fix, rebuild. Never guess-fix more than one thing between builds.
+
 ## The one rule (repeated, because it is the whole problem)
 
 > **An agent's shell command runs in Windows `cmd.exe`, whose cwd is a broken UNC path.**
@@ -87,17 +105,18 @@ the specific subdirs that are actually referenced, using `${CMAKE_CURRENT_LIST_D
 correct regardless of where CMake is invoked from:
 
 ```cmake
-include_directories(${CMAKE_CURRENT_LIST_DIR}/snake/domains/matrix)
-include_directories(${CMAKE_CURRENT_LIST_DIR}/snake/config/levels)
-include_directories(${CMAKE_CURRENT_LIST_DIR}/snake/domains/spatial_fx)
+include_directories(${CMAKE_CURRENT_LIST_DIR}/config)
+include_directories(${CMAKE_CURRENT_LIST_DIR}/config/levels)
+include_directories(${CMAKE_CURRENT_LIST_DIR}/domains/matrix)
 ```
 
 - Only list dirs that a source header actually `#include`s. Verify with:
   ```bash
   wsl -e bash -lc "cd /home/sharavsambuu/src/dev/leisure-software-renderer/cpp-folders/src/hello-3d-demos && grep -rn '#include' --include='*.hpp' --include='*.cpp' . | grep '<demo-name>'"
   ```
-- Subdirs referenced by **no** source header (e.g. `snake/domains/environment`, `snake/edges/rasterizer`)
-  are intentionally omitted — dead dirs on the include path only mask future mistakes.
+- Subdirs referenced by **no** source header (e.g. `snake/domains/environment`, `snake/domains/progression`
+  as an include dir, `snake/edges/rasterizer`) are intentionally omitted — dead dirs on the include path
+  only mask future mistakes. (`progression` headers are reached by relative path from `main`, not bare includes.)
 - The shared renderer (`shs_renderer.hpp`) is inherited from the parent's global include path; do not
   re-add it in the demo file (it would duplicate the include).
 
@@ -105,6 +124,92 @@ include_directories(${CMAKE_CURRENT_LIST_DIR}/snake/domains/spatial_fx)
 
 If you edited any `CMakeLists.txt` (parent or per-demo), re-run step 1 (`cmake ..`) before building,
 or the new targets/include paths will not appear. This is incremental and safe to repeat.
+
+## The `build_vcpkg` build dir (validated, preferred for demo work)
+
+`cpp-folders/build_vcpkg/` is an **already-configured** vcpkg build tree (Makefile generator,
+toolchain wired, `_deps/` fetched). Prefer it over creating a fresh `build/` — configure is slow
+(~15 s) and unnecessary when the cache is valid:
+
+```bash
+# Reconfigure after any CMakeLists.txt edit (run INSIDE the build dir — note `cmake .`, not `cmake ..`):
+wsl.exe -d Ubuntu-24.04 --cd /home/sharavsambuu/src/dev/leisure-software-renderer/cpp-folders/build_vcpkg -- bash -c "cmake . > /tmp/cfg.log 2>&1; echo EXIT=$?; tail -3 /tmp/cfg.log"
+
+# Build ONE target (much faster than `make -j20` for everything):
+wsl.exe -d Ubuntu-24.04 --cd /home/sharavsambuu/src/dev/leisure-software-renderer/cpp-folders/build_vcpkg -- bash -c "cmake --build . --target Hello3DSnake -j$(nproc) > /tmp/b.log 2>&1; echo EXIT=$?; grep -cE 'error:' /tmp/b.log; tail -2 /tmp/b.log"
+```
+
+- `cmake .` inside an existing configured dir re-runs configure with cached values — no toolchain flag needed.
+- `--target <Name>` builds just that target and its deps. Demo target names: `HelloPixel`, `Hello3DSnake`, etc.
+- Log to `/tmp/*.log`, then `grep -E 'error:'` + `tail` it. Full g++ output is huge and gets truncated through the Windows bridge.
+- Binary output path: `build_vcpkg/src/hello-3d-demos/<demo>/<TargetName>` (e.g. `.../snake/Hello3DSnake`).
+
+## Shell-quoting traps through the cmd→wsl bridge (validated)
+
+The agent's command passes through **two** shells (`cmd.exe` → `bash -c "..."`). Nested quoting breaks silently:
+
+- **Never nest double quotes** inside the outer `bash -c "..."`. Use single quotes inside, or none:
+  ```bash
+  # BAD  (inner "..." terminates the outer string → mangled command):
+  wsl.exe ... -- bash -c "echo "exit: $?""
+  # GOOD:
+  wsl.exe ... -- bash -c "echo EXIT_CODE=$?"
+  ```
+- **Never embed literal newlines** in the inline command (e.g. inside `tr ' ' '
+'`) — cmd eats them and bash reports `unexpected EOF while looking for matching quote`.
+- **Avoid `$()`/parens-heavy one-liners** (`python3 -c "..."`) inline — they trip cmd's parser. For anything multi-step or quote-heavy, **write a small script file with `write_to_file` and run it**: `wsl.exe -d Ubuntu-24.04 --cd <repo> -- bash script.sh`. Delete it afterwards.
+- `$(nproc)` and `$?` survive fine because cmd does not expand `$`.
+- Redirect verbose output to a file and inspect with `grep`/`tail` instead of streaming it.
+
+## C++ pitfalls in this repo (validated by real compile failures)
+
+These cost real debugging time — check them before building:
+
+1. **`std::array<glm::ivec2, N>` needs DOUBLE braces.** Single-brace init (`= { {1,2}, {3,4} }`)
+   fails on GCC with `too many initializers` (brace elision breaks against glm::vec's ctor set).
+   Always write `= {{ {1,2}, {3,4} }}`. Verified minimal repro in `/tmp` before fixing.
+2. **Same-name headers shadow via same-dir resolution.** A bare `#include "snake.contract.hpp"` from
+   `domains/spatial_fx/` resolves to a file of that name **in the same directory first**, regardless of
+   `-I` order. snake had two `snake.contract.hpp` (matrix + spatial_fx); the spatial_fx plan silently
+   got the wrong one. Fix: give contracts unique names per pod (tetris convention: root-level shared
+   vocab + `spatial_fx.contract.hpp`), then rely on `-I` dirs for cross-pod bare includes.
+3. **Sibling namespaces are NOT searched by unqualified lookup.** Code in `namespace snake::spatial_fx`
+   cannot see `snake::matrix::SnakeSnapshot` as plain `SnakeSnapshot` even if the header is included.
+   Add explicit `using snake::matrix::SnakeSnapshot;` declarations (or fully qualify).
+4. **Strict warning flags are on** (`-Wall -Wextra -Wconversion -Wsign-conversion -Wshadow …`).
+   Recurring fixes: loop indices over `.size()` must be `size_t`; `static_cast<uint8_t>` for
+   `shs::Color` channel expressions; `static_cast<float>` on SDL `Uint32` math;
+   `begin() + static_cast<std::ptrdiff_t>(i)` for iterator arithmetic; `(void)param` for unused params.
+5. **SDL API names**: there is no `SDL_QuitAudio()` — use `SDL_QuitSubSystem(SDL_INIT_AUDIO)`.
+6. **Pre-existing warnings in `shs_renderer.hpp`** (-Wshadow in ZBuffer/Viewer ctors, some
+   -Wsign-conversion) come from the SHARED renderer and appear in every demo. Don't chase them from a
+   demo task; they need a dedicated renderer cleanup. Filter them out when counting your own warnings:
+   `grep 'warning:' build.log | grep -v shs_renderer.hpp | wc -l`
+7. **CMake ALIAS namespace is shared across subsequently-processed sibling directories** (validated
+   2026-08-22 with an isolated two-subdir probe). A non-global alias created in subdir A IS visible to
+   sibling B added later — so a fallback/no-op alias can POISON the name for later siblings.
+   Symptom seen: full `make -j20` failed linking HelloShadowMapping / HelloWater /
+   HelloShadowMappingSoft / HelloIblSkybox / HelloIblSkyboxOpt with undefined `IMG_Init/IMG_Load/
+   IMG_Quit`, while configure printed "SDL2_image not found" even though vcpkg HAD sdl2-image installed.
+   Root cause chain: vcpkg's static x64-linux SDL2_image defines ONLY the qualified target
+   `SDL2_image::SDL2_image-static` (verify with a probe project: `if(TARGET ...) message(...)` for each
+   candidate name). The hello-3d-demos aggregator's checks missed that name → fell into its no-op
+   INTERFACE fallback → hello-render-target (processed later) saw `SDL2_image::Main` already defined,
+   skipped creating its real alias → linked without libSDL2_image.a. Fix: check all real shapes
+   (`SDL2_image::SDL2_image`, `SDL2_image::SDL2_image-static`, legacy unqualified `SDL2_image-static`)
+   before any no-op fallback. Diagnosis pattern that cracked it: read the generated
+   `build/<dir>/CMakeFiles/<Target>.dir/link.txt` to see EXACTLY which libs CMake put on the link line.
+8. **SDL pixel-format byte order (for any screenshot/pixel analysis)**: `SDL_PIXELFORMAT_RGBA32`
+   resolves to ARGB8888 packing on little-endian → memory bytes are **B,G,R,A**, not R,G,B,A. A pixel
+   reader that assumes RGBA silently swaps R and B (symptom: color classifiers match nothing / wrong
+   things). Read pixels as `(byte[2], byte[1], byte[0])`. Validated while building the snake screenshot
+   analyzer (`cpp-folders/_diag_snake/analyze_frame.py`).
+9. **Coordinate-system vs camera mismatch (Constitution I)**: if a 3D scene renders edge-on or
+   mirrored, check the geometry plane against `docs/spec/conventions.md` (+Y up, +Z forward) BEFORE
+   touching the camera. Board/floor geometry belongs in the XZ plane; map grid (x,y) → world
+   `(x, 0, -y)` (proper rotation, det=+1). NEVER `(x, 0, y)` — that reflection flips triangle winding
+   (backface culling + mirrored lighting). Also check projection aspect = canvas_w/canvas_h (a
+   hardcoded 1.0 squeezes the image; see tetris.plan.hpp for the convention).
 
 ## Agent workflow (step by step)
 
@@ -142,7 +247,8 @@ That banner appears on **every** command and is harmless — it only describes t
 
 ## Related docs
 
+- Agent environment rules & command templates: `docs/dev/agent_environment.md` (read FIRST)
 - Project constitutions (architecture): `docs/spec/conventions.md`, `docs/spec/value_oriented_programming.md`, `docs/spec/dod_ecs_architecture.md`
 - VOP roadmap: `docs/roadmap/value_oriented_programming_first_class_roadmap.md`
-- Agent environment notes: `docs/dev/agent_environment.md`
-- README top-level build instructions for Ubuntu / macOS / Windows.
+- Per-demo canonical state: `cpp-folders/src/hello-3d-demos/<demo>/docs/STATUS.md` where present (e.g. `snake/docs/STATUS.md`)
+- README top-level build instructions (incl. vcpkg package list) for Ubuntu / macOS / Windows.
