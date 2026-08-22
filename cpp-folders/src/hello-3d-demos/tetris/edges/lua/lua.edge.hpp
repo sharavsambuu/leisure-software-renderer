@@ -1,113 +1,221 @@
 #pragma once
+// tetris/edges/lua/lua.edge.hpp — STATELESS LUA EVALUATOR EDGE (tetris::lua_edge)
+// The ONLY file in this demo that includes Lua headers (ARCHITECTURE.md §4.1).
+//
+// Constitution II Rule 8.2: scripts are PURE STATELESS REDUCERS. Plain-value
+// snapshot in → explicit value patch out. No pointers cross the boundary in
+// either direction; scripts never hold references to C++ objects.
+//
+// Sandboxing (determinism): the evaluator opens ONLY base/table/math and then
+// strips math.random/randomseed (non-deterministic) and print. os/io/package/
+// debug are never opened. Same script + same inputs ⇒ identical outputs.
+//
+// Build wiring: compiled only when CMake finds Lua (TETRIS_LUA_ENABLED);
+// otherwise this header is empty and pods run their native C++ rules.
 
-#include <lua.h>
-#include <lauxlib.h>
-#include <lualib.h>
-#include <string_view>
-#include <span>
-#include "shs_renderer.hpp"
+#if defined(TETRIS_LUA_ENABLED)
 
-namespace tetris {
-    namespace lua_edge {
+#include <lua.hpp>   // C API wrapped in extern "C" (plain <lua.h> would
+                     // C++-mangle every reference and fail to link)
 
-        // ============================================================================
-        // EDGE: Stateless Lua Scripting Engine (Constitution II Rule 8.2)
-        // ───────────────────────────────────────────────────────────────────────────
-        //
-        // Rules for all Lua scripts inside domain pods:
-        //   • No mutable references to C++ objects — only read values from stack.
-        //   → Return explicit value structs via the table on top of the stack.
-        //
-        // Architecture:
-        //   ┌─────────────────────────────┐          ┌──────────────────────────┐          ┌─────────────────────────┐
-        //   │ Immutable C++ Snapshot       ├─────────►│ Stateless Lua Script     │          │ C++ Value Patch Result  │
-        //   │ (state, dt, commands, etc.)  │          │ (pure function)          │          │ (score_delta, events)    │
-        //   └─────────────────────────────┘          └──────────────────────────┘          └─────────────────────────┘
-        // ============================================================================
+#include <config/rules.hpp>
 
-        /// A single Lua state instance that stays alive across frames.
-        /// Each thread gets its own state (no global registry).
-        struct LuaStateWrapper {
-            lua_State* L = nullptr;
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <string>
 
-            explicit LuaStateWrapper() {
-                L = luaL_newstate();
-                if (!L) throw std::runtime_error("luaL_newstate failed");
-                luaL_openlibs(L);
-            }
+namespace tetris::lua_edge {
 
-            ~LuaStateWrapper() {
-                if (L) lua_close(L);
-            }
+    // Plain-value results (mirrors of the script's return tables).
+    struct ScoreRuleResult {
+        int   score_added  = 0;
+        bool  level_up     = false;
+        bool  danger_alert = false;
+        float time_bonus   = 0.0f;   // seconds granted back (blitz economy)
+    };
 
-            /// Pushes a C++ struct onto the Lua stack and returns its field accessors.
-            static inline void push_struct(
-                lua_State* L, const std::string& name, const shs::Color& col,
-                float score_delta = 0.0f, int combo = 0, bool danger_alert = false
-            ) {
-                lua_createtable(L, 0, 4);
-                lua_pushfloat(L, static_cast<float>(col.r)); lua_setfield(L, -2, "r");
-                lua_pushfloat(L, static_cast<float>(col.g)); lua_setfield(L, -2, "g");
-                lua_pushfloat(L, static_cast<float>(col.b)); lua_setfield(L, -2, "b");
-                lua_pushfloat(L, score_delta);     lua_setfield(L, -2, "score_delta");
-                lua_pushinteger(L, combo);         lua_setfield(L, -2, "combo");
-                lua_pushboolean(L, danger_alert);  lua_setfield(L, -2, "danger_alert");
-                lua_setglobal(L, name.c_str());
-            }
+    struct ClockRuleResult {
+        bool danger_alert = false;
+        bool hurry        = false;
+    };
 
-            static inline int push_nil(lua_State* L) { return 0; } // No args.
-        };
-
-        /// Evaluates a pure Lua scoring function that receives immutable C++ inputs.
-        /// Returns an explicit value struct packed into the result table.
-        template <typename ScriptResult>
-        static inline void eval_script(
-            lua_State* L, const char* script_name,
-            float score_delta = 0.0f, int combo = 0, bool danger_alert = false
-        ) {
-            // Push input arguments onto the stack: (score_delta, combo, danger_alert)
-            lua_pushfloat(L, score_delta);
-            lua_pushinteger(L, combo);
-            lua_pushboolean(L, danger_alert);
-
-            // Call the user-defined pure function and pop result table
-            if (lua_getglobal(L, script_name.c_str()) != LUA_TFUNCTION) {
-                // Fallback default values if script missing or error
-                LuaStateWrapper::push_struct(L, "BlitzRules", shs::Color{255,100,80}, 1.0f, 0, false);
-            } else {
-                int err = lua_pcall(L, 3, 1, 0); // 3 inputs, 1 output table
-                if (err != LUA_OK) {
-                    const char* err_str = lua_tostring(L, -1);
-                    LuaStateWrapper::push_struct(L, "BlitzRules", shs::Color{255,100,80}, 1.0f, 0, false);
-                } else if (lua_isnil(L, -1)) {
-                    // Fallback on nil return
-                    LuaStateWrapper::push_struct(L, "BlitzRules", shs::Color{255,100,80}, 1.0f, 0, false);
-                } else {
-                    // Stack top is now the result table — extract fields into struct
-                    ScriptResult out{};
-                    lua_getfield(L, -1, "score_delta");
-                    out.score_added = static_cast<int>(lua_tonumber(L, -1));
-                    lua_pop(L, 1);
-
-                    lua_getfield(L, -1, "level_up");
-                    out.level_up = lua_toboolean(L, -1) != 0;
-                    lua_pop(L, 1);
-
-                    lua_getfield(L, -1, "danger_alert");
-                    out.danger_alert = lua_toboolean(L, -1) != 0;
-                    lua_pop(L, 1);
-
-                    // Push back the populated struct table for caller consumption
-                    lua_createtable(L, 0, 3);
-                    lua_setfloat(L, static_cast<float>(out.score_added)); lua_setfield(L, -2, "score_delta");
-                    lua_pushboolean(L, out.level_up);                   lua_setfield(L, -2, "level_up");
-                    lua_pushboolean(L, out.danger_alert);              lua_setfield(L, -2, "danger_alert");
-
-                    // Replace top of stack with the populated result table
-                    lua_replace(L, -3); // replace function call result slot with structured output
-                }
-            }
+    // Owns one sandboxed lua_State; scripts load once at boot, then every call
+    // is a pure value-in/value-out evaluation ("stateless" = no C++ pointers
+    // ever enter the state; results depend only on the inputs).
+    class StatelessLuaEvaluator {
+    public:
+        StatelessLuaEvaluator() {
+            L_ = luaL_newstate();
+            if (!L_) return;
+            luaL_requiref(L_, "_G",            luaopen_base,  1);
+            luaL_requiref(L_, LUA_TABLIBNAME,  luaopen_table, 1);
+            luaL_requiref(L_, LUA_MATHLIBNAME, luaopen_math,  1);
+            lua_pop(L_, 3);
+            sandbox_strip();
         }
 
-    } // namespace lua_edge
-} // namespace tetris
+        ~StatelessLuaEvaluator() {
+            if (L_) lua_close(L_);
+        }
+
+        StatelessLuaEvaluator(const StatelessLuaEvaluator&)            = delete;
+        StatelessLuaEvaluator& operator=(const StatelessLuaEvaluator&) = delete;
+
+        bool valid()     const noexcept { return L_ != nullptr; }
+        bool has_error() const noexcept { return error_; }
+
+        // Load (run) a script chunk; the chunk must define its rule table
+        // (e.g. BlitzRules). Returns false on any syntax/runtime error.
+        bool load_script_text(const char* chunk_name, const char* text) {
+            if (!L_ || !text) return false;
+            if (luaL_loadbuffer(L_, text, std::strlen(text), chunk_name) != LUA_OK) {
+                report_error();
+                return false;
+            }
+            if (lua_pcall(L_, 0, 0, 0) != LUA_OK) {
+                report_error();
+                return false;
+            }
+            return true;
+        }
+
+        bool load_script_file(const char* path) {
+            if (!L_ || !path) return false;
+            std::FILE* f = std::fopen(path, "rb");
+            if (!f) return false;
+            std::string contents;
+            char buf[4096];
+            size_t n;
+            while ((n = std::fread(buf, 1, sizeof(buf), f)) > 0) contents.append(buf, n);
+            const bool ok = std::ferror(f) == 0;
+            std::fclose(f);
+            if (!ok) return false;
+            return load_script_text(path, contents.c_str());
+        }
+
+        bool has_function(const char* table, const char* func) const {
+            if (!L_) return false;
+            lua_getglobal(L_, table);                       // [table]
+            bool ok = lua_istable(L_, -1) != 0;
+            if (ok) {
+                lua_getfield(L_, -1, func);                 // [table, func]
+                ok = lua_isfunction(L_, -1) != 0;
+                lua_pop(L_, 1);
+            }
+            lua_pop(L_, 1);
+            return ok;
+        }
+
+        // BlitzRules.calculate_score(level, lines, combo, is_tspin) -> ruling
+        ScoreRuleResult call_calculate_score(int level, int lines, int combo, bool is_tspin) {
+            ScoreRuleResult out;
+            if (!begin_call("BlitzRules", "calculate_score", 4)) return out;
+            lua_pushinteger(L_, static_cast<lua_Integer>(level));
+            lua_pushinteger(L_, static_cast<lua_Integer>(lines));
+            lua_pushinteger(L_, static_cast<lua_Integer>(combo));
+            lua_pushboolean(L_, is_tspin ? 1 : 0);
+            if (!finish_call(4)) return out;
+            out.score_added  = field_int("score_added");
+            out.level_up     = field_bool("level_up");
+            out.danger_alert = field_bool("danger_alert");
+            out.time_bonus   = field_float("time_bonus");
+            lua_pop(L_, 1);                                 // pop result table
+            return out;
+        }
+
+        // BlitzRules.evaluate_clock(time_left, stack_height) -> urgency flags
+        ClockRuleResult call_evaluate_clock(float time_left, int stack_height) {
+            ClockRuleResult out;
+            if (!begin_call("BlitzRules", "evaluate_clock", 2)) return out;
+            lua_pushnumber(L_, static_cast<lua_Number>(time_left));
+            lua_pushinteger(L_, static_cast<lua_Integer>(stack_height));
+            if (!finish_call(2)) return out;
+            out.danger_alert = field_bool("danger_alert");
+            out.hurry        = field_bool("hurry");
+            lua_pop(L_, 1);
+            return out;
+        }
+
+        // Merge BlitzRules.get_config() known keys into a Rules instance
+        // (Lua as an authoring format for plain config values — §4.2).
+        void apply_config_overrides(config::Rules& rules) {
+            if (!L_) return;
+            if (!begin_call("BlitzRules", "get_config", 0)) return;
+            if (!finish_call(0)) return;
+            rules.mode_id      = field_int("mode_id",      rules.mode_id);
+            rules.target_score = field_int("target_score", rules.target_score);
+            rules.time_limit   = field_float("time_limit", rules.time_limit);
+            lua_pop(L_, 1);
+        }
+
+    private:
+        // Push table.func above any already-pushed args: [args...] → [func, args...]
+        bool begin_call(const char* table, const char* func, int nargs) {
+            lua_getglobal(L_, table);                       // [args..., table]
+            if (!lua_istable(L_, -1)) { lua_pop(L_, nargs + 1); return fail(); }
+            lua_getfield(L_, -1, func);                     // [args..., table, func]
+            if (!lua_isfunction(L_, -1)) { lua_pop(L_, nargs + 2); return fail(); }
+            lua_rotate(L_, -(nargs + 2), 1);                // [func, args..., table]
+            lua_pop(L_, 1);                                 // [func, args...]
+            return true;
+        }
+
+        // pcall the prepared call; leaves the result table on top on success.
+        bool finish_call(int nargs) {
+            if (lua_pcall(L_, nargs, 1, 0) != LUA_OK) {     // [result] or [errmsg]
+                report_error();
+                return false;
+            }
+            if (!lua_istable(L_, -1)) { lua_pop(L_, 1); return fail(); }
+            return true;
+        }
+
+        // Field readers — operate on the table at the top of the stack.
+        int field_int(const char* key, int def = 0) {
+            lua_getfield(L_, -1, key);
+            int v = lua_isnumber(L_, -1) ? static_cast<int>(lua_tointeger(L_, -1)) : def;
+            lua_pop(L_, 1);
+            return v;
+        }
+        float field_float(const char* key, float def = 0.0f) {
+            lua_getfield(L_, -1, key);
+            float v = lua_isnumber(L_, -1) ? static_cast<float>(lua_tonumber(L_, -1)) : def;
+            lua_pop(L_, 1);
+            return v;
+        }
+        bool field_bool(const char* key, bool def = false) {
+            lua_getfield(L_, -1, key);
+            bool v = lua_isboolean(L_, -1) ? (lua_toboolean(L_, -1) != 0) : def;
+            lua_pop(L_, 1);
+            return v;
+        }
+
+        // Determinism sandbox: strip non-deterministic / side-effecting globals.
+        void sandbox_strip() {
+            lua_getglobal(L_, "math");                      // math.random is C-seeded
+            if (lua_istable(L_, -1)) {
+                lua_pushnil(L_); lua_setfield(L_, -2, "random");
+                lua_pushnil(L_); lua_setfield(L_, -2, "randomseed");
+            }
+            lua_pop(L_, 1);
+            lua_pushnil(L_); lua_setglobal(L_, "print");    // keep stdout clean
+        }
+
+        void report_error() {
+            if (lua_isstring(L_, -1)) {
+                std::fprintf(stderr, "[lua.edge] %s\n", lua_tostring(L_, -1));
+            }
+            lua_pop(L_, 1);
+            error_ = true;
+        }
+
+        bool fail() { error_ = true; return false; }
+
+        lua_State* L_ = nullptr;
+        bool       error_ = false;
+    };
+
+} // namespace tetris::lua_edge
+
+#endif // TETRIS_LUA_ENABLED

@@ -28,7 +28,7 @@ lands; keep prose minimal and point at the owning doc instead of duplicating.
 | Pod 4 `powerups` | ⬜ PENDING — arrives together with its `scripts/*.lua` (Part 4 · L4) |
 | Pod 5 `environment` | ⬜ PENDING — diorama + reactive mood lighting (Part 4 · L5) |
 | Edges `input` / `audio` / `rasterizer` / `ui` | ✅ DONE — one subdirectory per edge (`edges/<name>/tetris.<name>.hpp`) |
-| Edge `lua` | 🟡 SCAFFOLDED — `edges/lua/lua.edge.hpp` compiles into the build, not yet wired into the loop (Part 4 · L2) |
+| Edge `lua` | ✅ DONE — sandboxed stateless evaluator wired into the loop via `ScriptHooks` function-pointer bridges; blitz script boots from the campaign manifest |
 | Thin main + `verify.sh` | ✅ DONE — determinism / behavioral-delta / purity gates all PASS |
 | Docs integration | ✅ DONE 2026-08-22 — deduplicated to 3 files; see STATUS.md §0 |
 
@@ -159,10 +159,12 @@ return BlitzRules
 
 ### 2.3 C++ Side
 
-The evaluator is already scaffolded in the build:
+The evaluator lives in the build at
 `edges/lua/lua.edge.hpp` (`tetris::lua_edge::StatelessLuaEvaluator`) —
-script text + plain-value inputs → plain-value result struct. It is NOT yet
-wired into the loop. Design rules (edge placement, sandboxing/determinism,
+script text + plain-value inputs → plain-value result struct. It IS wired into
+the loop (2026-08-22): main boots the stage's script from the campaign
+manifest and adapts it to `progression::ScriptHooks` function pointers; pods
+stay Lua-free. Design rules (edge placement, sandboxing/determinism,
 build wiring, verify.sh extensions) are owned by `ARCHITECTURE.md` Part III §4.
 
 ---
@@ -231,44 +233,44 @@ Core:
 - [x] `config/levels/marathon_01.hpp` — victory target, start level, palette
 - [x] All three pods pure C++ (no scripting anywhere)
 - [x] Gates green: determinism byte-compare + behavioral delta (STATUS.md)
-- [ ] Registered as stage 1 in the campaign manifest (blocked on M2)
+- [x] Registered as stage 1 in the campaign manifest (`config/campaign/main_campaign.hpp`)
 
 GUI polish:
-- [ ] Level-up flash banner + brief palette shift on `LEVEL_UP` event
-- [ ] Danger vignette when stack height crosses warning row (projection of grid state)
+- [x] Level-up flash banner + brief palette shift on `LEVEL_UP` event (HudState banner drives card accents gold)
+- [x] Danger vignette when stack height crosses warning row (projection of grid state; breathing crimson bands)
 
 FX polish:
-- [ ] Tetris (4-line clear) camera pulse + oversized burst recipe
-- [ ] Combo streak floating 3D popup ("COMBO ×N") from `COMBO_STREAK` events
+- [x] Tetris (4-line clear) camera pulse + oversized burst recipe (dolly punch + 1.6× energy + gold flecks)
+- [x] Combo streak floating 3D popup ("COMBO ×N") from `COMBO_STREAK` events (rising/fading HUD floater)
 
 ---
 
-### L2 · Blitz 120 — Tier 2: Hybrid (Lua rules, C++ engine) `[PLANNED]`
+### L2 · Blitz 120 — Tier 2: Hybrid (Lua rules, C++ engine) `[DONE 2026-08-22]`
 
 2-minute sprint, aggressive combo scoring, T-spin bonus. First consumer of the
 wired lua.edge; designers retune the whole economy by editing one script.
 
 Core:
-- [ ] Wire lua.edge into main loop: load scripts at boot, evaluate per tick (ARCHITECTURE.md Part III §4.1–4.2)
-- [ ] Build wiring: vcpkg `lua` entry + guarded `find_package` (Part III §4.4)
-- [ ] `domains/progression/scripts/blitz_mode.lua` — `calculate_score(...)` (Part 2.2 shape) + `evaluate_clock(time_left, stack_height) -> {danger_alert, hurry}`
-- [ ] Route `compute_line_clear_score` through the script; keep C++ fallback when no script set
-- [ ] `ScoreState` gains mode fields: `time_left`, `mode_id` (progression contract)
-- [ ] `verify.sh`: `--script <file>` flag + determinism double-run WITH scripting active (Part III §4.5)
-- [ ] Smoke test: blitz target/score override assertion (`ScoreState.target_score` changes)
+- [x] Wire lua.edge into main loop: load scripts at boot, evaluate per tick (ARCHITECTURE.md Part III §4.1–4.2)
+- [x] Build wiring: vcpkg `lua` entry + guarded `find_package` (Part III §4.4) — builds green with AND without Lua
+- [x] `domains/progression/scripts/blitz_mode.lua` — `calculate_score(...)` (Part 2.2 shape) + `evaluate_clock(time_left, stack_height) -> {danger_alert, hurry}`
+- [x] Route `compute_line_clear_score` through the script; keep C++ fallback when no script set (`ScriptHooks`, null ⇒ native)
+- [x] `ScoreState` gains mode fields: `time_left`, `mode_id` (progression contract)
+- [x] `verify.sh`: `--script=<file>` flag + determinism double-run WITH scripting active (Part III §4.5)
+- [x] Smoke test: blitz target/score override assertion (`--expect-target-score=20000` gate, PASS)
 
 GUI (timer-driven identity):
-- [ ] Large countdown digits: amber → red < 30s → pulsing < 10s
-- [ ] Time-bonus popup floaters ("+5s") on bonus clears
-- [ ] Combo meter bar with tier ticks (feeds off `combo_count`)
-- [ ] HURRY! flashing banner + screen-border pulse in final 10 seconds
-- [ ] RESULTS time breakdown panel (clears vs bonuses vs penalties)
+- [x] Large countdown digits: amber → red < 30s → pulsing < 10s
+- [x] Time-bonus popup floaters ("+5s") on bonus clears
+- [x] Combo meter bar with tier ticks (feeds off `combo_count`)
+- [x] HURRY! flashing banner + screen-border pulse in final 10 seconds
+- [x] RESULTS time breakdown panel (clears vs bonuses vs penalties)
 
 FX (clock spectacle):
-- [ ] Threshold shockwave ring emitted from the board every 30-second tick
-- [ ] Spark trail on hard drops (speed feel, `HARD_DROP_SLAM`-fed)
-- [ ] Golden burst + slow-mo zoom on the final clearing line ("photo finish")
-- [ ] Amber environment mood that intensifies as the timer drains
+- [x] Threshold shockwave ring emitted from the board every 30-second tick
+- [x] Spark trail on hard drops (speed feel, `HARD_DROP_SLAM`-fed)
+- [x] Golden burst + slow-mo zoom on the final clearing line ("photo finish"; dolly-punch zoom approximation)
+- [x] Amber environment mood that intensifies as the timer drains (`fx.mood_intensity` wire, pod-5 embryo)
 
 ---
 
@@ -395,7 +397,7 @@ Results GUI:
 
 ### Build order (each phase ends green: builds + gates PASS)
 
-- [ ] **A.** Wire lua.edge + deliver L2 Blitz 120 (smallest delta; proves determinism-with-scripting gates)
+- [x] **A.** Wire lua.edge + deliver L2 Blitz 120 (smallest delta; proves determinism-with-scripting gates) — DONE 2026-08-22, all gates PASS
 - [ ] **B.** L3 Garbage Canyon generator scripts + seed-determinism gate
 - [ ] **C.** Powerups pod + L4 Cyber Storm
 - [ ] **D.** Environment pod + L5 Encore Finale

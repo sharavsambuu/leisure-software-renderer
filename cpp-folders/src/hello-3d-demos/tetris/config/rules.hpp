@@ -6,6 +6,12 @@
 
 namespace tetris::config {
 
+    // Mode identity (campaign stages; see config/campaign/main_campaign.hpp)
+    enum : int {
+        MODE_MARATHON   = 1,   // L1: untimed target chase (pure C++ tier)
+        MODE_BLITZ_120  = 2    // L2: 2-minute sprint (Lua-authored economy)
+    };
+
     struct Rules {
         // Gravity
         float initial_drop_interval = 0.80f;
@@ -27,6 +33,12 @@ namespace tetris::config {
         // Objective
         int      target_score = 12000;
         uint32_t rng_seed     = 0x9e3779b9u;
+
+        // Mode identity + blitz clock (L2). time_limit == 0 means untimed.
+        // A wired Lua script may override mode_id/target_score/time_limit at
+        // boot via BlitzRules.get_config() (see edges/lua/lua.edge.hpp).
+        int      mode_id     = MODE_MARATHON;
+        float    time_limit  = 0.0f;
 
         float gravity_for_level(int level) const {
             return std::max(min_drop_interval,

@@ -27,8 +27,9 @@ using tetris::matrix::get_piece_blocks;
         PipelineExecutionPlan plan(arena);
         plan.triangles.reserve(4000);
 
-        // Camera stationed with proper vertical clearance for the bottom row
-        glm::vec3 eye = glm::vec3(0.0f, 10.6f, -18.4f);
+        // Camera stationed with proper vertical clearance for the bottom row.
+        // camera_pulse = dolly-in zoom punch (tetris clears / victory crescendo).
+        glm::vec3 eye = glm::vec3(0.0f, 10.6f, -18.4f + fx.camera_pulse * 1.4f);
         if (fx.camera_shake > 0.0f) {
             eye.y -= fx.camera_shake * 0.35f;
             eye.x += (std::sin(fx.time * 60.0f) * fx.camera_shake * 0.15f);
@@ -46,8 +47,12 @@ using tetris::matrix::get_piece_blocks;
         glm::vec3 L       = -SUN_DIR;
 
         // 1. PLAYFIELD MATRIX WELL CONTAINER
+        // Environment mood (pod-5 embryo): trim lerps cyan → amber as the blitz
+        // clock drains (fx.mood_intensity is a plain value wired by main).
         shs::Color rail_col = shs::Color{ 60,  70,  90, 255 };
-        shs::Color trim_col = shs::Color{ 40, 180, 240, 255 };
+        shs::Color trim_col = lerp_color(shs::Color{ 40, 180, 240, 255 },
+                                         shs::Color{ 255, 160, 40, 255 },
+                                         fx.mood_intensity);
         shs::Color bg_grid  = shs::Color{ 18,  22,  30, 255 };
 
         // Backplane
@@ -134,6 +139,22 @@ using tetris::matrix::get_piece_blocks;
         for (size_t i = 0; i < fx.particles.position.size(); ++i) {
             if (fx.particles.life[i] > 0.0f) {
                 MeshGen::add_box(tris, fx.particles.position[i], glm::vec3(0.24f), fx.particles.color[i], fx.particles.color[i], fx.particles.color[i]);
+            }
+        }
+
+        // 7. SHOCKWAVE RINGS (event-fed: blitz clock ticks) — expanding circle
+        // of voxel segments in the board plane, fading as life drains.
+        for (size_t i = 0; i < fx.rings.center.size(); ++i) {
+            const float fade = fx.rings.life[i] / fx.rings.max_life[i];
+            const shs::Color rc = fade_color(fx.rings.color[i], 0.25f + 0.75f * fade);
+            const float seg_box = 0.14f + 0.12f * fade;
+            constexpr int SEGS = 26;
+            for (int sgi = 0; sgi < SEGS; ++sgi) {
+                const float ang = (float)sgi / (float)SEGS * glm::two_pi<float>();
+                const glm::vec3 p = fx.rings.center[i]
+                    + glm::vec3(std::cos(ang) * fx.rings.radius[i],
+                                std::sin(ang) * fx.rings.radius[i], 0.0f);
+                MeshGen::add_box(tris, p, glm::vec3(seg_box), rc, rc, rc);
             }
         }
 

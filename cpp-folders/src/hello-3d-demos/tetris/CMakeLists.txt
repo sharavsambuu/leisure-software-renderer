@@ -22,6 +22,16 @@ find_package(SDL2 CONFIG REQUIRED)
 find_package(glm CONFIG REQUIRED)
 find_package(assimp CONFIG REQUIRED)
 
+# --- Lua (optional): rule-scripting edge (L2 Blitz 120) ----------------------
+# Found ⇒ TETRIS_LUA_ENABLED is defined and the evaluator edge compiles in.
+# Missing ⇒ pods fall back to native C++ rules; the build stays green either way.
+find_package(Lua QUIET)
+if (LUA_FOUND)
+    message(STATUS ">>> Hello3DTetris: Lua ${LUA_VERSION_STRING} found — rule scripting ENABLED")
+else()
+    message(STATUS ">>> Hello3DTetris: Lua NOT found — native C++ rules only")
+endif()
+
 include_directories(${ASSIMP_INCLUDE_DIR})
 include_directories(${SDL2_INCLUDE_DIRS})
 include_directories(${CMAKE_BINARY_DIR})
@@ -36,6 +46,8 @@ add_executable(Hello3DTetris
     hello_3d_tetris.cpp
     config/rules.hpp
     config/levels/marathon_01.hpp
+    config/levels/blitz_120.hpp
+    config/campaign/main_campaign.hpp
     domains/matrix/matrix.contract.hpp
     domains/matrix/matrix.action.hpp
     domains/matrix/matrix.event.hpp
@@ -43,6 +55,7 @@ add_executable(Hello3DTetris
     domains/progression/progression.contract.hpp
     domains/progression/progression.event.hpp
     domains/progression/progression.reducer.hpp
+    domains/progression/scripts/blitz_mode.lua
     domains/spatial_fx/spatial_fx.contract.hpp
     domains/spatial_fx/spatial_fx.reducer.hpp
     domains/spatial_fx/spatial_fx.plan.hpp
@@ -51,6 +64,17 @@ add_executable(Hello3DTetris
     edges/rasterizer/tetris.rasterizer.hpp
     edges/ui/tetris.hud.hpp
     edges/lua/lua.edge.hpp
+)
+
+if (LUA_FOUND)
+    target_include_directories(Hello3DTetris PRIVATE ${LUA_INCLUDE_DIR})
+    target_link_libraries(Hello3DTetris PRIVATE ${LUA_LIBRARIES})
+    target_compile_definitions(Hello3DTetris PRIVATE TETRIS_LUA_ENABLED=1)
+endif()
+
+# Absolute path baked in so the binary finds scripts from any working dir.
+target_compile_definitions(Hello3DTetris PRIVATE
+    TETRIS_SOURCE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}"
 )
 
 # --- Compile options (shared across demos for consistency) ---

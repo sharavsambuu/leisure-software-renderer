@@ -43,6 +43,50 @@ using tetris::matrix::BLOCK_GAP;
         }
     };
 
+    // Shockwave ring primitive (event-fed: blitz clock ticks). Expanding circle
+    // of voxel segments in the board plane; planner renders it as a batch.
+    struct RingFxSoA {
+        std::pmr::vector<glm::vec3>  center;
+        std::pmr::vector<float>      radius;
+        std::pmr::vector<float>      speed;
+        std::pmr::vector<float>      life;
+        std::pmr::vector<float>      max_life;
+        std::pmr::vector<shs::Color> color;
+
+        explicit RingFxSoA(std::pmr::memory_resource* mr)
+            : center(mr), radius(mr), speed(mr), life(mr), max_life(mr), color(mr) {}
+
+        void add(glm::vec3 c, float r0, float spd, shs::Color col, float duration = 0.8f) {
+            center.push_back(c);
+            radius.push_back(r0);
+            speed.push_back(spd);
+            life.push_back(duration);
+            max_life.push_back(duration);
+            color.push_back(col);
+        }
+    };
+
+    // Render-vocabulary color helpers (channel math in float, rounded back).
+    static inline shs::Color lerp_color(shs::Color a, shs::Color b, float t) {
+        t = glm::clamp(t, 0.0f, 1.0f);
+        return shs::Color{
+            static_cast<uint8_t>(a.r + (b.r - a.r) * t + 0.5f),
+            static_cast<uint8_t>(a.g + (b.g - a.g) * t + 0.5f),
+            static_cast<uint8_t>(a.b + (b.b - a.b) * t + 0.5f),
+            a.a
+        };
+    }
+
+    static inline shs::Color fade_color(shs::Color c, float fade) {
+        fade = glm::clamp(fade, 0.0f, 1.0f);
+        return shs::Color{
+            static_cast<uint8_t>(c.r * fade + 0.5f),
+            static_cast<uint8_t>(c.g * fade + 0.5f),
+            static_cast<uint8_t>(c.b * fade + 0.5f),
+            c.a
+        };
+    }
+
     namespace MeshGen {
         static inline void add_quad(
             std::vector<LowPolyTriangle>& tris,
@@ -94,15 +138,19 @@ using tetris::matrix::BLOCK_GAP;
             : triangles(mr) {}
     };
 
-    // FX lifecycle state (particles + camera spring + fx clock). Long-lived;
-    // stepped in-place each frame by spatial_fx::step_fx.
+    // FX lifecycle state (particles + rings + camera spring/pulse + mood).
+    // Long-lived; stepped in-place each frame by spatial_fx::step_fx.
     struct FxState {
         ShatterParticleSoA particles;
-        float              camera_shake = 0.0f;
-        float              time         = 0.0f;
-        uint32_t           rng_state    = 0x9e3779b9u;   // deterministic debris velocities
+        RingFxSoA          rings;
+        float              camera_shake   = 0.0f;
+        float              camera_pulse   = 0.0f;   // zoom punch (tetris / victory)
+        float              mood_intensity = 0.0f;   // 0..1 environment mood (main wires
+                                               // from blitz clock drain; pod-5 embryo)
+        float              time           = 0.0f;
+        uint32_t           rng_state      = 0x9e3779b9u;   // deterministic debris velocities
 
-        explicit FxState(std::pmr::memory_resource* mr) : particles(mr) {}
+        explicit FxState(std::pmr::memory_resource* mr) : particles(mr), rings(mr) {}
     };
 
     // Piece palette (render vocabulary — moved out of the grid contract).

@@ -1,12 +1,18 @@
 #pragma once
 // tetris/edges/ui/tetris.hud.hpp — 2D HUD + UTF-8 FONT ENGINE (tetris::ui)
+// Pure projections of snapshots + edge-owned transient presentation state
+// (HudState: banners/floaters — same ownership model as audio voices).
 #include <cstdint>
 #include <cmath>
 #include <cstring>
+#include <cstdio>
+#include <algorithm>
+#include <span>
 #include <string>
 #include "shs_renderer.hpp"
 #include <domains/matrix/matrix.contract.hpp>
 #include <domains/progression/progression.contract.hpp>
+#include <domains/progression/progression.event.hpp>
 
 namespace tetris::ui {
 
@@ -87,6 +93,24 @@ static const char* TXT_FINAL_SCORE = "\xD0\xAD\xD0\xA6\xD0\xA1\xD0\x98\xD0\x99\x
 static const char* TXT_RETRY       = "[R] - \xD0\x94\xD0\x90\xD0\xA5\xD0\x98\xD0\x9D \xD0\xA2\xD0\x9E\xD0\x93\xD0\x9B\xD0\x9E\xD0\xA5"; 
 static const char* TXT_FOOTER      = "A/D: \xD0\xA5\xD3\xA8\xD0\x94\xD0\x9B\xD3\xA8\xD0\xA5 | W: \xD0\xAD\xD0\xA0\xD0\x93\xD2\xAE\xD2\xAE\xD0\x9B\xD0\xAD\xD0\xA5 | S: \xD0\x91\xD0\xA3\xD0\xA3\xD0\x9B\xD0\x93\xD0\x90\xD0\xA5 | SPACE: \xD0\xA3\xD0\x9D\xD0\x90\xD0\x93\xD0\x90\xD0\x90\xD0\xA5 | C: \xD0\x9D\xD3\xA8\xD3\xA8\xD0\xA6 | R: \xD0\xAD\xD0\xA5\xD0\x9B\xD0\xAD\xD0\xA5";
 
+// --- L1/L2 additions --------------------------------------------------------
+// ЦАГ (time)
+static const char* TXT_TIME        = "\xD0\xA6\xD0\x90\xD0\x93";
+// ХУРДАА! (hurry!)
+static const char* TXT_HURRY       = "\xD0\xA5\xD0\xA3\xD0\xA0\xD0\x94\xD0\x90\xD0\x90!";
+// КОМБО (combo)
+static const char* TXT_COMBO       = "\xD0\x9A\xD0\x9E\xD0\x9C\xD0\x91\xD0\x9E";
+// МАКС КОМБО (max combo)
+static const char* TXT_MAX_COMBO   = "\xD0\x9C\xD0\x90\xD0\x9A\xD0\xA1 \xD0\x9A\xD0\x9E\xD0\x9C\xD0\x91\xD0\x9E";
+// НЭМЭЛТ ЦАГ (bonus time collected)
+static const char* TXT_BONUS_TIME  = "\xD0\x9D\xD0\xAD\xD0\x9C\xD0\xAD\xD0\x9B\xD0\xA2 \xD0\xA6\xD0\x90\xD0\x93";
+// МӨР ОНОО (line-clear points)
+static const char* TXT_CLEAR_SCORE = "\xD0\x9C\xD3\xA8\xD0\xA0 \xD0\x9E\xD0\x9D\xD0\x9E\xD0\x9E";
+// УНАлТ ОНОО (drop points)
+static const char* TXT_DROP_SCORE  = "\xD0\xA3\xD0\x9D\xD0\x90\xD0\x9B\xD0\xA2 \xD0\x9E\xD0\x9D\xD0\x9E\xD0\x9E";
+// ЦАГ ДУУСЛАА (time up)
+static const char* TXT_TIME_UP     = "\xD0\xA6\xD0\x90\xD0\x93 \xD0\x94\xD0\xA3\xD0\xA3\xD0\xA1\xD0\x9B\xD0\x90\xD0\x90";
+
 // Line drawing
 static void draw_line_screen(shs::Canvas& c, int x0, int y0, int x1, int y1, shs::Color col) {
     int dx = std::abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
@@ -121,6 +145,55 @@ static void draw_rect_border(shs::Canvas& c, int x, int y, int w, int h, shs::Co
         c.draw_pixel_screen_space(x, py, col);
         c.draw_pixel_screen_space(x1, py, col);
     }
+}
+
+// Dithered fill (checkerboard) — fake translucency on the opaque canvas.
+static void draw_rect_fill_dithered(shs::Canvas& c, int x, int y, int w, int h, shs::Color col, int phase = 0) {
+    int x0 = std::max(0, x), y0 = std::max(0, y);
+    int x1 = std::min(c.get_width() - 1, x + w), y1 = std::min(c.get_height() - 1, y + h);
+    for (int py = y0; py <= y1; ++py) {
+        for (int px = x0; px <= x1; ++px) {
+            if (((px + py + phase) & 1) == 0) c.draw_pixel_screen_space(px, py, col);
+        }
+    }
+}
+
+// UTF-8 codepoint count (for centering: Cyrillic is 2 bytes but 1 glyph)
+static int utf8_char_count(const char* s) {
+    int n = 0;
+    for (const unsigned char* p = (const unsigned char*)s; *p; ++p) {
+        if ((*p & 0xC0) != 0x80) ++n;
+    }
+    return n;
+}
+
+static int text_width_px(const char* s, int scale) {
+    return utf8_char_count(s) * 6 * scale - scale;
+}
+
+// Defined below (after the font engine); forward-declared for the helpers.
+static void draw_text(shs::Canvas& c, int x, int y, const char* str, shs::Color col, int scale);
+
+static void draw_text_centered(shs::Canvas& c, int cx, int y, const char* s, shs::Color col, int scale = 2) {
+    draw_text(c, cx - text_width_px(s, scale) / 2, y, s, col, scale);
+}
+
+// M:SS clock formatter ("2:00", floor semantics: 119.27 -> "1:59")
+static void format_clock(char* buf, int cap, float seconds) {
+    if (seconds < 0.0f) seconds = 0.0f;
+    const int total = (int)seconds;
+    std::snprintf(buf, (size_t)cap, "%d:%02d", total / 60, total % 60);
+}
+
+// Local color lerp (same math as spatial_fx vocabulary; kept edge-local)
+static shs::Color hud_lerp_color(shs::Color a, shs::Color b, float t) {
+    t = glm::clamp(t, 0.0f, 1.0f);
+    return shs::Color{
+        (uint8_t)(a.r + (b.r - a.r) * t + 0.5f),
+        (uint8_t)(a.g + (b.g - a.g) * t + 0.5f),
+        (uint8_t)(a.b + (b.b - a.b) * t + 0.5f),
+        a.a
+    };
 }
 
 // Standard ASCII Font Glyphs (ASCII 32 to 90)
@@ -326,18 +399,96 @@ static void draw_number_bold(shs::Canvas& c, int x, int y, int val, int digits, 
 }
 
 // ============================================================================
+// HUD TRANSIENT PRESENTATION STATE (edge-owned, like audio voices)
+// Pure projection inputs: progression events + score snapshot. No gameplay
+// state lives here — timers drive banners/floaters only.
+// ============================================================================
+struct Floater {
+    float      life     = 0.0f;
+    float      max_life = 1.3f;
+    char       text[24] = {};
+    shs::Color color{ 255, 255, 255, 255 };
+};
+
+struct HudState {
+    float   time          = 0.0f;   // hud animation clock
+    float   levelup_timer = 0.0f;   // >0 while the LEVEL-UP banner shows
+    int     levelup_level = 0;
+    Floater floaters[8];
+    int     next_floater  = 0;
+
+    void spawn_floater(const char* txt, shs::Color col, float life = 1.3f) {
+        Floater& f = floaters[next_floater];
+        next_floater = (next_floater + 1) % 8;
+        f.life = life;
+        f.max_life = life;
+        f.color = col;
+        std::snprintf(f.text, sizeof(f.text), "%s", txt);
+    }
+};
+
+static void step_hud(HudState& hud,
+                     std::span<const progression::ProgressionEvent> events,
+                     float dt) {
+    hud.time += dt;
+    if (hud.levelup_timer > 0.0f) {
+        hud.levelup_timer = std::max(0.0f, hud.levelup_timer - dt);
+    }
+
+    for (const auto& ev : events) {
+        switch (ev.type) {
+        case progression::ProgressionEventType::LEVEL_UP:
+            hud.levelup_timer = 2.2f;
+            hud.levelup_level = ev.new_level;
+            break;
+        case progression::ProgressionEventType::COMBO_STREAK: {
+            char buf[24];
+            std::snprintf(buf, sizeof(buf), "COMBO x%d", ev.combo);
+            hud.spawn_floater(buf, shs::Color{ 40, 220, 240, 255 });
+            break;
+        }
+        case progression::ProgressionEventType::TIME_BONUS: {
+            char buf[24];
+            std::snprintf(buf, sizeof(buf), "+%ds", (int)ev.seconds);
+            hud.spawn_floater(buf, shs::Color{ 45, 240, 110, 255 });
+            break;
+        }
+        case progression::ProgressionEventType::TIME_UP:
+            hud.spawn_floater(TXT_TIME_UP, shs::Color{ 245, 55, 55, 255 }, 2.0f);
+            break;
+        default:
+            break;
+        }
+    }
+
+    for (auto& f : hud.floaters) {
+        if (f.life > 0.0f) f.life = std::max(0.0f, f.life - dt);
+    }
+}
+
+// ============================================================================
 // MONGOLIAN CYRILLIC HUD (Layout & Presentation)
 // ============================================================================
-static void draw_hud(shs::Canvas& canvas, const matrix::MatrixSnapshot& m, const progression::ScoreState& sc) {
+static void draw_hud(shs::Canvas& canvas, const matrix::MatrixSnapshot& m,
+                     const progression::ScoreState& sc, HudState& hud) {
     int W = canvas.get_width();
     int H = canvas.get_height();
+
+    const bool blitz = (sc.mode_id == progression::MODE_BLITZ_120);
+    const bool timed = blitz && !sc.time_up;   // countdown visible while clock runs
+
+    // Level-up flash factor → brief gold palette shift on card accents.
+    const float lvl_flash = (hud.levelup_timer > 0.0f) ? (hud.levelup_timer / 2.2f) : 0.0f;
+    auto accent = [&](shs::Color base) {
+        return hud_lerp_color(base, shs::Color{ 255, 200, 60, 255 }, lvl_flash * 0.8f);
+    };
 
     // ------------------------------------------------------------------------
     // 1. TOP RIGHT: SCORE CARD (ОНОО / ДЭЭД)
     // ------------------------------------------------------------------------
     int sx = W - 265, sy = 18, sw = 245, sh = 88;
     draw_rect_fill(canvas, sx, sy, sw, sh, shs::Color{ 15, 18, 26, 230 });
-    draw_rect_border(canvas, sx, sy, sw, sh, shs::Color{ 60, 140, 220, 255 });
+    draw_rect_border(canvas, sx, sy, sw, sh, accent(shs::Color{ 60, 140, 220, 255 }));
 
     draw_text(canvas, sx + 14, sy + 14, TXT_SCORE, shs::Color{ 255, 225, 45, 255 }, 2);
     draw_number_bold(canvas, sx + 125, sy + 12, sc.score, 6, shs::Color{ 255, 225, 45, 255 });
@@ -350,7 +501,7 @@ static void draw_hud(shs::Canvas& canvas, const matrix::MatrixSnapshot& m, const
     // ------------------------------------------------------------------------
     int ox = 20, oy = 18, ow = 280, oh = 88;
     draw_rect_fill(canvas, ox, oy, ow, oh, shs::Color{ 15, 18, 26, 230 });
-    draw_rect_border(canvas, ox, oy, ow, oh, shs::Color{ 60, 140, 220, 255 });
+    draw_rect_border(canvas, ox, oy, ow, oh, accent(shs::Color{ 60, 140, 220, 255 }));
 
     // Target Progress Bar
     draw_text(canvas, ox + 12, oy + 12, TXT_GOAL, shs::Color{ 45, 220, 120, 255 }, 2);
@@ -368,39 +519,196 @@ static void draw_hud(shs::Canvas& canvas, const matrix::MatrixSnapshot& m, const
     draw_number_bold(canvas, ox + 205, oy + 46, sc.level, 2, shs::Color{ 255, 140, 35, 255 });
 
     // ------------------------------------------------------------------------
-    // 3. 3D PLATFORM LABELS (НӨӨЦ / ДАРААГИЙН)
+    // 3. BLITZ COUNTDOWN PANEL (top-center, large digits)
+    //    amber → red < 30s → pulsing red < 10s
+    // ------------------------------------------------------------------------
+    if (timed) {
+        char buf[16];
+        format_clock(buf, sizeof(buf), sc.time_left);
+        const float t = sc.time_left;
+        const float pulse = 0.5f + 0.5f * std::sin(hud.time * 8.0f);
+        shs::Color dig = (t <= 10.0f)
+            ? shs::Color{ 245, (uint8_t)(70 + 90 * pulse), 55, 255 }
+            : (t <= 30.0f) ? shs::Color{ 245, 60, 60, 255 }
+                           : shs::Color{ 255, 180, 40, 255 };
+        const int pw = 190, ph = 58;
+        const int px = (W - pw) / 2, py = 14;
+        draw_rect_fill(canvas, px, py, pw, ph, shs::Color{ 15, 18, 26, 230 });
+        draw_rect_border(canvas, px, py, pw, ph,
+                         (t <= 10.0f) ? dig : accent(shs::Color{ 60, 140, 220, 255 }));
+        draw_text(canvas, px + 12, py + 8, TXT_TIME, shs::Color{ 140, 155, 175, 255 }, 2);
+
+        int dx = px + 12, dy = py + 26;
+        for (const char* q = buf; *q; ++q) {
+            if (*q == ':') {
+                draw_rect_fill(canvas, dx + 5, dy + 8, 4, 4, dig);
+                draw_rect_fill(canvas, dx + 5, dy + 18, 4, 4, dig);
+                dx += 15;
+            } else if (*q >= '0' && *q <= '9') {
+                draw_digit_bold(canvas, dx, dy, *q - '0', 16, 28, dig);
+                dx += 23;
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 3b. COMBO METER (bottom-left, tier ticks at 2/4/6/8)
+    // ------------------------------------------------------------------------
+    if (blitz) {
+        int cx = 20, cy = H - 64, cw = 280, ch = 36;
+        draw_rect_fill(canvas, cx, cy, cw, ch, shs::Color{ 15, 18, 26, 230 });
+        draw_rect_border(canvas, cx, cy, cw, ch, accent(shs::Color{ 60, 140, 220, 255 }));
+        draw_text(canvas, cx + 12, cy + 11, TXT_COMBO, shs::Color{ 40, 220, 240, 255 }, 2);
+
+        int bx = cx + 100, by = cy + 11, bw2 = cw - 118, bh2 = 14;
+        draw_rect_fill(canvas, bx, by, bw2, bh2, shs::Color{ 35, 40, 52, 255 });
+        const float combo_fill = glm::clamp((float)sc.combo_count / 8.0f, 0.0f, 1.0f);
+        shs::Color combo_col = (sc.combo_count >= 4)
+            ? shs::Color{ 255, 200, 60, 255 } : shs::Color{ 40, 220, 240, 255 };
+        draw_rect_fill(canvas, bx, by, (int)(combo_fill * (float)bw2), bh2, combo_col);
+        for (int tier = 1; tier <= 3; ++tier) {   // ticks at 2/4/6
+            int tx = bx + (int)(bw2 * (tier * 2 / 8.0f));
+            draw_rect_fill(canvas, tx, by, 2, bh2, shs::Color{ 80, 95, 115, 255 });
+        }
+        draw_rect_border(canvas, bx, by, bw2, bh2, shs::Color{ 80, 95, 115, 255 });
+    }
+
+    // ------------------------------------------------------------------------
+    // 3c. LEVEL-UP BANNER (centered gold flash + palette shift driver)
+    // ------------------------------------------------------------------------
+    if (hud.levelup_timer > 0.0f) {
+        char buf[24];
+        std::snprintf(buf, sizeof(buf), "%s %d!", TXT_LEVEL, hud.levelup_level);
+        const float pulse = 0.5f + 0.5f * std::sin(hud.time * 12.0f);
+        shs::Color bc{ (uint8_t)(220 + 35 * pulse), (uint8_t)(170 + 55 * pulse), 50, 255 };
+        const int bw3 = text_width_px(buf, 3) + 44;
+        const int bx2 = (W - bw3) / 2, by2 = timed ? 84 : 24;
+        draw_rect_fill(canvas, bx2, by2, bw3, 46, shs::Color{ 20, 16, 8, 235 });
+        draw_rect_border(canvas, bx2, by2, bw3, 46, bc);
+        draw_text_centered(canvas, W / 2, by2 + 12, buf, bc, 3);
+    }
+
+    // ------------------------------------------------------------------------
+    // 3d. HURRY! BANNER + SCREEN-BORDER PULSE (final 10 seconds)
+    // ------------------------------------------------------------------------
+    if (sc.clock_hurry && !m.game_over && !sc.victory && !sc.time_up) {
+        const float blink = std::sin(hud.time * 10.0f);
+        if (blink > -0.2f) {
+            draw_text_centered(canvas, W / 2, 160, TXT_HURRY, shs::Color{ 245, 55, 55, 255 }, 3);
+        }
+        const float bpulse = 0.5f + 0.5f * std::sin(hud.time * 6.0f);
+        const uint8_t bb = (uint8_t)(120 + 120 * bpulse);
+        const shs::Color pc{ bb, 25, 25, 255 };
+        const int bw4 = 12;
+        const int phase = (int)(hud.time * 30.0f);
+        draw_rect_fill_dithered(canvas, 0, 0, W, bw4, pc, phase);
+        draw_rect_fill_dithered(canvas, 0, H - bw4, W, bw4, pc, phase + 1);
+        draw_rect_fill_dithered(canvas, 0, 0, bw4, H, pc, phase + 2);
+        draw_rect_fill_dithered(canvas, W - bw4, 0, bw4, H, pc, phase + 3);
+    }
+
+    // ------------------------------------------------------------------------
+    // 3e. DANGER VIGNETTE (stack height projection, breathing crimson bands)
+    // ------------------------------------------------------------------------
+    int stack = 0;
+    for (int y = matrix::GRID_H - 1; y >= 0; --y) {
+        bool any = false;
+        for (int x = 0; x < matrix::GRID_W; ++x) {
+            if (m.grid[y][x] != 0) { any = true; break; }
+        }
+        if (any) { stack = y + 1; break; }
+    }
+    if (stack >= 15 && !m.game_over && !sc.victory && !sc.time_up) {
+        const float strength = glm::clamp((stack - 14) / 6.0f, 0.0f, 1.0f);
+        const float breathe = 0.5f + 0.5f * std::sin(hud.time * 4.0f);
+        const int band_w = (int)(14 + 22 * strength);
+        for (int i = 0; i < 3; ++i) {
+            const uint8_t vb = (uint8_t)((28 + i * 34) * strength * (0.6f + 0.4f * breathe));
+            const shs::Color vc{ vb, 6, 14, 255 };
+            const int off = i * (band_w / 3);
+            draw_rect_fill_dithered(canvas, off, off, W - 2 * off, band_w - off, vc, i);                    // top
+            draw_rect_fill_dithered(canvas, off, H - band_w + off, W - 2 * off, band_w - off, vc, i + 1);   // bottom
+            draw_rect_fill_dithered(canvas, off, off, band_w - off, H - 2 * off, vc, i + 2);                // left
+            draw_rect_fill_dithered(canvas, W - band_w + off, off, band_w - off, H - 2 * off, vc, i + 3);   // right
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 3f. FLOATING POPUPS (COMBO ×N / +Ns / TIME UP — rising + fading)
+    // ------------------------------------------------------------------------
+    for (const auto& f : hud.floaters) {
+        if (f.life <= 0.0f) continue;
+        const float age01 = 1.0f - f.life / f.max_life;
+        const int fy = (int)(H * 0.40f - age01 * 52.0f);
+        const shs::Color fc = hud_lerp_color(f.color, shs::Color{ 14, 16, 22, 255 }, age01 * 0.85f);
+        draw_text_centered(canvas, W / 2, fy, f.text, fc, 3);
+    }
+
+    // ------------------------------------------------------------------------
+    // 4. 3D PLATFORM LABELS (НӨӨЦ / ДАРААГИЙН)
     // ------------------------------------------------------------------------
     draw_text(canvas, 95, 120, TXT_HOLD, shs::Color{ 80, 200, 255, 240 }, 2);
     draw_text(canvas, W - 230, 120, TXT_NEXT, shs::Color{ 80, 200, 255, 240 }, 2);
 
     // ------------------------------------------------------------------------
-    // 4. BOTTOM CONTROLS FOOTER
+    // 5. BOTTOM CONTROLS FOOTER
     // ------------------------------------------------------------------------
     draw_text(canvas, (W - 980) / 2, H - 24, TXT_FOOTER, shs::Color{ 140, 155, 175, 220 }, 2);
 
     // ------------------------------------------------------------------------
-    // 5. GAME OVER / VICTORY MODAL OVERLAY
+    // 6. GAME OVER / VICTORY / TIME-UP MODAL OVERLAY (+ RESULTS breakdown)
     // ------------------------------------------------------------------------
-    if (m.game_over || sc.victory) {
-        int mw = 480, mh = 200;
-        int mx = (W - mw) / 2, my = (H - mh) / 2;
+    if (m.game_over || sc.victory || sc.time_up) {
+        const int mh = blitz ? 310 : 200;
+        int mw = 520, mx = (W - mw) / 2, my = (H - mh) / 2;
 
         draw_rect_fill(canvas, mx, my, mw, mh, shs::Color{ 10, 12, 18, 245 });
-        shs::Color bc = sc.victory ? shs::Color{ 45, 240, 110, 255 } : shs::Color{ 245, 55, 55, 255 };
+        shs::Color bc = sc.victory ? shs::Color{ 45, 240, 110, 255 }
+                      : sc.time_up ? shs::Color{ 255, 180, 40, 255 }
+                                   : shs::Color{ 245, 55, 55, 255 };
         draw_rect_border(canvas, mx, my, mw, mh, bc);
         draw_rect_border(canvas, mx + 2, my + 2, mw - 4, mh - 4, bc);
 
         if (sc.victory) {
-            draw_text(canvas, mx + 90, my + 25, TXT_VICTORY, shs::Color{ 45, 240, 110, 255 }, 2);
+            draw_text_centered(canvas, W / 2, my + 25, TXT_VICTORY, shs::Color{ 45, 240, 110, 255 }, 2);
+        }
+        else if (sc.time_up) {
+            draw_text_centered(canvas, W / 2, my + 25, TXT_TIME_UP, shs::Color{ 255, 180, 40, 255 }, 2);
         }
         else {
-            draw_text(canvas, mx + 95, my + 25, TXT_GAME_OVER, shs::Color{ 245, 55, 55, 255 }, 2);
+            draw_text_centered(canvas, W / 2, my + 25, TXT_GAME_OVER, shs::Color{ 245, 55, 55, 255 }, 2);
         }
 
-        draw_text(canvas, mx + 80, my + 80, TXT_FINAL_SCORE, shs::Color{ 220, 220, 220, 255 }, 2);
-        draw_number_bold(canvas, mx + 260, my + 76, sc.score, 6, shs::Color{ 255, 230, 80, 255 });
+        draw_text(canvas, mx + 60, my + 75, TXT_FINAL_SCORE, shs::Color{ 220, 220, 220, 255 }, 2);
+        draw_number_bold(canvas, mx + 300, my + 71, sc.score, 6, shs::Color{ 255, 230, 80, 255 });
 
-        draw_text(canvas, mx + 115, my + 140, TXT_RETRY, shs::Color{ 140, 160, 190, 255 }, 2);
+        if (blitz) {
+            // RESULTS time breakdown panel (clears vs drops vs time economy)
+            draw_line_screen(canvas, mx + 40, my + 112, mx + mw - 40, my + 112, shs::Color{ 60, 70, 90, 255 });
+
+            draw_text(canvas, mx + 45, my + 128, TXT_LINES, shs::Color{ 40, 220, 240, 255 }, 2);
+            draw_number_bold(canvas, mx + 130, my + 124, sc.lines_cleared, 3, shs::Color{ 40, 220, 240, 255 });
+            draw_text(canvas, mx + 270, my + 128, TXT_MAX_COMBO, shs::Color{ 185, 70, 240, 255 }, 2);
+            draw_number_bold(canvas, mx + 420, my + 124, sc.max_combo, 2, shs::Color{ 185, 70, 240, 255 });
+
+            char tbuf[16];
+            format_clock(tbuf, sizeof(tbuf), m.game_time);
+            draw_text(canvas, mx + 45, my + 158, TXT_TIME, shs::Color{ 255, 180, 40, 255 }, 2);
+            draw_text(canvas, mx + 130, my + 158, tbuf, shs::Color{ 255, 180, 40, 255 }, 2);
+            char bbuf[16];
+            std::snprintf(bbuf, sizeof(bbuf), "+%ds", (int)sc.time_bonus_total);
+            draw_text(canvas, mx + 270, my + 158, TXT_BONUS_TIME, shs::Color{ 45, 240, 110, 255 }, 2);
+            draw_text(canvas, mx + 430, my + 158, bbuf, shs::Color{ 45, 240, 110, 255 }, 2);
+
+            draw_text(canvas, mx + 45, my + 188, TXT_CLEAR_SCORE, shs::Color{ 220, 220, 220, 255 }, 2);
+            draw_number_bold(canvas, mx + 210, my + 184, sc.score_clears, 6, shs::Color{ 220, 220, 220, 255 });
+            draw_text(canvas, mx + 45, my + 218, TXT_DROP_SCORE, shs::Color{ 150, 160, 175, 255 }, 2);
+            draw_number_bold(canvas, mx + 210, my + 214, sc.score_drops, 6, shs::Color{ 150, 160, 175, 255 });
+
+            draw_text_centered(canvas, W / 2, my + 262, TXT_RETRY, shs::Color{ 140, 160, 190, 255 }, 2);
+        } else {
+            draw_text_centered(canvas, W / 2, my + 140, TXT_RETRY, shs::Color{ 140, 160, 190, 255 }, 2);
+        }
     }
 }
 } // namespace tetris::ui

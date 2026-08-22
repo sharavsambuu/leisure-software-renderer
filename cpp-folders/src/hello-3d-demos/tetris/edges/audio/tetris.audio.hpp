@@ -15,7 +15,8 @@ enum SoundType : uint8_t {
     SND_LINE_CLEAR  = 4,
     SND_TETRIS_FOUR = 5,
     SND_HOLD        = 6,
-    SND_GAME_OVER   = 7
+    SND_GAME_OVER   = 7,
+    SND_TICK        = 8   // blitz clock threshold tick (30s boundaries)
 };
 
 struct AudioEventRing {
@@ -63,7 +64,9 @@ struct TetrisAudioSynth {
                     voices[i].time     = 0.0f;
                     voices[i].phase    = 0.0f;
                     voices[i].active   = true;
-                    voices[i].duration = (new_type == SND_TETRIS_FOUR) ? 0.45f : 0.12f;
+                    voices[i].duration = (new_type == SND_TETRIS_FOUR) ? 0.45f
+                                       : (new_type == SND_TICK)        ? 0.09f
+                                                                       : 0.12f;
                     break;
                 }
             }
@@ -108,6 +111,10 @@ struct TetrisAudioSynth {
                     case SND_GAME_OVER:
                         vox.phase += (220.0f - p * 140.0f) * dt;
                         sample += std::sin(vox.phase * glm::two_pi<float>()) * env * 0.25f;
+                        break;
+                    case SND_TICK:
+                        vox.phase += 1250.0f * dt;
+                        sample += std::sin(vox.phase * glm::two_pi<float>()) * env * 0.18f;
                         break;
                     default: break;
                 }

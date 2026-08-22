@@ -34,9 +34,34 @@ Run: `bash verify.sh` (project root) — uses `SDL_VIDEODRIVER=dummy`.
 |---|---|---|
 | Determinism | two idle runs `--screenshot --frame=45`, byte-compare | **PASS** (identical BMPs) |
 | Behavioral delta | idle vs `--autodrive-harddrop --frame=45` | **PASS** (frames differ) |
+| Script economy override smoke | `--stage=2 --expect-target-score=20000` | **PASS** (Lua `get_config` override reaches `Rules`) |
+| Blitz boots + determinism WITH scripting | two `--stage=2 --frame=45` runs, byte-compare | **PASS** (script active both runs) |
 | Pod purity: platform refs under `domains/` | `grep -rl SDL domains/` | **NONE** |
 | Pod purity: scoring refs under `domains/matrix/` | `grep -rn 'score\|combo' domains/matrix/` | **NONE** |
-| Main edge size | `wc -l hello_3d_tetris.cpp` | **331 lines** (was 833) |
+| Pod purity: raw Lua C-API outside `edges/lua/` | grep, comments stripped | **NONE** |
+| Main edge size | `wc -l hello_3d_tetris.cpp` | **464 lines** (was 833 pre-pods; grew for campaign/script wiring) |
+
+## §0b Build order A delivered: lua.edge wired + L2 Blitz 120 (2026-08-22)
+
+- **Campaign manifest (M2 groundwork):** `config/campaign/main_campaign.hpp`
+  registers stage 1 = MARATHON (pure C++) and stage 2 = BLITZ 120
+  (`domains/progression/scripts/blitz_mode.lua`). `--stage=N` selects;
+  `--script=<file>` overrides the manifest's script path.
+- **Evaluator edge:** `edges/lua/lua.edge.hpp` owns a sandboxed
+  `StatelessLuaEvaluator` (base/table/math only; `math.random*` and `print`
+  stripped). Value-in/value-out only; the ONLY file including Lua headers.
+- **Privilege seam:** pods stay Lua-free. `progression::ScriptHooks` carries
+  plain function pointers (`line_clear_score`, `clock_rule`); null hooks ⇒
+  native C++ rules. Main adapts evaluator calls to the hooks; blitz clock +
+  time-up freeze live in the progression reducer behind those hooks.
+- **Config-as-data:** `BlitzRules.get_config()` overrides plain `Rules` values
+  at boot (target 12000 → 20000 asserted by the smoke gate).
+- **L1/L2 presentation:** HudState banners/floaters/vignette/countdown/combo
+  meter/RESULTS panel in the ui edge; shockwave rings on 30s ticks, hard-drop
+  spark trails, tetris dolly punch + oversized gold-flecked bursts, victory
+  golden burst, amber mood wire (`fx.mood_intensity`) in spatial_fx.
+- **Build:** green WITH Lua (vcpkg `lua` 5.5, guarded `find_package(Lua QUIET)`
+  + `TETRIS_LUA_ENABLED`) and without (empty header, native rules).
 
 ## Definition-of-done checklist
 
@@ -115,3 +140,15 @@ rules).
    the tetris root first. Consider scoping all four demos the same way later.
 5. `rand()` debris velocities replaced by seeded xorshift inside `FxState` —
    required for determinism; visual behavior equivalent.
+6. **Lua headers must be included via `<lua.hpp>`**, not `<lua.h>`: the plain
+   C header lacks `extern "C"`, so every `lua_*` reference got C++-mangled and
+   failed to link against `liblua.a` despite correct link lines.
+7. **A failed link leaves a zero-filled output file** that is NEWER than the
+   objects — make then reports "up to date"/"Built target" without relinking.
+   After any link failure, delete the output before rebuilding.
+8. **`FxState` must be constructed with `std::pmr::get_default_resource()`**,
+   never the per-frame arena: its particles/rings outlive frames, and the
+   frame arena resets every tick (silent corruption otherwise).
+9. **vcpkg classic mode picks the DEBUG `liblua.a` when `CMAKE_BUILD_TYPE`
+   is empty** — harmless here (symbols identical), but pin a build type if
+   release-only linking ever matters.

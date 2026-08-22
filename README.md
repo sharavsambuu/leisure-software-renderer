@@ -1,8 +1,8 @@
 
 # Warning
 
-  This is an AI slop, coding is generated through the vibe coding.
-  Only the ideas and architectural compositions are mine.
+  Time consuming details are generated through the vibe coding.
+  Ideas, higher level concepts and architectural compositions are mine.
 
 
 # Tasks to mess around in the near future
