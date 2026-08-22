@@ -16,7 +16,10 @@ namespace tetris::matrix {
         SOFT_DROP,
         LINES_CLEARED,
         HOLD_SWAPPED,
-        GAME_OVER
+        GAME_OVER,
+        SPECIAL_LOCKED   // L4: a Bomb/Laser/Freeze piece reached its lock point;
+                         // the grid is untouched — the scripted ruling decides
+                         // the mutation (raw fact for the powerups pod)
     };
 
     struct MatrixEvent {
@@ -30,6 +33,12 @@ namespace tetris::matrix {
         // LINES_CLEARED; 1/0 adjacency flag for lock/slam impacts). FX and the
         // dig-feel audio map scale off this — no grid peeking downstream.
         uint8_t         garbage_cells = 0;
+
+        // L4 raw facts for SPECIAL_LOCKED: which special locked and the grid
+        // cell of its anchor block (plain values — no snapshot coupling).
+        uint8_t         special_type = 0;
+        int16_t         lock_x       = 0;
+        int16_t         lock_y       = 0;
     };
 
 } // namespace tetris::matrix

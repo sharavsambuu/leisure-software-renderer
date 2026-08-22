@@ -7,7 +7,9 @@ namespace tetris::config {
     struct Marathon01 {
         static constexpr const char* NAME = "MARATHON";
 
-        static Rules make_rules() { return Rules{}; }   // defaults = classic marathon
+        // Classic marathon: the shared default framing (config/camera.hpp) —
+        // full 22-row board visible with HUD clearance on both sides.
+        static Rules make_rules() { return Rules{}; }
     };
 
 } // namespace tetris::config

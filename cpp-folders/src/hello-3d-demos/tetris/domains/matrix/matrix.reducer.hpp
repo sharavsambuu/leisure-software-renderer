@@ -53,6 +53,13 @@ namespace tetris::matrix {
                 if (rot == 2) return { glm::ivec2{-1, 0}, { 0, 0}, {1, 0}, {-1,-1} };
                 return               { glm::ivec2{-1, 1}, { 0, 1}, {0, 0}, {0,-1} };
             }
+            // L4 specials: fixed footprints (rotation-invariant; distinct
+            // colors carry identity)
+            case PieceType::Bomb:
+            case PieceType::Freeze:
+                return { glm::ivec2{0,0}, glm::ivec2{1,0}, glm::ivec2{0,1}, glm::ivec2{1,1} };
+            case PieceType::Laser:
+                return { glm::ivec2{0,0}, glm::ivec2{1,0}, glm::ivec2{2,0}, glm::ivec2{3,0} };
             default: return { glm::ivec2{0,0}, {0,0}, {0,0}, {0,0} };
         }
     }
@@ -151,6 +158,54 @@ namespace tetris::matrix {
             }
         }
 
+        // L4 powerup seams (raw facts only — the scripted ruling decided WHAT):
+        // QueueSpecial arms the next pull; ClearCells zeroes cells then sweeps
+        // any rows the removal completed; FreezeGravity pauses the gravity step.
+        for (const auto& cmd : commands) {
+            if (const auto* qs = std::get_if<QueueSpecialIntent>(&cmd)) {
+                s.pending_special = qs->special_type;
+            } else if (const auto* fg = std::get_if<FreezeGravityIntent>(&cmd)) {
+                s.gravity_freeze = std::max(s.gravity_freeze, fg->seconds);
+            } else if (const auto* cc = std::get_if<ClearCellsIntent>(&cmd)) {
+                for (int i = 0; i < cc->count && i < ClearCellsIntent::MAX_CELLS; ++i) {
+                    const int cx = cc->cells[i].x, cy = cc->cells[i].y;
+                    if (cx >= 0 && cx < GRID_W && cy >= 0 && cy < GRID_H) s.grid[cy][cx] = 0;
+                }
+                // Rows completed by the removal collapse immediately (same
+                // sweep semantics as the lock path).
+                uint8_t cleared_count = 0;
+                uint8_t cleared_indices[4]{ 0 };
+                uint8_t cleared_garbage_mass = 0;
+                for (int y = 0; y < GRID_H; ++y) {
+                    bool full = true;
+                    for (int x = 0; x < GRID_W; ++x) {
+                        if (s.grid[y][x] == 0) { full = false; break; }
+                    }
+                    if (full) {
+                        if (cleared_count < 4) cleared_indices[cleared_count] = static_cast<uint8_t>(y);
+                        cleared_count++;
+                        for (int x = 0; x < GRID_W; ++x) {
+                            if (s.grid[y][x] == static_cast<uint8_t>(PieceType::Garbage)) {
+                                if (cleared_garbage_mass < 255) cleared_garbage_mass++;
+                            }
+                        }
+                        for (int ny = y; ny < GRID_H - 1; ++ny) s.grid[ny] = s.grid[ny + 1];
+                        s.grid[GRID_H - 1].fill(0);
+                        y--;
+                    }
+                }
+                if (cleared_count > 0) {
+                    result.events.push_back({
+                        .type = MatrixEventType::LINES_CLEARED,
+                        .lines_cleared_count = cleared_count,
+                        .cleared_rows = { cleared_indices[0], cleared_indices[1], cleared_indices[2], cleared_indices[3] },
+                        .world_position = glm::vec3(0.0f, (float)cleared_indices[0] + 0.5f, 0.0f),
+                        .garbage_cells = cleared_garbage_mass
+                    });
+                }
+            }
+        }
+
         TetrisCommandFrame input = reduce_tetris_commands(commands);
 
         // Restart (restores a stamped initial board when one exists)
@@ -164,6 +219,10 @@ namespace tetris::matrix {
                 s.grid              = saved_initial;
             }
             s.active.type = pull_next_piece(s.rng_state, s.next_queue);
+            if (s.pending_special != 0) {   // L4: scripted special override
+                s.active.type = static_cast<PieceType>(s.pending_special);
+                s.pending_special = 0;
+            }
             s.active.pos  = { 4, 19 };
             result.events.push_back({ MatrixEventType::PIECE_SPAWNED });
             return result;
@@ -176,6 +235,10 @@ namespace tetris::matrix {
         // Initialize first piece if empty
         if (s.active.type == PieceType::None) {
             s.active.type = pull_next_piece(s.rng_state, s.next_queue);
+            if (s.pending_special != 0) {
+                s.active.type = static_cast<PieceType>(s.pending_special);
+                s.pending_special = 0;
+            }
             s.active.pos  = { 4, 19 };
             s.active.rotation = 0;
             result.events.push_back({ MatrixEventType::PIECE_SPAWNED });
@@ -187,6 +250,10 @@ namespace tetris::matrix {
             if (s.hold_piece == PieceType::None) {
                 s.hold_piece  = current;
                 s.active.type = pull_next_piece(s.rng_state, s.next_queue);
+                if (s.pending_special != 0) {
+                    s.active.type = static_cast<PieceType>(s.pending_special);
+                    s.pending_special = 0;
+                }
             } else {
                 s.active.type = s.hold_piece;
                 s.hold_piece  = current;
@@ -247,11 +314,17 @@ namespace tetris::matrix {
             });
         }
 
-        // 5. GRAVITY STEP
+        // 5. GRAVITY STEP (L4: FreezeGravityIntent pauses the fall entirely —
+        // movement/rotation stay live, the lock timer does not accumulate)
         float current_interval = input.soft_drop ? (s.drop_interval * 0.12f) : s.drop_interval;
-        s.gravity_timer += dt;
+        const bool frozen = (s.gravity_freeze > 0.0f);
+        if (frozen) {
+            s.gravity_freeze -= dt;
+        } else {
+            s.gravity_timer += dt;
+        }
 
-        if (s.gravity_timer >= current_interval) {
+        if (!frozen && s.gravity_timer >= current_interval) {
             s.gravity_timer = 0.0f;
             glm::ivec2 down_pos = { s.active.pos.x, s.active.pos.y - 1 };
 
@@ -263,14 +336,41 @@ namespace tetris::matrix {
             }
         }
 
-        // Check if resting on surface
+        // Check if resting on surface (frozen pieces never lock by timer)
         bool on_ground = !is_valid_position(s.grid, s.active.type, { s.active.pos.x, s.active.pos.y - 1 }, s.active.rotation);
-        if (on_ground) {
+        if (on_ground && !frozen) {
             s.active.lock_timer += dt;
         }
 
         // 6. PIECE LOCKING & LINE CLEARING
-        if (on_ground && s.active.lock_timer >= 0.5f) {
+        if (on_ground && !frozen && s.active.lock_timer >= 0.5f) {
+            // L4: specials never write the grid — they detonate. The raw fact
+            // (type + anchor cell) goes out; the scripted ruling decides the
+            // mutation, which arrives next frame as ClearCells/Freeze commands.
+            if (is_special_piece(s.active.type)) {
+                result.events.push_back({
+                    .type = MatrixEventType::SPECIAL_LOCKED,
+                    .world_position = glm::vec3((float)s.active.pos.x - 4.5f, (float)s.active.pos.y + 0.5f, 0.0f),
+                    .special_type = static_cast<uint8_t>(s.active.type),
+                    .lock_x = static_cast<int16_t>(s.active.pos.x),
+                    .lock_y = static_cast<int16_t>(s.active.pos.y)
+                });
+                s.active.type       = pull_next_piece(s.rng_state, s.next_queue);
+                if (s.pending_special != 0) {
+                    s.active.type = static_cast<PieceType>(s.pending_special);
+                    s.pending_special = 0;
+                }
+                s.active.pos        = { 4, 19 };
+                s.active.rotation   = 0;
+                s.active.lock_timer = 0.0f;
+                s.active.lock_resets= 0;
+                s.hold_locked       = false;
+                if (!is_valid_position(s.grid, s.active.type, s.active.pos, s.active.rotation)) {
+                    s.game_over = true;
+                    result.events.push_back({ MatrixEventType::GAME_OVER });
+                }
+                return result;
+            }
             auto blocks = get_piece_blocks(s.active.type, s.active.rotation);
             for (const auto& b : blocks) {
                 int gx = s.active.pos.x + b.x;
@@ -330,6 +430,10 @@ namespace tetris::matrix {
 
             // Spawn next piece
             s.active.type       = pull_next_piece(s.rng_state, s.next_queue);
+            if (s.pending_special != 0) {
+                s.active.type = static_cast<PieceType>(s.pending_special);
+                s.pending_special = 0;
+            }
             s.active.pos        = { 4, 19 };
             s.active.rotation   = 0;
             s.active.lock_timer = 0.0f;

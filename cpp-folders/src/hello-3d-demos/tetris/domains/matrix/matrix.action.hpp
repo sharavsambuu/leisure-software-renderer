@@ -23,10 +23,25 @@ namespace tetris::matrix {
         CellGrid cells{};
     };
 
+    // L4 powerup seams (same privilege model as the stamp): the scripted
+    // ruling decides WHAT mutates; these commands just carry raw facts.
+    struct QueueSpecialIntent {
+        uint8_t special_type = 0;   // PieceType of the next pulled piece
+    };
+    struct ClearCellsIntent {
+        static constexpr int MAX_CELLS = 32;
+        uint8_t     count = 0;
+        glm::ivec2  cells[MAX_CELLS]{};
+    };
+    struct FreezeGravityIntent {
+        float seconds = 0.0f;
+    };
+
     using TetrisCommand = std::variant<
         MoveLeftIntent, MoveRightIntent, RotateCWIntent, RotateCCWIntent,
         SoftDropIntent, HardDropIntent, HoldPieceIntent, RestartIntent,
-        StampInitialBoardIntent
+        StampInitialBoardIntent,
+        QueueSpecialIntent, ClearCellsIntent, FreezeGravityIntent
     >;
 
     struct TetrisCommandFrame {
@@ -51,8 +66,9 @@ namespace tetris::matrix {
                 else if constexpr (std::is_same_v<T, HardDropIntent>)   out.hard_drop     = true;
                 else if constexpr (std::is_same_v<T, HoldPieceIntent>)  out.hold_pressed  = true;
                 else if constexpr (std::is_same_v<T, RestartIntent>)    out.reset_pressed = true;
-                // StampInitialBoardIntent carries a payload — handled directly
-                // by reduce_matrix, not folded into the frame.
+                // Payload-carrying intents (StampInitialBoardIntent and the L4
+                // powerup trio) are handled directly by reduce_matrix — they
+                // are not folded into the frame.
             }, cmd);
         }
         return out;

@@ -19,6 +19,7 @@
                      // C++-mangle every reference and fail to link)
 
 #include <config/rules.hpp>
+#include <domains/powerups/powerups.contract.hpp>
 
 #include <cstdint>
 #include <cstdio>
@@ -198,8 +199,9 @@ namespace tetris::lua_edge {
 
         // Merge <table>.get_config() known keys into a Rules instance
         // (Lua as an authoring format for plain config values — §4.2).
-        // Table name is caller-chosen: "BlitzRules" (L2 economy) or
-        // "CanyonGen" (L3 board generator), per what the script defines.
+        // Table name is caller-chosen: "BlitzRules" (L2 economy),
+        // "CanyonGen" (L3 board generator), or "CyberRules" (L4 mechanics),
+        // per what the script defines.
         void apply_config_overrides(config::Rules& rules, const char* table = "BlitzRules") {
             if (!L_) return;
             if (!begin_call(table, "get_config", 0)) return;
@@ -208,7 +210,75 @@ namespace tetris::lua_edge {
             rules.target_score = field_int("target_score", rules.target_score);
             rules.target_lines = field_int("target_lines", rules.target_lines);
             rules.time_limit   = field_float("time_limit", rules.time_limit);
+            rules.special_every_n = field_int("special_every_n", rules.special_every_n);
+            rules.freeze_seconds  = field_float("freeze_seconds", rules.freeze_seconds);
             lua_pop(L_, 1);
+        }
+
+        // L4: <table>.decide_spawn(pieces_since_special, armed_index) →
+        // { type = N } where N is a matrix PieceType value (9..11), or
+        // { type = 0 } to skip. Pure function of the two counters.
+        powerups::SpawnDecision call_decide_spawn(const char* table,
+                                                  int pieces_since, int armed_index) {
+            powerups::SpawnDecision out;
+            if (!L_) return out;
+            if (!begin_call(table, "decide_spawn", 2)) return out;
+            lua_pushinteger(L_, pieces_since);              // [func, n1]
+            lua_pushinteger(L_, armed_index);               // [func, n1, n2]
+            if (!finish_call(2)) return out;
+            const int t = field_int("type", 0);
+            lua_pop(L_, 1);
+            out.valid        = (t >= 9 && t <= 11);
+            out.special_type = static_cast<uint8_t>(out.valid ? t : 0);
+            return out;
+        }
+
+        // L4: <table>.on_special_lock(type, gx, gy, grid_flat) → ruling.
+        // grid_flat is the row-major CellGrid flattened bottom-up as ints
+        // (220 entries; 0 empty / piece id). The script returns
+        // { clear_count, cx[], cy[], freeze_seconds, fx_id } — plain values.
+        powerups::SpecialRuling call_on_special_lock(const char* table,
+                                                     int special_type,
+                                                     int gx, int gy,
+                                                     const matrix::CellGrid& grid) {
+            powerups::SpecialRuling out;
+            if (!L_) return out;
+            if (!begin_call(table, "on_special_lock", 4)) return out;
+            lua_pushinteger(L_, special_type);              // [func, n1..n4, tbl]
+            lua_pushinteger(L_, gx);
+            lua_pushinteger(L_, gy);
+            lua_createtable(L_, matrix::GRID_W * matrix::GRID_H, 0);
+            for (int y = 0; y < matrix::GRID_H; ++y) {
+                for (int x = 0; x < matrix::GRID_W; ++x) {
+                    lua_pushinteger(L_, grid[y][x]);
+                    lua_rawseti(L_, -2, y * matrix::GRID_W + x + 1);
+                }
+            }
+            if (!finish_call(4)) return out;
+            out.valid          = true;
+            out.clear_count    = static_cast<uint8_t>(field_int("clear_count", 0));
+            out.freeze_seconds = field_float("freeze_seconds", 0.0f);
+            out.fx_id          = static_cast<uint8_t>(field_int("fx_id", 0));
+            lua_getfield(L_, -1, "cx");                     // [result, cx]
+            if (lua_istable(L_, -1)) {
+                for (int i = 0; i < powerups::RULING_MAX_CELLS; ++i) {
+                    lua_rawgeti(L_, -1, i + 1);
+                    if (lua_isnumber(L_, -1)) out.clear_x[i] = static_cast<int16_t>(lua_tointeger(L_, -1));
+                    lua_pop(L_, 1);
+                }
+            }
+            lua_pop(L_, 1);
+            lua_getfield(L_, -1, "cy");
+            if (lua_istable(L_, -1)) {
+                for (int i = 0; i < powerups::RULING_MAX_CELLS; ++i) {
+                    lua_rawgeti(L_, -1, i + 1);
+                    if (lua_isnumber(L_, -1)) out.clear_y[i] = static_cast<int16_t>(lua_tointeger(L_, -1));
+                    lua_pop(L_, 1);
+                }
+            }
+            lua_pop(L_, 1);
+            lua_pop(L_, 1);
+            return out;
         }
 
     private:

@@ -18,6 +18,11 @@ namespace tetris::config {
             r.time_limit   = 180.0f;   // excavation sprint clock (script-gated)
             r.target_lines = 20;       // win = excavate 20 lines (script-gated)
             r.target_score = 0;        // unused in excavation mode
+            // Camera: wide diorama shot — mesas/torches stay visible around
+            // the well while the full board keeps its clearance.
+            r.camera.eye     = { 0.0f, 13.5f, -28.0f };
+            r.camera.target  = { 0.0f, 10.2f,   0.0f };
+            r.camera.fov_deg = 58.0f;
             return r;
         }
     };

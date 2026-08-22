@@ -25,7 +25,7 @@ lands; keep prose minimal and point at the owning doc instead of duplicating.
 | Pod 1 `matrix` | ✅ DONE — contract/action/event/reducer; pure center, zero scoring refs |
 | Pod 2 `progression` | ✅ DONE — event-fed scoring, combos, levels, victory; Lua seam isolated at `compute_line_clear_score()` |
 | Pod 3 `spatial_fx` | ✅ DONE — SoA particles, camera spring, scene planner (`spatial_fx.plan.hpp`) |
-| Pod 4 `powerups` | ⬜ PENDING — arrives together with its `scripts/*.lua` (Part 4 · L4) |
+| Pod 4 `powerups` | ✅ DONE (2026-08-23) — cadence scheduler + scripted special pieces (Part 4 · L4) |
 | Pod 5 `environment` | ⬜ PENDING — diorama + reactive mood lighting (Part 4 · L5) |
 | Edges `input` / `audio` / `rasterizer` / `ui` | ✅ DONE — one subdirectory per edge (`edges/<name>/tetris.<name>.hpp`) |
 | Edge `lua` | ✅ DONE — sandboxed stateless evaluator wired into the loop via `ScriptHooks` function-pointer bridges; blitz script boots from the campaign manifest |
@@ -190,6 +190,12 @@ event-fed recipes in `FxState`/scripts consumed by the planner; environment
 mood is interpolated state. All converge into ONE `PipelineExecutionPlan`.
 No level adds architecture; levels add data, recipes, and listeners.
 
+**Camera (2026-08-23):** framing is per-level config data — `Rules.camera`
+(`config/camera.hpp`: eye/target/FOV/clip planes) set in each stage's
+`make_rules()`; the planner applies FX shake/pulse as offsets on top. L1/L2
+share the pulled-back default (~26 units vertical coverage, full board +
+HUD clearance), L3 a wide diorama shot, L4 a low dramatic angle.
+
 ### Summary matrix
 
 | # | Level / Mode | Tier | C++ share | Lua share | Pods touched | Architectural delta |
@@ -304,34 +310,34 @@ Environment:
 
 ---
 
-### L4 · Cyber Storm — Tier 3: Pure-Lua MECHANICS → earns Pod 4 `[PLANNED]`
+### L4 · Cyber Storm — Tier 3: Pure-Lua MECHANICS → earns Pod 4 `[DONE 2026-08-23]`
 
 Special pieces drop occasionally: Bomb (3×3 blast), Laser Row (vaporizes a row),
 Freeze (stops gravity 5s). Whole gameplay mechanics as hot-reloadable scripts;
 add future powerups without touching C++.
 
 Core:
-- [ ] New pod `domains/powerups/`: contract (cooldown timers, pending-mutation queue), action (`ApplyMutationIntent`), event (`POWERUP_TRIGGERED`), reducer (pure step)
-- [ ] Matrix stays untouched: special spawns arrive as raw facts / commands; powerup logic never edits the grid directly
-- [ ] `scripts/powerups/bomb_piece.lua`, `laser_row.lua`, `freeze.lua` — `(matrix_facts, powerup_state) -> {mutations[], events[], fx_requests[]}`
-- [ ] Main wiring: evaluate scripts after matrix events; feed returned intents into the next reduce pass
-- [ ] Audio: new SoundTypes (blast / zap / freeze) through the SPSC ring
-- [ ] Purity gate extended in verify.sh: no SDL under `domains/powerups/`
+- [x] New pod `domains/powerups/`: contract (PowerupSnapshot cadence state + SpecialRuling/ApplyRulingIntent), action (ApplyRulingIntent), event (SPAWN_SPECIAL_REQUESTED / POWERUP_TRIGGERED), reducer (pure `reduce_powerups` step)
+- [x] Matrix seam (not "untouched" — a minimal typed seam): `PieceType::Bomb/LaserRow/Freeze` (9–11), `QueueSpecialIntent`, `ClearCellsIntent`, `FreezeGravityIntent`, `SPECIAL_LOCKED` event, `gravity_freeze` in the snapshot. The grid is still only ever mutated by the matrix reducer through plain commands
+- [x] `scripts/cyber_storm.lua` — one stage script with three pure entry points: `CyberRules.get_config()` (cadence/freeze numbers), `CyberRules.decide_spawn(count, armed) -> special_type`, `CyberRules.on_special_lock(type, x, y, grid) -> {cells[], freeze_seconds, fx_id}` (single script instead of three files; per-powerup scripts can be split out later)
+- [x] Main wiring: cadence counts PIECE_SPAWNED; on threshold the script's decide_spawn queues a special via `QueueSpecialIntent`; on SPECIAL_LOCKED the ruling becomes raw ClearCells/FreezeGravity commands riding the boot queue into the next reduce pass
+- [x] Audio: SND_BLAST / SND_ZAP / SND_FROST voices through the SPSC ring, mapped from POWERUP_TRIGGERED
+- [x] Purity gates extended in verify.sh: script purity glob covers `domains/powerups/scripts/*.lua`; stage-4 smoke gate `--expect-special-every-n=5` + CYBER_DETERMINISM pair
 
 GUI (powerup cockpit):
-- [ ] Powerup cooldown radial dials / pip row (projection of powerup contract)
-- [ ] Incoming-special warning icons overlaid on the next-queue display
-- [ ] Active-effect status chips (freeze timer counting down, laser charge level)
-- [ ] Hit-marker flash on laser fire; combo multiplier badge with glitch flicker at high streaks
+- [x] Powerup cadence pip row (progress to next special, projection of powerup state)
+- [x] Incoming-special warning icon overlaid on the next-queue display
+- [x] Active-effect status chip (freeze timer counting down from the matrix snapshot)
+- [x] Hit-marker flash on bomb/laser lock (hud.flash); glitch-flicker badge deferred to L5 polish
 
 FX (per-powerup signature):
-- [ ] Bomb: 3×3 voxel explosion burst + shockwave ring + white screen flash + camera kick
-- [ ] Laser: horizontal beam sweep with scanline glow + per-cell dissolve vaporize of the row
-- [ ] Freeze: frost vignette overlay + ice-crystal particle drift + brief desaturation pulse
-- [ ] Glitch modifier: RGB-split flicker on affected rows for ~0.5s
+- [x] Bomb: voxel burst + shockwave ring + white flash + camera kick (fx_id=1 recipe)
+- [x] Laser: horizontal beam sweep + scanline glow + row dissolve (fx_id=2 recipe)
+- [x] Freeze: frost vignette + ice-crystal drift + desaturation pulse (fx_id=3 recipe)
+- [ ] Glitch modifier: RGB-split flicker on affected rows for ~0.5s (deferred — needs per-row render hook)
 
 Environment:
-- [ ] Neon cyberpunk grid floor; light strips pulse on each powerup trigger; lightning flash synced to special-piece spawns
+- [x] Neon cyberpunk environment (env_neon wire on stage 4); light strips pulse on POWERUP_TRIGGERED; spawn flash synced to special-piece spawns
 
 ---
 
@@ -403,7 +409,7 @@ Results GUI:
 
 - [x] **A.** Wire lua.edge + deliver L2 Blitz 120 (smallest delta; proves determinism-with-scripting gates) — DONE 2026-08-22, all gates PASS
 - [x] **B.** L3 Garbage Canyon generator scripts + seed-determinism gate — DONE 2026-08-23; all features live, SMOKE_TARGET_LINES + SEED_DIFF PASS; same-seed screenshot gate open (STATUS.md §0e pitfall)
-- [ ] **C.** Powerups pod + L4 Cyber Storm
+- [x] **C.** Powerups pod + L4 Cyber Storm — DONE 2026-08-23; SMOKE_SPECIAL_EVERY_N + CYBER_DETERMINISM PASS, purity gates NONE (STATUS.md §0f)
 - [ ] **D.** Environment pod + L5 Encore Finale
 - [ ] **E.** Session pod + campaign manifest + congrats overlay (menus / progression / results)
  — session pod + menus + RESULTS screen DONE 2026-08-23 (all gates PASS); remaining: fireworks/congrats flavor + palette-preview cards

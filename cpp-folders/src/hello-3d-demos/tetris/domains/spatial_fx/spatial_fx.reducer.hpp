@@ -113,6 +113,64 @@ using tetris::progression::ProgressionEventType;
         }
     }
 
+    // --- L4 cyber-storm recipes (special-piece detonations) ------------------
+
+    // Bomb: radial fireball — orange core, yellow mid, white-hot flecks, plus
+    // an expanding shockwave ring and a heavy shake.
+    static inline void bomb_blast(FxState& fx, const MatrixEvent& ev) {
+        for (int i = 0; i < 90; ++i) {
+            const float ang = (float)(fx_rand(fx.rng_state) % 628) / 100.0f;
+            const float spd = 2.5f + (float)(fx_rand(fx.rng_state) % 100) / 22.0f;
+            glm::vec3 vel(std::cos(ang) * spd, std::sin(ang) * spd * 0.8f,
+                          -1.0f - (float)(fx_rand(fx.rng_state) % 100) / 60.0f);
+            shs::Color c = (i % 7 == 0) ? shs::Color{ 255, 245, 200, 255 }
+                         : (i % 3 == 0) ? shs::Color{ 255, 210, 70, 255 }
+                                        : shs::Color{ 255, 120, 30, 255 };
+            fx.particles.add(ev.world_position, vel, c, 0.9f);
+        }
+        fx.rings.add(ev.world_position, 0.4f, 14.0f,
+                     shs::Color{ 255, 160, 60, 255 }, 0.55f);
+        fx.camera_shake = std::max(fx.camera_shake, 0.75f);
+        fx.screen_flash = std::max(fx.screen_flash, 0.55f);
+    }
+
+    // Laser: horizontal beam sweep along the locked row — bright streaks
+    // racing outward from the anchor with magenta/white cores.
+    static inline void laser_sweep(FxState& fx, const MatrixEvent& ev) {
+        const float row_y = (float)ev.lock_y + 0.5f;
+        for (int col = 0; col < GRID_W; ++col) {
+            const int   reps = 2 + (int)(fx_rand(fx.rng_state) % 2);
+            for (int k = 0; k < reps; ++k) {
+                glm::vec3 p((float)col - 4.5f, row_y + ((float)(fx_rand(fx.rng_state) % 40) - 20.0f) / 40.0f, 0.15f);
+                const float dir = (col >= ev.lock_x) ? 1.0f : -1.0f;
+                glm::vec3 vel(dir * (9.0f + (float)(fx_rand(fx.rng_state) % 100) / 18.0f),
+                              (float)(fx_rand(fx.rng_state) % 30) / 30.0f - 0.05f, 0.0f);
+                shs::Color c = (k == 0) ? shs::Color{ 255, 240, 250, 255 }
+                                        : shs::Color{ 255,  60, 200, 255 };
+                fx.particles.add(p, vel, c, 0.45f);
+            }
+        }
+        fx.camera_shake = std::max(fx.camera_shake, 0.35f);
+        fx.screen_flash = std::max(fx.screen_flash, 0.35f);
+    }
+
+    // Freeze: time-stop frost — slow ice crystals drifting down over the well
+    // plus a cold expanding ring (no shake; the world goes quiet).
+    static inline void frost_bloom(FxState& fx, const MatrixEvent& ev) {
+        for (int i = 0; i < 70; ++i) {
+            glm::vec3 p((float)(fx_rand(fx.rng_state) % 110) / 10.0f - 5.5f,
+                        (float)(fx_rand(fx.rng_state) % 190) / 10.0f + 0.5f,
+                        (float)(fx_rand(fx.rng_state) % 100) / 50.0f - 1.0f);
+            glm::vec3 vel((float)(fx_rand(fx.rng_state) % 20) / 20.0f - 0.5f,
+                          -0.8f - (float)(fx_rand(fx.rng_state) % 40) / 40.0f, 0.0f);
+            shs::Color c = (i % 4 == 0) ? shs::Color{ 230, 250, 255, 255 }
+                                        : shs::Color{ 140, 230, 255, 255 };
+            fx.particles.add(p, vel, c, 1.8f);
+        }
+        fx.rings.add(glm::vec3(0.0f, 9.5f, 0.4f), 1.0f, 10.0f,
+                     shs::Color{ 140, 230, 255, 255 }, 0.9f);
+    }
+
     // Golden confetti/firework burst on the victory crescendo ("photo finish").
     static inline void victory_fireworks(FxState& fx) {
         static const shs::Color GOLD[] = {
@@ -144,6 +202,9 @@ using tetris::progression::ProgressionEventType;
         if (fx.camera_pulse > 0.0f) {
             fx.camera_pulse = std::max(0.0f, fx.camera_pulse - dt * 2.2f);
         }
+        if (fx.screen_flash > 0.0f) {
+            fx.screen_flash = std::max(0.0f, fx.screen_flash - dt * 2.8f);
+        }
 
         // --- Matrix raw facts --------------------------------------------------
         for (const auto& ev : matrix_events) {
@@ -155,6 +216,14 @@ using tetris::progression::ProgressionEventType;
                 break;
             case MatrixEventType::PIECE_LOCK_IMPACT:
                 if (ev.garbage_cells > 0) impact_dust_puff(fx, ev);
+                break;
+            case MatrixEventType::SPECIAL_LOCKED:
+                switch (ev.special_type) {
+                case 9:  bomb_blast(fx, ev); break;    // PieceType::Bomb
+                case 10: laser_sweep(fx, ev); break;   // PieceType::Laser
+                case 11: frost_bloom(fx, ev); break;   // PieceType::Freeze
+                default: break;
+                }
                 break;
             case MatrixEventType::LINES_CLEARED: {
                 const bool tetris = (ev.lines_cleared_count >= 4);

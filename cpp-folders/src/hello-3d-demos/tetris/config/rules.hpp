@@ -4,13 +4,16 @@
 #include <cmath>
 #include <cstdint>
 
+#include <config/camera.hpp>
+
 namespace tetris::config {
 
     // Mode identity (campaign stages; see config/campaign/main_campaign.hpp)
     enum : int {
         MODE_MARATHON        = 1,   // L1: untimed target chase (pure C++ tier)
         MODE_BLITZ_120       = 2,   // L2: 2-minute sprint (Lua-authored economy)
-        MODE_GARBAGE_CANYON  = 3    // L3: excavation sprint (Lua-authored board)
+        MODE_GARBAGE_CANYON  = 3,   // L3: excavation sprint (Lua-authored board)
+        MODE_CYBER_STORM     = 4    // L4: scripted special-piece mechanics (Pod 4)
     };
 
     struct Rules {
@@ -43,6 +46,17 @@ namespace tetris::config {
         // boot via BlitzRules.get_config() (see edges/lua/lua.edge.hpp).
         int      mode_id     = MODE_MARATHON;
         float    time_limit  = 0.0f;
+
+        // L4 Cyber Storm: scripted special-piece cadence. Every Nth spawned
+        // piece is a Bomb/Laser/Freeze (cycle order + effects authored in the
+        // stage script; these are the native fallbacks).
+        int   special_every_n   = 5;
+        float freeze_seconds    = 5.0f;
+
+        // Per-level camera preset (config/camera.hpp): eye/target/FOV/clip
+        // planes. Each stage's make_rules() frames its own shot; the planner
+        // applies FX shake/pulse as small offsets on top of this preset.
+        CameraConfig camera{};
 
         float gravity_for_level(int level) const {
             return std::max(min_drop_interval,

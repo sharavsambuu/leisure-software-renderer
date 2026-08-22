@@ -8,6 +8,7 @@
 #include <config/levels/marathon_01.hpp>
 #include <config/levels/blitz_120.hpp>
 #include <config/levels/garbage_canyon.hpp>
+#include <config/levels/cyber_storm.hpp>
 
 namespace tetris::config::campaign {
 
@@ -20,11 +21,13 @@ namespace tetris::config::campaign {
         int         unlock_after;            // stage index required first (0 = open)
     };
 
-    // Manifest — L1 Marathon Classic → L2 Blitz 120 → L3 Garbage Canyon.
+    // Manifest — L1 Marathon Classic → L2 Blitz 120 → L3 Garbage Canyon
+    //           → L4 Cyber Storm.
     static constexpr Stage STAGES[] = {
-        { 1, "marathon_01",    Marathon01::NAME,    &Marathon01::make_rules,    "",                                            0 },
-        { 2, "blitz_120",      Blitz120::NAME,      &Blitz120::make_rules,      "domains/progression/scripts/blitz_mode.lua",  1 },
+        { 1, "marathon_01",    Marathon01::NAME,    &Marathon01::make_rules,    "",                                              0 },
+        { 2, "blitz_120",      Blitz120::NAME,      &Blitz120::make_rules,      "domains/progression/scripts/blitz_mode.lua",    1 },
         { 3, "garbage_canyon", GarbageCanyon::NAME, &GarbageCanyon::make_rules, "domains/matrix/scripts/garbage_canyon.gen.lua", 2 },
+        { 4, "cyber_storm",    CyberStorm::NAME,    &CyberStorm::make_rules,    "domains/powerups/scripts/cyber_storm.lua",      3 },
     };
 
     static constexpr int STAGE_COUNT = static_cast<int>(sizeof(STAGES) / sizeof(STAGES[0]));

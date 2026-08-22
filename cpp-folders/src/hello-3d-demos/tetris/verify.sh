@@ -50,8 +50,16 @@ echo "=== seed determinism: same seed ⇒ identical board, other seed ⇒ differ
 if cmp -s /tmp/t_seed777_a.bmp /tmp/t_seed777_b.bmp; then echo SEED_SAME_PASS; else echo SEED_SAME_FAIL; fi
 if cmp -s /tmp/t_seed777_a.bmp /tmp/t_seed778.bmp;   then echo SEED_DIFF_FAIL; else echo SEED_DIFF_PASS; fi
 
+echo "=== smoke: L4 cyber mechanics override reaches config (stage 4) ==="
+"$BIN" --stage=4 --expect-special-every-n=5 || echo "SMOKE_SPECIAL_EVERY_N_FAILED"
+
+echo "=== cyber stage 4 boots + deterministic WITH mechanics scripting ==="
+"$BIN" --stage=4 --screenshot /tmp/t_cyber_a.bmp --frame=45 || echo "CYBER_RUN_FAILED"
+"$BIN" --stage=4 --screenshot /tmp/t_cyber_b.bmp --frame=45 || echo "CYBER_RUN_B_FAILED"
+if cmp -s /tmp/t_cyber_a.bmp /tmp/t_cyber_b.bmp; then echo CYBER_DETERMINISM=PASS; else echo CYBER_DETERMINISM=FAIL; fi
+
 echo "=== script purity: generator must be deterministic (no RNG/os/io/print) ==="
-sed 's/--.*//' domains/matrix/scripts/*.lua \
+sed 's/--.*//' domains/matrix/scripts/*.lua domains/powerups/scripts/*.lua \
     | grep -nE 'math\.random|os\.|io\.|print\(' || echo SCRIPT_PURITY=PASS
 
 cd /home/sharavsambuu/src/dev/leisure-software-renderer/cpp-folders/src/hello-3d-demos/tetris

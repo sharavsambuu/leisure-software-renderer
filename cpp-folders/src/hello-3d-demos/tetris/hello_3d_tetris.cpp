@@ -57,6 +57,7 @@
 #endif
 
 #include <config/rules.hpp>
+#include <domains/powerups/powerups.reducer.hpp>
 #include <config/campaign/main_campaign.hpp>
 
 #include <domains/matrix/matrix.contract.hpp>
@@ -158,6 +159,7 @@ int main(int argc, char* argv[]) {
     std::string script_override;
     long long   expect_target    = -1;
     long long   expect_lines     = -1;
+    long long   expect_special_n = -1;
     long long   seed_value       = 20260822;   // daily canyon variant identity
 
     for (int i = 1; i < argc; ++i) {
@@ -179,6 +181,8 @@ int main(int argc, char* argv[]) {
             expect_target = std::atoll(arg.c_str() + 22);
         } else if (arg.rfind("--expect-target-lines=", 0) == 0) {
             expect_lines = std::atoll(arg.c_str() + 22);
+        } else if (arg.rfind("--expect-special-every-n=", 0) == 0) {
+            expect_special_n = std::atoll(arg.c_str() + 25);
         }
     }
     const bool headless = (screenshot_frame >= 0);
@@ -199,6 +203,10 @@ int main(int argc, char* argv[]) {
     // load (the initial-board stamp reaches the reducer like any other intent).
     std::vector<matrix::TetrisCommand> boot_commands;
     int canyon_seed_tag = 0;   // HUD seed-tag projection input
+    // L4 special-piece scheduler state (cadence counter + armed cycle). Script
+    // decisions become raw matrix commands that ride the boot queue like the
+    // L3 stamp — the grid is only ever touched through plain intents.
+    powerups::PowerupSnapshot powerup_state{};
 #ifdef TETRIS_LUA_ENABLED
     std::unique_ptr<lua_edge::StatelessLuaEvaluator> lua_eval;   // fresh per load
 #endif
@@ -207,6 +215,7 @@ int main(int argc, char* argv[]) {
         g_lua_eval   = nullptr;
         boot_commands.clear();
         canyon_seed_tag = 0;
+        powerup_state = powerups::PowerupSnapshot{};
 #ifdef TETRIS_LUA_ENABLED
         lua_eval.reset();
 #endif
@@ -256,6 +265,15 @@ int main(int argc, char* argv[]) {
                 }
             }
 
+            // L4 mechanics table: cadence/freeze numbers patch Rules; spawn
+            // decisions and lock rulings are evaluated per-frame below.
+            if (lua_eval->has_table("CyberRules")) {
+                lua_eval->apply_config_overrides(r, "CyberRules");
+                std::cout << "[lua] cyber rules active: special_every_n="
+                          << r.special_every_n
+                          << " freeze_seconds=" << r.freeze_seconds << std::endl;
+            }
+
             std::cout << "[lua] rule script active: " << script_path << std::endl;
         } else {
             std::cerr << "[lua] script unavailable (" << script_path
@@ -281,6 +299,14 @@ int main(int argc, char* argv[]) {
         std::cout << "SMOKE_TARGET_LINES=" << (pass ? "PASS" : "FAIL")
                   << " (expected=" << expect_lines
                   << ", actual=" << rules.target_lines << ")" << std::endl;
+        return pass ? 0 : 2;
+    }
+    // L4 gate: the cyber mechanics table must have patched the cadence.
+    if (expect_special_n >= 0) {
+        const bool pass = (rules.special_every_n == static_cast<int>(expect_special_n));
+        std::cout << "SMOKE_SPECIAL_EVERY_N=" << (pass ? "PASS" : "FAIL")
+                  << " (expected=" << expect_special_n
+                  << ", actual=" << rules.special_every_n << ")" << std::endl;
         return pass ? 0 : 2;
     }
 
@@ -500,6 +526,7 @@ int main(int argc, char* argv[]) {
                 score_state.time_left    = rules.time_limit;
                 score_state.high_score   = preserved_high;
                 hud = ui::HudState{};   // no stale banners/floaters across resets
+                powerup_state = powerups::PowerupSnapshot{};
             }
             progression::ProgressionStep prog = progression::reduce_progression(
                 std::span<const matrix::MatrixEvent>(step.events.data(), step.events.size()),
@@ -515,6 +542,57 @@ int main(int argc, char* argv[]) {
                 ? glm::clamp(1.0f - score_state.time_left / rules.time_limit, 0.0f, 1.0f)
                 : 0.0f;
             fx.env_dusk = (rules.mode_id == config::MODE_GARBAGE_CANYON) ? 1.0f : 0.0f;
+            fx.env_neon = (rules.mode_id == config::MODE_CYBER_STORM) ? 1.0f : 0.0f;
+
+            // 3b. L4 POWERUP SCHEDULER (event-fed; rulings cross as plain values)
+            // Cadence counts spawns; when a special locks, its lock ruling from
+            // the stage script becomes raw ClearCells / FreezeGravity commands.
+            std::pmr::vector<powerups::ApplyRulingIntent> frame_rulings(arena);
+            if (lua_eval && lua_eval->valid()
+                && lua_eval->has_function("CyberRules", "on_special_lock")) {
+                for (const auto& ev : step.events) {
+                    if (ev.type != matrix::MatrixEventType::SPECIAL_LOCKED) continue;
+                    const auto ruling = lua_eval->call_on_special_lock(
+                        "CyberRules", ev.special_type, ev.lock_x, ev.lock_y, world.grid);
+                    if (!ruling.valid) continue;
+                    frame_rulings.push_back(powerups::ApplyRulingIntent{
+                        ruling, static_cast<int16_t>(ev.lock_x),
+                        static_cast<int16_t>(ev.lock_y) });
+                    if (ruling.fx_id == 1 || ruling.fx_id == 2) {   // bomb/laser flash
+                        hud.flash = std::max(hud.flash,
+                            ruling.fx_id == 1 ? 0.55f : 0.35f);
+                    }
+                }
+            }
+            powerups::PowerupStep pstep = powerups::reduce_powerups(
+                powerup_state,
+                std::span<const matrix::MatrixEvent>(step.events.data(), step.events.size()),
+                std::span<const powerups::ApplyRulingIntent>(
+                    frame_rulings.data(), frame_rulings.size()),
+                rules.special_every_n, rules.freeze_seconds, arena);
+            powerup_state = std::move(pstep.next);
+            for (auto& mut : pstep.mutations) boot_commands.push_back(std::move(mut));
+
+            // Fulfill a latched special request ONCE (edge-triggered by this
+            // frame's SPAWN_SPECIAL_REQUESTED event) via the script's pure
+            // decide_spawn(); the queued piece enters the bag next frame.
+            bool spawn_requested_now = false;
+            for (const auto& uev : pstep.events) {
+                if (uev.type == powerups::PowerupEventType::SPAWN_SPECIAL_REQUESTED) {
+                    spawn_requested_now = true;
+                }
+            }
+            if (spawn_requested_now && lua_eval && lua_eval->valid()
+                && lua_eval->has_function("CyberRules", "decide_spawn")) {
+                const auto dec = lua_eval->call_decide_spawn("CyberRules",
+                    pstep.next.pieces_since_special,
+                    static_cast<int>(pstep.next.armed_next));
+                if (dec.valid) {
+                    matrix::QueueSpecialIntent q;
+                    q.special_type = dec.special_type;
+                    boot_commands.push_back(q);
+                }
+            }
 
             // Run-end latch: hand the finished run to the RESULTS screen.
             if (score_state.victory || score_state.time_up || world.game_over) {
@@ -571,18 +649,41 @@ int main(int argc, char* argv[]) {
                     default: break;
                     }
                 }
+                for (const auto& uev : pstep.events) {
+                    switch (uev.type) {
+                    case powerups::PowerupEventType::POWERUP_TRIGGERED:
+                        g_audio.play(uev.powerup == 1 ? audio::SND_BLAST
+                                   : uev.powerup == 2 ? audio::SND_ZAP
+                                                      : audio::SND_FROST);
+                        break;
+                    default: break;
+                    }
+                }
             }
         }
 
-        // 5. PURE SCENE PLANNER
+        // 5. PURE SCENE PLANNER (per-level camera preset rides in via Rules)
         spatial_fx::PipelineExecutionPlan plan = spatial_fx::plan_tetris_scene(
-            world, fx, CANVAS_WIDTH, CANVAS_HEIGHT, arena
+            world, fx, CANVAS_WIDTH, CANVAS_HEIGHT, arena, rules.camera
         );
 
         // HUD wiring bundle (plain values): canyon projections active only on
         // the excavation stage.
         const ui::CanyonHudInfo canyon_info{
             rules.mode_id == config::MODE_GARBAGE_CANYON, canyon_seed_tag };
+        const ui::CyberHudInfo cyber_info{
+            rules.mode_id == config::MODE_CYBER_STORM,
+            rules.special_every_n > 0
+                ? glm::clamp((float)powerup_state.pieces_since_special
+                                 / (float)rules.special_every_n, 0.0f, 1.0f)
+                : 0.0f,
+            static_cast<int>(powerup_state.armed_next),
+            world.gravity_freeze,
+            [&] {
+                const int nq0 = static_cast<int>(world.next_queue[0]);
+                return nq0 >= 9 && nq0 <= 11;
+            }(),
+            static_cast<int>(world.next_queue[0]) };
 
         // 6. TILED PARALLEL RASTERIZATION
         canvas.buffer().clear(shs::Color{ 14, 16, 22, 255 });
@@ -631,7 +732,7 @@ int main(int argc, char* argv[]) {
                                   config::campaign::STAGE_COUNT);
             break;
         case session::Screen::PAUSED:
-            ui::draw_hud(canvas, world, score_state, hud, false, canyon_info);
+            ui::draw_hud(canvas, world, score_state, hud, false, canyon_info, cyber_info);
             ui::draw_pause_overlay(canvas, session);
             break;
         case session::Screen::RESULTS:
@@ -639,7 +740,8 @@ int main(int argc, char* argv[]) {
             break;
         default: // PLAYING
             ui::draw_hud(canvas, world, score_state, hud,
-                         stage->index < config::campaign::STAGE_COUNT, canyon_info);
+                         stage->index < config::campaign::STAGE_COUNT, canyon_info,
+                         cyber_info);
             break;
         }
 

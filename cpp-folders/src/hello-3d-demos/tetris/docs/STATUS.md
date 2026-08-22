@@ -131,6 +131,61 @@ coplanar faces among the new boxes, so suspicion falls on depth-tie ordering
 sensitivity in the tiled rasterizer once triangle counts/overlaps grow.
 Unresolved at delivery; gameplay itself is unaffected.
 
+## §0f Build order C delivered: L4 Cyber Storm + powerups pod (2026-08-23)
+Pod 4 lands with the whole gameplay-mechanics tier scripted. The matrix pod
+gained a minimal typed seam (special piece types + three new plain commands +
+one event); the grid is still mutated only by `reduce_matrix` through intents.
+- domains/powerups/: contract (`PowerupSnapshot` cadence counter + armed
+  cycle, `SpecialRuling`, `ApplyRulingIntent`), action, events
+  (`SPAWN_SPECIAL_REQUESTED`, `POWERUP_TRIGGERED`), pure reducer
+  `reduce_powerups(prev, matrix_events, rulings, every_n, freeze_s, arena)`.
+  Zero SDL/Lua refs; rulings cross as plain values.
+- matrix seam: `PieceType::Bomb/LaserRow/Freeze` (9–11), `QueueSpecialIntent`,
+  `ClearCellsIntent`, `FreezeGravityIntent`, `SPECIAL_LOCKED` event,
+  `gravity_freeze` mirror in `MatrixSnapshot`.
+- scripts/cyber_storm.lua: single stage script, three pure entry points —
+  `CyberRules.get_config()` (special_every_n=5, freeze_seconds=5),
+  `decide_spawn(count, armed)` (bomb→laser→freeze rotation), and
+  `on_special_lock(type, x, y, grid)` returning `{cells, freeze_seconds,
+  fx_id}` rulings computed from the grid snapshot.
+- lua.edge: `has_function(table, fn)` / `call_decide_spawn` /
+  `call_on_special_lock` (grid pushed as a 22×10 table of ints).
+- main: cadence fed from PIECE_SPAWNED; threshold fires ONE edge-triggered
+  decide_spawn whose QueueSpecialIntent rides the boot queue; SPECIAL_LOCKED
+  rulings become ClearCells/FreezeGravity commands on the next frame; ruling
+  fx_id drives hud.flash; POWERUP_TRIGGERED maps to SND_BLAST/SND_ZAP/SND_FROST.
+- edges: audio voices blast/zap/frost; FX recipes bomb/laser/frost gated on
+  POWERUP_TRIGGERED powerup id + env_neon wire for the cyber palette; HUD
+  CyberHudInfo bundle (cadence pips, armed-next icon, freeze chip,
+  next-special warning) projected only on stage 4.
+- config: `config/levels/cyber_storm.hpp` + campaign stage 4;
+  `--expect-special-every-n=N` smoke gate asserts the script patched Rules.
+Gates: DETERMINISM / DELTA / SMOKE_TARGET_SCORE / BLITZ_DETERMINISM /
+SMOKE_TARGET_LINES(20) / SEED_SAME(777@f30) / SEED_DIFF PASS;
+**SMOKE_SPECIAL_EVERY_N=PASS**; **CYBER_DETERMINISM=PASS**; SCRIPT_PURITY
+PASS (glob now covers `domains/powerups/scripts/*.lua`); purity NONE ×3.
+main = 781 lines.
+NOTE on CANYON_DETERMINISM: still failing in this run — re-bisected today by
+stashing ALL L4 work and rebuilding HEAD (L3): baseline fails 3/3 pairs, so
+the §0e pitfall is confirmed pre-existing and NOT caused by the L4 changes.
+
+## §0g Per-level camera presets (2026-08-23)
+The old shot was hardcoded in the planner (fov 60°, distance ≈18.4 → ~21.3
+units of vertical coverage for a 22-unit board): the stack cropped and HUD
+panels overlapped pieces. Camera framing is now per-level config data.
+- `config/camera.hpp`: `CameraConfig` (eye / target / vertical fov / clip
+  planes) with a pulled-back default (~26 units of coverage at 55°).
+- `Rules.camera` member; each stage's `make_rules()` frames its own shot:
+  L1/L2 shared default, L3 wide diorama shot (mesas stay in frame), L4 low
+  dramatic angle looking up at the neon horizon.
+- `plan_tetris_scene(..., const config::CameraConfig& cam = {})`: preset is
+  read-only; FX dynamics layer ON TOP — pulse dollies along the view axis,
+  shake jitters eye position. Defaulted param keeps other callers compiling.
+Gates re-run: DETERMINISM / SMOKE_TARGET_SCORE / BLITZ_DETERMINISM /
+SMOKE_TARGET_LINES / SEED_DIFF / SMOKE_SPECIAL_EVERY_N / CYBER_DETERMINISM /
+SCRIPT_PURITY PASS; purity NONE ×3. CANYON_DETERMINISM + SEED_SAME remain
+the known §0e pitfall (pre-existing). Per-stage previews: /tmp/cam_s{1..4}.bmp.
+
 ## Definition-of-done checklist
 
 - [x] Only one definition of every type/function (root monolith headers deleted)

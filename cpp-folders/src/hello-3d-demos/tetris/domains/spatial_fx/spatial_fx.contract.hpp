@@ -150,6 +150,13 @@ using tetris::matrix::BLOCK_GAP;
         float              env_dusk       = 0.0f;   // L3 canyon: 1 = dusk/desert env
                                                 // (mesa silhouettes, torch flicker,
                                                 // sandstone floor); main wires 0/1.
+        float              env_neon       = 0.0f;   // L4 cyber: 1 = neon grid env
+                                                // (dark rails, cyan/magenta trim,
+                                                // emissive floor strips); main
+                                                // wires 0/1.
+        float              screen_flash   = 0.0f;   // L4 ruling feedback (bomb/laser);
+                                                // HUD projects it as a dithered
+                                                // white overlay; decays in step_fx.
         float              time           = 0.0f;
         uint32_t           rng_state      = 0x9e3779b9u;   // deterministic debris velocities
 
@@ -168,6 +175,12 @@ using tetris::matrix::BLOCK_GAP;
             case PieceType::L: return shs::Color{ 255, 140,  35, 255 }; // Orange
             case PieceType::Garbage:
                                return shs::Color{ 138, 106,  74, 255 }; // Mud brown (canyon rubble)
+            case PieceType::Bomb:
+                               return shs::Color{ 255, 120,  30, 255 }; // Hot orange (detonator)
+            case PieceType::Laser:
+                               return shs::Color{ 255,  60, 200, 255 }; // Magenta beam
+            case PieceType::Freeze:
+                               return shs::Color{ 140, 230, 255, 255 }; // Ice cyan
             default:           return shs::Color{  80,  90, 105, 255 };
         }
     }

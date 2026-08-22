@@ -17,9 +17,21 @@ namespace tetris::matrix {
 
     enum class PieceType : uint8_t {
         None = 0, I = 1, O = 2, T = 3, S = 4, Z = 5, J = 6, L = 7,
-        Garbage = 8   // L3 canyon rubble: never spawns from the 7-bag; only
+        Garbage = 8,  // L3 canyon rubble: never spawns from the 7-bag; only
                       // arrives via the scripted initial-board stamp (raw fact)
+        // L4 Cyber Storm specials: never spawn from the 7-bag either — they
+        // arrive via QueueSpecialIntent (script-scheduled raw facts). On lock
+        // they do NOT write the grid; they emit SPECIAL_LOCKED and the scripted
+        // ruling decides the mutation (blast cells / vaporized row / freeze).
+        Bomb   = 9,
+        Laser  = 10,
+        Freeze = 11
     };
+
+    // L4 special-piece identity test (grid rulebook vocabulary).
+    static inline bool is_special_piece(PieceType t) {
+        return t == PieceType::Bomb || t == PieceType::Laser || t == PieceType::Freeze;
+    }
 
     // Row-major cell block: [y][x], y 0 = grid bottom. Shared by the snapshot
     // and the initial-board stamp command payload.
@@ -52,6 +64,13 @@ namespace tetris::matrix {
         float drop_interval  = 0.80f;
         float gravity_timer  = 0.0f;
         float game_time      = 0.0f;
+
+        // L4 powerup seam: pending_special overrides the NEXT pulled piece's
+        // type (set by QueueSpecialIntent); gravity_freeze pauses the gravity
+        // step while > 0 (set by FreezeGravityIntent). Both are plain fields —
+        // no logic lives here.
+        uint8_t pending_special = 0;
+        float   gravity_freeze  = 0.0f;
 
         bool  game_over      = false;
 

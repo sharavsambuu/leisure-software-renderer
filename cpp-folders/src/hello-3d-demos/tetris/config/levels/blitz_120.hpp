@@ -16,6 +16,11 @@ namespace tetris::config {
             r.mode_id      = MODE_BLITZ_120;
             r.time_limit   = 120.0f;   // 2-minute sprint
             r.target_score = 20000;    // aggressive economy (script-gated)
+            // Camera: slightly tighter than marathon — the sprint HUD
+            // (countdown/combo meter) sits higher, so frame a touch lower.
+            r.camera.eye     = { 0.0f, 11.6f, -24.5f };
+            r.camera.target  = { 0.0f, 10.2f,   0.0f };
+            r.camera.fov_deg = 55.0f;
             return r;
         }
     };

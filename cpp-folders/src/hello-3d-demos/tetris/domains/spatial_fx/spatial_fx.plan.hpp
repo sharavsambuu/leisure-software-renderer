@@ -8,6 +8,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include "shs_renderer.hpp"
 
+#include <config/camera.hpp>
 #include <domains/matrix/matrix.contract.hpp>
 #include <domains/matrix/matrix.reducer.hpp>
 #include <domains/spatial_fx/spatial_fx.contract.hpp>
@@ -22,22 +23,25 @@ using tetris::matrix::get_piece_blocks;
         const FxState&              fx,
         int                         canvas_w,
         int                         canvas_h,
-        std::pmr::memory_resource*  arena
+        std::pmr::memory_resource*  arena,
+        const config::CameraConfig& cam = config::CameraConfig{}
     ) {
         PipelineExecutionPlan plan(arena);
         plan.triangles.reserve(4000);
 
-        // Camera stationed with proper vertical clearance for the bottom row.
-        // camera_pulse = dolly-in zoom punch (tetris clears / victory crescendo).
-        glm::vec3 eye = glm::vec3(0.0f, 10.6f, -18.4f + fx.camera_pulse * 1.4f);
+        // Per-level camera preset (Rules.camera) frames the shot; FX dynamics
+        // layer small offsets ON TOP: camera_pulse dollies in along the view
+        // axis, shake jitters eye position. The preset itself is never mutated.
+        glm::vec3 view_dir = glm::normalize(cam.target - cam.eye);
+        glm::vec3 eye = cam.eye + view_dir * fx.camera_pulse * 1.4f;
         if (fx.camera_shake > 0.0f) {
             eye.y -= fx.camera_shake * 0.35f;
             eye.x += (std::sin(fx.time * 60.0f) * fx.camera_shake * 0.15f);
         }
 
-        glm::vec3 target = glm::vec3(0.0f, 9.6f, 0.0f);
-        plan.view_matrix = glm::lookAtLH(eye, target, glm::vec3(0, 1, 0));
-        plan.proj_matrix = glm::perspectiveLH_NO(glm::radians(60.0f), (float)canvas_w / (float)canvas_h, 0.15f, 150.0f);
+        plan.view_matrix = glm::lookAtLH(eye, cam.target, glm::vec3(0, 1, 0));
+        plan.proj_matrix = glm::perspectiveLH_NO(glm::radians(cam.fov_deg),
+            (float)canvas_w / (float)canvas_h, cam.near_z, cam.far_z);
         plan.vp_matrix   = plan.proj_matrix * plan.view_matrix;
 
         std::vector<LowPolyTriangle> tris;
@@ -50,16 +54,22 @@ using tetris::matrix::get_piece_blocks;
         // Environment mood (pod-5 embryo): trim lerps cyan → amber as the blitz
         // clock drains (fx.mood_intensity is a plain value wired by main).
         // L3 canyon (fx.env_dusk): surfaces shift to dusk/desert sandstone.
+        // L4 cyber (fx.env_neon): surfaces shift to a dark synth grid with
+        // cyan/magenta emissive trim (gated below like the canyon diorama).
         const float dusk = glm::clamp(fx.env_dusk, 0.0f, 1.0f);
-        shs::Color rail_col = lerp_color(shs::Color{ 60,  70,  90, 255 },
-                                         shs::Color{ 96,  66,  44, 255 }, dusk);
+        const float neon = glm::clamp(fx.env_neon, 0.0f, 1.0f);
+        shs::Color rail_col = lerp_color(lerp_color(shs::Color{ 60,  70,  90, 255 },
+                                                    shs::Color{ 96,  66,  44, 255 }, dusk),
+                                         shs::Color{ 16,  18,  34, 255 }, neon);
         shs::Color trim_col = lerp_color(
-            lerp_color(shs::Color{ 40, 180, 240, 255 },
-                       shs::Color{ 255, 160, 40, 255 },
-                       fx.mood_intensity),
-            shs::Color{ 255, 150, 60, 255 }, dusk * 0.8f);
-        shs::Color bg_grid  = lerp_color(shs::Color{ 18,  22,  30, 255 },
-                                         shs::Color{ 36,  26,  26, 255 }, dusk);
+            lerp_color(lerp_color(shs::Color{ 40, 180, 240, 255 },
+                                  shs::Color{ 255, 160, 40, 255 },
+                                  fx.mood_intensity),
+                       shs::Color{ 255, 150, 60, 255 }, dusk * 0.8f),
+            shs::Color{ 120, 240, 255, 255 }, neon);
+        shs::Color bg_grid  = lerp_color(lerp_color(shs::Color{ 18,  22,  30, 255 },
+                                                    shs::Color{ 36,  26,  26, 255 }, dusk),
+                                         shs::Color{ 10,  10,  24, 255 }, neon);
 
         // Backplane
         MeshGen::add_box(tris, glm::vec3(0.0f, 9.5f, 0.60f), glm::vec3(10.2f, 20.2f, 0.1f), bg_grid, bg_grid, bg_grid);
@@ -70,10 +80,12 @@ using tetris::matrix::get_piece_blocks;
         MeshGen::add_box(tris, glm::vec3(  0.0f, -0.7f, 0.0f), glm::vec3(11.2f, 0.5f, 1.1f), trim_col, rail_col, rail_col);
 
         // Pedestal Floor (sandstone in the canyon)
-        shs::Color floor_top  = lerp_color(shs::Color{ 25, 30, 42, 255 },
-                                           shs::Color{ 104, 78, 50, 255 }, dusk);
-        shs::Color floor_side = lerp_color(shs::Color{ 14, 16, 22, 255 },
-                                           shs::Color{ 58, 42, 30, 255 }, dusk);
+        shs::Color floor_top  = lerp_color(lerp_color(shs::Color{ 25, 30, 42, 255 },
+                                                      shs::Color{ 104, 78, 50, 255 }, dusk),
+                                           shs::Color{ 18, 20, 40, 255 }, neon);
+        shs::Color floor_side = lerp_color(lerp_color(shs::Color{ 14, 16, 22, 255 },
+                                                      shs::Color{ 58, 42, 30, 255 }, dusk),
+                                           shs::Color{ 10, 11, 22, 255 }, neon);
         MeshGen::add_box(tris, glm::vec3(0.0f, -1.2f, 1.0f), glm::vec3(26.0f, 0.6f, 14.0f), floor_top, floor_side, floor_side);
 
         // L3 canyon diorama embryo: mesa silhouettes + flickering torches.
@@ -97,6 +109,28 @@ using tetris::matrix::get_piece_blocks;
                                  glm::vec3(0.22f, 0.28f, 0.22f), shs::Color{ 70, 52, 40, 255 },
                                  shs::Color{ 70, 52, 40, 255 }, shs::Color{ 70, 52, 40, 255 });
             }
+        }
+
+        // L4 cyber diorama: emissive floor strips + magenta rail caps + a
+        // pulsing horizon bar. Gated on env_neon so every other stage renders
+        // pixel-identical.
+        if (neon > 0.5f) {
+            const shs::Color strip_a{ 60, 220, 255, 255 };
+            const shs::Color strip_b{ 255,  60, 200, 255 };
+            const float pulse = 0.6f + 0.4f * std::sin(fx.time * 2.1f);
+            for (int i = -3; i <= 3; ++i) {
+                const shs::Color sc = (i & 1) ? strip_b : strip_a;
+                MeshGen::add_box(tris, glm::vec3((float)i * 7.0f, -1.55f, 4.0f + (float)std::abs(i) * 1.5f),
+                                 glm::vec3(0.35f, 0.12f, 9.0f), sc, sc, sc, -0.003f);
+            }
+            MeshGen::add_box(tris, glm::vec3(-5.35f, 19.75f, 0.0f), glm::vec3(0.56f, 0.14f, 1.16f),
+                             strip_b, strip_b, strip_b, -0.004f);
+            MeshGen::add_box(tris, glm::vec3( 5.35f, 19.75f, 0.0f), glm::vec3(0.56f, 0.14f, 1.16f),
+                             strip_b, strip_b, strip_b, -0.004f);
+            const uint8_t hb = (uint8_t)(140 + 100 * pulse);
+            const shs::Color horizon{ 40, hb, (uint8_t)(hb / 2), 255 };
+            MeshGen::add_box(tris, glm::vec3(0.0f, 8.0f, -13.5f), glm::vec3(46.0f, 0.25f, 0.25f),
+                             horizon, horizon, horizon);
         }
 
         // 2. RESTING MATRIX VOXEL BLOCKS

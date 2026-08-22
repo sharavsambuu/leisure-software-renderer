@@ -230,6 +230,13 @@ static void format_clock(char* buf, int cap, float seconds) {
     std::snprintf(buf, (size_t)cap, "%d:%02d", total / 60, total % 60);
 }
 
+// L4 ruling flash: white wash scaled by intensity (0..1).
+static shs::Color fade_white(float t) {
+    t = glm::clamp(t, 0.0f, 1.0f);
+    const uint8_t v = (uint8_t)(255.0f * t + 0.5f);
+    return shs::Color{ v, v, v, 255 };
+}
+
 // Local color lerp (same math as spatial_fx vocabulary; kept edge-local)
 static shs::Color hud_lerp_color(shs::Color a, shs::Color b, float t) {
     t = glm::clamp(t, 0.0f, 1.0f);
@@ -460,6 +467,7 @@ struct HudState {
     float   levelup_timer = 0.0f;   // >0 while the LEVEL-UP banner shows
     int     levelup_level = 0;
     float   dust_timer    = 0.0f;   // L3: floor-clear dust overlay life
+    float   flash         = 0.0f;   // L4: ruling screen flash (bomb/laser)
     Floater floaters[8];
     int     next_floater  = 0;
 
@@ -484,6 +492,9 @@ static void step_hud(HudState& hud,
     }
     if (hud.dust_timer > 0.0f) {
         hud.dust_timer = std::max(0.0f, hud.dust_timer - dt);
+    }
+    if (hud.flash > 0.0f) {
+        hud.flash = std::max(0.0f, hud.flash - dt * 2.8f);
     }
 
     // L3 dust overlay trigger: a clear touching the bottom rows of the well
@@ -537,13 +548,24 @@ struct CanyonHudInfo {
     int  seed_tag = 0;
 };
 
+// L4 cyber HUD wiring bundle (plain values; main fills from powerup state).
+struct CyberHudInfo {
+    bool  active          = false;   // stage is Cyber Storm
+    float charge          = 0.0f;    // pieces_since_special / every_n (0..1)
+    int   armed_type      = 1;       // powerups PowerupType of the next special
+    float freeze_left     = 0.0f;    // live gravity-freeze mirror (>0 shows chip)
+    bool  next_is_special = false;   // matrix next_queue[0] is a special
+    int   next_type       = 0;       // its PieceType value (9..11)
+};
+
 // ============================================================================
 // MONGOLIAN CYRILLIC HUD (Layout & Presentation)
 // ============================================================================
 static void draw_hud(shs::Canvas& canvas, const matrix::MatrixSnapshot& m,
                      const progression::ScoreState& sc, HudState& hud,
                      bool campaign_has_next = false,
-                     const CanyonHudInfo& canyon = CanyonHudInfo{}) {
+                     const CanyonHudInfo& canyon = CanyonHudInfo{},
+                     const CyberHudInfo& cyber = CyberHudInfo{}) {
     int W = canvas.get_width();
     int H = canvas.get_height();
 
@@ -803,6 +825,55 @@ static void draw_hud(shs::Canvas& canvas, const matrix::MatrixSnapshot& m,
         char sb[24];
         std::snprintf(sb, sizeof(sb), "SEED #%05d", canyon.seed_tag);
         draw_text(canvas, W - 250, H - 54, sb, shs::Color{ 160, 135, 100, 255 }, 2);
+    }
+
+    // ------------------------------------------------------------------------
+    // 3j. CYBER STORM WIDGETS (special cadence + freeze + inbound warning)
+    // ------------------------------------------------------------------------
+    if (cyber.active) {
+        // Charge bar bottom-left: fills as the next special approaches.
+        static const shs::Color ARMED_COL[4] = {
+            shs::Color{ 120, 130, 150, 255 },   // none
+            shs::Color{ 255, 120,  30, 255 },   // bomb
+            shs::Color{ 255,  60, 200, 255 },   // laser
+            shs::Color{ 140, 230, 255, 255 }    // freeze
+        };
+        const shs::Color acol = ARMED_COL[cyber.armed_type & 3];
+        const int cbx = 20, cby = H - 78, cbw = 190, cbh = 12;
+        draw_text(canvas, cbx, cby - 20, "SPECIAL", acol, 2);
+        draw_rect_fill(canvas, cbx, cby, cbw, cbh, shs::Color{ 35, 40, 52, 255 });
+        draw_rect_fill(canvas, cbx, cby, (int)(glm::clamp(cyber.charge, 0.0f, 1.0f) * (float)cbw), cbh, acol);
+        draw_rect_border(canvas, cbx, cby, cbw, cbh, shs::Color{ 80, 95, 115, 255 });
+
+        // Freeze chip top-center while gravity is suspended.
+        if (cyber.freeze_left > 0.01f) {
+            char fb[16];
+            std::snprintf(fb, sizeof(fb), "FREEZE %.1fs", cyber.freeze_left);
+            const shs::Color fcol{ 140, 230, 255, 255 };
+            const int fw = text_width_px(fb, 2) + 28;
+            draw_rect_fill(canvas, (W - fw) / 2, 14, fw, 30, shs::Color{ 12, 26, 40, 235 });
+            draw_rect_border(canvas, (W - fw) / 2, 14, fw, 30, fcol);
+            draw_text_centered(canvas, W / 2, 21, fb, fcol, 2);
+        }
+
+        // Inbound warning under the score card when the NEXT piece is special.
+        if (cyber.next_is_special && ((int)(hud.time * 3.0f) & 1)) {
+            const shs::Color wcol = ARMED_COL[(cyber.next_type >= 9 && cyber.next_type <= 11)
+                                              ? (cyber.next_type - 8) : 1];
+            draw_text(canvas, W - 250, H - 84, "! SPECIAL !", wcol, 2);
+        }
+    }
+
+    // 3k. RULING SCREEN FLASH (dithered white wash, fades with hud.flash)
+    // ------------------------------------------------------------------------
+    if (hud.flash > 0.01f) {
+        const shs::Color fc = fade_white(hud.flash);
+        const int phase = (int)(hud.time * 24.0f);
+        for (int py = 0; py < H; py += 2) {
+            for (int px = ((py + phase) % 4); px < W; px += 4) {
+                canvas.draw_pixel_screen_space(px, py, fc);
+            }
+        }
     }
 
     // ------------------------------------------------------------------------

@@ -19,7 +19,10 @@ enum SoundType : uint8_t {
     SND_TICK        = 8,  // blitz clock threshold tick (30s boundaries)
     SND_MENU_MOVE   = 9,  // session menu cursor blip
     SND_MENU_CONFIRM= 10, // session menu confirm blip
-    SND_THUD        = 11  // L3 canyon: deep collapse thud (heavy garbage mass)
+    SND_THUD        = 11, // L3 canyon: deep collapse thud (heavy garbage mass)
+    SND_BLAST       = 12, // L4 cyber: bomb detonation (sub thump + noise crack)
+    SND_ZAP         = 13, // L4 cyber: laser sweep (descending saw zap)
+    SND_FROST       = 14  // L4 cyber: freeze time-stop (glassy shimmer)
 };
 
 struct AudioEventRing {
@@ -80,6 +83,9 @@ struct TetrisAudioSynth {
                                        : (new_type == SND_MENU_MOVE)    ? 0.06f
                                        : (new_type == SND_MENU_CONFIRM) ? 0.14f
                                        : (new_type == SND_THUD)         ? 0.42f
+                                       : (new_type == SND_BLAST)        ? 0.50f
+                                       : (new_type == SND_ZAP)          ? 0.30f
+                                       : (new_type == SND_FROST)        ? 0.60f
                                                                          : 0.12f;
                     break;
                 }
@@ -151,6 +157,29 @@ struct TetrisAudioSynth {
                         vox.phase += (72.0f - p * 34.0f) * dt;
                         sample += std::sin(vox.phase * glm::two_pi<float>()) * env * 0.42f;
                         sample += std::sin(vox.phase * glm::two_pi<float>() * 2.7f) * env * env * 0.12f;
+                        break;
+                    case SND_BLAST:
+                        // Detonation: fast sub-bass drop plus a gritty octave-
+                        // down harmonic that decays quicker (explosion body).
+                        vox.phase += (110.0f - p * 70.0f) * dt;
+                        sample += std::sin(vox.phase * glm::two_pi<float>()) * env * 0.40f;
+                        sample += std::sin(vox.phase * glm::two_pi<float>() * 0.5f + p * 9.0f)
+                                  * env * env * 0.22f;
+                        break;
+                    case SND_ZAP:
+                        // Laser sweep: descending square-ish zap with a bright
+                        // second harmonic (sci-fi beam).
+                        vox.phase += (1400.0f - p * 1050.0f) * dt;
+                        sample += std::sin(vox.phase * glm::two_pi<float>()) * env * 0.26f;
+                        sample += ((vox.phase - std::floor(vox.phase)) < 0.5f ? 1.0f : -1.0f)
+                                  * env * 0.10f;
+                        break;
+                    case SND_FROST:
+                        // Time-stop shimmer: high glassy fifth dyad fading slow.
+                        vox.phase += 1568.0f * dt;
+                        sample += std::sin(vox.phase * glm::two_pi<float>()) * env * 0.14f;
+                        sample += std::sin(vox.phase * glm::two_pi<float>() * 1.5f + 1.1f)
+                                  * env * 0.10f;
                         break;
                     default: break;
                 }
