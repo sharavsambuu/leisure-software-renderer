@@ -30,6 +30,8 @@ namespace tetris::input {
 
                 if (e.key.keysym.sym == SDLK_r)
                     in.commands.push_back(matrix::RestartIntent{});
+                if (e.key.keysym.sym == SDLK_UP || e.key.keysym.sym == SDLK_x)
+                    in.commands.push_back(matrix::RotateCWIntent{});
                 if (e.key.keysym.sym == SDLK_z)
                     in.commands.push_back(matrix::RotateCCWIntent{});
                 if (e.key.keysym.sym == SDLK_c     || e.key.keysym.sym == SDLK_LSHIFT)

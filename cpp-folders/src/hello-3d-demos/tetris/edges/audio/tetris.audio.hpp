@@ -18,7 +18,8 @@ enum SoundType : uint8_t {
     SND_GAME_OVER   = 7,
     SND_TICK        = 8,  // blitz clock threshold tick (30s boundaries)
     SND_MENU_MOVE   = 9,  // session menu cursor blip
-    SND_MENU_CONFIRM= 10  // session menu confirm blip
+    SND_MENU_CONFIRM= 10, // session menu confirm blip
+    SND_THUD        = 11  // L3 canyon: deep collapse thud (heavy garbage mass)
 };
 
 struct AudioEventRing {
@@ -78,7 +79,8 @@ struct TetrisAudioSynth {
                                        : (new_type == SND_TICK)         ? 0.09f
                                        : (new_type == SND_MENU_MOVE)    ? 0.06f
                                        : (new_type == SND_MENU_CONFIRM) ? 0.14f
-                                                                        : 0.12f;
+                                       : (new_type == SND_THUD)         ? 0.42f
+                                                                         : 0.12f;
                     break;
                 }
             }
@@ -142,6 +144,13 @@ struct TetrisAudioSynth {
                     case SND_MENU_CONFIRM:
                         vox.phase += (520.0f + p * 260.0f) * dt;
                         sample += std::sin(vox.phase * glm::two_pi<float>()) * env * 0.16f;
+                        break;
+                    case SND_THUD:
+                        // Deep canyon rumble: sub-bass drop with a gritty
+                        // second harmonic decaying faster than the fundamental.
+                        vox.phase += (72.0f - p * 34.0f) * dt;
+                        sample += std::sin(vox.phase * glm::two_pi<float>()) * env * 0.42f;
+                        sample += std::sin(vox.phase * glm::two_pi<float>() * 2.7f) * env * env * 0.12f;
                         break;
                     default: break;
                 }

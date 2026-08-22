@@ -115,6 +115,10 @@ static const char* TXT_DROP_SCORE  = "\xD0\xA3\xD0\x9D\xD0\x90\xD0\x9B\xD0\xA2 \
 // ЦАГ ДУУСЛАА (time up)
 static const char* TXT_TIME_UP     = "\xD0\xA6\xD0\x90\xD0\x93 \xD0\x94\xD0\xA3\xD0\xA3\xD0\xA1\xD0\x9B\xD0\x90\xD0\x90";
 
+// --- L3 Garbage Canyon additions --------------------------------------------
+// ГҮН (depth — canyon excavation gauge label)
+static const char* TXT_DEPTH       = "\xD0\x93\xD2\xAE\xD0\x9D";
+
 // --- Session / menu strings -------------------------------------------------
 // ТЕТРИС (logo)
 static const char* TXT_LOGO        = "\xD0\xA2\xD0\x95\xD0\xA2\xD0\xA0\xD0\x98\xD0\xA1";
@@ -455,6 +459,7 @@ struct HudState {
     float   time          = 0.0f;   // hud animation clock
     float   levelup_timer = 0.0f;   // >0 while the LEVEL-UP banner shows
     int     levelup_level = 0;
+    float   dust_timer    = 0.0f;   // L3: floor-clear dust overlay life
     Floater floaters[8];
     int     next_floater  = 0;
 
@@ -470,10 +475,28 @@ struct HudState {
 
 static void step_hud(HudState& hud,
                      std::span<const progression::ProgressionEvent> events,
-                     float dt) {
+                     float dt,
+                     std::span<const matrix::MatrixEvent> matrix_events
+                         = std::span<const matrix::MatrixEvent>()) {
     hud.time += dt;
     if (hud.levelup_timer > 0.0f) {
         hud.levelup_timer = std::max(0.0f, hud.levelup_timer - dt);
+    }
+    if (hud.dust_timer > 0.0f) {
+        hud.dust_timer = std::max(0.0f, hud.dust_timer - dt);
+    }
+
+    // L3 dust overlay trigger: a clear touching the bottom rows of the well
+    // kicks up a screen-wide dust tint (excavation-at-the-floor feel).
+    for (const auto& mev : matrix_events) {
+        if (mev.type != matrix::MatrixEventType::LINES_CLEARED) continue;
+        uint8_t lowest = mev.cleared_rows[0];
+        for (int i = 1; i < mev.lines_cleared_count && i < 4; ++i) {
+            lowest = std::max(lowest, mev.cleared_rows[i]);
+        }
+        if (lowest <= 3) {
+            hud.dust_timer = std::max(hud.dust_timer, 0.7f);
+        }
     }
 
     for (const auto& ev : events) {
@@ -508,23 +531,40 @@ static void step_hud(HudState& hud,
     }
 }
 
+// L3 canyon HUD wiring bundle (plain values; main fills from generator state).
+struct CanyonHudInfo {
+    bool active   = false;
+    int  seed_tag = 0;
+};
+
 // ============================================================================
 // MONGOLIAN CYRILLIC HUD (Layout & Presentation)
 // ============================================================================
 static void draw_hud(shs::Canvas& canvas, const matrix::MatrixSnapshot& m,
                      const progression::ScoreState& sc, HudState& hud,
-                     bool campaign_has_next = false) {
+                     bool campaign_has_next = false,
+                     const CanyonHudInfo& canyon = CanyonHudInfo{}) {
     int W = canvas.get_width();
     int H = canvas.get_height();
 
     const bool blitz = (sc.mode_id == progression::MODE_BLITZ_120);
-    const bool timed = blitz && !sc.time_up;   // countdown visible while clock runs
+    const bool timed = (blitz || canyon.active) && !sc.time_up; // countdown visible while clock runs
 
     // Level-up flash factor → brief gold palette shift on card accents.
     const float lvl_flash = (hud.levelup_timer > 0.0f) ? (hud.levelup_timer / 2.2f) : 0.0f;
     auto accent = [&](shs::Color base) {
         return hud_lerp_color(base, shs::Color{ 255, 200, 60, 255 }, lvl_flash * 0.8f);
     };
+
+    // Stack height projection (shared by vignette + canyon depth gauge).
+    int stack = 0;
+    for (int y = matrix::GRID_H - 1; y >= 0; --y) {
+        bool any = false;
+        for (int x = 0; x < matrix::GRID_W; ++x) {
+            if (m.grid[y][x] != 0) { any = true; break; }
+        }
+        if (any) { stack = y + 1; break; }
+    }
 
     // ------------------------------------------------------------------------
     // 1. TOP RIGHT: SCORE CARD (ОНОО / ДЭЭД)
@@ -546,13 +586,26 @@ static void draw_hud(shs::Canvas& canvas, const matrix::MatrixSnapshot& m,
     draw_rect_fill(canvas, ox, oy, ow, oh, shs::Color{ 15, 18, 26, 230 });
     draw_rect_border(canvas, ox, oy, ow, oh, accent(shs::Color{ 60, 140, 220, 255 }));
 
-    // Target Progress Bar
-    draw_text(canvas, ox + 12, oy + 12, TXT_GOAL, shs::Color{ 45, 220, 120, 255 }, 2);
+    // Target Progress Bar — score chase by default; excavation progress when
+    // the canyon objective is active (amber fill + N/T readout).
+    shs::Color goal_col = shs::Color{ 45, 220, 120, 255 };
+    float progress;
+    if (canyon.active && sc.target_lines > 0) {
+        goal_col = shs::Color{ 235, 160, 60, 255 };
+        progress = glm::clamp((float)sc.lines_cleared / (float)sc.target_lines, 0.0f, 1.0f);
+    } else {
+        progress = glm::clamp((float)sc.score / (float)sc.target_score, 0.0f, 1.0f);
+    }
+    draw_text(canvas, ox + 12, oy + 12, TXT_GOAL, goal_col, 2);
     int bar_x = ox + 105, bar_y = oy + 12, bar_w = ow - 120, bar_h = 14;
-    float progress = glm::clamp((float)sc.score / (float)sc.target_score, 0.0f, 1.0f);
     draw_rect_fill(canvas, bar_x, bar_y, bar_w, bar_h, shs::Color{ 35, 40, 52, 255 });
-    draw_rect_fill(canvas, bar_x, bar_y, (int)(progress * (float)bar_w), bar_h, shs::Color{ 45, 220, 120, 255 });
+    draw_rect_fill(canvas, bar_x, bar_y, (int)(progress * (float)bar_w), bar_h, goal_col);
     draw_rect_border(canvas, bar_x, bar_y, bar_w, bar_h, shs::Color{ 80, 95, 115, 255 });
+    if (canyon.active && sc.target_lines > 0) {
+        char nt[16];
+        std::snprintf(nt, sizeof(nt), "%d/%d", sc.lines_cleared, sc.target_lines);
+        draw_text(canvas, bar_x + bar_w + 6, bar_y - 1, nt, goal_col, 1);
+    }
 
     // Lines & Level
     draw_text(canvas, ox + 14, oy + 48, TXT_LINES, shs::Color{ 40, 220, 240, 255 }, 2);
@@ -596,8 +649,40 @@ static void draw_hud(shs::Canvas& canvas, const matrix::MatrixSnapshot& m,
 
     // ------------------------------------------------------------------------
     // 3b. COMBO METER (bottom-left, tier ticks at 2/4/6/8)
+    //     In the canyon this slot hosts the DEPTH GAUGE instead.
     // ------------------------------------------------------------------------
-    if (blitz) {
+    if (canyon.active) {
+        // --- Depth gauge: vertical thermometer of the garbage skyline -------
+        const int gx = 20, gy = H - 232, gw = 44, gh = 196;
+        draw_rect_fill(canvas, gx, gy, gw, gh, shs::Color{ 15, 18, 26, 230 });
+        draw_rect_border(canvas, gx, gy, gw, gh, accent(shs::Color{ 96, 66, 44, 255 }));
+        draw_text_centered(canvas, gx + gw / 2, gy - 26, TXT_DEPTH,
+                           shs::Color{ 235, 160, 60, 255 }, 2);
+
+        const int ix = gx + 5, iy = gy + 5, iw = gw - 10, ih = gh - 10;
+        draw_rect_fill(canvas, ix, iy, iw, ih, shs::Color{ 35, 40, 52, 255 });
+
+        // Fill from the bottom proportional to stack height (20 visible rows).
+        const float fill01 = glm::clamp((float)stack / (float)matrix::VISIBLE_H, 0.0f, 1.0f);
+        const int fh = (int)(fill01 * (float)ih);
+        if (fh > 0) {
+            draw_rect_fill(canvas, ix, iy + ih - fh, iw, fh, shs::Color{ 138, 106, 74, 255 });
+            draw_rect_fill(canvas, ix, iy + ih - fh, iw, std::min(4, fh), shs::Color{ 196, 164, 120, 255 });
+        }
+
+        // Tick marks every 5 rows + danger hatch in the top quarter.
+        for (int k = 5; k < matrix::VISIBLE_H; k += 5) {
+            const int ty = iy + ih - (int)((float)k / (float)matrix::VISIBLE_H * (float)ih);
+            draw_rect_fill(canvas, ix, ty, iw, 1, shs::Color{ 80, 95, 115, 255 });
+        }
+        draw_rect_fill_dithered(canvas, ix, iy, iw, ih / 4, shs::Color{ 150, 30, 30, 200 },
+                                (int)(hud.time * 14.0f));
+
+        // Current-depth marker line.
+        const int my = iy + ih - fh;
+        draw_rect_fill(canvas, ix - 2, my - 1, iw + 4, 3, shs::Color{ 255, 205, 70, 255 });
+    }
+    else if (blitz) {
         int cx = 20, cy = H - 64, cw = 280, ch = 36;
         draw_rect_fill(canvas, cx, cy, cw, ch, shs::Color{ 15, 18, 26, 230 });
         draw_rect_border(canvas, cx, cy, cw, ch, accent(shs::Color{ 60, 140, 220, 255 }));
@@ -653,14 +738,6 @@ static void draw_hud(shs::Canvas& canvas, const matrix::MatrixSnapshot& m,
     // ------------------------------------------------------------------------
     // 3e. DANGER VIGNETTE (stack height projection, breathing crimson bands)
     // ------------------------------------------------------------------------
-    int stack = 0;
-    for (int y = matrix::GRID_H - 1; y >= 0; --y) {
-        bool any = false;
-        for (int x = 0; x < matrix::GRID_W; ++x) {
-            if (m.grid[y][x] != 0) { any = true; break; }
-        }
-        if (any) { stack = y + 1; break; }
-    }
     if (stack >= 15 && !m.game_over && !sc.victory && !sc.time_up) {
         const float strength = glm::clamp((stack - 14) / 6.0f, 0.0f, 1.0f);
         const float breathe = 0.5f + 0.5f * std::sin(hud.time * 4.0f);
@@ -685,6 +762,47 @@ static void draw_hud(shs::Canvas& canvas, const matrix::MatrixSnapshot& m,
         const int fy = (int)(H * 0.40f - age01 * 52.0f);
         const shs::Color fc = hud_lerp_color(f.color, shs::Color{ 14, 16, 22, 255 }, age01 * 0.85f);
         draw_text_centered(canvas, W / 2, fy, f.text, fc, 3);
+    }
+
+    // ------------------------------------------------------------------------
+    // 3g. CANYON CEILING HAZARD STRIPES (stack near the spawn buffer)
+    // ------------------------------------------------------------------------
+    if (canyon.active && stack >= 14 && !m.game_over && !sc.time_up) {
+        const bool blink_on = (stack < 17) || (std::sin(hud.time * 7.0f) > -0.4f);
+        if (blink_on) {
+            const int bx0 = W / 2 - 350, bx1 = W / 2 + 350;
+            draw_rect_fill_dithered(canvas, bx0, 108, bx1 - bx0, 30,
+                                    shs::Color{ 24, 16, 8, 190 }, (int)(hud.time * 18.0f));
+            for (int sxp = bx0; sxp < bx1; sxp += 26) {
+                draw_line_screen(canvas, sxp,     136, sxp + 28, 108, shs::Color{ 255, 170, 40, 255 });
+                draw_line_screen(canvas, sxp + 1, 136, sxp + 29, 108, shs::Color{ 255, 170, 40, 255 });
+                draw_line_screen(canvas, sxp + 2, 136, sxp + 30, 108, shs::Color{ 255, 170, 40, 255 });
+            }
+            draw_rect_border(canvas, bx0, 108, bx1 - bx0, 30, shs::Color{ 255, 170, 40, 255 });
+        }
+    }
+
+    // 3h. FLOOR-CLEAR DUST TINT (screen-wide speckle, fades with hud.dust_timer)
+    // ------------------------------------------------------------------------
+    if (hud.dust_timer > 0.0f) {
+        const float st = hud.dust_timer / 0.7f;
+        const shs::Color dc = hud_lerp_color(shs::Color{ 14, 16, 22, 255 },
+                                             shs::Color{ 188, 158, 118, 255 },
+                                             st * 0.55f);
+        const int phase = (int)(hud.time * 24.0f);
+        for (int py = 0; py < H; py += 2) {
+            for (int px = ((py + phase) % 4); px < W; px += 4) {
+                canvas.draw_pixel_screen_space(px, py, dc);
+            }
+        }
+    }
+
+    // 3i. SEED TAG (daily-variant identity, bottom-right above footer)
+    // ------------------------------------------------------------------------
+    if (canyon.active) {
+        char sb[24];
+        std::snprintf(sb, sizeof(sb), "SEED #%05d", canyon.seed_tag);
+        draw_text(canvas, W - 250, H - 54, sb, shs::Color{ 160, 135, 100, 255 }, 2);
     }
 
     // ------------------------------------------------------------------------

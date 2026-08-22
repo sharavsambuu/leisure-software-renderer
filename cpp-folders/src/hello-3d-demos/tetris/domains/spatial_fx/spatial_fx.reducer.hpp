@@ -41,6 +41,78 @@ using tetris::progression::ProgressionEventType;
         }
     }
 
+    // --- L3 dig-feel recipes (Garbage Canyon) --------------------------------
+
+    // Canyon rubble palette: dust browns + grays.
+    static const shs::Color RUBBLE_PAL[4] = {
+        shs::Color{ 138, 106,  74, 255 },   // mud brown
+        shs::Color{ 170, 140, 100, 255 },   // dust tan
+        shs::Color{ 128, 118, 108, 255 },   // gray rock
+        shs::Color{ 196, 164, 120, 255 }    // pale sand
+    };
+
+    // Dust bursts + rubble debris scaled to the cleared garbage mass; screen
+    // rumble grows with the mass too (multi-row collapses hit harder).
+    static inline void rubble_burst(FxState& fx, const MatrixEvent& ev) {
+        const int mass = std::min(static_cast<int>(ev.garbage_cells), 40);
+        if (mass <= 0) return;
+        for (int i = 0; i < mass * 2; ++i) {
+            const int   row_i = static_cast<int>(fx_rand(fx.rng_state)) % std::max(1, (int)ev.lines_cleared_count);
+            const float row_y = (float)ev.cleared_rows[row_i];
+            glm::vec3 p((float)(fx_rand(fx.rng_state) % GRID_W) - 4.5f, row_y + 0.4f,
+                        (float)(fx_rand(fx.rng_state) % 100) / 60.0f - 0.8f);
+            glm::vec3 vel(((float)(fx_rand(fx.rng_state) % 100) / 25.0f - 2.0f),
+                          1.5f + (float)(fx_rand(fx.rng_state) % 100) / 45.0f,
+                          -1.0f - (float)(fx_rand(fx.rng_state) % 100) / 50.0f);
+            fx.particles.add(p, vel, RUBBLE_PAL[fx_rand(fx.rng_state) % 4], 1.0f);
+        }
+        // Rumble scaled to excavated mass (heavier collapses shake harder).
+        const float rumble = 0.30f + 0.05f * (float)mass;
+        fx.camera_shake = std::max(fx.camera_shake, std::min(rumble, 0.9f));
+    }
+
+    // Horizontal dust wave sweeping outward on 3+ row collapses.
+    static inline void dust_wave(FxState& fx, const MatrixEvent& ev) {
+        const float row_y = (float)ev.cleared_rows[0] + 0.5f;
+        for (int col = 0; col < GRID_W; ++col) {
+            const float side = (col < GRID_W / 2) ? -1.0f : 1.0f;
+            glm::vec3 p((float)col - 4.5f, row_y, 0.2f);
+            glm::vec3 vel(side * (6.0f + (float)(fx_rand(fx.rng_state) % 100) / 25.0f),
+                          0.8f + (float)(fx_rand(fx.rng_state) % 100) / 60.0f,
+                          -0.4f);
+            fx.particles.add(p, vel, RUBBLE_PAL[3], 0.9f);
+        }
+    }
+
+    // Pebble trickle falling from disturbed rows just above the clear.
+    static inline void pebble_trickle(FxState& fx, const MatrixEvent& ev) {
+        uint8_t lowest = ev.cleared_rows[0];
+        for (int i = 1; i < ev.lines_cleared_count && i < 4; ++i) {
+            lowest = std::max(lowest, ev.cleared_rows[i]);
+        }
+        for (int k = 0; k < 6; ++k) {
+            const float py = (float)lowest + 1.0f + (float)(k % 3);
+            glm::vec3 p((float)(fx_rand(fx.rng_state) % GRID_W) - 4.5f, py, 0.1f);
+            glm::vec3 vel((float)(fx_rand(fx.rng_state) % 100) / 80.0f - 0.6f,
+                          -1.0f - (float)(fx_rand(fx.rng_state) % 100) / 90.0f,
+                          0.0f);
+            fx.particles.add(p, vel, RUBBLE_PAL[2], 0.8f);
+        }
+    }
+
+    // Small dust puff where a piece locks/slams against canyon rubble.
+    static inline void impact_dust_puff(FxState& fx, const MatrixEvent& ev) {
+        for (int i = 0; i < 6; ++i) {
+            glm::vec3 p(ev.world_position.x + ((float)(fx_rand(fx.rng_state) % 100) / 40.0f - 1.2f),
+                        ev.world_position.y - 0.3f,
+                        0.1f);
+            glm::vec3 vel(((float)(fx_rand(fx.rng_state) % 100) / 35.0f - 1.4f),
+                          0.8f + (float)(fx_rand(fx.rng_state) % 100) / 70.0f,
+                          -0.3f);
+            fx.particles.add(p, vel, RUBBLE_PAL[1], 0.55f);
+        }
+    }
+
     // Golden confetti/firework burst on the victory crescendo ("photo finish").
     static inline void victory_fireworks(FxState& fx) {
         static const shs::Color GOLD[] = {
@@ -79,6 +151,10 @@ using tetris::progression::ProgressionEventType;
             case MatrixEventType::HARD_DROP_SLAM:
                 fx.camera_shake = 0.35f;
                 spark_trail(fx, ev);
+                if (ev.garbage_cells > 0) impact_dust_puff(fx, ev);   // canyon dig feel
+                break;
+            case MatrixEventType::PIECE_LOCK_IMPACT:
+                if (ev.garbage_cells > 0) impact_dust_puff(fx, ev);
                 break;
             case MatrixEventType::LINES_CLEARED: {
                 const bool tetris = (ev.lines_cleared_count >= 4);
@@ -100,6 +176,14 @@ using tetris::progression::ProgressionEventType;
                             : shs::Color{ 40, 220, 240, 255 };
                         fx.particles.add(p, vel, pc, 1.2f);
                     }
+                }
+                // L3 dig feel: rubble scaled to cleared garbage mass, pebbles
+                // trickling from disturbed rows above, and a horizontal dust
+                // wave when a big collapse (3+ rows) tears through the canyon.
+                if (ev.garbage_cells > 0) {
+                    rubble_burst(fx, ev);
+                    pebble_trickle(fx, ev);
+                    if (ev.lines_cleared_count >= 3) dust_wave(fx, ev);
                 }
                 break;
             }

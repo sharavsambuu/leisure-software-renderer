@@ -154,7 +154,13 @@ using tetris::matrix::MatrixEvent;
         }
 
         s.high_score = std::max(s.high_score, s.score);
-        if (!s.victory && s.score >= s.target_score) {
+
+        // Objective switch (L3): target_lines > 0 ⇒ excavation win check
+        // (lines dug), otherwise the classic score-chase objective.
+        const bool objective_met = (rules.target_lines > 0)
+            ? (s.lines_cleared >= rules.target_lines)
+            : (s.score >= s.target_score);
+        if (!s.victory && objective_met) {
             s.victory = true;
             result.events.push_back({ .type = ProgressionEventType::OBJECTIVE_COMPLETED });
         }

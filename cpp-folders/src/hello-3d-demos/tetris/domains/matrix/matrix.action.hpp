@@ -1,5 +1,6 @@
 #pragma once
 // tetris/domains/matrix/matrix.action.hpp — INTENT TOKENS (tetris::matrix)
+#include <domains/matrix/matrix.contract.hpp>
 #include <span>
 #include <type_traits>
 #include <variant>
@@ -15,9 +16,17 @@ namespace tetris::matrix {
     struct HoldPieceIntent   {};
     struct RestartIntent     {};
 
+    // L3 injection seam: plain-data initial-board stamp. The generator script
+    // decides WHERE blocks go (raw facts only); the schema just applies them.
+    // No generation logic lives here — main bridges script output to this.
+    struct StampInitialBoardIntent {
+        CellGrid cells{};
+    };
+
     using TetrisCommand = std::variant<
         MoveLeftIntent, MoveRightIntent, RotateCWIntent, RotateCCWIntent,
-        SoftDropIntent, HardDropIntent, HoldPieceIntent, RestartIntent
+        SoftDropIntent, HardDropIntent, HoldPieceIntent, RestartIntent,
+        StampInitialBoardIntent
     >;
 
     struct TetrisCommandFrame {
@@ -42,6 +51,8 @@ namespace tetris::matrix {
                 else if constexpr (std::is_same_v<T, HardDropIntent>)   out.hard_drop     = true;
                 else if constexpr (std::is_same_v<T, HoldPieceIntent>)  out.hold_pressed  = true;
                 else if constexpr (std::is_same_v<T, RestartIntent>)    out.reset_pressed = true;
+                // StampInitialBoardIntent carries a payload — handled directly
+                // by reduce_matrix, not folded into the frame.
             }, cmd);
         }
         return out;

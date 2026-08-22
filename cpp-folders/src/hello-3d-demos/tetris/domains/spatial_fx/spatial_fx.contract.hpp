@@ -146,7 +146,10 @@ using tetris::matrix::BLOCK_GAP;
         float              camera_shake   = 0.0f;
         float              camera_pulse   = 0.0f;   // zoom punch (tetris / victory)
         float              mood_intensity = 0.0f;   // 0..1 environment mood (main wires
-                                               // from blitz clock drain; pod-5 embryo)
+                                                // from blitz clock drain; pod-5 embryo)
+        float              env_dusk       = 0.0f;   // L3 canyon: 1 = dusk/desert env
+                                                // (mesa silhouettes, torch flicker,
+                                                // sandstone floor); main wires 0/1.
         float              time           = 0.0f;
         uint32_t           rng_state      = 0x9e3779b9u;   // deterministic debris velocities
 
@@ -163,6 +166,8 @@ using tetris::matrix::BLOCK_GAP;
             case PieceType::Z: return shs::Color{ 245,  55,  55, 255 }; // Red
             case PieceType::J: return shs::Color{  45, 110, 245, 255 }; // Blue
             case PieceType::L: return shs::Color{ 255, 140,  35, 255 }; // Orange
+            case PieceType::Garbage:
+                               return shs::Color{ 138, 106,  74, 255 }; // Mud brown (canyon rubble)
             default:           return shs::Color{  80,  90, 105, 255 };
         }
     }

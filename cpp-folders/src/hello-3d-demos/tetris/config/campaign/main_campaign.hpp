@@ -7,22 +7,24 @@
 #include <config/rules.hpp>
 #include <config/levels/marathon_01.hpp>
 #include <config/levels/blitz_120.hpp>
+#include <config/levels/garbage_canyon.hpp>
 
 namespace tetris::config::campaign {
 
     struct Stage {
-        int         index;         // 1-based campaign order
-        const char* level_id;      // stable id (future save/unlock key)
+        int         index;                   // 1-based campaign order
+        const char* level_id;                // stable id (future save/unlock key)
         const char* display_name;
-        Rules       (*make_rules)();          // pure config factory
+        Rules       (*make_rules)();         // pure config factory
         const char* script_path;             // "" = pure C++ tier (no scripting)
         int         unlock_after;            // stage index required first (0 = open)
     };
 
-    // M2 manifest — L1 Marathon Classic → L2 Blitz 120.
+    // Manifest — L1 Marathon Classic → L2 Blitz 120 → L3 Garbage Canyon.
     static constexpr Stage STAGES[] = {
-        { 1, "marathon_01", Marathon01::NAME, &Marathon01::make_rules, "",                                          0 },
-        { 2, "blitz_120",   Blitz120::NAME,   &Blitz120::make_rules,   "domains/progression/scripts/blitz_mode.lua", 1 },
+        { 1, "marathon_01",    Marathon01::NAME,    &Marathon01::make_rules,    "",                                            0 },
+        { 2, "blitz_120",      Blitz120::NAME,      &Blitz120::make_rules,      "domains/progression/scripts/blitz_mode.lua",  1 },
+        { 3, "garbage_canyon", GarbageCanyon::NAME, &GarbageCanyon::make_rules, "domains/matrix/scripts/garbage_canyon.gen.lua", 2 },
     };
 
     static constexpr int STAGE_COUNT = static_cast<int>(sizeof(STAGES) / sizeof(STAGES[0]));

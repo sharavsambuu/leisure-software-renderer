@@ -100,6 +100,27 @@ namespace tetris::matrix {
         return next;
     }
 
+    // L3 raw fact helper: does the piece footprint (+1 cell halo) touch any
+    // Garbage block? Pure read of the grid; feeds dig-feel FX/audio mapping.
+    static inline uint8_t touches_garbage(
+        const std::array<std::array<uint8_t, GRID_W>, GRID_H>& grid,
+        const ActivePiece& piece
+    ) {
+        if (piece.type == PieceType::None) return 0;
+        auto blocks = get_piece_blocks(piece.type, piece.rotation);
+        for (const auto& b : blocks) {
+            for (int dy = -1; dy <= 1; ++dy) {
+                for (int dx = -1; dx <= 1; ++dx) {
+                    const int gx = piece.pos.x + b.x + dx;
+                    const int gy = piece.pos.y + b.y + dy;
+                    if (gx < 0 || gx >= GRID_W || gy < 0 || gy >= GRID_H) continue;
+                    if (grid[gy][gx] == static_cast<uint8_t>(PieceType::Garbage)) return 1;
+                }
+            }
+        }
+        return 0;
+    }
+
     struct MatrixStepResult {
         MatrixSnapshot                next_state;
         std::pmr::vector<MatrixEvent> events;
@@ -119,11 +140,29 @@ namespace tetris::matrix {
         result.next_state = prev;
         MatrixSnapshot& s = result.next_state;
 
+        // L3 injection seam: apply any initial-board stamp FIRST (raw facts —
+        // fills the live grid AND the pristine restart backup).
+        for (const auto& cmd : commands) {
+            if (std::holds_alternative<StampInitialBoardIntent>(cmd)) {
+                const auto& stamp = std::get<StampInitialBoardIntent>(cmd);
+                s.grid          = stamp.cells;
+                s.initial_grid  = stamp.cells;
+                s.has_initial_board = true;
+            }
+        }
+
         TetrisCommandFrame input = reduce_tetris_commands(commands);
 
-        // Restart
+        // Restart (restores a stamped initial board when one exists)
         if (input.reset_pressed) {
+            const CellGrid saved_initial   = prev.initial_grid;
+            const bool     had_initial     = prev.has_initial_board;
             s = MatrixSnapshot();
+            if (had_initial) {
+                s.initial_grid      = saved_initial;
+                s.has_initial_board = true;
+                s.grid              = saved_initial;
+            }
             s.active.type = pull_next_piece(s.rng_state, s.next_queue);
             s.active.pos  = { 4, 19 };
             result.events.push_back({ MatrixEventType::PIECE_SPAWNED });
@@ -203,7 +242,8 @@ namespace tetris::matrix {
             result.events.push_back({
                 .type = MatrixEventType::HARD_DROP_SLAM,
                 .world_position = glm::vec3((float)s.active.pos.x - 4.5f, (float)s.active.pos.y + 0.5f, 0.0f),
-                .cells = dropped_cells
+                .cells = dropped_cells,
+                .garbage_cells = touches_garbage(s.grid, s.active)
             });
         }
 
@@ -242,12 +282,14 @@ namespace tetris::matrix {
 
             result.events.push_back({
                 .type = MatrixEventType::PIECE_LOCK_IMPACT,
-                .world_position = glm::vec3((float)s.active.pos.x - 4.5f, (float)s.active.pos.y + 0.5f, 0.0f)
+                .world_position = glm::vec3((float)s.active.pos.x - 4.5f, (float)s.active.pos.y + 0.5f, 0.0f),
+                .garbage_cells = touches_garbage(s.grid, s.active)
             });
 
             // Find cleared lines
             uint8_t cleared_count = 0;
             uint8_t cleared_indices[4]{ 0 };
+            uint8_t cleared_garbage_mass = 0;
 
             for (int y = 0; y < GRID_H; ++y) {
                 bool full = true;
@@ -257,6 +299,11 @@ namespace tetris::matrix {
                 if (full) {
                     if (cleared_count < 4) cleared_indices[cleared_count] = static_cast<uint8_t>(y);
                     cleared_count++;
+                    for (int x = 0; x < GRID_W; ++x) {
+                        if (s.grid[y][x] == static_cast<uint8_t>(PieceType::Garbage)) {
+                            if (cleared_garbage_mass < 255) cleared_garbage_mass++;
+                        }
+                    }
 
                     // Shift down
                     for (int ny = y; ny < GRID_H - 1; ++ny) {
@@ -276,6 +323,7 @@ namespace tetris::matrix {
                     .lines_cleared_count = cleared_count,
                     .cleared_rows = { cleared_indices[0], cleared_indices[1], cleared_indices[2], cleared_indices[3] },
                     .world_position = glm::vec3(0.0f, (float)cleared_indices[0] + 0.5f, 0.0f),
+                    .garbage_cells = cleared_garbage_mass
                 });
             } else {
             }

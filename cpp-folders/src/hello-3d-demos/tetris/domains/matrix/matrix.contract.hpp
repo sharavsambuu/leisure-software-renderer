@@ -16,8 +16,14 @@ namespace tetris::matrix {
     static constexpr float BLOCK_GAP = 0.06f;
 
     enum class PieceType : uint8_t {
-        None = 0, I = 1, O = 2, T = 3, S = 4, Z = 5, J = 6, L = 7
+        None = 0, I = 1, O = 2, T = 3, S = 4, Z = 5, J = 6, L = 7,
+        Garbage = 8   // L3 canyon rubble: never spawns from the 7-bag; only
+                      // arrives via the scripted initial-board stamp (raw fact)
     };
+
+    // Row-major cell block: [y][x], y 0 = grid bottom. Shared by the snapshot
+    // and the initial-board stamp command payload.
+    using CellGrid = std::array<std::array<uint8_t, GRID_W>, GRID_H>;
 
     struct ActivePiece {
         PieceType  type        = PieceType::None;
@@ -28,7 +34,13 @@ namespace tetris::matrix {
     };
 
     struct MatrixSnapshot {
-        std::array<std::array<uint8_t, GRID_W>, GRID_H> grid{};
+        CellGrid                   grid{};
+        // L3 injection seam: pristine copy of a scripted initial board. The
+        // stamp command fills BOTH grid and this backup; RestartIntent then
+        // restores from it so R-restarts keep the pre-ruined layout.
+        CellGrid                   initial_grid{};
+        bool                       has_initial_board = false;
+
         ActivePiece                active;
         PieceType                  hold_piece    = PieceType::None;
         bool                       hold_locked   = false;

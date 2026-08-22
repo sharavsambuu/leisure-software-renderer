@@ -49,11 +49,17 @@ using tetris::matrix::get_piece_blocks;
         // 1. PLAYFIELD MATRIX WELL CONTAINER
         // Environment mood (pod-5 embryo): trim lerps cyan → amber as the blitz
         // clock drains (fx.mood_intensity is a plain value wired by main).
-        shs::Color rail_col = shs::Color{ 60,  70,  90, 255 };
-        shs::Color trim_col = lerp_color(shs::Color{ 40, 180, 240, 255 },
-                                         shs::Color{ 255, 160, 40, 255 },
-                                         fx.mood_intensity);
-        shs::Color bg_grid  = shs::Color{ 18,  22,  30, 255 };
+        // L3 canyon (fx.env_dusk): surfaces shift to dusk/desert sandstone.
+        const float dusk = glm::clamp(fx.env_dusk, 0.0f, 1.0f);
+        shs::Color rail_col = lerp_color(shs::Color{ 60,  70,  90, 255 },
+                                         shs::Color{ 96,  66,  44, 255 }, dusk);
+        shs::Color trim_col = lerp_color(
+            lerp_color(shs::Color{ 40, 180, 240, 255 },
+                       shs::Color{ 255, 160, 40, 255 },
+                       fx.mood_intensity),
+            shs::Color{ 255, 150, 60, 255 }, dusk * 0.8f);
+        shs::Color bg_grid  = lerp_color(shs::Color{ 18,  22,  30, 255 },
+                                         shs::Color{ 36,  26,  26, 255 }, dusk);
 
         // Backplane
         MeshGen::add_box(tris, glm::vec3(0.0f, 9.5f, 0.60f), glm::vec3(10.2f, 20.2f, 0.1f), bg_grid, bg_grid, bg_grid);
@@ -63,10 +69,35 @@ using tetris::matrix::get_piece_blocks;
         MeshGen::add_box(tris, glm::vec3( 5.35f,  9.5f, 0.0f), glm::vec3(0.5f, 20.4f, 1.1f), trim_col, rail_col, rail_col);
         MeshGen::add_box(tris, glm::vec3(  0.0f, -0.7f, 0.0f), glm::vec3(11.2f, 0.5f, 1.1f), trim_col, rail_col, rail_col);
 
-        // Pedestal Floor
-        shs::Color floor_top = shs::Color{ 25, 30, 42, 255 };
-        shs::Color floor_side = shs::Color{ 14, 16, 22, 255 };
+        // Pedestal Floor (sandstone in the canyon)
+        shs::Color floor_top  = lerp_color(shs::Color{ 25, 30, 42, 255 },
+                                           shs::Color{ 104, 78, 50, 255 }, dusk);
+        shs::Color floor_side = lerp_color(shs::Color{ 14, 16, 22, 255 },
+                                           shs::Color{ 58, 42, 30, 255 }, dusk);
         MeshGen::add_box(tris, glm::vec3(0.0f, -1.2f, 1.0f), glm::vec3(26.0f, 0.6f, 14.0f), floor_top, floor_side, floor_side);
+
+        // L3 canyon diorama embryo: mesa silhouettes + flickering torches.
+        // Gated on env_dusk so every other stage renders pixel-identical.
+        if (dusk > 0.5f) {
+            const shs::Color mesa_far  { 46, 32, 36, 255 };
+            const shs::Color mesa_near { 58, 38, 38, 255 };
+            MeshGen::add_box(tris, glm::vec3(-17.0f,  5.0f, -10.0f), glm::vec3(13.0f, 16.0f, 2.5f), mesa_far,  mesa_far,  mesa_far);
+            MeshGen::add_box(tris, glm::vec3( 17.0f,  7.0f, -10.0f), glm::vec3(11.0f, 20.0f, 2.5f), mesa_far,  mesa_far,  mesa_far);
+            MeshGen::add_box(tris, glm::vec3( -6.0f,  2.0f, -13.0f), glm::vec3(9.0f,  9.0f, 2.0f),  mesa_near, mesa_near, mesa_near);
+            MeshGen::add_box(tris, glm::vec3(  7.0f,  3.0f, -13.0f), glm::vec3(7.0f, 11.0f, 2.0f),  mesa_near, mesa_near, mesa_near);
+
+            // Torch flames on the well rails — deterministic flicker from fx.time.
+            const float flick = 0.75f + 0.18f * std::sin(fx.time * 11.3f)
+                                      + 0.07f * std::sin(fx.time * 23.7f);
+            const shs::Color flame{ (uint8_t)(255), (uint8_t)(150 * flick + 40), 40, 255 };
+            for (const float tx : { -5.35f, 5.35f }) {
+                MeshGen::add_box(tris, glm::vec3(tx, 19.9f, 0.55f),
+                                 glm::vec3(0.34f, 0.62f * flick, 0.34f), flame, flame, flame, -0.004f);
+                MeshGen::add_box(tris, glm::vec3(tx, 19.45f, 0.55f),
+                                 glm::vec3(0.22f, 0.28f, 0.22f), shs::Color{ 70, 52, 40, 255 },
+                                 shs::Color{ 70, 52, 40, 255 }, shs::Color{ 70, 52, 40, 255 });
+            }
+        }
 
         // 2. RESTING MATRIX VOXEL BLOCKS
         float block_size = CELL_SIZE - BLOCK_GAP;
@@ -174,7 +205,10 @@ using tetris::matrix::get_piece_blocks;
             float ambient = std::max(0.0f, N.y) * 0.20f + 0.15f;
 
             glm::vec3 base_col = glm::vec3(tri.color.r, tri.color.g, tri.color.b) / 255.0f;
-            glm::vec3 lit_rgb = base_col * (diffuse * glm::vec3(1.0f, 0.98f, 0.92f) + ambient * glm::vec3(0.50f, 0.70f, 1.0f));
+            // Dusk light tint: warm key light + ember ambient in the canyon.
+            const glm::vec3 key_tint   = glm::mix(glm::vec3(1.00f, 0.98f, 0.92f), glm::vec3(1.06f, 0.88f, 0.68f), dusk);
+            const glm::vec3 amb_tint   = glm::mix(glm::vec3(0.50f, 0.70f, 1.00f), glm::vec3(0.85f, 0.55f, 0.35f), dusk);
+            glm::vec3 lit_rgb = base_col * (diffuse * key_tint + ambient * amb_tint);
 
             plan.triangles.push_back({
                 c0, c1, c2,

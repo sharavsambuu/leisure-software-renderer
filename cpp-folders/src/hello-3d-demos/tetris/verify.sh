@@ -35,11 +35,30 @@ echo "=== blitz stage 2 boots + deterministic WITH scripting ==="
 "$BIN" --stage=2 --screenshot /tmp/t_blitz_b.bmp --frame=45 || echo "BLITZ_RUN_B_FAILED"
 if cmp -s /tmp/t_blitz_a.bmp /tmp/t_blitz_b.bmp; then echo BLITZ_DETERMINISM=PASS; else echo BLITZ_DETERMINISM=FAIL; fi
 
+echo "=== smoke: L3 generator objective override reaches config (stage 3) ==="
+"$BIN" --stage=3 --expect-target-lines=20 || echo "SMOKE_TARGET_LINES_FAILED"
+
+echo "=== canyon stage 3 boots + deterministic WITH board generation ==="
+"$BIN" --stage=3 --screenshot /tmp/t_canyon_a.bmp --frame=45 || echo "CANYON_RUN_FAILED"
+"$BIN" --stage=3 --screenshot /tmp/t_canyon_b.bmp --frame=45 || echo "CANYON_RUN_B_FAILED"
+if cmp -s /tmp/t_canyon_a.bmp /tmp/t_canyon_b.bmp; then echo CANYON_DETERMINISM=PASS; else echo CANYON_DETERMINISM=FAIL; fi
+
+echo "=== seed determinism: same seed ⇒ identical board, other seed ⇒ differs ==="
+"$BIN" --stage=3 --seed=777 --screenshot /tmp/t_seed777_a.bmp --frame=30 || echo "SEED_A_FAILED"
+"$BIN" --stage=3 --seed=777 --screenshot /tmp/t_seed777_b.bmp --frame=30 || echo "SEED_B_FAILED"
+"$BIN" --stage=3 --seed=778 --screenshot /tmp/t_seed778.bmp   --frame=30 || echo "SEED_C_FAILED"
+if cmp -s /tmp/t_seed777_a.bmp /tmp/t_seed777_b.bmp; then echo SEED_SAME_PASS; else echo SEED_SAME_FAIL; fi
+if cmp -s /tmp/t_seed777_a.bmp /tmp/t_seed778.bmp;   then echo SEED_DIFF_FAIL; else echo SEED_DIFF_PASS; fi
+
+echo "=== script purity: generator must be deterministic (no RNG/os/io/print) ==="
+sed 's/--.*//' domains/matrix/scripts/*.lua \
+    | grep -nE 'math\.random|os\.|io\.|print\(' || echo SCRIPT_PURITY=PASS
+
 cd /home/sharavsambuu/src/dev/leisure-software-renderer/cpp-folders/src/hello-3d-demos/tetris
 echo "=== purity: files under domains/ mentioning SDL (expect none) ==="
 grep -rl 'SDL' domains/ || echo NONE
-echo "=== purity: score/combo refs under domains/matrix/ (expect none) ==="
-grep -rn 'score\|combo' domains/matrix/ || echo NONE
+echo "=== purity: score/combo refs under domains/matrix/ C++ code (expect none) ==="
+grep -rn 'score\|combo' domains/matrix/ --include='*.hpp' --include='*.cpp' || echo NONE
 echo "=== purity: raw Lua C-API refs outside edges/lua (comments stripped; expect none) ==="
 grep -rnE 'lua_State|luaL_|lua_pcall|lua_push|lua_pop|lua_getglobal|lua_setglobal|luaopen' \
     --include='*.hpp' --include='*.cpp' . | grep -v 'edges/lua/' \

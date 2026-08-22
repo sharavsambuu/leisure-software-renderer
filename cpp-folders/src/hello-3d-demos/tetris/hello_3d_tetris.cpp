@@ -8,14 +8,19 @@
 // presentation, and the event→sound map. All simulation/render/HUD logic
 // lives in domain pods and execution edges.
 //
-// Campaign + scripting (L1/L2):
-//   --stage=N                 select campaign stage (1 = MARATHON, 2 = BLITZ 120).
-//                             Windowed mode boots to the TITLE menu instead —
-//                             pick stages there; --stage only pre-selects for
-//                             headless verification runs.
+// Campaign + scripting (L1/L2/L3):
+//   --stage=N                 select campaign stage (1 = MARATHON, 2 = BLITZ 120,
+//                             3 = GARBAGE CANYON). Windowed mode with --stage>1
+//                             jumps straight into that stage's run; without it,
+//                             windowed boots to the TITLE menu (pick stages in
+//                             the level-select carousel).
 //   --script=<file>           override the stage's Lua rule script
+//   --seed=N                  L3 canyon board-generator seed (default 20260822;
+//                             same seed ⇒ byte-identical pre-ruined board)
 //   --expect-target-score=N   smoke gate: assert the wired script overrode the
 //                             target score, print SMOKE_TARGET_SCORE=PASS/FAIL
+//   --expect-target-lines=N   L3 smoke gate: assert target_lines override,
+//                             print SMOKE_TARGET_LINES=PASS/FAIL
 //
 // Session layer (M1): TITLE / LEVEL_SELECT / PLAYING / PAUSED / RESULTS state
 // machine in domains/session/. Windowed keys: W/S/A/D navigate, ENTER/SPACE
@@ -152,6 +157,8 @@ int main(int argc, char* argv[]) {
     int         stage_number     = 1;
     std::string script_override;
     long long   expect_target    = -1;
+    long long   expect_lines     = -1;
+    long long   seed_value       = 20260822;   // daily canyon variant identity
 
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
@@ -166,8 +173,12 @@ int main(int argc, char* argv[]) {
             stage_number = std::atoi(arg.c_str() + 8);
         } else if (arg.rfind("--script=", 0) == 0) {
             script_override = arg.substr(9);
+        } else if (arg.rfind("--seed=", 0) == 0) {
+            seed_value = std::atoll(arg.c_str() + 7);
         } else if (arg.rfind("--expect-target-score=", 0) == 0) {
             expect_target = std::atoll(arg.c_str() + 22);
+        } else if (arg.rfind("--expect-target-lines=", 0) == 0) {
+            expect_lines = std::atoll(arg.c_str() + 22);
         }
     }
     const bool headless = (screenshot_frame >= 0);
@@ -184,12 +195,18 @@ int main(int argc, char* argv[]) {
     // Re-runnable per stage: advancing the campaign loads the next stage's
     // script into a FRESH sandbox so no globals leak between stages.
     progression::ScriptHooks script_hooks{};
+    // L3 boot queue: commands applied on the first playing frame after a stage
+    // load (the initial-board stamp reaches the reducer like any other intent).
+    std::vector<matrix::TetrisCommand> boot_commands;
+    int canyon_seed_tag = 0;   // HUD seed-tag projection input
 #ifdef TETRIS_LUA_ENABLED
     std::unique_ptr<lua_edge::StatelessLuaEvaluator> lua_eval;   // fresh per load
 #endif
     auto apply_stage_script = [&](const config::campaign::Stage& st, config::Rules& r) {
         script_hooks = progression::ScriptHooks{};   // null hooks ⇒ native rules
         g_lua_eval   = nullptr;
+        boot_commands.clear();
+        canyon_seed_tag = 0;
 #ifdef TETRIS_LUA_ENABLED
         lua_eval.reset();
 #endif
@@ -211,6 +228,34 @@ int main(int argc, char* argv[]) {
                 script_hooks.clock_rule = &bridge_clock_rule;
             }
             lua_eval->apply_config_overrides(r);          // economy overrides
+
+            // L3 board generator: CanyonGen.generate(difficulty, seed) stamps a
+            // pre-ruined board at boot. Plain-value rows cross the boundary;
+            // main maps them into the matrix stamp payload (raw facts only).
+            if (lua_eval->has_table("CanyonGen")) {
+                lua_eval->apply_config_overrides(r, "CanyonGen");   // objective numbers
+                const lua_edge::GenerationResult gen =
+                    lua_eval->call_generate("CanyonGen", 3, seed_value);
+                if (gen.valid) {
+                    matrix::StampInitialBoardIntent stamp;
+                    stamp.cells = {};
+                    const int rows = std::min(gen.row_count, matrix::GRID_H);
+                    for (int ry = 0; ry < rows; ++ry) {
+                        for (int cx = 0; cx < matrix::GRID_W && gen.rows[ry][cx]; ++cx) {
+                            stamp.cells[ry][cx] = (gen.rows[ry][cx] == 'X')
+                                ? static_cast<uint8_t>(matrix::PieceType::Garbage) : 0;
+                        }
+                    }
+                    boot_commands.push_back(std::move(stamp));
+                    canyon_seed_tag = gen.seed_tag;
+                    if (gen.target_lines > 0) r.target_lines = gen.target_lines;
+                    if (gen.time_limit   > 0.0f) r.time_limit   = gen.time_limit;
+                    std::cout << "[lua] canyon board generated: seed=" << seed_value
+                              << " rows=" << rows
+                              << " target_lines=" << r.target_lines << std::endl;
+                }
+            }
+
             std::cout << "[lua] rule script active: " << script_path << std::endl;
         } else {
             std::cerr << "[lua] script unavailable (" << script_path
@@ -228,6 +273,14 @@ int main(int argc, char* argv[]) {
         std::cout << "SMOKE_TARGET_SCORE=" << (pass ? "PASS" : "FAIL")
                   << " (expected=" << expect_target
                   << ", actual=" << rules.target_score << ")" << std::endl;
+        return pass ? 0 : 2;
+    }
+    // L3 gate: generator/config must agree on the excavation objective.
+    if (expect_lines >= 0) {
+        const bool pass = (rules.target_lines == static_cast<int>(expect_lines));
+        std::cout << "SMOKE_TARGET_LINES=" << (pass ? "PASS" : "FAIL")
+                  << " (expected=" << expect_lines
+                  << ", actual=" << rules.target_lines << ")" << std::endl;
         return pass ? 0 : 2;
     }
 
@@ -305,6 +358,13 @@ int main(int argc, char* argv[]) {
         // Verification runs skip menus entirely: straight into PLAYING.
         session.screen         = session::Screen::PLAYING;
         session.current_stage  = stage_number - 1;
+        session.unlocked_stages = config::campaign::STAGE_COUNT;
+    } else if (stage_number > 1) {
+        // Windowed --stage=N: jump straight into that stage's run (rules and
+        // script were already applied above). Without --stage, boot to TITLE.
+        session.screen          = session::Screen::PLAYING;
+        session.current_stage   = stage_number - 1;
+        session.stage_cursor    = stage_number - 1;
         session.unlocked_stages = config::campaign::STAGE_COUNT;
     }
 
@@ -407,13 +467,24 @@ int main(int argc, char* argv[]) {
             // Blitz time-up freezes the run: no commands reach the matrix, no gravity.
             // A restart press thaws that frame so the reset reaches the board too.
             const bool frozen = score_state.time_up && !restart_requested;
-            const auto cmd_span = frozen
+            auto cmd_span = frozen
                 ? std::span<const matrix::TetrisCommand>()
                 : std::span<const matrix::TetrisCommand>(in.commands.data(), in.commands.size());
             const float matrix_dt = frozen ? 0.0f : dt;
 
             // Gravity cadence wired from progression level through pure config math
             world.drop_interval = rules.gravity_for_level(score_state.level);
+
+            // Boot queue first: the L3 initial-board stamp rides in as an
+            // ordinary command on the frame right after a stage load.
+            if (!boot_commands.empty()) {
+                std::vector<matrix::TetrisCommand> merged;
+                merged.reserve(boot_commands.size() + in.commands.size());
+                for (auto& c : boot_commands) merged.push_back(std::move(c));
+                boot_commands.clear();
+                for (const auto& c : cmd_span) merged.push_back(c);
+                cmd_span = std::span<const matrix::TetrisCommand>(merged.data(), merged.size());
+            }
 
             // 2. PURE SIMULATION CORE
             matrix::MatrixStepResult step = matrix::reduce_matrix(world, cmd_span, matrix_dt, arena);
@@ -438,10 +509,12 @@ int main(int argc, char* argv[]) {
             score_state = std::move(prog.next);
 
             // Environment mood wire (pod-5 embryo): amber intensity rises as the
-            // blitz clock drains; untimed modes stay neutral.
-            fx.mood_intensity = (rules.time_limit > 0.0f)
+            // blitz clock drains; untimed modes stay neutral. The canyon stage
+            // pins the dusk environment on instead (mesas/torches/sandstone).
+            fx.mood_intensity = (rules.time_limit > 0.0f && rules.mode_id != config::MODE_GARBAGE_CANYON)
                 ? glm::clamp(1.0f - score_state.time_left / rules.time_limit, 0.0f, 1.0f)
                 : 0.0f;
+            fx.env_dusk = (rules.mode_id == config::MODE_GARBAGE_CANYON) ? 1.0f : 0.0f;
 
             // Run-end latch: hand the finished run to the RESULTS screen.
             if (score_state.victory || score_state.time_up || world.game_over) {
@@ -465,10 +538,11 @@ int main(int argc, char* argv[]) {
                 std::span<const progression::ProgressionEvent>(prog.events.data(), prog.events.size()),
                 dt);
 
-            // HUD transient presentation state (banners/floaters)
+            // HUD transient presentation state (banners/floaters + dust trigger)
             ui::step_hud(hud,
                 std::span<const progression::ProgressionEvent>(prog.events.data(), prog.events.size()),
-                dt);
+                dt,
+                std::span<const matrix::MatrixEvent>(step.events.data(), step.events.size()));
 
             // Audio edge mapping (windowed mode only)
             if (!headless) {
@@ -483,6 +557,8 @@ int main(int argc, char* argv[]) {
                     case matrix::MatrixEventType::LINES_CLEARED:
                         g_audio.play(ev.lines_cleared_count >= 4 ? audio::SND_TETRIS_FOUR
                                                                  : audio::SND_LINE_CLEAR);
+                        // Heavy garbage collapse: layered deep thud under the chime.
+                        if (ev.garbage_cells >= 12) g_audio.play(audio::SND_THUD);
                         break;
                     default: break;
                     }
@@ -502,6 +578,11 @@ int main(int argc, char* argv[]) {
         spatial_fx::PipelineExecutionPlan plan = spatial_fx::plan_tetris_scene(
             world, fx, CANVAS_WIDTH, CANVAS_HEIGHT, arena
         );
+
+        // HUD wiring bundle (plain values): canyon projections active only on
+        // the excavation stage.
+        const ui::CanyonHudInfo canyon_info{
+            rules.mode_id == config::MODE_GARBAGE_CANYON, canyon_seed_tag };
 
         // 6. TILED PARALLEL RASTERIZATION
         canvas.buffer().clear(shs::Color{ 14, 16, 22, 255 });
@@ -550,7 +631,7 @@ int main(int argc, char* argv[]) {
                                   config::campaign::STAGE_COUNT);
             break;
         case session::Screen::PAUSED:
-            ui::draw_hud(canvas, world, score_state, hud, false);
+            ui::draw_hud(canvas, world, score_state, hud, false, canyon_info);
             ui::draw_pause_overlay(canvas, session);
             break;
         case session::Screen::RESULTS:
@@ -558,7 +639,7 @@ int main(int argc, char* argv[]) {
             break;
         default: // PLAYING
             ui::draw_hud(canvas, world, score_state, hud,
-                         stage->index < config::campaign::STAGE_COUNT);
+                         stage->index < config::campaign::STAGE_COUNT, canyon_info);
             break;
         }
 

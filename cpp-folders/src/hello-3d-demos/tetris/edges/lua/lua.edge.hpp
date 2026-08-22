@@ -40,6 +40,23 @@ namespace tetris::lua_edge {
         bool hurry        = false;
     };
 
+    // L3 generator result (plain-value mirror of CanyonGen.generate's table).
+    // Rows are BOTTOM-UP strings ('X' garbage block, '.' hole); main maps them
+    // into the matrix stamp payload. Fixed caps keep this domain-agnostic.
+    static constexpr int GEN_MAX_ROWS = 24;
+    static constexpr int GEN_MAX_COLS = 16;
+
+    struct GenerationResult {
+        bool valid     = false;
+        int  row_count = 0;
+        char rows[GEN_MAX_ROWS][GEN_MAX_COLS + 1]{};
+        int  target_lines = 0;
+        float time_limit  = 0.0f;
+        int  mode_id      = 0;
+        int  target_score = 0;
+        int  seed_tag     = 0;
+    };
+
     // Owns one sandboxed lua_State; scripts load once at boot, then every call
     // is a pure value-in/value-out evaluation ("stateless" = no C++ pointers
     // ever enter the state; results depend only on the inputs).
@@ -107,6 +124,48 @@ namespace tetris::lua_edge {
             return ok;
         }
 
+        bool has_table(const char* table) const {
+            if (!L_) return false;
+            lua_getglobal(L_, table);                       // [table]
+            const bool ok = lua_istable(L_, -1) != 0;
+            lua_pop(L_, 1);
+            return ok;
+        }
+
+        // <table>.generate(difficulty, seed) -> plain-value generation result.
+        GenerationResult call_generate(const char* table, int difficulty, long long seed) {
+            GenerationResult out;
+            if (!begin_call(table, "generate", 2)) return out;
+            lua_pushinteger(L_, static_cast<lua_Integer>(difficulty));
+            lua_pushinteger(L_, static_cast<lua_Integer>(seed));
+            if (!finish_call(2)) return out;
+
+            lua_getfield(L_, -1, "rows");                   // [result, rows]
+            if (lua_istable(L_, -1)) {
+                int n = static_cast<int>(lua_rawlen(L_, -1));
+                if (n > GEN_MAX_ROWS) n = GEN_MAX_ROWS;
+                out.row_count = n;
+                for (int i = 1; i <= n; ++i) {
+                    lua_rawgeti(L_, -1, i);                 // [result, rows, row_i]
+                    if (lua_isstring(L_, -1)) {
+                        const char* srow = lua_tostring(L_, -1);
+                        std::snprintf(out.rows[i - 1], GEN_MAX_COLS + 1, "%s", srow);
+                    }
+                    lua_pop(L_, 1);
+                }
+            }
+            lua_pop(L_, 1);                                 // pop rows
+
+            out.valid        = out.row_count > 0;
+            out.target_lines = field_int("target_lines");
+            out.time_limit   = field_float("time_limit");
+            out.mode_id      = field_int("mode_id");
+            out.target_score = field_int("target_score");
+            out.seed_tag     = field_int("seed_tag");
+            lua_pop(L_, 1);                                 // pop result table
+            return out;
+        }
+
         // BlitzRules.calculate_score(level, lines, combo, is_tspin) -> ruling
         ScoreRuleResult call_calculate_score(int level, int lines, int combo, bool is_tspin) {
             ScoreRuleResult out;
@@ -137,27 +196,34 @@ namespace tetris::lua_edge {
             return out;
         }
 
-        // Merge BlitzRules.get_config() known keys into a Rules instance
+        // Merge <table>.get_config() known keys into a Rules instance
         // (Lua as an authoring format for plain config values — §4.2).
-        void apply_config_overrides(config::Rules& rules) {
+        // Table name is caller-chosen: "BlitzRules" (L2 economy) or
+        // "CanyonGen" (L3 board generator), per what the script defines.
+        void apply_config_overrides(config::Rules& rules, const char* table = "BlitzRules") {
             if (!L_) return;
-            if (!begin_call("BlitzRules", "get_config", 0)) return;
+            if (!begin_call(table, "get_config", 0)) return;
             if (!finish_call(0)) return;
             rules.mode_id      = field_int("mode_id",      rules.mode_id);
             rules.target_score = field_int("target_score", rules.target_score);
+            rules.target_lines = field_int("target_lines", rules.target_lines);
             rules.time_limit   = field_float("time_limit", rules.time_limit);
             lua_pop(L_, 1);
         }
 
     private:
-        // Push table.func above any already-pushed args: [args...] → [func, args...]
+        // Resolve table.func and leave JUST the function on the stack:
+        // [] → [func]. Callers push their args afterwards, then finish_call
+        // pcalls with the same nargs (keeps every index in-range — the old
+        // rotate-based version indexed below the stack bottom whenever
+        // nargs > 0, corrupting the Lua/C stack).
         bool begin_call(const char* table, const char* func, int nargs) {
-            lua_getglobal(L_, table);                       // [args..., table]
-            if (!lua_istable(L_, -1)) { lua_pop(L_, nargs + 1); return fail(); }
-            lua_getfield(L_, -1, func);                     // [args..., table, func]
-            if (!lua_isfunction(L_, -1)) { lua_pop(L_, nargs + 2); return fail(); }
-            lua_rotate(L_, -(nargs + 2), 1);                // [func, args..., table]
-            lua_pop(L_, 1);                                 // [func, args...]
+            (void)nargs;   // kept in the signature for call-site readability
+            lua_getglobal(L_, table);                       // [table]
+            if (!lua_istable(L_, -1)) { lua_pop(L_, 1); return fail(); }
+            lua_getfield(L_, -1, func);                     // [table, func]
+            if (!lua_isfunction(L_, -1)) { lua_pop(L_, 2); return fail(); }
+            lua_remove(L_, -2);                             // [func]
             return true;
         }
 

@@ -25,6 +25,11 @@ namespace tetris::matrix {
         uint8_t         cleared_rows[4]{ 0, 0, 0, 0 };
         glm::vec3       world_position{ 0.0f };
         int             cells = 0;   // dropped (hard) / stepped (soft) cell count
+
+        // L3 raw fact: how many Garbage cells were involved (cleared mass for
+        // LINES_CLEARED; 1/0 adjacency flag for lock/slam impacts). FX and the
+        // dig-feel audio map scale off this — no grid peeking downstream.
+        uint8_t         garbage_cells = 0;
     };
 
 } // namespace tetris::matrix

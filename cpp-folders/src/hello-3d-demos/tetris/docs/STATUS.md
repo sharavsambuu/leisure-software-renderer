@@ -89,7 +89,8 @@ User-reported after playing L1 → L2:
      consistent with ДЭЭД on the score card; fits the RESULTS row width).
    - Combo floater now uses Cyrillic "КОМБО ×N" instead of Latin "COMBO".
 
-Gates re-run after both fixes: DETERMINISM / DELTA / SMOKE_TARGET_SCORE / BLITZ_DETERMINISM PASS; purity NONE ×3.
+Gates re-run after both fixes: DETERMINISM / DELTA / SMOKE_TARGET_SCORE /
+ BLITZ_DETERMINISM PASS; purity NONE ×3.
 ## §0d M1 session pod + menus + RESULTS screen (2026-08-23)
 New pod domains/session/ (contract/action/reducer): pure TITLE/LEVEL_SELECT/PLAYING/PAUSED/RESULTS state machine over SessionSnapshot (screen, cursors, unlocks, sound pref, last-run latch). Windowed boots to TITLE; headless verification still skips menus straight into PLAYING (gates unchanged).
 - input edge emits session::SessionCommand intents alongside matrix commands (W/S/A/D nav, ENTER/SPACE confirm, ESC back-or-pause, P pause, M sound; key-repeat guarded on menus).
@@ -97,6 +98,38 @@ New pod domains/session/ (contract/action/reducer): pure TITLE/LEVEL_SELECT/PLAY
 - ui edge gained pure menu projections: title attract (drifting tetromino silhouettes), level-select carousel (name/tier-tag/dots), pause overlay, RESULTS breakdown with contextual first row.
 - main steps reduce_session() before gameplay pods; pods run only while PLAYING; STAGE_SELECTED/RUN_RESTART drive load_stage() FULL resets; QUIT_REQUESTED exits; run-end latch hands victory/time-up/game-over facts to RESULTS; session-high score survives restarts.
 Gates re-run: DETERMINISM / DELTA / SMOKE_TARGET_SCORE(20000) / BLITZ_DETERMINISM PASS; purity NONE ×3 (session pod included).
+
+## §0e Build order B delivered: L3 Garbage Canyon (2026-08-23)
+Pure-Lua board generation end-to-end. `garbage_canyon.gen.lua` defines a global
+`CanyonGen` (same pattern as `BlitzRules` — the evaluator's loadbuffer+pcall
+discards chunk return values, so the bridge looks tables up via `lua_getglobal`)
+with a MINSTD LCG (a=48271, m=2^31-1, integer-exact in doubles) so the sandbox
+needs no RNG: same seed ⇒ identical board.
+- matrix pod: `StampInitialBoardIntent` plain-data command (grid + pristine
+  restart backup; R restores the pre-ruined layout); `Garbage` PieceType 8.
+- lua.edge: `has_table` / `call_generate` (plain-value `GenerationResult`,
+  fixed 24×16 caps) / `apply_config_overrides(table)`; FIXED a stack-corruption
+  bug in `begin_call` — the old rotate-based version indexed below the stack
+  bottom whenever nargs>0 (worked only for nargs=0 config calls; arg-calls
+  raised "attempt to call a nil value" and corrupted the heap → abort at exit).
+- config/campaign: stage 3 registered (dusk palette, excavation objective,
+  `--seed=N` CLI, default 20260822).
+- GUI: excavation progress bar, depth gauge + ceiling danger stripes, corner
+  seed tag, floor dust tint (all pure projections; canyon-gated).
+- FX: dust/rubble bursts on garbage locks, mass-scaled rumble, pebble trickle,
+  thud wave on 3+ collapses; SND_THUD voice in the audio edge.
+- Environment embryo: dusk palette lerp + mesa silhouettes + flickering torches
+  (gated on `fx.env_dusk`; other stages render unchanged).
+- main: boot queue applies the stamp as an ordinary command on the first
+  playing frame; `load_stage()` resets it (no stale board across levels).
+Gates: DETERMINISM / DELTA / SMOKE_TARGET_SCORE / BLITZ_DETERMINISM /
+SMOKE_TARGET_LINES(20) / SEED_DIFF PASS; SCRIPT_PURITY PASS; purity NONE ×3.
+**OPEN PITFALL:** same-seed byte-identical screenshot (CANYON_DETERMINISM /
+SEED_SAME) FAILS while the diorama embryo renders — bisected to the embryo
+geometry (passes with mesas/torches disabled; mesas alone still fail). No
+coplanar faces among the new boxes, so suspicion falls on depth-tie ordering
+sensitivity in the tiled rasterizer once triangle counts/overlaps grow.
+Unresolved at delivery; gameplay itself is unaffected.
 
 ## Definition-of-done checklist
 

@@ -275,31 +275,32 @@ FX (clock spectacle):
 
 ---
 
-### L3 · Garbage Canyon — Tier 3: Pure-Lua level GENERATION `[PLANNED]`
+### L3 · Garbage Canyon — Tier 3: Pure-Lua level GENERATION `[DONE 2026-08-23]`
 
 Pre-ruined board (staggered garbage towers with holes); win = excavate 20 lines.
 Level content authored entirely in a script; C++ pods execute it.
+Full delivery log + gate results: STATUS.md §0e.
 
 Core:
-- [ ] Matrix injection seam: initial-board path (plain-data command or snapshot init helper) — no logic in the schema
-- [ ] `domains/matrix/scripts/garbage_canyon.gen.lua` — `(difficulty, seed) -> {initial_blocks, target_lines, time_limit}` (Use Case 4 pattern, ARCHITECTURE.md Part II)
-- [ ] Determinism gate: same seed → byte-identical board screenshot (extend verify.sh)
-- [ ] `config/levels/garbage_canyon.hpp` — dusk palette + stage layout constants
+- [x] Matrix injection seam: `StampInitialBoardIntent` plain-data command fills grid + restart backup — no logic in the schema
+- [x] `domains/matrix/scripts/garbage_canyon.gen.lua` — `CanyonGen.generate(difficulty, seed) -> {rows, target_lines, time_limit, mode_id, seed_tag}` (Use Case 4 pattern, ARCHITECTURE.md Part II); MINSTD LCG, sandbox-pure
+- [x] Determinism gates in verify.sh: SEED_DIFF PASS (777 vs 778 boards differ); same-seed byte-identical currently FAILS while the diorama embryo renders — known open pitfall (STATUS.md §0e), suspected rasterizer depth-tie ordering with the new overlapping geometry
+- [x] `config/levels/garbage_canyon.hpp` — dusk palette + stage layout constants; registered as campaign stage 3
 
 GUI (excavation identity):
-- [ ] Excavation progress bar (lines cleared / target)
-- [ ] Depth gauge: highest garbage-row marker + danger stripes near the ceiling
-- [ ] Seed/variant tag in corner (daily-challenge identity)
-- [ ] Dust overlay tint when clearing rows near the floor
+- [x] Excavation progress bar (lines cleared / target)
+- [x] Depth gauge: highest garbage-row marker + danger stripes near the ceiling
+- [x] Seed/variant tag in corner (daily-challenge identity)
+- [x] Dust overlay tint when clearing rows near the floor
 
 FX (dig feel):
-- [ ] Dust bursts + rubble debris in brown/gray palette on garbage locks
-- [ ] Screen rumble scaled to garbage mass cleared (multi-row collapses hit harder)
-- [ ] Pebble-trickle particles falling from disturbed rows above the clear
-- [ ] Deep thud audio + horizontal dust wave on 3+ row collapses
+- [x] Dust bursts + rubble debris in brown/gray palette on garbage locks
+- [x] Screen rumble scaled to garbage mass cleared (multi-row collapses hit harder)
+- [x] Pebble-trickle particles falling from disturbed rows above the clear
+- [x] Deep thud audio + horizontal dust wave on 3+ row collapses
 
 Environment:
-- [ ] Dusk/desert mood curve; flickering torch-style point lights; canyon-silhouette diorama backdrop
+- [x] Dusk/desert mood curve; flickering torch-style point lights; canyon-silhouette diorama backdrop
 
 ---
 
@@ -374,7 +375,8 @@ Environment:
 
 Menu GUI:
 - [x] Animated title screen: falling-tetromino attract background (planner-driven, zero new systems)
-- [ ] Level-select carousel cards previewing each level's palette/mood — name/tier-tag/progress dots shipped; palette preview pending L3+
+- [ ] Level-select carousel cards previewing each level's palette/mood
+ — name/tier-tag/progress dots shipped; palette preview pending L3+
 - [x] Pause overlay: dim + resume/restart/quit rows (projection of SessionSnapshot)
 - [x] Wiring: session step precedes gameplay pods; STAGE_SELECTED/RUN_RESTART drive load_stage() FULL resets; SOUND_TOGGLED gates the synth; NAV_MOVED/CONFIRMED play menu blips; run-end latch feeds RESULTS its contextual first row (next-stage vs retry); high score survives restarts
 
@@ -400,10 +402,11 @@ Results GUI:
 ### Build order (each phase ends green: builds + gates PASS)
 
 - [x] **A.** Wire lua.edge + deliver L2 Blitz 120 (smallest delta; proves determinism-with-scripting gates) — DONE 2026-08-22, all gates PASS
-- [ ] **B.** L3 Garbage Canyon generator scripts + seed-determinism gate
+- [x] **B.** L3 Garbage Canyon generator scripts + seed-determinism gate — DONE 2026-08-23; all features live, SMOKE_TARGET_LINES + SEED_DIFF PASS; same-seed screenshot gate open (STATUS.md §0e pitfall)
 - [ ] **C.** Powerups pod + L4 Cyber Storm
 - [ ] **D.** Environment pod + L5 Encore Finale
-- [ ] **E.** Session pod + campaign manifest + congrats overlay (menus / progression / results) — session pod + menus + RESULTS screen DONE 2026-08-23 (all gates PASS); remaining: fireworks/congrats flavor + palette-preview cards
+- [ ] **E.** Session pod + campaign manifest + congrats overlay (menus / progression / results)
+ — session pod + menus + RESULTS screen DONE 2026-08-23 (all gates PASS); remaining: fireworks/congrats flavor + palette-preview cards
 
 ---
 

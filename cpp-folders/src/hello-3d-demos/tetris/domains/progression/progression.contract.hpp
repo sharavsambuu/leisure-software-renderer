@@ -20,6 +20,11 @@ namespace tetris::progression {
         int  combo_count   = 0;
         int  max_combo     = 0;
         int  target_score  = 12000;
+
+        // L3 excavation objective: target_lines > 0 switches the win check
+        // from score-chasing to lines-excavated (Garbage Canyon). Plain value
+        // wired from config/script at stage load; reducer only reads.
+        int  target_lines  = 0;
         bool victory       = false;
 
         // --- Mode identity + blitz clock (L2) ---
