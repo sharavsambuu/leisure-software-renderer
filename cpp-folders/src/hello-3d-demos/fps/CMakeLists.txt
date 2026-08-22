@@ -28,6 +28,18 @@ include_directories(${HelloSHSRenderer_SOURCE_DIR}/)
 
 include_directories(${stb_SOURCE_DIR}/)
 
+# --- Include convention ---
+# ONE project root on the include path. Cross-pod headers are included by
+# their root-relative path in angle brackets, so the include line states its
+# location in the architecture:
+#     #include <domains/matrix/fps.contract.hpp>
+#     #include <config/difficulty.hpp>
+# Angle brackets  = cross-pod / rooted path (architecture-visible dependency).
+# Quote includes  = same-directory siblings only ("fps.meshes.hpp").
+# Namespace identity lives in the code (fps::matrix, fps::spatial_fx, ...);
+# include-path identity lives here. Never use "../../" relative chains.
+include_directories(${CMAKE_CURRENT_SOURCE_DIR})
+
 # --- Main executable: HelloFPSDemo ---
 add_executable(HelloFPSDemo
     hello_fps_demo.cpp
@@ -61,4 +73,4 @@ else()
     target_compile_options(HelloFPSDemo PRIVATE -O3 -ffast-math -mavx2 -mfma)
 endif()
 
-message(STATUS ">>> Building HelloFPSDemo...")
+message(STATUS ">>> Building HelloFPSDemo (VOP/DOD domain pods)...")
