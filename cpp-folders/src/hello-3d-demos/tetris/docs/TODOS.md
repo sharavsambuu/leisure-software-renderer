@@ -1,12 +1,20 @@
-# Todos
+# Todos — Living Tracker
 
-Do goal is to build mutiple domain pods structure can be used as template for other game demos
-And also to have Lua based scripting capabilities
+Goal: a multi-domain-pod structure usable as a template for other game demos,
+plus Lua-based scripting capabilities — and now a concrete **level & mode
+campaign** that exercises the full C++↔Lua spectrum, with per-level **GUI and
+FX variety** (Part 4).
 
+This file is the **living progress tracker**. Update the checkboxes as work
+lands; keep prose minimal and point at the owning doc instead of duplicating.
 
+## Doc map (single source of truth per concern)
 
-To thoroughly demonstrate **Value-Oriented Programming (VOP)**, **Data-Oriented Design (DOD)**, and a **Stateless Lua Scripting Layer** without over-engineering, the sweet spot is **5 Domain Pods** combined with **3 Execution Edges**.
-
+| Doc | Owns |
+| :--- | :--- |
+| `ARCHITECTURE.md` | Pod theory (Part I), Lua philosophy (Part II), as-built tree/dataflow/ownership + Lua design rules + conventions (Part III) |
+| `TODOS.md` | This file — status tables + roadmap + campaign proposals |
+| `STATUS.md` | Verification log: build results, headless gates, DoD, pitfalls, migration history |
 
 ---
 
@@ -17,15 +25,12 @@ To thoroughly demonstrate **Value-Oriented Programming (VOP)**, **Data-Oriented 
 | Pod 1 `matrix` | ✅ DONE — contract/action/event/reducer; pure center, zero scoring refs |
 | Pod 2 `progression` | ✅ DONE — event-fed scoring, combos, levels, victory; Lua seam isolated at `compute_line_clear_score()` |
 | Pod 3 `spatial_fx` | ✅ DONE — SoA particles, camera spring, scene planner (`spatial_fx.plan.hpp`) |
-| Pod 4 `powerups` | ⬜ PENDING — arrives together with its `scripts/*.lua` (Part 2) |
-| Pod 5 `environment` | ⬜ PENDING — diorama + reactive mood lighting |
+| Pod 4 `powerups` | ⬜ PENDING — arrives together with its `scripts/*.lua` (Part 4 · L4) |
+| Pod 5 `environment` | ⬜ PENDING — diorama + reactive mood lighting (Part 4 · L5) |
 | Edges `input` / `audio` / `rasterizer` / `ui` | ✅ DONE — one subdirectory per edge (`edges/<name>/tetris.<name>.hpp`) |
-| Edge `lua` | 🟡 SCAFFOLDED — `edges/lua/lua.edge.hpp` compiles into the build, not yet wired into the loop |
+| Edge `lua` | 🟡 SCAFFOLDED — `edges/lua/lua.edge.hpp` compiles into the build, not yet wired into the loop (Part 4 · L2) |
 | Thin main + `verify.sh` | ✅ DONE — determinism / behavioral-delta / purity gates all PASS |
-
-Companion docs in this folder: `NOTES.md` (VOP/DOD pod theory + Lua philosophy) and
-`REFACTOR_PROPOSAL.md` (migration record). Repo-root `docs/DETAILS.md` §4 holds the
-concrete Lua wiring design for the next task.
+| Docs integration | ✅ DONE 2026-08-22 — deduplicated to 3 files; see STATUS.md §0 |
 
 ---
 
@@ -79,8 +84,6 @@ concrete Lua wiring design for the next task.
 *(Pods 4 and 5 above are the planned additions; pods 1–3 and all three execution-edge
 families already exist in code — see the Status table.)*
 
----
-
 ### Why these 5 Pods are optimal:
 
 | Domain Pod | Core Responsibility | DOD / VOP Showcase Feature |
@@ -93,7 +96,7 @@ families already exist in code — see the Status table.)*
 
 ---
 
-# Part 2: Where and How to Integrate Stateless Lua Scripting
+# Part 2: Stateless Lua Integration (wiring plan)
 
 ### The Constitution II Rule for Lua:
 > **"Lua scripts must never hold mutable pointers to C++ objects. Lua functions must be pure stateless reducers: taking an immutable C++ data snapshot, performing game logic, and returning an explicit value result."**
@@ -105,11 +108,9 @@ families already exist in code — see the Status table.)*
 └─────────────────────────┘          └───────────────────────┘          └──────────────────────────┘
 ```
 
----
-
 ### 2.1 File Placement for Lua Scripts
 
-Following the Glimmer/Ember Pod Standard, scripts live directly inside their respective domain pod folder under a `scripts/` directory:
+Scripts live inside their respective domain pod folder under a `scripts/` directory:
 
 ```text
 domains/
@@ -128,11 +129,8 @@ domains/
         └── laser_row.lua           # 4. Instant row vaporization logic
 ```
 
----
+### 2.2 Canonical Example: Pure Lua Scoring Rule (`blitz_mode.lua`)
 
-### 2.2 Concrete Example: Pure Lua Scoring & Game Mode Rule
-
-#### In `domains/progression/scripts/blitz_mode.lua`:
 ```lua
 -- Pure stateless Lua decision rule (Zero globals, zero side-effects)
 local BlitzRules = {}
@@ -159,174 +157,263 @@ end
 return BlitzRules
 ```
 
----
+### 2.3 C++ Side
 
-### 2.3 The C++ Lua Edge Wrapper (`edges/lua/lua.edge.hpp`)
-
-In C++, you execute the script by pushing values onto the Lua stack, invoking the function, and popping the resulting struct:
-
-```cpp
-#pragma once
-
-#include <lua.hpp>
-#include <string_view>
-#include <span>
-
-namespace edge {
-
-    struct LuaScoreResult {
-        int  score_added  = 0;
-        bool level_up     = false;
-        bool danger_alert = false;
-    };
-
-    class StatelessLuaEvaluator {
-    public:
-        explicit StatelessLuaEvaluator(const std::string& script_path) {
-            L_ = luaL_newstate();
-            luaL_openlibs(L_);
-            if (luaL_dofile(L_, script_path.c_str()) != LUA_OK) {
-                // Handle compilation error
-                lua_pop(L_, 1);
-            }
-        }
-
-        ~StatelessLuaEvaluator() {
-            if (L_) lua_close(L_);
-        }
-
-        // Pure evaluation: takes immutable inputs, returns explicit value struct
-        LuaScoreResult evaluate_scoring(int level, int lines_cleared, int combo, bool is_tspin) {
-            lua_getglobal(L_, "calculate_score");
-            lua_pushinteger(L_, level);
-            lua_pushinteger(L_, lines_cleared);
-            lua_pushinteger(L_, combo);
-            lua_pushboolean(L_, is_tspin);
-
-            LuaScoreResult out{};
-            if (lua_pcall(L_, 4, 1, 0) == LUA_OK && lua_istable(L_, -1)) {
-                lua_getfield(L_, -1, "score_added");
-                out.score_added = static_cast<int>(lua_tointeger(L_, -1));
-                lua_pop(L_, 1);
-
-                lua_getfield(L_, -1, "level_up");
-                out.level_up = lua_toboolean(L_, -1);
-                lua_pop(L_, 1);
-
-                lua_getfield(L_, -1, "danger_alert");
-                out.danger_alert = lua_toboolean(L_, -1);
-                lua_pop(L_, 1);
-            }
-            lua_pop(L_, 1); // Pop result table
-            return out;
-        }
-
-    private:
-        lua_State* L_ = nullptr;
-    };
-
-} // namespace edge
-```
+The evaluator is already scaffolded in the build:
+`edges/lua/lua.edge.hpp` (`tetris::lua_edge::StatelessLuaEvaluator`) —
+script text + plain-value inputs → plain-value result struct. It is NOT yet
+wired into the loop. Design rules (edge placement, sandboxing/determinism,
+build wiring, verify.sh extensions) are owned by `ARCHITECTURE.md` Part III §4.
 
 ---
 
-# Part 3: Project Directory Layout (as built)
+# Part 3: Project Directory Layout
 
-```text
-hello-3d-demos/tetris/
-├── CMakeLists.txt                       # One -I root (demo dir); target-scoped include dirs
-├── verify.sh                            # Headless gates: determinism / delta / purity greps
-├── hello_3d_tetris.cpp                  # Main edge: SDL lifecycle, PMR arena, loop wiring (~330 lines)
-│
-├── config/                              # Pure designer-facing tuning data
-│   ├── rules.hpp                        #   tetris::config::Rules + gravity_for_level()
-│   └── levels/marathon_01.hpp           #   Marathon01::make_rules()
-│
-├── domains/                             # Pure Value Center (zero SDL, zero global heap)
-│   ├── matrix/                          # Pod 1: core grid simulation        [DONE]
-│   │   ├── matrix.contract.hpp          #   MatrixSnapshot, ActivePiece, pull_next_piece
-│   │   ├── matrix.action.hpp            #   TetrisCommand variant + reduce_tetris_commands
-│   │   ├── matrix.event.hpp             #   MatrixEvent raw facts (LOCK_IMPACT, LINES_CLEARED, …)
-│   │   └── matrix.reducer.hpp           #   reduce_matrix — pure transition, emits events ONLY
-│   │
-│   ├── progression/                     # Pod 2: scoring & modes             [DONE]
-│   │   ├── progression.contract.hpp     #   ScoreState
-│   │   ├── progression.event.hpp        #   ProgressionEvent (SCORE_CHANGED, LEVEL_UP, …)
-│   │   ├── progression.reducer.hpp      #   reduce_progression + compute_line_clear_score [LUA SEAM]
-│   │   └── scripts/                     #   (PENDING) blitz_mode.lua, sprint_40lines.lua
-│   │
-│   ├── spatial_fx/                      # Pod 3: FX + scene planning         [DONE]
-│   │   ├── spatial_fx.contract.hpp      #   FxState, ProcessedTriangle, piece palette
-│   │   ├── spatial_fx.reducer.hpp       #   step_fx — SoA particles, deterministic xorshift
-│   │   └── spatial_fx.plan.hpp          #   plan_tetris_scene → PipelineExecutionPlan
-│   │
-│   ├── powerups/                        # Pod 4: cyber modifiers             [PENDING — lands with scripts/*.lua]
-│   └── environment/                     # Pod 5: diorama + mood lighting     [PENDING]
-│
-├── edges/                               # Impure Execution Edges (SDL appears here ONLY)
-│   ├── input/tetris.input.hpp           #   poll_input → InputState{ pmr commands }
-│   ├── audio/tetris.audio.hpp           #   SPSC ring procedural synth + SDL audio callback
-│   ├── rasterizer/tetris.rasterizer.hpp #   vop:: clip_to_screen_vec4, rasterize_triangle_tile
-│   ├── ui/tetris.hud.hpp                #   draw_hud(canvas, MatrixSnapshot, ScoreState)
-│   └── lua/lua.edge.hpp                 #   StatelessLuaEvaluator            [SCAFFOLDED, unwired]
-│
-└── docs/
-    ├── TODOS.md                         # this file — canonical blueprint + status
-    ├── NOTES.md                         # VOP/DOD pod theory + Lua-in-VOP philosophy
-    └── REFACTOR_PROPOSAL.md             # migration record of the domain-pod refactor
-```
+Single-sourced in **`ARCHITECTURE.md` Part III §1 (as-built tree)** — do not re-list it here.
 
 ---
 
-### Architectural Highlights:
-1. **Multi-Threaded Lua Scalability**: Because Lua scripts are purely stateless, multiple worker threads can each evaluate scripts in parallel using isolated, lock-free `lua_State*` instances without mutexes.
-2. **Instant Hot-Reloading**: Designers can edit `blitz_rules.lua` or `bomb_piece.lua` while the C++ game is running, and the new rules take effect on the next tick with zero memory corruption risk.
-3. **PMR / DOD Sympathy**: C++ simulation remains $\mathcal{O}(1)$ bump-allocated and SoA-packed; Lua only touches boundary decisions.
+# Part 4: Level & Mode Campaign Proposal (tracker)
 
+Proposed 2026-08-22; GUI/FX variety enriched same day. Five levels/modes that
+deliberately span the implementation spectrum — pure C++ → hybrid → pure-Lua
+content/mechanics/orchestration — plus the meta-layer (menus, progression,
+congrats) the demo currently lacks. Each block below is the progress tracker;
+tick boxes as work lands and record gate results in `STATUS.md`.
 
+**GUI/FX ground rule:** every item below stays inside the existing seams —
+GUI elements are pure projections of snapshots drawn by the ui edge; FX are
+event-fed recipes in `FxState`/scripts consumed by the planner; environment
+mood is interpolated state. All converge into ONE `PipelineExecutionPlan`.
+No level adds architecture; levels add data, recipes, and listeners.
 
-This architecture scales seamlessly whether building a **Semi-3D Tetris**, an **FPS Combat Arena**, a **Flight Simulator**, or an **Action RPG**.
+### Summary matrix
+
+| # | Level / Mode | Tier | C++ share | Lua share | Pods touched | Architectural delta |
+|---|---|---|---|---|---|---|
+| L1 | Marathon Classic | Pure C++ | 100% | — | 1,2,3 | none (exists) |
+| L2 | Blitz 120 | Hybrid rules | ~90% | scoring + clock | 1,2,3 | wire lua.edge |
+| L3 | Garbage Canyon | Lua generation | ~85% | board generator | 1,2,3,+env palette | initial-board injection seam |
+| L4 | Cyber Storm | Lua mechanics | ~70% | powerup effects | 1,2,3,**+4** | build powerups pod |
+| L5 | Encore Finale | Lua orchestration | ~60% | encounter + mood | 1,2,3,**+5** | build environment pod |
+| M1–M3 | Menus / progression / congrats | C++ logic (+ optional flavor scripts) | session pod + ui edge | new `session` pod + campaign manifest |
+
+---
+
+### Shared GUI & FX vocabulary (build once, configure per level)
+
+Implement these primitives ONCE in the owning edge/pod; every level then just
+configures them via config data or script recipes. No per-level widget code.
+
+**GUI primitives (ui edge, all pure projections of snapshots):**
+panel · stat digits · progress bar · meter w/ tier ticks · banner (flash/slide) ·
+icon chip · vignette overlay · letterbox bars · popup floater (+N s, score) ·
+carousel card · countdown digits · radial dial / pip row
+
+**FX primitives (spatial_fx recipes, event-fed):**
+burst (voxel shatter) · ring (shockwave) · beam (sweep) · flash (screen) ·
+shake/kick (camera spring) · rumble (low-amplitude sustained shake) ·
+rain (falling spawner) · confetti/firework (celebration SoA) · trail (motion) ·
+dissolve (per-cell fade) · dust wave · spotlight cone
+
+**Environment primitives (pod 5):**
+mood color interpolator · diorama backdrop batch · pedestal animation ·
+light-strip pulse · weather layer (lightning/flicker)
 
 ---
 
-### Why this Template is so Powerful for Any Game:
+### L1 · Marathon Classic — Tier 1: Pure C++ baseline `[EXISTS]`
 
-```
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                                 REUSABLE CORE FOUNDATION                               │
-│                                                                                        │
-│  [input.edge] ──► std::span<Action> ──► [PURE VALUE CENTER] ──► [PipelinePlan / Audio] │
-│                                         (PMR Bump Arena)                               │
-│                                                 │                                      │
-│                  ┌──────────────────────────────┼──────────────────────────────┐       │
-│                  ▼                              ▼                              ▼       │
-│          [audio.edge] (SPSC)          [rasterizer.edge] (Tiled)        [lua.edge]      │
-└─────────────────────────────────────────────────┬──────────────────────────────────────┘
-                                                  │
-                    ┌─────────────────────────────┴─────────────────────────────┐
-                    ▼                                                           ▼
-         Tetris Game Setup                                           FPS Arena Game Setup
-         ├── domains/matrix/                                         ├── domains/combat/
-         ├── domains/progression/                                    ├── domains/ai_bots/
-         ├── domains/powerups/                                       ├── domains/weapon_inventory/
-         ├── domains/spatial_fx/                                     ├── domains/spatial_fx/
-         └── domains/environment/                                    └── domains/environment/
-```
+The existing marathon_01: fixed victory target, standard gravity curve, all
+reducers native C++. Serves as the determinism reference run for every later tier.
 
-### 1. True Plug-and-Play Domains
-To build a completely different game (like FPS demo or a new racing demo):
-- Keep the exact same **`edges/`** (`audio.edge`, `rasterizer.edge`, `input.edge`, `lua.edge`).
-- Keep the exact same **`spatial_fx`** (3D particles/camera shake) and **`environment`** (diorama/lighting) pods.
-- Simply swap out `domains/matrix/` for `domains/combat/` or `domains/vehicle_physics/`.
+Core:
+- [x] `config/levels/marathon_01.hpp` — victory target, start level, palette
+- [x] All three pods pure C++ (no scripting anywhere)
+- [x] Gates green: determinism byte-compare + behavioral delta (STATUS.md)
+- [ ] Registered as stage 1 in the campaign manifest (blocked on M2)
 
-### 2. Zero Architectural Rot
-In standard OOP games, adding features eventually creates "callback spaghetti" where objects cross-call each other and leak references. In VOP/DOD:
-- **No domain ever touches another domain directly**. Everything happens via clean, immutable **Discrete Event Logs**.
-- I can add 50 new features or power-ups without breaking existing code.
+GUI polish:
+- [ ] Level-up flash banner + brief palette shift on `LEVEL_UP` event
+- [ ] Danger vignette when stack height crosses warning row (projection of grid state)
 
-### 3. Netcode & Rollback Ready
-Because state snapshots are plain data structs and reducers are pure mathematical functions:
-- State rollback is trivial (just keep the last $N$ snapshots).
-- Deterministic replays take kilobytes of memory (just log the input action tokens and RNG seed).
+FX polish:
+- [ ] Tetris (4-line clear) camera pulse + oversized burst recipe
+- [ ] Combo streak floating 3D popup ("COMBO ×N") from `COMBO_STREAK` events
 
 ---
+
+### L2 · Blitz 120 — Tier 2: Hybrid (Lua rules, C++ engine) `[PLANNED]`
+
+2-minute sprint, aggressive combo scoring, T-spin bonus. First consumer of the
+wired lua.edge; designers retune the whole economy by editing one script.
+
+Core:
+- [ ] Wire lua.edge into main loop: load scripts at boot, evaluate per tick (ARCHITECTURE.md Part III §4.1–4.2)
+- [ ] Build wiring: vcpkg `lua` entry + guarded `find_package` (Part III §4.4)
+- [ ] `domains/progression/scripts/blitz_mode.lua` — `calculate_score(...)` (Part 2.2 shape) + `evaluate_clock(time_left, stack_height) -> {danger_alert, hurry}`
+- [ ] Route `compute_line_clear_score` through the script; keep C++ fallback when no script set
+- [ ] `ScoreState` gains mode fields: `time_left`, `mode_id` (progression contract)
+- [ ] `verify.sh`: `--script <file>` flag + determinism double-run WITH scripting active (Part III §4.5)
+- [ ] Smoke test: blitz target/score override assertion (`ScoreState.target_score` changes)
+
+GUI (timer-driven identity):
+- [ ] Large countdown digits: amber → red < 30s → pulsing < 10s
+- [ ] Time-bonus popup floaters ("+5s") on bonus clears
+- [ ] Combo meter bar with tier ticks (feeds off `combo_count`)
+- [ ] HURRY! flashing banner + screen-border pulse in final 10 seconds
+- [ ] RESULTS time breakdown panel (clears vs bonuses vs penalties)
+
+FX (clock spectacle):
+- [ ] Threshold shockwave ring emitted from the board every 30-second tick
+- [ ] Spark trail on hard drops (speed feel, `HARD_DROP_SLAM`-fed)
+- [ ] Golden burst + slow-mo zoom on the final clearing line ("photo finish")
+- [ ] Amber environment mood that intensifies as the timer drains
+
+---
+
+### L3 · Garbage Canyon — Tier 3: Pure-Lua level GENERATION `[PLANNED]`
+
+Pre-ruined board (staggered garbage towers with holes); win = excavate 20 lines.
+Level content authored entirely in a script; C++ pods execute it.
+
+Core:
+- [ ] Matrix injection seam: initial-board path (plain-data command or snapshot init helper) — no logic in the schema
+- [ ] `domains/matrix/scripts/garbage_canyon.gen.lua` — `(difficulty, seed) -> {initial_blocks, target_lines, time_limit}` (Use Case 4 pattern, ARCHITECTURE.md Part II)
+- [ ] Determinism gate: same seed → byte-identical board screenshot (extend verify.sh)
+- [ ] `config/levels/garbage_canyon.hpp` — dusk palette + stage layout constants
+
+GUI (excavation identity):
+- [ ] Excavation progress bar (lines cleared / target)
+- [ ] Depth gauge: highest garbage-row marker + danger stripes near the ceiling
+- [ ] Seed/variant tag in corner (daily-challenge identity)
+- [ ] Dust overlay tint when clearing rows near the floor
+
+FX (dig feel):
+- [ ] Dust bursts + rubble debris in brown/gray palette on garbage locks
+- [ ] Screen rumble scaled to garbage mass cleared (multi-row collapses hit harder)
+- [ ] Pebble-trickle particles falling from disturbed rows above the clear
+- [ ] Deep thud audio + horizontal dust wave on 3+ row collapses
+
+Environment:
+- [ ] Dusk/desert mood curve; flickering torch-style point lights; canyon-silhouette diorama backdrop
+
+---
+
+### L4 · Cyber Storm — Tier 3: Pure-Lua MECHANICS → earns Pod 4 `[PLANNED]`
+
+Special pieces drop occasionally: Bomb (3×3 blast), Laser Row (vaporizes a row),
+Freeze (stops gravity 5s). Whole gameplay mechanics as hot-reloadable scripts;
+add future powerups without touching C++.
+
+Core:
+- [ ] New pod `domains/powerups/`: contract (cooldown timers, pending-mutation queue), action (`ApplyMutationIntent`), event (`POWERUP_TRIGGERED`), reducer (pure step)
+- [ ] Matrix stays untouched: special spawns arrive as raw facts / commands; powerup logic never edits the grid directly
+- [ ] `scripts/powerups/bomb_piece.lua`, `laser_row.lua`, `freeze.lua` — `(matrix_facts, powerup_state) -> {mutations[], events[], fx_requests[]}`
+- [ ] Main wiring: evaluate scripts after matrix events; feed returned intents into the next reduce pass
+- [ ] Audio: new SoundTypes (blast / zap / freeze) through the SPSC ring
+- [ ] Purity gate extended in verify.sh: no SDL under `domains/powerups/`
+
+GUI (powerup cockpit):
+- [ ] Powerup cooldown radial dials / pip row (projection of powerup contract)
+- [ ] Incoming-special warning icons overlaid on the next-queue display
+- [ ] Active-effect status chips (freeze timer counting down, laser charge level)
+- [ ] Hit-marker flash on laser fire; combo multiplier badge with glitch flicker at high streaks
+
+FX (per-powerup signature):
+- [ ] Bomb: 3×3 voxel explosion burst + shockwave ring + white screen flash + camera kick
+- [ ] Laser: horizontal beam sweep with scanline glow + per-cell dissolve vaporize of the row
+- [ ] Freeze: frost vignette overlay + ice-crystal particle drift + brief desaturation pulse
+- [ ] Glitch modifier: RGB-split flicker on affected rows for ~0.5s
+
+Environment:
+- [ ] Neon cyberpunk grid floor; light strips pulse on each powerup trigger; lightning flash synced to special-piece spawns
+
+---
+
+### L5 · Encore Finale — Tier 3: Lua ORCHESTRATION + full presentation `[PLANNED]`
+
+Scripted 4-phase encounter: normal → garbage rain every 8s → blackout (dimmed
+board, ghost hidden) → victory crescendo. Encounter design becomes authoring.
+
+Core:
+- [ ] New pod `domains/environment/`: contract (mood state), reducer (color interpolator step), plan (diorama batch into PipelineExecutionPlan)
+- [ ] `scripts/environment/encounter_overseer.lua` — `(phase_state, events, dt) -> {new_phase, spawn_garbage?, mood_target}` (boss-phase pattern, ARCHITECTURE.md Part II Use Case 3)
+- [ ] Main forwards selected Matrix/Progression events to an `on_event(type, values)` Lua hook (Part III §4.3)
+- [ ] Mood interpolation cyan → crimson → gold wired into planner palette
+- [ ] Blackout dimming + ghost-hidden flag passed to planner as plain values
+- [ ] Garbage-rain scheduler emits spawn intents on phase cadence
+
+GUI (cinematic show):
+- [ ] Phase-title banners + cinematic letterbox bars during transitions
+- [ ] Phase intensity meter (boss-style, driven by encounter state)
+- [ ] Garbage-rain warning arrows on the board sides before each volley
+- [ ] Victory star rating (performance-based: time, max combo, damage taken) + congrats scroll
+
+FX (set pieces):
+- [ ] Phase-transition white-out wipe between phases
+- [ ] Garbage rain with impact tremors + dust plumes on landing
+- [ ] Blackout set piece: global dim + spotlight cone isolating only the active piece
+- [ ] Finale: confetti + firework bursts + gold particle rain + slow camera orbit around the board
+
+Environment:
+- [ ] Full reactive lighting show (cyan → crimson → gold); animated neon pedestal; crowd-silhouette diorama with light-wave pulses synced to clears
+
+---
+
+### Meta-layer (currently missing from the demo)
+
+**M1 · Session pod (menus without OOP UI frameworks)**
+
+- [ ] `domains/session/`: contract (`SessionSnapshot{screen: TITLE|LEVEL_SELECT|PLAYING|PAUSED|RESULTS, cursor_index, unlocked_stages, current_stage}`), action (NavUp/NavDown/Confirm/Back intents), reducer (pure screen state machine)
+- [ ] Menu rendering = ui-edge projection of SessionSnapshot (same suffix discipline, headless-testable)
+- [ ] Menu input reuses the existing intent-token pipeline through the input edge
+
+Menu GUI:
+- [ ] Animated title screen: falling-tetromino attract background (planner-driven, zero new systems)
+- [ ] Level-select carousel cards previewing each level's palette/mood
+- [ ] Pause overlay: dim + resume/restart/quit rows (projection of SessionSnapshot)
+
+**M2 · Campaign manifest (level-by-level progression)**
+
+- [ ] `config/campaign/main_campaign.hpp` (or `.lua`) — ordered stages `{level_id, config/script refs, unlock_requirement}`
+- [ ] Session consumes each stage's `VICTORY` event → advance `current_stage`, unlock next
+
+Progression GUI:
+- [ ] Campaign track: node map with locked/unlocked/completed states
+- [ ] Unlock animation when a stage completes (banner + node light-up)
+
+**M3 · Congrats flow**
+
+- [ ] RESULTS screen projection (score/high/lines from ScoreState)
+- [ ] Celebration overlay + fireworks hook fired on `VICTORY`
+- [ ] Optional `scripts/results/congrats.lua` — message + particle recipe picker per stage (localization-friendly)
+
+Results GUI:
+- [ ] Score count-up animation + "NEW RECORD" sparkle on high-score beat
+- [ ] Per-stage congrats flavor text + stats breakdown (max combo, specials used, time)
+
+### Build order (each phase ends green: builds + gates PASS)
+
+- [ ] **A.** Wire lua.edge + deliver L2 Blitz 120 (smallest delta; proves determinism-with-scripting gates)
+- [ ] **B.** L3 Garbage Canyon generator scripts + seed-determinism gate
+- [ ] **C.** Powerups pod + L4 Cyber Storm
+- [ ] **D.** Environment pod + L5 Encore Finale
+- [ ] **E.** Session pod + campaign manifest + congrats overlay (menus / progression / results)
+
+---
+
+# Part 5: Why This Template Scales
+
+1. **Plug-and-play domains:** keep the same `edges/` and shared pods
+   (`spatial_fx`, `environment`); swap `domains/matrix/` for `domains/combat/`
+   or `domains/vehicle_physics/` to get a different game on the same skeleton.
+2. **Zero architectural rot:** no domain ever touches another directly —
+   everything flows through immutable discrete event logs; features add
+   listeners, not callbacks.
+3. **Netcode & rollback ready:** snapshots are plain structs, reducers pure —
+   rollback is keeping the last N snapshots; replays are input tokens + RNG seed.
+4. **Multi-threaded Lua scalability:** stateless scripts evaluate on isolated
+   thread-local `lua_State*` pools with no mutexes.
+5. **Instant hot-reload:** edit a rule script mid-run; new rules apply next
+   tick with zero memory-corruption risk.
