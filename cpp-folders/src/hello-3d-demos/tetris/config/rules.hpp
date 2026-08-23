@@ -13,7 +13,8 @@ namespace tetris::config {
         MODE_MARATHON        = 1,   // L1: untimed target chase (pure C++ tier)
         MODE_BLITZ_120       = 2,   // L2: 2-minute sprint (Lua-authored economy)
         MODE_GARBAGE_CANYON  = 3,   // L3: excavation sprint (Lua-authored board)
-        MODE_CYBER_STORM     = 4    // L4: scripted special-piece mechanics (Pod 4)
+        MODE_CYBER_STORM     = 4,   // L4: scripted special-piece mechanics (Pod 4)
+        MODE_ENCORE_FINALE   = 5    // L5: scripted encounter orchestration (Pod 5)
     };
 
     struct Rules {

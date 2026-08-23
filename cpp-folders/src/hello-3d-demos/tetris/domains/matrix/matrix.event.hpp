@@ -17,9 +17,12 @@ namespace tetris::matrix {
         LINES_CLEARED,
         HOLD_SWAPPED,
         GAME_OVER,
-        SPECIAL_LOCKED   // L4: a Bomb/Laser/Freeze piece reached its lock point;
+        SPECIAL_LOCKED,  // L4: a Bomb/Laser/Freeze piece reached its lock point;
                          // the grid is untouched — the scripted ruling decides
                          // the mutation (raw fact for the powerups pod)
+        GARBAGE_RAINED   // L5: an AddGarbageRowsIntent volley landed (rows
+                         // shifted up, garbage filled in from below). Raw fact
+                         // for FX/audio; rain cadence lives upstream.
     };
 
     struct MatrixEvent {
@@ -39,6 +42,9 @@ namespace tetris::matrix {
         uint8_t         special_type = 0;
         int16_t         lock_x       = 0;
         int16_t         lock_y       = 0;
+
+        // L5 raw fact for GARBAGE_RAINED: how many rows the volley added.
+        uint8_t         rain_rows    = 0;
     };
 
 } // namespace tetris::matrix

@@ -9,6 +9,7 @@
 #include <config/levels/blitz_120.hpp>
 #include <config/levels/garbage_canyon.hpp>
 #include <config/levels/cyber_storm.hpp>
+#include <config/levels/encore_finale.hpp>
 
 namespace tetris::config::campaign {
 
@@ -28,6 +29,7 @@ namespace tetris::config::campaign {
         { 2, "blitz_120",      Blitz120::NAME,      &Blitz120::make_rules,      "domains/progression/scripts/blitz_mode.lua",    1 },
         { 3, "garbage_canyon", GarbageCanyon::NAME, &GarbageCanyon::make_rules, "domains/matrix/scripts/garbage_canyon.gen.lua", 2 },
         { 4, "cyber_storm",    CyberStorm::NAME,    &CyberStorm::make_rules,    "domains/powerups/scripts/cyber_storm.lua",      3 },
+        { 5, "encore_finale",  EncoreFinale::NAME,  &EncoreFinale::make_rules,  "domains/environment/scripts/encounter_overseer.lua", 4 },
     };
 
     static constexpr int STAGE_COUNT = static_cast<int>(sizeof(STAGES) / sizeof(STAGES[0]));

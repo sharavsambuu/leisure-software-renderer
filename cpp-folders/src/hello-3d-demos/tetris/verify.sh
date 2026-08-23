@@ -58,8 +58,16 @@ echo "=== cyber stage 4 boots + deterministic WITH mechanics scripting ==="
 "$BIN" --stage=4 --screenshot /tmp/t_cyber_b.bmp --frame=45 || echo "CYBER_RUN_B_FAILED"
 if cmp -s /tmp/t_cyber_a.bmp /tmp/t_cyber_b.bmp; then echo CYBER_DETERMINISM=PASS; else echo CYBER_DETERMINISM=FAIL; fi
 
+echo "=== smoke: L5 encounter config override reaches main (stage 5) ==="
+"$BIN" --stage=5 --expect-encounter-config=8 || echo "SMOKE_ENCOUNTER_CONFIG_FAILED"
+
+echo "=== encore stage 5 boots + deterministic WITH overseer scripting ==="
+"$BIN" --stage=5 --screenshot /tmp/t_encore_a.bmp --frame=45 || echo "ENCORE_RUN_FAILED"
+"$BIN" --stage=5 --screenshot /tmp/t_encore_b.bmp --frame=45 || echo "ENCORE_RUN_B_FAILED"
+if cmp -s /tmp/t_encore_a.bmp /tmp/t_encore_b.bmp; then echo ENCORE_DETERMINISM=PASS; else echo ENCORE_DETERMINISM=FAIL; fi
+
 echo "=== script purity: generator must be deterministic (no RNG/os/io/print) ==="
-sed 's/--.*//' domains/matrix/scripts/*.lua domains/powerups/scripts/*.lua \
+sed 's/--.*//' domains/matrix/scripts/*.lua domains/powerups/scripts/*.lua domains/environment/scripts/*.lua \
     | grep -nE 'math\.random|os\.|io\.|print\(' || echo SCRIPT_PURITY=PASS
 
 cd /home/sharavsambuu/src/dev/leisure-software-renderer/cpp-folders/src/hello-3d-demos/tetris

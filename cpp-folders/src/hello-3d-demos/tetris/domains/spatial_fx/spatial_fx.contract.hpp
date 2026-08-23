@@ -21,6 +21,7 @@ using tetris::matrix::BLOCK_GAP;
         glm::vec3  p0, p1, p2;
         shs::Color color;
         float      depth_bias = 0.0f;
+        bool       emissive   = false;   // true: unshaded (self-luminous)
 
         LowPolyTriangle(glm::vec3 a, glm::vec3 b, glm::vec3 c, shs::Color col, float bias = 0.0f)
             : p0(a), p1(b), p2(c), color(col), depth_bias(bias) {}
@@ -126,6 +127,11 @@ using tetris::matrix::BLOCK_GAP;
         glm::vec4  c0, c1, c2;
         shs::Color lit_color;
         float      depth_bias;
+        uint8_t    alpha = 255;   // 255 = opaque (default); <255 blends
+                                  // against dst AFTER the depth test without
+                                  // writing depth (single-layer overlay rule)
+        bool       emissive = false;  // true skips lambert shading: color IS
+                                      // the light (L5 board energy field)
     };
 
     struct PipelineExecutionPlan {
@@ -157,6 +163,18 @@ using tetris::matrix::BLOCK_GAP;
         float              screen_flash   = 0.0f;   // L4 ruling feedback (bomb/laser);
                                                 // HUD projects it as a dithered
                                                 // white overlay; decays in step_fx.
+        float              env_finale     = 0.0f;   // L5 encore: 1 = finale env
+                                                // (crowd diorama, mood show,
+                                                // blackout dimming); main 0/1.
+        float              mood_phase     = 0.0f;   // L5 0 cyan .. 1 gold
+                                                // (environment pod wire)
+        float              dim            = 0.0f;   // L5 blackout dimming 0..1
+        bool               ghost_hidden   = false;  // L5 blackout hides the ghost
+        float              crowd_pulse    = 0.0f;   // L5 crowd energy 0..1
+        int                finale_phase   = 0;      // L5 phase mirror (plain wire;
+                                                     // 0 = not in a finale run)
+        float              victory_orbit  = 0.0f;   // L5 remaining orbit seconds
+        float              orbit_elapsed  = 0.0f;   // L5 orbit angle accumulator
         float              time           = 0.0f;
         uint32_t           rng_state      = 0x9e3779b9u;   // deterministic debris velocities
 

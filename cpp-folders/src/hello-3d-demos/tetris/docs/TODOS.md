@@ -26,7 +26,7 @@ lands; keep prose minimal and point at the owning doc instead of duplicating.
 | Pod 2 `progression` | ✅ DONE — event-fed scoring, combos, levels, victory; Lua seam isolated at `compute_line_clear_score()` |
 | Pod 3 `spatial_fx` | ✅ DONE — SoA particles, camera spring, scene planner (`spatial_fx.plan.hpp`) |
 | Pod 4 `powerups` | ✅ DONE (2026-08-23) — cadence scheduler + scripted special pieces (Part 4 · L4) |
-| Pod 5 `environment` | ⬜ PENDING — diorama + reactive mood lighting (Part 4 · L5) |
+| Pod 5 `environment` | ✅ DONE (2026-08-23) — encounter phases + mood/dim/crowd state, finale diorama planner (Part 4 · L5) |
 | Edges `input` / `audio` / `rasterizer` / `ui` | ✅ DONE — one subdirectory per edge (`edges/<name>/tetris.<name>.hpp`) |
 | Edge `lua` | ✅ DONE — sandboxed stateless evaluator wired into the loop via `ScriptHooks` function-pointer bridges; blitz script boots from the campaign manifest |
 | Pod 6 session | DONE 2026-08-23 — TITLE/LEVEL_SELECT/PLAYING/PAUSED/RESULTS state machine; pure reducer, zero SDL refs |
@@ -341,33 +341,33 @@ Environment:
 
 ---
 
-### L5 · Encore Finale — Tier 3: Lua ORCHESTRATION + full presentation `[PLANNED]`
+### L5 · Encore Finale — Tier 3: Lua ORCHESTRATION + full presentation `[DONE 2026-08-23]`
 
 Scripted 4-phase encounter: normal → garbage rain every 8s → blackout (dimmed
 board, ghost hidden) → victory crescendo. Encounter design becomes authoring.
 
 Core:
-- [ ] New pod `domains/environment/`: contract (mood state), reducer (color interpolator step), plan (diorama batch into PipelineExecutionPlan)
-- [ ] `scripts/environment/encounter_overseer.lua` — `(phase_state, events, dt) -> {new_phase, spawn_garbage?, mood_target}` (boss-phase pattern, ARCHITECTURE.md Part II Use Case 3)
-- [ ] Main forwards selected Matrix/Progression events to an `on_event(type, values)` Lua hook (Part III §4.3)
-- [ ] Mood interpolation cyan → crimson → gold wired into planner palette
-- [ ] Blackout dimming + ghost-hidden flag passed to planner as plain values
-- [ ] Garbage-rain scheduler emits spawn intents on phase cadence
+- [x] New pod `domains/environment/`: contract (mood state), reducer (color interpolator step), plan (diorama batch into PipelineExecutionPlan)
+- [x] `scripts/environment/encounter_overseer.lua` — `(phase_state, events, dt) -> {new_phase, spawn_garbage?, mood_target}` (boss-phase pattern, ARCHITECTURE.md Part II Use Case 3)
+- [x] Main forwards selected Matrix/Progression events to an `on_event(type, values)` Lua hook (Part III §4.3)
+- [x] Mood interpolation cyan → crimson → gold wired into planner palette
+- [x] Blackout dimming + ghost-hidden flag passed to planner as plain values
+- [x] Garbage-rain scheduler emits spawn intents on phase cadence
 
 GUI (cinematic show):
-- [ ] Phase-title banners + cinematic letterbox bars during transitions
-- [ ] Phase intensity meter (boss-style, driven by encounter state)
-- [ ] Garbage-rain warning arrows on the board sides before each volley
-- [ ] Victory star rating (performance-based: time, max combo, damage taken) + congrats scroll
+- [x] Phase-title banners + cinematic letterbox bars during transitions
+- [x] Phase intensity meter (boss-style, driven by encounter state)
+- [x] Garbage-rain warning arrows on the board sides before each volley
+- [x] Victory star rating (performance-based: time, max combo, damage taken) + congrats scroll
 
 FX (set pieces):
-- [ ] Phase-transition white-out wipe between phases
-- [ ] Garbage rain with impact tremors + dust plumes on landing
-- [ ] Blackout set piece: global dim + spotlight cone isolating only the active piece
-- [ ] Finale: confetti + firework bursts + gold particle rain + slow camera orbit around the board
+- [x] Phase-transition white-out wipe between phases
+- [x] Garbage rain with impact tremors + dust plumes on landing
+- [x] Blackout set piece: global dim + spotlight cone isolating only the active piece
+- [x] Finale: confetti + firework bursts + gold particle rain + slow camera orbit around the board
 
 Environment:
-- [ ] Full reactive lighting show (cyan → crimson → gold); animated neon pedestal; crowd-silhouette diorama with light-wave pulses synced to clears
+- [x] Full reactive lighting show (cyan → crimson → gold); animated neon pedestal; crowd-silhouette diorama with light-wave pulses synced to clears
 
 ---
 
@@ -410,7 +410,7 @@ Results GUI:
 - [x] **A.** Wire lua.edge + deliver L2 Blitz 120 (smallest delta; proves determinism-with-scripting gates) — DONE 2026-08-22, all gates PASS
 - [x] **B.** L3 Garbage Canyon generator scripts + seed-determinism gate — DONE 2026-08-23; all features live, SMOKE_TARGET_LINES + SEED_DIFF PASS; same-seed screenshot gate open (STATUS.md §0e pitfall)
 - [x] **C.** Powerups pod + L4 Cyber Storm — DONE 2026-08-23; SMOKE_SPECIAL_EVERY_N + CYBER_DETERMINISM PASS, purity gates NONE (STATUS.md §0f)
-- [ ] **D.** Environment pod + L5 Encore Finale
+- [x] **D.** Environment pod + L5 Encore Finale — DONE 2026-08-23; SMOKE_ENCOUNTER_CONFIG + ENCORE_DETERMINISM PASS, script purity NONE (STATUS.md §0g)
 - [ ] **E.** Session pod + campaign manifest + congrats overlay (menus / progression / results)
  — session pod + menus + RESULTS screen DONE 2026-08-23 (all gates PASS); remaining: fireworks/congrats flavor + palette-preview cards
 

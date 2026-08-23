@@ -48,6 +48,11 @@ add_executable(Hello3DTetris
     config/levels/marathon_01.hpp
     config/levels/blitz_120.hpp
     config/campaign/main_campaign.hpp
+    config/levels/encore_finale.hpp
+    domains/environment/environment.contract.hpp
+    domains/environment/environment.reducer.hpp
+    domains/environment/environment.plan.hpp
+    domains/environment/scripts/encounter_overseer.lua
     domains/matrix/matrix.contract.hpp
     domains/matrix/matrix.action.hpp
     domains/matrix/matrix.event.hpp

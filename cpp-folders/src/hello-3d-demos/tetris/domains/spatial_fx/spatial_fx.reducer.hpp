@@ -205,6 +205,12 @@ using tetris::progression::ProgressionEventType;
         if (fx.screen_flash > 0.0f) {
             fx.screen_flash = std::max(0.0f, fx.screen_flash - dt * 2.8f);
         }
+        // L5 victory crescendo: slow celebratory orbit (angle accumulates
+        // only while the orbit is live — deterministic from event timing).
+        if (fx.victory_orbit > 0.0f) {
+            fx.victory_orbit = std::max(0.0f, fx.victory_orbit - dt);
+            fx.orbit_elapsed += dt;
+        }
 
         // --- Matrix raw facts --------------------------------------------------
         for (const auto& ev : matrix_events) {
@@ -225,6 +231,25 @@ using tetris::progression::ProgressionEventType;
                 default: break;
                 }
                 break;
+            case MatrixEventType::GARBAGE_RAINED: {
+                // L5 rain impact: tremor scaled to the volley + dust plumes
+                // rising off the new bottom rows.
+                fx.camera_shake = std::max(fx.camera_shake,
+                                           0.45f + 0.15f * ev.rain_rows);
+                const int rows = std::min<int>(ev.rain_rows, 4);
+                for (int r = 0; r < rows; ++r) {
+                    for (int col = 0; col < GRID_W; ++col) {
+                        if ((col + r) % 3 == 0) continue;   // sparse plumes
+                        glm::vec3 p((float)col - 4.5f, (float)r + 0.3f, 0.2f);
+                        glm::vec3 vel(
+                            ((float)(fx_rand(fx.rng_state) % 100) / 50.0f - 1.0f),
+                            2.0f + ((float)(fx_rand(fx.rng_state) % 100) / 60.0f),
+                            -1.0f - ((float)(fx_rand(fx.rng_state) % 100) / 80.0f));
+                        fx.particles.add(p, vel, shs::Color{ 120, 100, 80, 255 }, 0.9f);
+                    }
+                }
+                break;
+            }
             case MatrixEventType::LINES_CLEARED: {
                 const bool tetris = (ev.lines_cleared_count >= 4);
                 fx.camera_shake = tetris ? 0.65f : 0.25f;
@@ -272,6 +297,7 @@ using tetris::progression::ProgressionEventType;
             case ProgressionEventType::OBJECTIVE_COMPLETED:
                 victory_fireworks(fx);
                 fx.camera_pulse = 1.0f;
+                if (fx.env_finale > 0.5f) fx.victory_orbit = 7.0f;   // L5 slow orbit
                 break;
             default:
                 break;

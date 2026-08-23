@@ -37,11 +37,21 @@ namespace tetris::matrix {
         float seconds = 0.0f;
     };
 
+    // L5 encounter seam: a garbage-rain volley (encounter overseer cadence).
+    // The script decides WHEN/HOW MUCH; this command carries the raw facts —
+    // up to 4 rows per volley, each with its hole column (0..GRID_W-1).
+    struct AddGarbageRowsIntent {
+        static constexpr int MAX_ROWS = 4;
+        uint8_t rows   = 0;
+        uint8_t hole_x[MAX_ROWS]{ 0, 0, 0, 0 };
+    };
+
     using TetrisCommand = std::variant<
         MoveLeftIntent, MoveRightIntent, RotateCWIntent, RotateCCWIntent,
         SoftDropIntent, HardDropIntent, HoldPieceIntent, RestartIntent,
         StampInitialBoardIntent,
-        QueueSpecialIntent, ClearCellsIntent, FreezeGravityIntent
+        QueueSpecialIntent, ClearCellsIntent, FreezeGravityIntent,
+        AddGarbageRowsIntent
     >;
 
     struct TetrisCommandFrame {

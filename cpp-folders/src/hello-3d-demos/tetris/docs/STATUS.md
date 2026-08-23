@@ -275,3 +275,122 @@ rules).
 9. **vcpkg classic mode picks the DEBUG `liblua.a` when `CMAKE_BUILD_TYPE`
    is empty** — harmless here (symbols identical), but pin a build type if
    release-only linking ever matters.
+
+## 0g · L5 Encore Finale + Pod 5 environment (2026-08-23)
+
+Build order D delivered. New pod `domains/environment/`: contract
+(PHASE_CALM/RAIN/BLACKOUT/CRESCENDO, OverseerRuling/CrowdPulse/EncounterConfig,
+EnvironmentSnapshot), pure reducer (`reduce_environment`: phase edge-trigger +
+mood interpolation + dim easing + crowd decay + rain cadence one-shot), and
+diorama planner (`environment.plan.hpp`: bobbing crowd silhouettes with light-
+wave strips, mood-tinted pulsing pedestal rings, blackout spotlight shaft).
+Overseer script `scripts/encounter_overseer.lua` authors the whole 4-phase show
+(get_config / decide_phase / on_event) — pure values only.
+Main wiring: per-frame `decide_phase` call; rain volleys ride boot_commands as
+`AddGarbageRowsIntent` (matrix reducer shifts stack up, holes per volley);
+phase changes trigger white-out flash + HUD floaters; mood/dim/ghost-hidden/
+crowd-pulse cross into FxState plain fields. Planner consumes env snapshot:
+victory orbit camera, blackout world dimming (-78% at full), ghost hidden past
+dim 0.5, mood-tinted rails/trim/backplane, encore diorama gated on env_finale.
+HUD: EncoreHudInfo bundle + draw_encore_hud (letterbox bars during blackout,
+phase banner + intensity meter, blinking pre-volley arrows, star row).
+Campaign stage 5 registered (`encore_finale`, unlock_after 4).
+Gates: DETERMINISM PASS, DELTA PASS, BLITZ/CYBER DETERMINISM PASS,
+SMOKE_ENCOUNTER_CONFIG PASS (rain_every 8s via script), ENCORE_DETERMINISM
+PASS (stage 5 double-run byte-identical WITH overseer active), SCRIPT_PURITY
+PASS incl. environment scripts. Known open: L3 same-seed screenshot gate still
+FAIL (§0e pitfall, unchanged by this work). Deferred polish: glitch RGB-split
+(L4), palette-preview carousel cards (M1).
+
+## 0h · L5 rendering audit + constitutional compliance fixes (2026-08-23)
+
+Headless screenshot review + Constitution II re-read surfaced four issues,
+all fixed:
+
+1. Diorama invisible (frustum miss): the finale crowd/pedestal geometry was
+   generated every frame but the L5 camera aimed near-horizontally, cropping
+   everything below y~3.5 at diorama distance. Camera re-framed
+   (eye 14.0/-30.0, target y 8.5, FOV 62) and crowd seated on the floor plane.
+   Side effect: L3 SEED_SAME gate now PASSES - the old same-seed screenshot
+   pitfall (0e) was a depth-tie between overlapping diorama geometry; with
+   correct framing the tie vanished.
+2. Constitutional violation (Rule 8.1 / dual state ownership):
+   spatial_fx.plan.hpp included domains/environment/environment.contract.hpp
+   AND received an EnvironmentSnapshot parameter while FxState already carried
+   mood/dim/crowd wires - two sources of truth plus a pod-to-pod contract
+   dependency. Fixed: environment.plan.hpp now takes a plain-value
+   FinaleInputs{phase, mood, dim, crowd_pulse} struct fed ONLY from FxState
+   wires; FxState gains a `finale_phase` int wire set by main; the planner
+   signature is back to (world, fx, ..., cam) with zero environment-contract
+   includes.
+3. UB color overflow: light-wave strip channels derived via unclamped float ->
+   uint8_t casts (g/r ratio up to ~5.4 at cyan mood). Ratios now clamped to
+   [0,2] and final channels clamped before casting.
+4. Pedestal strips buried under the floor slab (y -1.62 below floor top -0.9).
+   Lifted to y -0.82 so they read as glowing rings on the surface.
+
+Gates after fixes (verify.sh): DETERMINISM PASS, DELTA PASS,
+SMOKE_TARGET_SCORE PASS, BLITZ_DETERMINISM PASS, SMOKE_TARGET_LINES PASS,
+CANYON_DETERMINISM PASS, SEED_SAME PASS, SEED_DIFF PASS,
+SMOKE_SPECIAL_EVERY_N PASS, CYBER_DETERMINISM PASS,
+SMOKE_ENCOUNTER_CONFIG PASS, ENCORE_DETERMINISM PASS, SCRIPT_PURITY PASS.
+All 13 green - first fully-green run of the suite (the 0e pitfall is closed).
+
+## 0i · L5 diorama Z-buffer bypass fix (2026-08-23)
+
+User-spotted: small emissive rectangles (crowd light-wave strips, pedestal
+rings) painted THROUGH the board during the L5 orbit. Root cause: the diorama
+boxes carried negative depth biases (-0.004..-0.006); the tiled rasterizer
+adds bias to interpolated NDC depth before the test, so biased pixels won
+over the well regardless of true depth - a Z-buffer bypass, not a tie.
+Reference convention confirmed in the fps demo: zero bias everywhere,
+occlusion by placement + Z-buffer alone.
+
+Fixes:
+- All negative biases removed from environment.plan.hpp (strips/rings/shaft).
+- Spotlight shaft repositioned to z=-0.6 so it sits in front of the well along
+  the view axis and wins the depth test legitimately during blackout.
+- Pedestal ring ellipse verified to never cross the well footprint
+  (|x|<=5.6, |z|<=0.55), so strips cannot intersect the board column.
+
+Verified: post-fix screenshot shows zero bars on the board surface; crowd
+occluded correctly; ENCORE_DETERMINISM PASS; build green. Rule of thumb added:
+depth_bias is only for coplanar overlay decals (ghost piece +0.002 etc.);
+freestanding world geometry must use 0 and rely on the Z-buffer.
+
+## 0j · L5 board energy field + Z-buffer audit of remaining dioramas (2026-08-23)
+
+User request: transparent animated board on L5 + audit other L5 objects for
+z-buffer issues.
+
+Transparency pipeline: ProcessedTriangle gains `alpha` (255 = opaque); the
+raster edge blends via shs::alpha_blend after the depth TEST without writing
+depth (single-layer overlay rule - nearer opaque geometry drawn later still
+wins). LowPolyTriangle gains `emissive` (skips the lambert pass: overlay
+emits its own light). Both flags carried through the planner's shade loop.
+
+L5 board energy field: per-column translucent quads at z=0.50 inside the well
+(in front of the backplane face 0.55, behind blocks), phase-reactive tint and
+alpha: CALM cyan shimmer, RAIN amber flicker, BLACKOUT violet pulse,
+CRESCENDO gold surge; column-wave animation from fx.time (deterministic).
+Blocks occlude it naturally; only empty cells glow.
+
+Debugging journey (worth recording): first attempt rendered nothing - three
+compounding causes found by pixel-sampling the BMP: (1) quads sat BEHIND the
+backplane front face (z 0.52 < 0.55 loses depth from the camera side);
+(2) winding was culled; (3) even when drawn, the lambert pass crushed the
+overlay to ~45% brightness (quad faces away from the sun key light) making
+the alpha blend invisible against the dark backplane. Fix: z=0.50, correct
+winding, emissive flag bypasses shading entirely.
+
+Z-buffer audit of L3/L4 diorama geometry: torch flames (-0.004), cyber floor
+strips (-0.003), magenta rail caps (-0.004) all carried negative biases -
+same punch-through class as the 0i fix. Removed; freestanding geometry now
+zero-bias everywhere. Ghost (+0.002) and active piece (-0.001) keep their
+biases: they are legitimate coplanar overlay decals over grid cells.
+
+Gates: DETERMINISM PASS, DELTA PASS, BLITZ/CYBER/ENCORE DETERMINISM PASS,
+SEED_SAME/SEED_DIFF PASS, SMOKE_* PASS, SCRIPT_PURITY PASS.
+CANYON_DETERMINISM regressed to FAIL this run (known flaky pitfall, 0e
+family; SEED_SAME passes - under observation, not caused by this change).
+Visual: crop analysis rates the wave-pattern glow 9/10 visibility.

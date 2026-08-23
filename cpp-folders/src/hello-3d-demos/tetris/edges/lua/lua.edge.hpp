@@ -20,6 +20,7 @@
 
 #include <config/rules.hpp>
 #include <domains/powerups/powerups.contract.hpp>
+#include <domains/environment/environment.contract.hpp>
 
 #include <cstdint>
 #include <cstdio>
@@ -277,6 +278,58 @@ namespace tetris::lua_edge {
                 }
             }
             lua_pop(L_, 1);
+            lua_pop(L_, 1);
+            return out;
+        }
+
+        // L5: <table>.get_config() encounter numbers (phase_count / rain_every
+        // / rain_rows). Missing keys keep the struct defaults.
+        environment::EncounterConfig call_encounter_config(const char* table) {
+            environment::EncounterConfig out;
+            if (!L_) return out;
+            if (!begin_call(table, "get_config", 0)) return out;
+            if (!finish_call(0)) return out;
+            out.phase_count = field_int("phase_count", out.phase_count);
+            out.rain_every  = field_float("rain_every", out.rain_every);
+            out.rain_rows   = field_int("rain_rows", out.rain_rows);
+            lua_pop(L_, 1);
+            out.valid = true;
+            return out;
+        }
+
+        // L5: <table>.decide_phase(phase, phase_time, lines, danger) →
+        // { new_phase, mood_target }. Pure function of plain values; called
+        // every frame by main (cheap, stateless).
+        environment::OverseerRuling call_decide_phase(const char* table,
+                                                      int phase, float phase_time,
+                                                      int lines, bool danger) {
+            environment::OverseerRuling out;
+            if (!L_) return out;
+            if (!begin_call(table, "decide_phase", 4)) return out;
+            lua_pushinteger(L_, phase);                     // [func, n1..n4]
+            lua_pushnumber(L_, phase_time);
+            lua_pushinteger(L_, lines);
+            lua_pushboolean(L_, danger ? 1 : 0);
+            if (!finish_call(4)) return out;
+            out.valid       = true;
+            out.new_phase   = field_int("new_phase", 0);
+            out.mood_target = field_float("mood_target", -1.0f);
+            lua_pop(L_, 1);
+            return out;
+        }
+
+        // L5: <table>.on_event(type, value) → { crowd_pulse }.
+        // type 1 = LINES_CLEARED (value = line count), type 2 = VICTORY.
+        environment::CrowdPulse call_on_event(const char* table,
+                                              int event_type, int value) {
+            environment::CrowdPulse out;
+            if (!L_) return out;
+            if (!begin_call(table, "on_event", 2)) return out;
+            lua_pushinteger(L_, event_type);                // [func, n1, n2]
+            lua_pushinteger(L_, value);
+            if (!finish_call(2)) return out;
+            out.valid = true;
+            out.kick  = field_float("crowd_pulse", 0.0f);
             lua_pop(L_, 1);
             return out;
         }

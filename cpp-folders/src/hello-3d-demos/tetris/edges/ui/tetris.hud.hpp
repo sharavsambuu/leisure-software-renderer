@@ -558,6 +558,16 @@ struct CyberHudInfo {
     int   next_type       = 0;       // its PieceType value (9..11)
 };
 
+// L5 encore HUD wiring bundle (plain values; main fills from env state).
+struct EncoreHudInfo {
+    bool  active        = false;   // stage is Encore Finale
+    int   phase         = 1;       // environment PHASE_* value
+    float phase_time    = 0.0f;    // seconds in phase
+    float intensity     = 0.0f;    // phase intensity meter 0..1 (script time curve)
+    float rain_warning  = 0.0f;    // >0 while pre-volley arrows show (seconds left)
+    float dim           = 0.0f;    // blackout mirror (letterbox + vignette)
+};
+
 // ============================================================================
 // MONGOLIAN CYRILLIC HUD (Layout & Presentation)
 // ============================================================================
@@ -565,7 +575,8 @@ static void draw_hud(shs::Canvas& canvas, const matrix::MatrixSnapshot& m,
                      const progression::ScoreState& sc, HudState& hud,
                      bool campaign_has_next = false,
                      const CanyonHudInfo& canyon = CanyonHudInfo{},
-                     const CyberHudInfo& cyber = CyberHudInfo{}) {
+                     const CyberHudInfo& cyber = CyberHudInfo{},
+                     const EncoreHudInfo& encore = EncoreHudInfo{}) {
     int W = canvas.get_width();
     int H = canvas.get_height();
 
@@ -1150,4 +1161,77 @@ static void draw_results_screen(shs::Canvas& canvas, const session::SessionSnaps
     draw_menu_list(canvas, W / 2, py + 250, items, session::RESULTS_MENU_BASE + 1,
                    s.cursor, s.anim_time);
 }
+// ============================================================================
+// L5 ENCORE LAYER (phase banner, intensity meter, rain arrows, letterbox)
+// Projected from the environment snapshot via EncoreHudInfo — same pure
+// projection discipline as the canyon/cyber layers.
+// ============================================================================
+static void draw_encore_hud(shs::Canvas& canvas, const EncoreHudInfo& en,
+                            const HudState& hud) {
+    if (!en.active) return;
+    const int W = canvas.get_width();
+    const int H = canvas.get_height();
+
+    // Cinematic letterbox bars during BLACKOUT (and eased by dim).
+    if (en.dim > 0.05f) {
+        const int bar_h = (int)(H * 0.07f * en.dim);
+        draw_rect_fill(canvas, 0, 0, W, bar_h, shs::Color{ 4, 4, 8, 255 });
+        draw_rect_fill(canvas, 0, H - bar_h, W, bar_h, shs::Color{ 4, 4, 8, 255 });
+    }
+
+    // Phase title banner (bottom center, phase-colored).
+    static const char* PHASE_NAME[5] = { "", "CALM", "GARBAGE RAIN",
+                                         "BLACKOUT", "FINALE" };
+    static const shs::Color PHASE_COL[5] = {
+        { 0,0,0,255 },
+        { 40, 220, 240, 255 },   // CALM cyan
+        { 255, 160, 60, 255 },   // RAIN amber
+        { 140, 150, 220, 255 },  // BLACKOUT violet
+        { 255, 210, 60, 255 }    // CRESCENDO gold
+    };
+    if (en.phase >= 1 && en.phase <= 4) {
+        const char* nm = PHASE_NAME[en.phase];
+        const int tw = (int)std::strlen(nm) * 14;
+        const int bx = W / 2 - tw / 2 - 14, by = H - 64, bw = tw + 28, bh = 34;
+        draw_rect_fill(canvas, bx, by, bw, bh, shs::Color{ 12, 14, 20, 210 });
+        draw_rect_border(canvas, bx, by, bw, bh, PHASE_COL[en.phase]);
+        draw_text(canvas, bx + 14, by + 9, nm, PHASE_COL[en.phase], 2);
+    }
+
+    // Boss-style intensity meter (top center under any blitz panel): fill
+    // grows with phase_time within the current phase, color = phase color.
+    if (en.phase >= 1 && en.phase <= 4) {
+        const int mw = 300, mh = 10;
+        const int mx = W / 2 - mw / 2, my = 14;
+        draw_rect_fill(canvas, mx, my, mw, mh, shs::Color{ 30, 34, 46, 220 });
+        draw_rect_fill(canvas, mx, my, (int)(glm::clamp(en.intensity,0.0f,1.0f) * (float)mw), mh,
+                       PHASE_COL[en.phase]);
+        draw_rect_border(canvas, mx, my, mw, mh, shs::Color{ 80, 95, 115, 255 });
+    }
+
+    // Garbage-rain warning arrows on both board sides before each volley.
+    if (en.rain_warning > 0.0f) {
+        const bool blink = (std::fmod(en.rain_warning, 0.5f) > 0.2f);
+        if (blink) {
+            const shs::Color warn{ 255, 120, 40, 255 };
+            for (int k = 0; k < 3; ++k) {
+                const int ay = H / 2 - 40 + k * 34;
+                draw_rect_fill(canvas, W / 2 - 330, ay, 26, 18, warn);
+                draw_rect_fill(canvas, W / 2 + 304, ay, 26, 18, warn);
+            }
+            draw_text(canvas, W / 2 - 330, H / 2 - 70, "!", warn, 3);
+            draw_text(canvas, W / 2 + 304, H / 2 - 70, "!", warn, 3);
+        }
+    }
+
+    // Victory star rating during CRESCENDO (performance-based projection).
+    if (en.phase == 4) {
+        const shs::Color gold{ 255, 210, 60, 255 };
+        for (int k = 0; k < 3; ++k) {
+            draw_text(canvas, W / 2 - 40 + k * 32, 40, "*", gold, 3);
+        }
+    }
+    (void)hud;
+}
+
 } // namespace tetris::ui

@@ -66,6 +66,7 @@
 #include <domains/progression/progression.reducer.hpp>
 #include <domains/spatial_fx/spatial_fx.reducer.hpp>
 #include <domains/spatial_fx/spatial_fx.plan.hpp>
+#include <domains/environment/environment.reducer.hpp>
 #include <domains/session/session.reducer.hpp>
 
 #include <edges/input/tetris.input.hpp>
@@ -161,6 +162,9 @@ int main(int argc, char* argv[]) {
     long long   expect_lines     = -1;
     long long   expect_special_n = -1;
     long long   seed_value       = 20260822;   // daily canyon variant identity
+    int         expect_phase     = -1;         // L5 smoke gate: scripted phase advance
+    float       encounter_gate_rain = -1.0f;
+    bool        has_encounter_gate  = false;
 
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
@@ -183,6 +187,10 @@ int main(int argc, char* argv[]) {
             expect_lines = std::atoll(arg.c_str() + 22);
         } else if (arg.rfind("--expect-special-every-n=", 0) == 0) {
             expect_special_n = std::atoll(arg.c_str() + 25);
+        } else if (arg.rfind("--expect-encounter-config=", 0) == 0) {
+            // L5 gate: rain_every must match the script value (e.g. 8.0 → "8")
+            encounter_gate_rain = (float)std::atof(arg.c_str() + 26);
+            has_encounter_gate  = true;
         }
     }
     const bool headless = (screenshot_frame >= 0);
@@ -207,6 +215,10 @@ int main(int argc, char* argv[]) {
     // decisions become raw matrix commands that ride the boot queue like the
     // L3 stamp — the grid is only ever touched through plain intents.
     powerups::PowerupSnapshot powerup_state{};
+    // L5 encounter state (pod 5). The overseer script decides phases/moods;
+    // its rulings cross as plain values; garbage volleys ride boot_commands.
+    environment::EnvironmentSnapshot env_state{};
+    environment::EncounterConfig     env_cfg{};
 #ifdef TETRIS_LUA_ENABLED
     std::unique_ptr<lua_edge::StatelessLuaEvaluator> lua_eval;   // fresh per load
 #endif
@@ -216,6 +228,8 @@ int main(int argc, char* argv[]) {
         boot_commands.clear();
         canyon_seed_tag = 0;
         powerup_state = powerups::PowerupSnapshot{};
+        env_state = environment::EnvironmentSnapshot{};
+        env_cfg   = environment::EncounterConfig{};
 #ifdef TETRIS_LUA_ENABLED
         lua_eval.reset();
 #endif
@@ -274,6 +288,17 @@ int main(int argc, char* argv[]) {
                           << " freeze_seconds=" << r.freeze_seconds << std::endl;
             }
 
+            // L5 encounter table: phase cadence numbers patch nothing in Rules
+            // (the show is script-owned); we just snapshot them for main.
+            if (lua_eval->has_table("Encounter")) {
+                env_cfg = lua_eval->call_encounter_config("Encounter");
+                if (env_cfg.valid) {
+                    std::cout << "[lua] encounter active: phases="
+                              << env_cfg.phase_count
+                              << " rain_every=" << env_cfg.rain_every << "s" << std::endl;
+                }
+            }
+
             std::cout << "[lua] rule script active: " << script_path << std::endl;
         } else {
             std::cerr << "[lua] script unavailable (" << script_path
@@ -308,6 +333,23 @@ int main(int argc, char* argv[]) {
                   << " (expected=" << expect_special_n
                   << ", actual=" << rules.special_every_n << ")" << std::endl;
         return pass ? 0 : 2;
+    }
+
+    // L5 gate: encounter config must be live with the scripted rain cadence.
+    if (has_encounter_gate) {
+        const bool pass = env_cfg.valid
+            && std::fabs(env_cfg.rain_every - encounter_gate_rain) < 0.001f;
+        std::cout << "SMOKE_ENCOUNTER_CONFIG=" << (pass ? "PASS" : "FAIL")
+                  << " (expected rain_every=" << encounter_gate_rain
+                  << ", actual=" << (env_cfg.valid ? env_cfg.rain_every : -1.0f)
+                  << ")" << std::endl;
+        return pass ? 0 : 2;
+    }
+    // Native-fallback gate: no Lua ⇒ overseer absent, phase stays CALM.
+    if (expect_phase >= 0) {
+        std::cout << "SMOKE_ENCOUNTER_PHASE=" << (env_state.phase >= expect_phase ? "PASS" : "FAIL")
+                  << " (expected>=" << expect_phase << ", actual=" << env_state.phase << ")" << std::endl;
+        return env_state.phase >= expect_phase ? 0 : 2;
     }
 
     // --- SDL lifecycle ------------------------------------------------------------
@@ -527,6 +569,7 @@ int main(int argc, char* argv[]) {
                 score_state.high_score   = preserved_high;
                 hud = ui::HudState{};   // no stale banners/floaters across resets
                 powerup_state = powerups::PowerupSnapshot{};
+                env_state = environment::EnvironmentSnapshot{};   // L5 fresh show
             }
             progression::ProgressionStep prog = progression::reduce_progression(
                 std::span<const matrix::MatrixEvent>(step.events.data(), step.events.size()),
@@ -543,6 +586,85 @@ int main(int argc, char* argv[]) {
                 : 0.0f;
             fx.env_dusk = (rules.mode_id == config::MODE_GARBAGE_CANYON) ? 1.0f : 0.0f;
             fx.env_neon = (rules.mode_id == config::MODE_CYBER_STORM) ? 1.0f : 0.0f;
+            fx.env_finale = (rules.mode_id == config::MODE_ENCORE_FINALE) ? 1.0f : 0.0f;
+
+            // 3c. L5 ENCOUNTER OVERSEER (event-fed; rulings cross as plain values)
+            if (fx.env_finale > 0.5f) {
+                // Crowd pulses from discrete events (value-in/value-out).
+                environment::CrowdPulse pulse{};
+                for (const auto& ev : step.events) {
+                    if (ev.type == matrix::MatrixEventType::LINES_CLEARED) {
+                        pulse = lua_eval && lua_eval->valid()
+                            ? lua_eval->call_on_event("Encounter", 1,
+                                  (int)ev.lines_cleared_count)
+                            : environment::CrowdPulse{ true, 0.25f + 0.15f * ev.lines_cleared_count };
+                    }
+                }
+                for (const auto& pev : prog.events) {
+                    if (pev.type == progression::ProgressionEventType::OBJECTIVE_COMPLETED) {
+                        pulse = lua_eval && lua_eval->valid()
+                            ? lua_eval->call_on_event("Encounter", 2, 1)
+                            : environment::CrowdPulse{ true, 1.0f };
+                    }
+                }
+
+                // Danger = stack near the ceiling (same projection as the HUD).
+                const int stack_h = compute_stack_height(world);
+                const bool danger = stack_h >= matrix::VISIBLE_H - 4;
+
+                const environment::OverseerRuling ruling =
+                    (lua_eval && lua_eval->valid())
+                        ? lua_eval->call_decide_phase("Encounter",
+                              env_state.phase, env_state.phase_time,
+                              score_state.lines_cleared, danger)
+                        : environment::OverseerRuling{};   // no script ⇒ static CALM
+
+                const environment::EnvironmentStepResult estep =
+                    environment::reduce_environment(env_state, ruling, pulse, dt,
+                                                    env_cfg.valid ? env_cfg.rain_every : 0.0f);
+                env_state = estep.next;
+
+                // Rain cadence: one volley per elapsed interval, holes decided
+                // deterministically from frame parity + volley index (raw facts
+                // only; the script owns WHEN/HOW MUCH, not the grid layout).
+                if (estep.rain_due) {
+                    matrix::AddGarbageRowsIntent rain;
+                    rain.rows = env_cfg.valid ? (uint8_t)std::min(env_cfg.rain_rows, 4) : 1;
+                    const int rows = (int)rain.rows;
+                    for (int r = 0; r < rows; ++r) {
+                        rain.hole_x[r] = (uint8_t)((frame * 7 + r * 5) % matrix::GRID_W);
+                    }
+                    boot_commands.push_back(rain);
+                    // Warning beat: brief pre-volley flash + HUD banner.
+                    hud.flash = std::max(hud.flash, 0.20f);
+                }
+
+                // Phase-transition set pieces: white-out wipe + banner text.
+                if (estep.phase_changed) {
+                    fx.screen_flash = std::max(fx.screen_flash, 0.85f);   // white-out wipe
+                    switch (env_state.phase) {
+                    case environment::PHASE_RAIN:
+                        hud.spawn_floater("GARBAGE RAIN", shs::Color{ 255, 160, 60, 255 }, 2.2f);
+                        if (!headless) g_audio.play(audio::SND_THUD);
+                        break;
+                    case environment::PHASE_BLACKOUT:
+                        hud.spawn_floater("BLACKOUT", shs::Color{ 140, 150, 220, 255 }, 2.2f);
+                        break;
+                    case environment::PHASE_CRESCENDO:
+                        hud.spawn_floater("FINALE", shs::Color{ 255, 210, 60, 255 }, 2.6f);
+                        if (!headless) g_audio.play(audio::SND_TETRIS_FOUR);
+                        break;
+                    default: break;
+                    }
+                }
+
+                // Plain-value wires into FX (planner consumes these directly).
+                fx.mood_phase   = env_state.mood;
+                fx.dim          = env_state.dim;
+                fx.ghost_hidden = env_state.dim > 0.5f;   // ghost hides past halfway
+                fx.crowd_pulse  = env_state.crowd_pulse;
+                fx.finale_phase = env_state.phase;   // plain-value phase mirror
+            }
 
             // 3b. L4 POWERUP SCHEDULER (event-fed; rulings cross as plain values)
             // Cadence counts spawns; when a special locks, its lock ruling from
@@ -671,6 +793,26 @@ int main(int argc, char* argv[]) {
         // the excavation stage.
         const ui::CanyonHudInfo canyon_info{
             rules.mode_id == config::MODE_GARBAGE_CANYON, canyon_seed_tag };
+        // L5 encore projections: phase meter + pre-volley warning window.
+        const ui::EncoreHudInfo encore_info{
+            rules.mode_id == config::MODE_ENCORE_FINALE,
+            env_state.phase,
+            env_state.phase_time,
+            [&] {
+                // Per-phase intensity curve: CALM 0-40s, RAIN 0-50s,
+                // BLACKOUT 0-22s, CRESCENDO ramps to full over 10s.
+                switch (env_state.phase) {
+                case environment::PHASE_CALM:      return glm::clamp(env_state.phase_time / 40.0f, 0.0f, 1.0f);
+                case environment::PHASE_RAIN:      return glm::clamp(env_state.phase_time / 50.0f, 0.0f, 1.0f);
+                case environment::PHASE_BLACKOUT:  return glm::clamp(env_state.phase_time / 22.0f, 0.0f, 1.0f);
+                default:                           return glm::clamp(env_state.phase_time / 10.0f, 0.0f, 1.0f);
+                }
+            }(),
+            (env_state.phase == environment::PHASE_RAIN)
+                ? glm::clamp(env_cfg.valid ? env_cfg.rain_every - env_state.rain_timer : 0.0f,
+                             0.0f, 2.0f)
+                : 0.0f,
+            env_state.dim };
         const ui::CyberHudInfo cyber_info{
             rules.mode_id == config::MODE_CYBER_STORM,
             rules.special_every_n > 0
@@ -713,7 +855,8 @@ int main(int argc, char* argv[]) {
                             glm::vec4 s1 = vop::clip_to_screen_vec4(poly.vertices[i], W, H);
                             glm::vec4 s2 = vop::clip_to_screen_vec4(poly.vertices[i + 1], W, H);
                             vop::rasterize_triangle_tile(canvas, z_buffer, s0, s1, s2,
-                                                         tri.lit_color, tri.depth_bias, tmin, tmax);
+                                                         tri.lit_color, tri.depth_bias, tmin,
+                                                         tmax, tri.alpha);
                         }
                     }
                     wg_render.done();
@@ -741,7 +884,8 @@ int main(int argc, char* argv[]) {
         default: // PLAYING
             ui::draw_hud(canvas, world, score_state, hud,
                          stage->index < config::campaign::STAGE_COUNT, canyon_info,
-                         cyber_info);
+                         cyber_info, encore_info);
+            ui::draw_encore_hud(canvas, encore_info, hud);
             break;
         }
 

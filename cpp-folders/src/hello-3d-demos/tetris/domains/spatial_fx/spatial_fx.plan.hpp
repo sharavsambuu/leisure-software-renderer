@@ -12,6 +12,7 @@
 #include <domains/matrix/matrix.contract.hpp>
 #include <domains/matrix/matrix.reducer.hpp>
 #include <domains/spatial_fx/spatial_fx.contract.hpp>
+#include <domains/environment/environment.plan.hpp>   // FinaleInputs plain struct only
 
 namespace tetris::spatial_fx {
 using tetris::matrix::MatrixSnapshot;
@@ -39,6 +40,19 @@ using tetris::matrix::get_piece_blocks;
             eye.x += (std::sin(fx.time * 60.0f) * fx.camera_shake * 0.15f);
         }
 
+        // L5 victory crescendo: slow celebratory orbit around the well.
+        // Angle accumulates in step_fx only while the orbit is live, so the
+        // path is deterministic from event timing.
+        if (fx.victory_orbit > 0.0f) {
+            const float ang  = fx.orbit_elapsed * 0.45f;   // rad/s sweep rate
+            const float rad  = glm::length(eye - cam.target);
+            const glm::mat4 rot = glm::rotate(glm::mat4(1.0f), ang,
+                                              glm::vec3(0.0f, 1.0f, 0.0f));
+            const glm::vec3 rel = rot * glm::vec4(eye - cam.target, 1.0f);
+            eye = cam.target + rel;
+            (void)rad;
+        }
+
         plan.view_matrix = glm::lookAtLH(eye, cam.target, glm::vec3(0, 1, 0));
         plan.proj_matrix = glm::perspectiveLH_NO(glm::radians(cam.fov_deg),
             (float)canvas_w / (float)canvas_h, cam.near_z, cam.far_z);
@@ -56,8 +70,21 @@ using tetris::matrix::get_piece_blocks;
         // L3 canyon (fx.env_dusk): surfaces shift to dusk/desert sandstone.
         // L4 cyber (fx.env_neon): surfaces shift to a dark synth grid with
         // cyan/magenta emissive trim (gated below like the canyon diorama).
-        const float dusk = glm::clamp(fx.env_dusk, 0.0f, 1.0f);
-        const float neon = glm::clamp(fx.env_neon, 0.0f, 1.0f);
+        const float dusk   = glm::clamp(fx.env_dusk, 0.0f, 1.0f);
+        const float neon   = glm::clamp(fx.env_neon, 0.0f, 1.0f);
+        // L5 encore mood: cyan → crimson → gold tint applied over the base
+        // ladder when the finale environment is live (main wires 0/1).
+        const float finale = glm::clamp(fx.env_finale, 0.0f, 1.0f);
+        auto mood_tint = [&](shs::Color c) {
+            if (finale < 0.5f) return c;
+            const float mp = glm::clamp(fx.mood_phase, 0.0f, 1.0f);
+            const shs::Color cyan{ 40, 180, 240, 255 };
+            const shs::Color crim{ 235, 60, 60, 255 };
+            const shs::Color gold{ 255, 210, 60, 255 };
+            return lerp_color((mp < 0.5f) ? lerp_color(cyan, crim, mp * 2.0f)
+                                          : lerp_color(crim, gold, (mp - 0.5f) * 2.0f),
+                              c, 0.25f);
+        };
         shs::Color rail_col = lerp_color(lerp_color(shs::Color{ 60,  70,  90, 255 },
                                                     shs::Color{ 96,  66,  44, 255 }, dusk),
                                          shs::Color{ 16,  18,  34, 255 }, neon);
@@ -70,6 +97,9 @@ using tetris::matrix::get_piece_blocks;
         shs::Color bg_grid  = lerp_color(lerp_color(shs::Color{ 18,  22,  30, 255 },
                                                     shs::Color{ 36,  26,  26, 255 }, dusk),
                                          shs::Color{ 10,  10,  24, 255 }, neon);
+        rail_col = mood_tint(rail_col);
+        trim_col = mood_tint(trim_col);
+        bg_grid  = mood_tint(bg_grid);
 
         // Backplane
         MeshGen::add_box(tris, glm::vec3(0.0f, 9.5f, 0.60f), glm::vec3(10.2f, 20.2f, 0.1f), bg_grid, bg_grid, bg_grid);
@@ -104,7 +134,7 @@ using tetris::matrix::get_piece_blocks;
             const shs::Color flame{ (uint8_t)(255), (uint8_t)(150 * flick + 40), 40, 255 };
             for (const float tx : { -5.35f, 5.35f }) {
                 MeshGen::add_box(tris, glm::vec3(tx, 19.9f, 0.55f),
-                                 glm::vec3(0.34f, 0.62f * flick, 0.34f), flame, flame, flame, -0.004f);
+                                 glm::vec3(0.34f, 0.62f * flick, 0.34f), flame, flame, flame);
                 MeshGen::add_box(tris, glm::vec3(tx, 19.45f, 0.55f),
                                  glm::vec3(0.22f, 0.28f, 0.22f), shs::Color{ 70, 52, 40, 255 },
                                  shs::Color{ 70, 52, 40, 255 }, shs::Color{ 70, 52, 40, 255 });
@@ -121,16 +151,54 @@ using tetris::matrix::get_piece_blocks;
             for (int i = -3; i <= 3; ++i) {
                 const shs::Color sc = (i & 1) ? strip_b : strip_a;
                 MeshGen::add_box(tris, glm::vec3((float)i * 7.0f, -1.55f, 4.0f + (float)std::abs(i) * 1.5f),
-                                 glm::vec3(0.35f, 0.12f, 9.0f), sc, sc, sc, -0.003f);
+                                 glm::vec3(0.35f, 0.12f, 9.0f), sc, sc, sc);
             }
             MeshGen::add_box(tris, glm::vec3(-5.35f, 19.75f, 0.0f), glm::vec3(0.56f, 0.14f, 1.16f),
-                             strip_b, strip_b, strip_b, -0.004f);
+                             strip_b, strip_b, strip_b);
             MeshGen::add_box(tris, glm::vec3( 5.35f, 19.75f, 0.0f), glm::vec3(0.56f, 0.14f, 1.16f),
-                             strip_b, strip_b, strip_b, -0.004f);
+                             strip_b, strip_b, strip_b);
             const uint8_t hb = (uint8_t)(140 + 100 * pulse);
             const shs::Color horizon{ 40, hb, (uint8_t)(hb / 2), 255 };
             MeshGen::add_box(tris, glm::vec3(0.0f, 8.0f, -13.5f), glm::vec3(46.0f, 0.25f, 0.25f),
                              horizon, horizon, horizon);
+        }
+
+        // L5 board energy field: a phase-reactive translucent shimmer drawn
+        // INSIDE the well (just in front of the backplane), so resting/active
+        // blocks occlude it naturally and only empty cells glow. Column-wave
+        // alpha animation; deterministic from fx.time.
+        if (finale > 0.5f) {
+            const float ph = fx.finale_phase;
+            float base_a, tint_sel;
+            if (ph == 2.0f)      { base_a = 46.0f;  tint_sel = 0.0f; }   // RAIN: amber flicker
+            else if (ph == 3.0f) { base_a = 30.0f;  tint_sel = 1.0f; }   // BLACKOUT: violet pulse
+            else if (ph == 4.0f) { base_a = 70.0f;  tint_sel = 2.0f; }   // CRESCENDO: gold surge
+            else                 { base_a = 95.0f;  tint_sel = 0.0f; }   // CALM: cyan shimmer
+            for (int col = 0; col < GRID_W; ++col) {
+                const float wave = 0.5f + 0.5f
+                    * std::sin(fx.time * 2.2f - (float)col * 0.7f);
+                const uint8_t a = static_cast<uint8_t>(
+                    glm::clamp(base_a + 110.0f * wave, 0.0f, 220.0f));
+                if (a < 6) continue;
+                shs::Color gc =
+                    (tint_sel == 2.0f) ? shs::Color{ 255, 210, 60, a }
+                  : (tint_sel == 1.0f) ? shs::Color{ 120, 120, 220, a }
+                                       : shs::Color{  60, 220, 255, a };
+                const float cx = (float)col - 4.5f;
+                for (const LowPolyTriangle& q : {
+                     LowPolyTriangle(glm::vec3(cx - 0.48f, 19.00f, 0.50f),
+                                     glm::vec3(cx - 0.48f,  0.02f, 0.50f),
+                                     glm::vec3(cx + 0.48f,  0.02f, 0.50f), gc),
+                     LowPolyTriangle(glm::vec3(cx - 0.48f, 19.00f, 0.50f),
+                                     glm::vec3(cx + 0.48f,  0.02f, 0.50f),
+                                     glm::vec3(cx + 0.48f, 19.00f, 0.50f), gc)})
+                {
+                    tris.push_back(q);
+                    tris.back().emissive = true;   // unshaded translucent glow
+                    tris.emplace_back(q.p2, q.p1, q.p0, q.color);   // back face
+                    tris.back().emissive = true;
+                }
+            }
         }
 
         // 2. RESTING MATRIX VOXEL BLOCKS
@@ -146,8 +214,8 @@ using tetris::matrix::get_piece_blocks;
             }
         }
 
-        // 3. REAL-TIME GHOST PIECE PROJECTION
-        if (m.active.type != PieceType::None && !m.game_over) {
+        // 3. REAL-TIME GHOST PIECE PROJECTION (hidden during L5 blackout)
+        if (m.active.type != PieceType::None && !m.game_over && !fx.ghost_hidden) {
             int ghost_y = get_ghost_y(m.grid, m.active);
             auto blocks = get_piece_blocks(m.active.type, m.active.rotation);
             shs::Color ghost_col{ 50, 60, 80, 255 };
@@ -239,15 +307,27 @@ using tetris::matrix::get_piece_blocks;
             float ambient = std::max(0.0f, N.y) * 0.20f + 0.15f;
 
             glm::vec3 base_col = glm::vec3(tri.color.r, tri.color.g, tri.color.b) / 255.0f;
+            // L5 blackout: global dim eases toward near-dark; the spotlight
+            // shaft geometry carries a positive depth bias so it stays legible.
+            base_col *= (1.0f - 0.78f * glm::clamp(fx.dim, 0.0f, 1.0f));
             // Dusk light tint: warm key light + ember ambient in the canyon.
             const glm::vec3 key_tint   = glm::mix(glm::vec3(1.00f, 0.98f, 0.92f), glm::vec3(1.06f, 0.88f, 0.68f), dusk);
             const glm::vec3 amb_tint   = glm::mix(glm::vec3(0.50f, 0.70f, 1.00f), glm::vec3(0.85f, 0.55f, 0.35f), dusk);
             glm::vec3 lit_rgb = base_col * (diffuse * key_tint + ambient * amb_tint);
 
+            shs::Color lit_c;
+            if (tri.emissive) {
+                lit_c = tri.color;      // unshaded: overlay emits its own light
+            } else {
+                lit_c = shs::rgb01_to_color(lit_rgb);
+            }
+            lit_c.a = tri.color.a;   // carry source alpha (incl. transparent
+                                     // overlays) through the lighting pass
             plan.triangles.push_back({
                 c0, c1, c2,
-                shs::rgb01_to_color(lit_rgb),
-                tri.depth_bias
+                lit_c,
+                tri.depth_bias,
+                tri.color.a
                 });
         }
 

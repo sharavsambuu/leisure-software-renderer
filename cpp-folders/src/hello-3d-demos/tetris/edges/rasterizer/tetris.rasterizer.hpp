@@ -21,7 +21,8 @@ namespace vop {
         shs::Canvas& canvas, shs::ZBuffer& z_buffer,
         const glm::vec4& sc0, const glm::vec4& sc1, const glm::vec4& sc2,
         shs::Color lit_color, float depth_bias,
-        glm::ivec2 tile_min, glm::ivec2 tile_max
+        glm::ivec2 tile_min, glm::ivec2 tile_max,
+        uint8_t alpha = 255
     ) {
         glm::vec2 v0(sc0.x, sc0.y), v1(sc1.x, sc1.y), v2(sc2.x, sc2.y);
         float area = (v1.x - v0.x) * (v2.y - v0.y) - (v1.y - v0.y) * (v2.x - v0.x);
@@ -45,7 +46,17 @@ namespace vop {
                 if (final_z < -1.0f || final_z > 1.0f) continue;
 
                 if (z_buffer.test_and_set_depth_screen_space(px, py, final_z)) {
-                    canvas.draw_pixel_screen_space(px, py, lit_color);
+                    if (alpha == 255) {
+                        canvas.draw_pixel_screen_space(px, py, lit_color);
+                    } else {
+                        // Transparent overlay: Z-TESTED (against what is
+                        // already there), then blended; depth NOT written so
+                        // nearer opaque geometry drawn later still wins.
+                        const int cy = (int)canvas.get_height() - 1 - py;
+                        const shs::Color dst = canvas.buffer().at(px, cy);
+                        canvas.draw_pixel_screen_space(
+                            px, py, shs::alpha_blend(dst, lit_color, alpha));
+                    }
                 }
             }
         }

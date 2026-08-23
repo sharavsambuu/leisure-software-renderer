@@ -203,6 +203,38 @@ namespace tetris::matrix {
                         .garbage_cells = cleared_garbage_mass
                     });
                 }
+            } else if (const auto* gr = std::get_if<AddGarbageRowsIntent>(&cmd)) {
+                // L5 garbage rain: shift the stack up, fill the bottom rows
+                // with Garbage (one hole each), lift the active piece above
+                // any new overlap. Raw facts in, raw facts out — the volley
+                // size/holes were decided upstream (encounter overseer).
+                const int rows = std::min<int>(gr->rows, AddGarbageRowsIntent::MAX_ROWS);
+                if (rows > 0) {
+                    for (int r = 0; r < rows; ++r) {
+                        for (int ny = 0; ny < GRID_H - 1; ++ny) s.grid[ny] = s.grid[ny + 1];
+                        s.grid[GRID_H - 1].fill(static_cast<uint8_t>(PieceType::Garbage));
+                        s.grid[GRID_H - 1][gr->hole_x[r] % GRID_W] = 0;
+                    }
+                    if (s.active.type != PieceType::None) {
+                        const auto blocks = get_piece_blocks(s.active.type, s.active.rotation);
+                        for (int lift = 0; lift < GRID_H; ++lift) {
+                            bool collides = false;
+                            for (const auto& b : blocks) {
+                                const int gx = s.active.pos.x + b.x;
+                                const int gy = s.active.pos.y + b.y;
+                                if (gx >= 0 && gx < GRID_W && gy >= 0 && gy < GRID_H
+                                    && s.grid[gy][gx] != 0) { collides = true; break; }
+                            }
+                            if (!collides) break;
+                            s.active.pos.y -= 1;
+                        }
+                    }
+                    result.events.push_back({
+                        .type = MatrixEventType::GARBAGE_RAINED,
+                        .world_position = glm::vec3(0.0f, 0.5f, 0.0f),
+                        .rain_rows = static_cast<uint8_t>(rows)
+                    });
+                }
             }
         }
 
