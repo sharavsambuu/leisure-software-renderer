@@ -348,7 +348,11 @@ namespace tetris::matrix {
 
         // 5. GRAVITY STEP (L4: FreezeGravityIntent pauses the fall entirely —
         // movement/rotation stay live, the lock timer does not accumulate)
-        float current_interval = input.soft_drop ? (s.drop_interval * 0.12f) : s.drop_interval;
+        // Part 6 input feel: soft drop is a HELD STATE (continuous), not an
+        // OS-repeat stream. The frame's soft_drop_held comes from the input
+        // edge each tick.
+        const bool soft_held  = input.soft_drop_held || input.soft_drop;
+        float current_interval = soft_held ? (s.drop_interval * 0.12f) : s.drop_interval;
         const bool frozen = (s.gravity_freeze > 0.0f);
         if (frozen) {
             s.gravity_freeze -= dt;

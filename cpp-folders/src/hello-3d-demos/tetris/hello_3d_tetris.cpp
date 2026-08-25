@@ -471,6 +471,8 @@ int main(int argc, char* argv[]) {
 
     bool   quit  = false;
     int    frame = 0;
+    // Part 6 input feel: stateful edge owns held-state + DAS/ARR scheduling.
+    input::InputEdge input_edge;
     Uint32 last_tick = SDL_GetTicks();
 
     // --- Main loop ---------------------------------------------------------------------
@@ -488,8 +490,9 @@ int main(int argc, char* argv[]) {
         frame_memory.reset();
         std::pmr::memory_resource* arena = frame_memory.get();
 
-        // 1. INPUT EDGE
-        input::InputState in = input::poll_input(arena);
+        // 1. INPUT EDGE (stateful: DAS/ARR scheduler advances with frame dt)
+        input_edge.begin_frame(dt);
+        input::InputState in = input_edge.poll(arena);
         quit = quit || in.quit;
         if (autodrive_drop && frame == 30) in.commands.push_back(matrix::HardDropIntent{});
 
@@ -540,6 +543,11 @@ int main(int argc, char* argv[]) {
                 : std::span<const matrix::TetrisCommand>(in.commands.data(), in.commands.size());
             const float matrix_dt = frozen ? 0.0f : dt;
 
+            // Part 6 input-feel: soft drop is a HELD STATE read continuously;
+            // fold it into the command frame so the reducer sees it each tick.
+            if (!frozen && in.soft_drop_held)
+                cmd_span = cmd_span; // held flag passed below via frame struct
+
             // Gravity cadence wired from progression level through pure config math
             world.drop_interval = rules.gravity_for_level(score_state.level);
 
@@ -555,7 +563,15 @@ int main(int argc, char* argv[]) {
             }
 
             // 2. PURE SIMULATION CORE
-            matrix::MatrixStepResult step = matrix::reduce_matrix(world, cmd_span, matrix_dt, arena);
+            // Part 6: fold the held soft-drop flag into the frame so the
+            // reducer's gravity branch reads continuous state.
+            auto folded = std::vector<matrix::TetrisCommand>(
+                cmd_span.begin(), cmd_span.end());
+            if (in.soft_drop_held)
+                folded.push_back(matrix::SoftDropIntent{});
+            const auto folded_span = std::span<const matrix::TetrisCommand>(
+                folded.data(), folded.size());
+            matrix::MatrixStepResult step = matrix::reduce_matrix(world, folded_span, matrix_dt, arena);
             world = std::move(step.next_state);
 
             // 3. EVENT-FED PROGRESSION (+ blitz clock via injected rule hooks)

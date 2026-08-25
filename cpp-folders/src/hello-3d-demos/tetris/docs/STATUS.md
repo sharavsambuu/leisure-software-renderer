@@ -425,3 +425,23 @@ Addendum (same session): scripts/generate-event-flow.mjs (node, nvm path)
 now generates docs/pods/EVENT_FLOW.md from MatrixEventType emissions across
 domains/*.reducer.hpp - 11 facts mapped on first run, consumer chains visible
 (matrix -> progression/spatial_fx/powerups). Regenerate after adding events.
+
+## Session (2026-08-24) addendum 2 - input fix verified + L3 flake documented
+
+Input feel fix VERIFIED:
+- autodrive determinism (input pipeline active): 5/5 PASS
+- stage 1 idle determinism: 5/5 PASS
+- build green
+
+L3 canyon SEED_SAME flakiness is PRE-EXISTING and UNRELATED to the input
+fix. Stash-test proof: git stash -> rebuild -> SEED_SAME still FAILS.
+Root cause: parallel rasterizer tile jobs (job_system.submit at main:859)
+produce slightly different pixel output for Lua-generated boards depending on
+thread scheduling - a floating-point ordering race in the rasterizer, not in
+the game logic or Lua scripts. The board DATA from CanyonGen.generate() IS
+deterministic (same seed = same rows every time); it's the RENDERING of that
+board that varies by a few pixels.
+
+This should be filed as a separate issue: "rasterizer thread-scheduling FP
+non-determinism" - fix options include sorting tile jobs, using fixed-point
+rasterization, or single-threading the comparison path in verify.sh.

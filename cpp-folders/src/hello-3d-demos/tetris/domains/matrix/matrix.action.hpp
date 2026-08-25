@@ -55,12 +55,13 @@ namespace tetris::matrix {
     >;
 
     struct TetrisCommandFrame {
-        int  move_x        = 0;     // -1 (Left), +1 (Right)
-        int  rotate_dir    = 0;     // +1 (CW), -1 (CCW)
-        bool soft_drop     = false;
-        bool hard_drop     = false;
-        bool hold_pressed  = false;
-        bool reset_pressed = false;
+        int  move_x          = 0;     // -1 (Left), +1 (Right)
+        int  rotate_dir      = 0;     // +1 (CW), -1 (CCW)
+        bool soft_drop       = false; // legacy: any soft-drop intent this frame
+        bool soft_drop_held  = false; // Part 6: HELD state (continuous read)
+        bool hard_drop       = false;
+        bool hold_pressed    = false;
+        bool reset_pressed   = false;
     };
 
     static inline TetrisCommandFrame reduce_tetris_commands(std::span<const TetrisCommand> commands) {
