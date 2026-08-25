@@ -1,0 +1,81 @@
+{
+  "pods": {
+    "matrix": {
+      "LINES_CLEARED": [
+        "domains/matrix/matrix.reducer.hpp",
+        "domains/matrix/matrix.reducer.hpp"
+      ],
+      "GARBAGE_RAINED": [
+        "domains/matrix/matrix.reducer.hpp"
+      ],
+      "PIECE_SPAWNED": [
+        "domains/matrix/matrix.reducer.hpp",
+        "domains/matrix/matrix.reducer.hpp"
+      ],
+      "HOLD_SWAPPED": [
+        "domains/matrix/matrix.reducer.hpp"
+      ],
+      "PIECE_MOVED": [
+        "domains/matrix/matrix.reducer.hpp"
+      ],
+      "PIECE_ROTATED": [
+        "domains/matrix/matrix.reducer.hpp"
+      ],
+      "HARD_DROP_SLAM": [
+        "domains/matrix/matrix.reducer.hpp"
+      ],
+      "SOFT_DROP": [
+        "domains/matrix/matrix.reducer.hpp"
+      ],
+      "SPECIAL_LOCKED": [
+        "domains/matrix/matrix.reducer.hpp"
+      ],
+      "GAME_OVER": [
+        "domains/matrix/matrix.reducer.hpp",
+        "domains/matrix/matrix.reducer.hpp"
+      ],
+      "PIECE_LOCK_IMPACT": [
+        "domains/matrix/matrix.reducer.hpp"
+      ]
+    },
+    "powerups": {
+      "PIECE_SPAWNED": [
+        "domains/powerups/powerups.reducer.hpp"
+      ],
+      "SPECIAL_LOCKED": [
+        "domains/powerups/powerups.reducer.hpp"
+      ]
+    },
+    "progression": {
+      "HARD_DROP_SLAM": [
+        "domains/progression/progression.reducer.hpp"
+      ],
+      "SOFT_DROP": [
+        "domains/progression/progression.reducer.hpp"
+      ],
+      "LINES_CLEARED": [
+        "domains/progression/progression.reducer.hpp"
+      ],
+      "PIECE_LOCK_IMPACT": [
+        "domains/progression/progression.reducer.hpp"
+      ]
+    },
+    "spatial_fx": {
+      "HARD_DROP_SLAM": [
+        "domains/spatial_fx/spatial_fx.reducer.hpp"
+      ],
+      "PIECE_LOCK_IMPACT": [
+        "domains/spatial_fx/spatial_fx.reducer.hpp"
+      ],
+      "SPECIAL_LOCKED": [
+        "domains/spatial_fx/spatial_fx.reducer.hpp"
+      ],
+      "GARBAGE_RAINED": [
+        "domains/spatial_fx/spatial_fx.reducer.hpp"
+      ],
+      "LINES_CLEARED": [
+        "domains/spatial_fx/spatial_fx.reducer.hpp"
+      ]
+    }
+  }
+}

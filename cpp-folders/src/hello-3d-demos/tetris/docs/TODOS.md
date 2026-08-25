@@ -430,3 +430,86 @@ Results GUI:
    thread-local `lua_State*` pools with no mutexes.
 5. **Instant hot-reload:** edit a rule script mid-run; new rules apply next
    tick with zero memory-corruption risk.
+---
+
+# Part 6: Input Feel Hardening (priority — "dead feeling input")
+
+Root cause analysis (2026-08-24 audit): the input edge emits ONE intent per
+SDL_KEYDOWN and relies on OS key-repeat for held keys. OS repeat is late
+(~500 ms delay), rate-limited by the OS (not the game), and never fires
+KEYUP-aware state. This is exactly the bug class fixed in the JS twin
+(hello-ember-tetris STATUS Sessions 5/5b): permanent soft-drop speedup and
+"dead" held directions.
+
+## 6.1 Held-state FSM in the input edge (port of the JS fix)
+
+- [ ] I1 Track physical key state per action: `held{left,right,down}` set on
+      KEYDOWN, cleared on KEYUP (poll SDL_KEYUP — currently ignored entirely)
+- [ ] I2 Emit MOVE intents from the DAS/ARR scheduler at FIXED GAME RATES:
+      DAS 150 ms initial delay, then ARR 40 ms auto-repeat (modern guideline
+      values; constants exported for tuning). Never trust OS key-repeat.
+- [ ] I3 Soft drop becomes a HELD STATE (`soft_drop_held`), not a stream of
+      intents; reducer reads the flag each tick (matrix already reads
+      `input.soft_drop` as a bool — align edge to fill it from held state).
+- [ ] I4 Blur/focus-loss releases ALL held states (alt-tab safety).
+- [ ] I5 Menu/session keys keep existing repeat-guarded behavior (unchanged).
+
+## 6.2 Reducer-side alignment
+
+- [ ] I6 `reduce_tetris_commands` keeps folding discrete intents; add a
+      `soft_drop_held` passthrough so the gravity branch uses the held flag.
+- [ ] I7 Lock-delay reset cap: audit the 15-reset cap against modern
+      guidelines (move-reset vs lock-timer reset semantics; cap 15 is fine,
+      but confirm resets only on SUCCESSFUL moves/rotations — already true).
+
+## 6.3 Verification (mirror the JS twin's headless proofs)
+
+- [ ] V1 Headless harness: synthetic key timeline -> assert piece reaches
+      column N within X ms of hold start (DAS timing test)
+- [ ] V2 Held soft drop: descent rate fast while held, normal after release
+- [ ] V3 Alt-tab mid-hold: no stuck movement after refocus
+- [ ] V4 Determinism gates still PASS (two idle runs byte-equal)
+
+---
+
+# Part 7: Structural convergence with the Domain-POD v2 concepts
+(Reference: docs/pods/ — PLANNING.md workflow, EVENT_FLOW map, SCRIPTING DSL,
+MISSIONS.md goal patterns. Discovered 2026-08-24 during the JS twin's L4.)
+
+The Lua seam already proves tier-2 scripting (rules hooks). These items
+converge the C++ demo onto the same graph-first / trap-wall vocabulary:
+
+## 7.1 Event-flow documentation parity
+
+- [ ] E1 Write a generator (awk/python or C++) that greps
+      `MatrixEventType::X` emissions + Lua `emit()` calls into
+      docs/pods/EVENT_FLOW.md — same shape as the JS twin's script
+- [ ] E2 Add TRAP TABLE header comments to every *.reducer.hpp (springs-on
+      list at top of file)
+
+## 7.2 Scripted goals via predicate composition (Lua port of the DSL)
+
+- [ ] G1 Define the Lua predicate contract: `goal.test(events, snapshot)`
+      returning bool; events arrive as plain tables; snapshot carries
+      read-only views (score, lines, freeze timers, player pos if FPS later)
+- [ ] G2 Mission pod skeleton (`domains/mission/`): cumulative progress +
+      fact-chained sequencing (MISSION_COMPLETE advances index) — mirrors
+      MISSIONS.md §5
+- [ ] G3 Level authoring: missions declared in level.lua as composed
+      predicates using a small stdlib (`when/anyOf/count_where/during`)
+      implemented ONCE in Lua (the DSL is ~60 lines — see SCRIPTING.md §1)
+- [ ] G4 Sandbox purity rules for goal scripts: no io/os, seeded rng only,
+      deterministic iteration order (pairs ordering must be sorted)
+
+## 7.3 Save/state serialization groundwork
+
+- [ ] S1 Pod snapshots are plain structs — define a reflection-lite visitor
+      per contract to emit JSON (STATE_SAVE.md section 2); version field
+      mandatory
+- [ ] S2 Checkpoint policy: save on stage complete/failed only (v1)
+
+## 7.4 Deferred until needed
+
+- Bloom/post chain, entity-array world pods, AI perception pods: designed in
+  docs/pods/ (FPS_EXAMPLE, AI_PODS) but out of scope for the Tetris demo;
+  they document the template for future games on this skeleton.

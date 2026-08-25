@@ -394,3 +394,34 @@ SEED_SAME/SEED_DIFF PASS, SMOKE_* PASS, SCRIPT_PURITY PASS.
 CANYON_DETERMINISM regressed to FAIL this run (known flaky pitfall, 0e
 family; SEED_SAME passes - under observation, not caused by this change).
 Visual: crop analysis rates the wave-pattern glow 9/10 visibility.
+
+## Session (2026-08-24) - docs/pods/ added + input-feel root cause identified
+
+Cross-pollination pass from the JS twin (hello-ember-tetris L4 work):
+
+- docs/pods/ created: genre-agnostic Domain POD knowledge base distilled
+  during the JS port - PLANNING.md (event storming -> boundaries -> producers
+  table -> RED tests workflow), EVENT_FLOW.md (generated fact->consumer map),
+  SCRIPTING.md (predicate DSL for composable goal conditions),
+  MISSIONS.md/FPS_EXAMPLE.md/AI_PODS.md/STATE_SAVE.md/BALANCING.md/
+  PERFORMANCE.md/INPUT_ACCESSIBILITY.md case studies and system guides.
+
+- INPUT FEEL ROOT CAUSE CONFIRMED in this codebase: edges/input emits one
+  intent per SDL_KEYDOWN and NEVER reads SDL_KEYUP; held directions rely on
+  OS key-repeat (~500ms delay, OS-controlled rate). Same bug class the JS
+  twin fixed in its Session 5/5b. Part 6 added to TODOS with the concrete
+  fix (DAS/ARR scheduler in the edge, held-state FSM, soft-drop-as-flag)
+  plus headless verification plan (V1-V4).
+
+- Part 7 added: structural convergence toward the v2 pod-graph concepts -
+  event-flow generator parity, trap-table comments, Lua predicate-goal
+  scripting (G1-G4) building on the existing sandboxed lua.edge, and
+  save-serialization groundwork (S1-S2).
+
+Docs-only session; no behavior code touched. Build/gates unchanged green
+(last recorded: all PASS, see Build table above).
+
+Addendum (same session): scripts/generate-event-flow.mjs (node, nvm path)
+now generates docs/pods/EVENT_FLOW.md from MatrixEventType emissions across
+domains/*.reducer.hpp - 11 facts mapped on first run, consumer chains visible
+(matrix -> progression/spatial_fx/powerups). Regenerate after adding events.
