@@ -102,6 +102,51 @@ public:
                                                  int armed_next) override {
         return ev_->call_decide_spawn("CyberRules", pieces_since, armed_next);
     }
+    bool has_goal_test(const char* goal_table) const override {
+        return ev_ && ev_->has_function(goal_table, "test");
+    }
+    bool evaluate_goal(
+        const char* goal_table,
+        const std::vector<tetris::mission::MissionEventView>& events,
+        const tetris::mission::MissionSnapshot& snap) override {
+        if (!ev_ || !ev_->valid()) return false;
+        lua_State* L = ev_->raw();
+        lua_getglobal(L, goal_table);
+        if (!lua_istable(L, -1)) { lua_pop(L, 1); return false; }
+        lua_getfield(L, -1, "test");
+        if (!lua_isfunction(L, -1)) { lua_pop(L, 2); return false; }
+
+        // events: array of { type="...", a=N, b=N }
+        lua_createtable(L, (int)events.size(), 0);
+        for (size_t i = 0; i < events.size(); ++i) {
+            lua_createtable(L, 0, 3);
+            lua_pushstring(L, events[i].type);
+            lua_setfield(L, -2, "type");
+            lua_pushinteger(L, events[i].a);
+            lua_setfield(L, -2, "a");
+            lua_pushinteger(L, events[i].b);
+            lua_setfield(L, -2, "b");
+            lua_rawseti(L, -2, (int)(i + 1));
+        }
+
+        // snapshot: plain table
+        lua_createtable(L, 0, 5);
+        lua_pushinteger(L, snap.score);       lua_setfield(L, -2, "score");
+        lua_pushinteger(L, snap.lines);       lua_setfield(L, -2, "lines");
+        lua_pushinteger(L, snap.level);       lua_setfield(L, -2, "level");
+        lua_pushboolean(L, snap.overdrive ? 1 : 0);
+        lua_setfield(L, -2, "overdrive");
+        lua_pushnumber(L, snap.stack_ratio);
+        lua_setfield(L, -2, "stack_ratio");
+
+        if (lua_pcall(L, 2, 1, 0) != LUA_OK) {   // (events, snapshot) -> result
+            lua_pop(L, 1);                        // error message
+            return false;
+        }
+        const bool ok = lua_toboolean(L, -1) != 0;
+        lua_pop(L, 2);                            // result + Goals table
+        return ok;
+    }
     tetris::environment::CrowdPulse on_event(int kind, int value) override {
         return ev_->call_on_event("Encounter", kind, value);
     }

@@ -14,6 +14,7 @@
 | [MISSIONS.md](MISSIONS.md) | goals/quests as a pod: owns PROGRESS not truth; event traps vs snapshot queries; fact-chained sequencing |
 | [SCRIPTING.md](SCRIPTING.md) | composable goal conditions: predicate DSL over event batches (JS reference impl; Lua port guidance inside) |
 | [LUA_STRUCTURE.md](LUA_STRUCTURE.md) | Unity concepts mapped (entity/prefab); four-file level standard; pure-Lua level roadmap |
+| [DEBUGGING.md](DEBUGGING.md) | dev flags: --stage jump/unlock, --script override, headless probes, testing hooks, planned conveniences |
 | [AI_PODS.md](AI_PODS.md) | NPC brains as intent generators; perception fairness law; difficulty = brain data |
 | [STATE_SAVE.md](STATE_SAVE.md) | serializing pod snapshots; save vs replay; versioned migrations |
 | [BALANCING.md](BALANCING.md) | difficulty-as-data tiers; telemetry metrics; the tuning loop |

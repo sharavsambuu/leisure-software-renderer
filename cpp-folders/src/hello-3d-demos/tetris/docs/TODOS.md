@@ -489,13 +489,13 @@ converge the C++ demo onto the same graph-first / trap-wall vocabulary:
 
 ## 7.2 Scripted goals via predicate composition (Lua port of the DSL)
 
-- [ ] G1 Define the Lua predicate contract: `goal.test(events, snapshot)`
+- [x] G1 DONE (2026-08-25): IScriptHost.has_goal_test/evaluate_goal; events marshaled as {type,a,b} tables + snapshot {score,lines,level,overdrive,stack_ratio}; Goals.test(goal_id, events, snapshot) -> bool; 7/7 bridge pins in tests/goal_bridge_tests.cpp through the REAL sandbox`goal.test(events, snapshot)`
       returning bool; events arrive as plain tables; snapshot carries
       read-only views (score, lines, freeze timers, player pos if FPS later)
 - [x] G2 DONE (2026-08-25): domains/mission contract+reducer - two goal styles, fact-chained sequencing, timed expiry; 10/10 pins; purity NONE. Original: (`domains/mission/`): cumulative progress +
       fact-chained sequencing (MISSION_COMPLETE advances index) — mirrors
       MISSIONS.md §5
-- [ ] G3 Level authoring: missions declared in level.lua as composed
+- [x] G3 DONE (2026-08-25): assets/levels/goals_dsl.lua predicate stdlib (when/any_of/none_of/during/count_where); cyber_storm/goals.lua demo authors storm_1/storm_2/storm_3 goals via Goals.test; safe-false on unknown ids
       predicates using a small stdlib (`when/anyOf/count_where/during`)
       implemented ONCE in Lua (the DSL is ~60 lines — see SCRIPTING.md §1)
 - [ ] G4 Sandbox purity rules for goal scripts: no io/os, seeded rng only,

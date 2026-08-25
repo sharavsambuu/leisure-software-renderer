@@ -23,6 +23,7 @@
 #include <domains/session/session.reducer.hpp>
 #include <domains/progression/progression.reducer.hpp>
 #include <domains/powerups/powerups.reducer.hpp>
+#include <domains/mission/mission.contract.hpp>
 #include <domains/environment/environment.reducer.hpp>
 #include <domains/spatial_fx/spatial_fx.reducer.hpp>
 #include <edges/ui/tetris.hud.hpp>
@@ -68,6 +69,15 @@ namespace tetris::game {
         virtual environment::CrowdPulse on_event(int event_kind, int value) = 0;
         virtual environment::OverseerRuling decide_phase(
             int phase, float phase_time, int lines_cleared, bool danger) = 0;
+
+        // Part 7 G1: scripted GOAL evaluation (SCRIPTING.md section 2).
+        // goal_table names a global Lua table (e.g. "Goals") whose function
+        // `test` receives (events, snapshot) as plain tables and returns
+        // truthy to complete the goal this tick.
+        virtual bool has_goal_test(const char* goal_table) const = 0;
+        virtual bool evaluate_goal(const char* goal_table,
+                const std::vector<tetris::mission::MissionEventView>& events,
+                const tetris::mission::MissionSnapshot& snap) = 0;
     };
 
     struct FrameInput {

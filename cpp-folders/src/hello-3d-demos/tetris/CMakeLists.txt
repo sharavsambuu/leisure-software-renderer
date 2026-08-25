@@ -253,6 +253,36 @@ add_test(NAME tetris_mission_tests
          COMMAND $<TARGET_FILE:tetris_mission_tests>)
 
 # --- P2c: script purity ctest -------------------------------------------------
+# --- G1: scripted goal bridge tests ------------------------------------------
+add_executable(tetris_goal_bridge_tests
+    tests/goal_bridge_tests.cpp
+)
+set_property(TARGET tetris_goal_bridge_tests PROPERTY INCLUDE_DIRECTORIES
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/game/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/include
+    ${HelloSHSRenderer_SOURCE_DIR}
+    ${LUA_INCLUDE_DIR}
+    ${ASSIMP_INCLUDE_DIR}
+    ${SDL2_INCLUDE_DIRS}
+    ${CMAKE_BINARY_DIR}
+    ${stb_SOURCE_DIR}
+    /opt/vcpkg/installed/x64-linux/include
+)
+target_compile_features(tetris_goal_bridge_tests PRIVATE cxx_std_20)
+target_compile_definitions(tetris_goal_bridge_tests PRIVATE
+    TETRIS_SOURCE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}")
+if (LUA_FOUND)
+    target_link_libraries(tetris_goal_bridge_tests PRIVATE
+        /opt/vcpkg/installed/x64-linux/lib/liblua.a)
+    target_compile_definitions(tetris_goal_bridge_tests PRIVATE TETRIS_LUA_ENABLED=1)
+endif()
+target_link_libraries(tetris_goal_bridge_tests PRIVATE glm::glm)
+set_target_properties(tetris_goal_bridge_tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/tetris)
+add_test(NAME tetris_goal_bridge_tests
+         COMMAND $<TARGET_FILE:tetris_goal_bridge_tests>)
+
 add_test(NAME tetris_script_purity
          COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/script_purity.sh)
 # --- P3: stage loader tests ---------------------------------------------------

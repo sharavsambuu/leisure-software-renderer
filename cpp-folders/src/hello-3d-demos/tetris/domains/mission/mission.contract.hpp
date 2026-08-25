@@ -84,4 +84,13 @@ namespace tetris::mission {
         }
     };
 
+    // Non-owning per-event view used for script marshaling (G1). The host
+    // builds these from the tick's typed events; goal scripts consume them
+    // as plain tables.
+    struct MissionEventView {
+        const char* type;
+        int         a = 0;
+        int         b = 0;
+    };
+
 } // namespace tetris::mission

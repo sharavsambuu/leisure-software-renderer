@@ -657,3 +657,25 @@ fact-chaining, M7 determinism, M8a/a2/b timed expiry incl. boundary tick,
 empty-mission degenerate case). ctest suite now 5/5.
 
 Next: G1 event-batch marshaling to Lua goal scripts + G3 DSL + demo level.
+
+## Session (2026-08-25) - Part 7 G1+G3 DONE: scripted goals work end-to-end
+
+G1 (bridge): IScriptHost extended with has_goal_test/evaluate_goal;
+LuaScriptHost marshals the tick's events as {type,a,b} tables + snapshot as
+{score,lines,level,overdrive,stack_ratio}, calls Goals.test(goal_id, events,
+snapshot), boolean back. Sandbox needs TETRIS_SOURCE_ROOT set for dofile of
+the DSL (main already defines it; tests set it explicitly).
+
+G3 (DSL + demo): assets/levels/goals_dsl.lua - pure predicate stdlib
+(when/any_of/none_of/during/count_where.at_least/exactly). Cyber Storm
+goals.lua authors three scripted goals via Goals.test(goal_id, events,
+snapshot): snapshot-gated line thresholds, overdrive-window scoring, safe
+unknown-id handling.
+
+tests/goal_bridge_tests.cpp: 7/7 PASS through the REAL sandboxed evaluator.
+ctest suite: 6/6. All verify.sh gates PASS.
+
+Full mission scripting chain now proven: campaign.lua -> stage loader ->
+mission pod -> Lua predicates. Remaining Part 7: G4 goal-script purity in
+ctest (trivial - extend script_purity to goals.lua files); then wire
+step_core to consult the mission pod each tick.
