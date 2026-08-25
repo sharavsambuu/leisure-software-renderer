@@ -62,6 +62,9 @@ include_directories(${CMAKE_CURRENT_LIST_DIR}/tetris)
 include_directories(${CMAKE_CURRENT_LIST_DIR}/snake)
 
 # --- Include all demo subdirectories (each is self-contained with its own CMakeLists.txt) ---
+# --- Shared engine skeleton (P5): header-only fixed-step loop etc -------
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/../../libs/engine shs_engine.build)
+
 add_subdirectory(fps)          # fps/CMakeLists.txt  → HelloFPSDemo
 add_subdirectory(plane)        # plane/CMakeLists.txt → HelloPlaneDemo  
 add_subdirectory(tetris)       # tetris/CMakeLists.txt → Hello3DTetris

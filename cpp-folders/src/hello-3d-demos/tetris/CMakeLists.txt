@@ -26,6 +26,19 @@ find_package(assimp CONFIG REQUIRED)
 # Found ⇒ TETRIS_LUA_ENABLED is defined and the evaluator edge compiles in.
 # Missing ⇒ pods fall back to native C++ rules; the build stays green either way.
 find_package(Lua QUIET)
+if (NOT LUA_FOUND)
+    # Explicit fallback: vcpkg's lua lives in the standard installed tree.
+    if (EXISTS /opt/vcpkg/installed/x64-linux/include/lua.hpp)
+        set(LUA_FOUND TRUE)
+        set(LUA_INCLUDE_DIR /opt/vcpkg/installed/x64-linux/include)
+        set(LUA_LIBRARIES /opt/vcpkg/installed/x64-linux/lib/liblua.a)
+        if (NOT EXISTS ${LUA_LIBRARIES})
+            file(GLOB LUA_LIBRARIES /opt/vcpkg/installed/x64-linux/lib/liblua*.a)
+            list(GET LUA_LIBRARIES 0 LUA_LIBRARIES)
+        endif()
+        message(STATUS ">>> tetris: Lua via vcpkg fallback (${LUA_LIBRARIES})")
+    endif()
+endif()
 if (LUA_FOUND)
     message(STATUS ">>> Hello3DTetris: Lua ${LUA_VERSION_STRING} found — rule scripting ENABLED")
 else()
@@ -35,15 +48,27 @@ endif()
 include_directories(${ASSIMP_INCLUDE_DIR})
 include_directories(${SDL2_INCLUDE_DIRS})
 include_directories(${CMAKE_BINARY_DIR})
+if(NOT DEFINED HelloSHSRenderer_SOURCE_DIR)
+    get_filename_component(_TETRIS_SHS_RENDERER "${CMAKE_CURRENT_SOURCE_DIR}/../hello-shs-renderer" ABSOLUTE)
+    if(EXISTS "${_TETRIS_SHS_RENDERER}/shs_renderer.hpp")
+        set(HelloSHSRenderer_SOURCE_DIR "${_TETRIS_SHS_RENDERER}")
+    endif()
+endif()
 include_directories(${HelloSHSRenderer_SOURCE_DIR}/)
 include_directories(${stb_SOURCE_DIR}/)
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/game/include)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/engine/include)
 
 
 # --- Main executable: Hello3DTetris (domain pod architecture) ---
 add_executable(Hello3DTetris
     hello_3d_tetris.cpp
+    game/include/game/world.hpp
+    game/include/game/step.hpp
+    game/include/game/stage.hpp
+    assets/campaign/campaign.lua
     config/rules.hpp
     config/levels/marathon_01.hpp
     config/levels/blitz_120.hpp
@@ -77,6 +102,7 @@ add_executable(Hello3DTetris
 if (LUA_FOUND)
     target_include_directories(Hello3DTetris PRIVATE ${LUA_INCLUDE_DIR})
     target_link_libraries(Hello3DTetris PRIVATE ${LUA_LIBRARIES})
+    target_link_libraries(Hello3DTetris PRIVATE shs::engine)
     target_compile_definitions(Hello3DTetris PRIVATE TETRIS_LUA_ENABLED=1)
 endif()
 
@@ -120,13 +146,138 @@ endif()
 # Target-scoped include order: tetris root FIRST so <domains/...>, <config/...>,
 # <edges/...> resolve to THIS project even though the aggregator also exposes
 # sibling demo roots globally (fps defines domains/spatial_fx too).
+if(NOT DEFINED HelloSHSRenderer_SOURCE_DIR OR HelloSHSRenderer_SOURCE_DIR STREQUAL "" OR NOT EXISTS "${HelloSHSRenderer_SOURCE_DIR}/shs_renderer.hpp")
+    foreach(_cand
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../hello-shs-renderer"
+        "${CMAKE_CURRENT_SOURCE_DIR}/hello-shs-renderer"
+        "/home/sharavsambuu/src/dev/leisure-software-renderer/cpp-folders/src/hello-shs-renderer")
+        if(EXISTS "${_cand}/shs_renderer.hpp")
+            set(HelloSHSRenderer_SOURCE_DIR "${_cand}")
+            break()
+        endif()
+    endforeach()
+endif()
 set_property(TARGET Hello3DTetris PROPERTY INCLUDE_DIRECTORIES
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/game/include
     ${HelloSHSRenderer_SOURCE_DIR}
     ${ASSIMP_INCLUDE_DIR}
     ${SDL2_INCLUDE_DIRS}
     ${CMAKE_BINARY_DIR}
     ${stb_SOURCE_DIR}
+    ${LUA_INCLUDE_DIR}
 )
 
 message(STATUS ">>> Building Hello3DTetris (domain pods: matrix/progression/spatial_fx)...")
+
+# --- P0: unit tests (plain-main binary, house style) -------------------------
+enable_testing()
+add_executable(tetris_reducer_tests
+    tests/reducer_tests.cpp
+)
+target_include_directories(tetris_reducer_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_features(tetris_reducer_tests PRIVATE cxx_std_20)
+if (MSVC)
+    target_compile_options(tetris_reducer_tests PRIVATE /W4)
+else()
+    target_compile_options(tetris_reducer_tests PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+if (LUA_FOUND)
+    target_include_directories(tetris_reducer_tests PRIVATE ${LUA_INCLUDE_DIR})
+    target_link_libraries(tetris_reducer_tests PRIVATE ${LUA_LIBRARIES})
+    target_compile_definitions(tetris_reducer_tests PRIVATE TETRIS_LUA_ENABLED=1)
+endif()
+set_target_properties(tetris_reducer_tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/tetris)
+add_test(NAME tetris_reducer_tests
+         COMMAND $<TARGET_FILE:tetris_reducer_tests>)
+
+# --- P2: whole-frame + input harness tests -----------------------------------
+# Needs SDL2 (input edge includes SDL.h) and the shs renderer headers (hud
+# floaters use shs::Color). Links nothing new beyond what the main target uses.
+add_executable(tetris_step_tests
+    tests/step_tests.cpp
+)
+# Target-scoped include order (REPLACES globals so fps/plane/snake roots can't
+# shadow tetris pods - same pattern as Hello3DTetris above).
+set_property(TARGET tetris_step_tests PROPERTY INCLUDE_DIRECTORIES
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/game/include
+    ${HelloSHSRenderer_SOURCE_DIR}
+    ${ASSIMP_INCLUDE_DIR}
+    ${SDL2_INCLUDE_DIRS}
+    ${CMAKE_BINARY_DIR}
+    ${stb_SOURCE_DIR}
+    /opt/vcpkg/installed/x64-linux/include
+)
+target_compile_definitions(tetris_step_tests PRIVATE
+    TETRIS_SOURCE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_features(tetris_step_tests PRIVATE cxx_std_20)
+target_link_libraries(tetris_step_tests PRIVATE SDL2::SDL2 glm::glm shs::engine)
+target_include_directories(tetris_step_tests PRIVATE /opt/vcpkg/installed/x64-linux/include)
+if (MSVC)
+    target_compile_options(tetris_step_tests PRIVATE /W4)
+else()
+    target_compile_options(tetris_step_tests PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+if (LUA_FOUND)
+    target_include_directories(tetris_step_tests PRIVATE ${LUA_INCLUDE_DIR})
+    target_link_libraries(tetris_step_tests PRIVATE ${LUA_LIBRARIES})
+    target_compile_definitions(tetris_step_tests PRIVATE TETRIS_LUA_ENABLED=1)
+endif()
+set_tests_properties(tetris_reducer_tests PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_target_properties(tetris_step_tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/tetris)
+add_test(NAME tetris_step_tests
+         COMMAND $<TARGET_FILE:tetris_step_tests>)
+set_tests_properties(tetris_step_tests PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+# --- G2: mission pod tests ----------------------------------------------------
+add_executable(tetris_mission_tests
+    tests/mission_tests.cpp
+    domains/mission/mission.contract.hpp
+    domains/mission/mission.reducer.hpp
+)
+set_property(TARGET tetris_mission_tests PROPERTY INCLUDE_DIRECTORIES
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+target_compile_features(tetris_mission_tests PRIVATE cxx_std_20)
+if (MSVC)
+    target_compile_options(tetris_mission_tests PRIVATE /W4)
+else()
+    target_compile_options(tetris_mission_tests PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+set_target_properties(tetris_mission_tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/tetris)
+add_test(NAME tetris_mission_tests
+         COMMAND $<TARGET_FILE:tetris_mission_tests>)
+
+# --- P2c: script purity ctest -------------------------------------------------
+add_test(NAME tetris_script_purity
+         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/script_purity.sh)
+# --- P3: stage loader tests ---------------------------------------------------
+add_executable(tetris_stage_tests
+    tests/stage_loader_tests.cpp
+)
+set_property(TARGET tetris_stage_tests PROPERTY INCLUDE_DIRECTORIES
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/game/include
+    ${HelloSHSRenderer_SOURCE_DIR}
+    ${ASSIMP_INCLUDE_DIR}
+    ${SDL2_INCLUDE_DIRS}
+    ${CMAKE_BINARY_DIR}
+    ${stb_SOURCE_DIR}
+    /opt/vcpkg/installed/x64-linux/include
+)
+target_compile_features(tetris_stage_tests PRIVATE cxx_std_20)
+target_compile_definitions(tetris_stage_tests PRIVATE
+    TETRIS_SOURCE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}")
+if (LUA_FOUND)
+    target_compile_definitions(tetris_stage_tests PRIVATE TETRIS_LUA_ENABLED=1)
+endif()
+if (LUA_FOUND)
+    target_include_directories(tetris_stage_tests PRIVATE ${LUA_INCLUDE_DIR})
+    target_link_libraries(tetris_stage_tests PRIVATE ${LUA_LIBRARIES})
+    target_compile_definitions(tetris_stage_tests PRIVATE TETRIS_LUA_ENABLED=1)
+endif()
+add_test(NAME tetris_stage_tests COMMAND $<TARGET_FILE:tetris_stage_tests>)

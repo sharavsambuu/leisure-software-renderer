@@ -7,7 +7,7 @@ EXTRA_ARGS=()
 for a in "$@"; do EXTRA_ARGS+=("$a"); done
 
 echo "=== binary ==="
-BIN=$(find /home/sharavsambuu/src/dev/leisure-software-renderer/cpp-folders/build_vcpkg -maxdepth 5 -path "*tetris/Hello3DTetris" | head -1)
+BIN="/home/sharavsambuu/src/dev/leisure-software-renderer/cpp-folders/build_vcpkg/src/hello-3d-demos/tetris/Hello3DTetris"
 echo "BIN=$BIN"
 [ -x "$BIN" ] || { echo "NO_BINARY"; exit 1; }
 ls -la "$BIN"
@@ -80,5 +80,13 @@ grep -rnE 'lua_State|luaL_|lua_pcall|lua_push|lua_pop|lua_getglobal|lua_setgloba
     --include='*.hpp' --include='*.cpp' . | grep -v 'edges/lua/' \
     | sed 's://.*::' \
     | awk -F: '$3 ~ /[^ \t]/ { print }' | grep -E '.' || echo NONE
+echo "=== unit tests (P0 behavioral pins) ==="
+TBIN="/home/sharavsambuu/src/dev/leisure-software-renderer/cpp-folders/build_vcpkg/src/hello-3d-demos/tetris/tetris_reducer_tests"
+if [ -x "$TBIN" ]; then
+  "$TBIN" && echo "UNIT=PASS" || echo "UNIT=FAIL"
+else
+  echo "UNIT=SKIPPED (tests not built)"
+fi
+
 echo "=== main size ==="
 wc -l hello_3d_tetris.cpp

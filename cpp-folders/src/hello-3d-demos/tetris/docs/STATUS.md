@@ -445,3 +445,215 @@ board that varies by a few pixels.
 This should be filed as a separate issue: "rasterizer thread-scheduling FP
 non-determinism" - fix options include sorting tile jobs, using fixed-point
 rasterization, or single-threading the comparison path in verify.sh.
+
+## Session (2026-08-24) addendum 3 - STRUCTURE_PLAN.md (final-version track)
+
+User froze level content and redirected to project structure hardening:
+the tetris demo is the blueprint for a future-proof personal C++ game
+project. Audited current tree; identified 6 structural debts (god-file main,
+no unit tests, header-based levels requiring recompiles, implicit event
+vocabulary, loop buried in main, no shared library boundary).
+
+docs/STRUCTURE_PLAN.md written: target tree (app/engine/game/render layers
+with strict knowledge rules - engine knows nothing about tetris, game knows
+nothing about SDL), phases P0-P6 each ending green, risk notes, deferred
+items (mission scripting lands after this plan; rasterizer FP flake tracked
+separately). Docs-only session; build untouched.
+
+## Session (2026-08-24) - P0 COMPLETE + P1a core extraction LANDED
+
+### P0 - Behavioral safety net (DONE)
+- tests/reducer_tests.cpp: 20 plain-main unit tests (house style, zero deps)
+  pinning current matrix/progression/session behavior. 20/20 PASS.
+- CMake target tetris_reducer_tests + ctest; verify.sh gains UNIT gate.
+- Discovered & pinned real contract details: MatrixSnapshot (not MatrixState),
+  fresh state has NO active piece until spawn, progression consumes
+  LINES_CLEARED{lines_cleared_count} directly from matrix events.
+
+### P1a - Deterministic core extraction (DONE)
+- engine/include/engine/loop.hpp: fixed-step accumulator (pure, game-agnostic,
+  ready for other demos).
+- game/include/game/world.hpp: GameWorld aggregate of all pod states.
+- game/include/game/step.hpp: step_core() - the ordered deterministic tick
+  (restart latch -> freeze gate -> boot queue -> matrix -> progression ->
+  mood wires -> run-end latch -> fx -> hud). Extracted verbatim from main.
+- main.cpp now calls step_core(); env overseer + L4 powerup scripting +
+  prog/powerup audio mapping stay in main until P1b (IScriptHost/IAudioSink).
+
+### Verification
+- ALL gates PASS: DETERMINISM, DELTA, BLITZ/CANYON/CYBER/ENCORE determinism,
+  all SMOKE gates, SCRIPT_PURITY, UNIT 20/20. The extraction changed nothing
+  behaviorally (byte-compare proof).
+- Known pre-existing flake (NOT from this work): CANYON_DETERMINISM and
+  SEED_SAME fail ~50% across runs - rasterizer tile-job FP ordering race in
+  the parallel job system. Reproducible on stashed baseline too. Filed as
+  its own issue; fix candidates: sorted tile jobs / fixed-point raster /
+  single-thread compare mode.
+
+### Build-system notes recorded
+- Configuring tetris directly (cmake ../src/hello-3d-demos/tetris) needs a
+  HelloSHSRenderer_SOURCE_DIR fallback added to CMakeLists (multi-candidate
+  search); aggregator path unaffected.
+- verify.sh BIN/TBIN pinned to src/... paths to avoid stale wrapper binaries
+  at build_vcpkg/tetris/.
+
+## Session (2026-08-24) - P1b COMPLETE: full tick lives in game/step.hpp
+
+The remaining main-side blocks migrated behind the two platform interfaces:
+
+- game::IScriptHost - pure virtual adapter over edges/lua. Main-side
+  LuaScriptHost wraps StatelessLuaEvaluator (has_special_lock /
+  on_special_lock / has_decide_spawn / decide_spawn / on_event / decide_phase).
+  Null/invalid => native C++ rules, exactly as before.
+- game::IAudioSink - main-side MainAudioSink forwards to the synth edge;
+  headless runs pass enabled=false (silent), tests pass null.
+
+Migrated INTO step_core (previously in main):
+- L5 encounter overseer block (crowd pulses from matrix+progression events,
+  phase rulings via script-or-native, rain cadence with deterministic hole
+  parity, phase-transition set pieces incl. floaters + thud/tetris-four)
+- L4 powerup scheduler block (special-lock rulings -> ApplyRulingIntents,
+  flash beats, spawn-request fulfillment via decide_spawn, powerup sounds)
+- Matrix-event audio mapping (move/rotate/slam/hold/game-over/clear tiers)
+- Progression-event audio (tick/time-up/objective) and powerup audio
+
+main() playing branch is now: build FrameInput + StepContext -> step_core().
+Line counts: hello_3d_tetris.cpp ~760 (from 941 pre-P1); step.hpp 356.
+
+Verification: ALL gates PASS except the known pre-existing CANYON flake
+(rasterizer FP race; unchanged). SMOKE_ENCOUNTER_CONFIG PASS proves the Lua
+path through IScriptHost reaches the overseer script identically. UNIT 20/20.
+
+## Session (2026-08-24) addendum - P2 COMPLETE: whole-frame + input + purity tests
+
+P2 landed as three test layers, all under ctest (ctest --test-dir tetris):
+
+1. tetris_step_tests (19/19 PASS) - WHOLE-FRAME tests through step_core():
+   command->fact flow, restart latch with high-score preservation, freeze
+   gate blocking + restart thaw, run-end RESULTS latch, victory unlock,
+   determinism hash. PLUS input-edge harness: synthetic SDL key timelines via
+   SDL_PeepEvents (SDL_Init dummy driver) prove DAS 150ms delay, ARR 40ms
+   repeat, KEYUP stops movement, soft-drop held-flag semantics, and that OS
+   key-repeat is never trusted. This closes TODOS Part 6 V1-V3 properly.
+
+2. tetris_reducer_tests (20/20 PASS) - P0 pod-level pins (unchanged).
+
+3. tetris_script_purity (PASS) - per-file Lua purity check under ctest;
+   strips comment lines then asserts no os./io./math.random/print. Caught its
+   first false-positive from a doc comment mentioning the forbidden words -
+   fixed by comment stripping.
+
+Build-system lesson recorded: the aggregator exposes ALL demo roots globally,
+so fps/plane/snake's domains/spatial_fx can shadow tetris's in new targets.
+Fix mirrors the main target: set_property(TARGET ... INCLUDE_DIRECTORIES)
+REPLACES the global list with tetris-root-first ordering.
+
+Full verify.sh: ALL PASS except documented pre-existing canyon rasterizer
+flake. P0+P1a+P1b+P2 complete; next: P3 levels-as-Lua-data.
+
+## Session (2026-08-25) - P3 COMPLETE: levels & campaign are Lua DATA
+
+Content no longer requires recompilation:
+
+- assets/campaign/campaign.lua: ordered manifest (id/name/unlock_after/
+  rules-overrides/script). 5 stages ported from config/levels/*.hpp values
+  (verified mode ids against config::Rules MODE_* constants).
+- game/include/game/stage.hpp: StageDef struct + load_campaign(source_root)
+  via the sandboxed Lua edge; apply_overrides merges the rules table over
+  config::Rules defaults (mode_id, time_limit, targets, special cadence,
+  camera eye/target/FOV as positional vec3 tables).
+- FALLBACK LAW implemented + tested: missing/corrupt campaign.lua or empty
+  stage list => marathon defaults, never a crash.
+- hello_3d_tetris.cpp rewired: campaign_load -> stages; load_stage and
+  carousel metadata read StageDefs; LuaScriptHost adapter fully qualified.
+- tests/stage_loader_tests.cpp 15/15 PASS (5-stage load, override merge per
+  key, script path carry, unlock_after, fallback law). step_tests 19/19,
+  reducer_tests 20/20.
+- Build-system notes: find_package(Lua QUIET) fails in this tree even though
+  vcpkg lua exists - added explicit vcpkg fallback paths in CMakeLists;
+  include-shadowing (fps demo's domains/) solved via target-scoped
+  set_property INCLUDE_DIRECTORIES for every test target.
+
+Full verify.sh: ALL gates PASS except documented pre-existing canyon
+rasterizer FP flake. P0-P2 + P3 done. Next: P4 event registry, P5 shared
+engine lib, P6 docs sync; then Part 7 mission/goal scripting lands cleanly.
+
+## Session (2026-08-25) addendum - P4 COMPLETE: event registry
+
+- domains/shared/event_ids.hpp: FactId enum + constexpr FACT_REGISTRY
+  (name + producer per fact). 23 facts registered across matrix/
+  progression/powerups/environment. Law recorded: one producer per fact;
+  adding an emission requires adding a registry row in the same change.
+- scripts/generate-event-flow.mjs rewritten registry-driven: parses the
+  enum/registry exactly, scans pods for typed-event references to build the
+  consumer map, and FAILS on undeclared emissions. Undeclared-producer gate
+  verified live (caught its own first-pass artifacts).
+- docs/pods/EVENT_FLOW.md + event-flow.json regenerated from the registry:
+  23 facts, full producer/consumer chains.
+- verify.sh: ALL gates PASS (canyon rasterizer flake remains documented and
+  pre-existing). P0-P4 done; next P5 shared engine lib, P6 docs sync, then
+  Part 7 mission/goal scripting.
+
+## Session (2026-08-25) addendum - P5 COMPLETE: shared engine lib + docs
+
+- cpp-folders/libs/engine/: repo-level shared engine skeleton (shs::engine
+  INTERFACE target; header-only loop.hpp fixed-step accumulator). Tetris
+  links shs::engine; snake/fps/plane can adopt at their own pace. Tetris's
+  local engine/ dir removed.
+- docs/pods/LUA_STRUCTURE.md: Unity concepts mapped to Domain PODs
+  (GameObject=row index, Component=pod row, Prefab=lua data + future
+  spawn_from_prefab factory), pure-Lua level roadmap, and the four-file
+  level standard (init.lua data-only / rules.lua hooks / goals.lua DSL /
+  presentation.lua optional). Indexed in pods/README.
+- Verification after restructure: ALL gates PASS including CANYON_DETERMINISM
+  and SEED_SAME (the rasterizer flake did not reproduce this run - it is
+  timing-dependent; remains a documented known issue).
+
+STRUCTURE_PLAN P0-P5 all DONE. Remaining: P6 docs sync (ARCHITECTURE as-built)
+and Part 7 mission/goal scripting (G1-G4).
+
+## Session (2026-08-25) addendum - P6 COMPLETE: ARCHITECTURE as-built rewritten
+
+ARCHITECTURE.md Part III now reflects the layered as-built tree: layer map
+(engine knows nothing about tetris; game knows nothing about SDL; only main
+touches both), full tree incl. libs/engine + game/ + assets/ + tests/, and
+the post-P1b frame dataflow through step_core with IScriptHost/IAudioSink
+adapters. Legacy config/levels + main_campaign marked LEGACY reference.
+
+STRUCTURE_PLAN P0-P5 all DONE. P6 (this entry) closes the plan except
+optional future cleanups. Next major track: Part 7 mission/goal scripting
+(G1-G4) on top of the extracted step + data-driven levels.
+
+## Session (2026-08-25) addendum - P3.5 per-level level.lua loading
+
+The assets/levels/<id>/level.lua files (authored in the P3 data pass) are now
+LOADED: game/stage.hpp gains load_level(source_root, level_id, name_out,
+rules&) which reads the Level table (name + rules_overrides) through the
+sandboxed evaluator and merges onto campaign-provided Rules. Missing file or
+any error is non-fatal - campaign rules stand. main() calls it right after
+stage selection.
+
+Docs updated to reflect reality + the Unity-concepts discussion:
+docs/pods/LUA_STRUCTURE.md (Unity entity/prefab mapping; four-file level
+standard init/rules/goals/presentation; pure-Lua level roadmap), indexed in
+pods/README. All gates PASS.
+
+## Session (2026-08-25) - Part 7 G2 DONE: mission pod (C++)
+
+domains/mission/{contract,reducer}.hpp landed:
+- MissionEvent/MissionSnapshot: plain-value event view + snapshot (the same
+  shapes a future Lua goal.test(events, snapshot) will receive via
+  IScriptHost).
+- GoalDef with two styles per SCRIPTING.md: cumulative counters
+  (EVENT_COUNT with type+filter_a+target) and batch predicates
+  (LINES_AT_LEAST / SCORE_REACHED / ALWAYS_TRUE). time_limit on any goal.
+- reduce_mission: evaluates ACTIVE goal only; completion fact-chains to the
+  next goal; last completion => COMPLETE; timed expiry => FAILED; emits
+  MISSION_COMPLETE / MISSION_FAILED.
+- Purity: zero platform refs under domains/mission/ (purity grep NONE).
+
+tests/mission_tests.cpp: 10/10 PASS (M1 counting/filtering, M5 completion +
+fact-chaining, M7 determinism, M8a/a2/b timed expiry incl. boundary tick,
+empty-mission degenerate case). ctest suite now 5/5.
+
+Next: G1 event-batch marshaling to Lua goal scripts + G3 DSL + demo level.

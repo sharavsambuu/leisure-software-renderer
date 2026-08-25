@@ -74,6 +74,46 @@
 #include <edges/rasterizer/tetris.rasterizer.hpp>
 #include <edges/ui/tetris.hud.hpp>
 #include <edges/lua/lua.edge.hpp>
+#include <game/step.hpp>
+#include <game/stage.hpp>
+#include <game/world.hpp>
+
+#ifdef TETRIS_LUA_ENABLED
+// P1b: adapts the Lua evaluator edge to game::IScriptHost. Lives in main
+// because it touches edges/lua directly (purity: game/ never does).
+class LuaScriptHost final : public tetris::game::IScriptHost {
+public:
+    explicit LuaScriptHost(tetris::lua_edge::StatelessLuaEvaluator* eval) : ev_(eval) {}
+    bool valid() const override { return ev_ && ev_->valid(); }
+
+    bool has_special_lock() const override {
+        return ev_ && ev_->has_function("CyberRules", "on_special_lock");
+    }
+    tetris::powerups::SpecialRuling on_special_lock(
+        int special_type, int lock_x, int lock_y,
+        const tetris::matrix::CellGrid& grid) override {
+        return ev_->call_on_special_lock("CyberRules", special_type, lock_x,
+                                         lock_y, grid);
+    }
+    bool has_decide_spawn() const override {
+        return ev_ && ev_->has_function("CyberRules", "decide_spawn");
+    }
+    tetris::powerups::SpawnDecision decide_spawn(int pieces_since,
+                                                 int armed_next) override {
+        return ev_->call_decide_spawn("CyberRules", pieces_since, armed_next);
+    }
+    tetris::environment::CrowdPulse on_event(int kind, int value) override {
+        return ev_->call_on_event("Encounter", kind, value);
+    }
+    tetris::environment::OverseerRuling decide_phase(
+        int phase, float phase_time, int lines_cleared, bool danger) override {
+        return ev_->call_decide_phase("Encounter", phase, phase_time,
+                                      lines_cleared, danger);
+    }
+private:
+    tetris::lua_edge::StatelessLuaEvaluator* ev_;
+};
+#endif
 
 namespace {
 
@@ -82,6 +122,16 @@ namespace {
     // Audio synth instance lives at file scope: the SDL callback thread
     // dereferences it for the lifetime of the audio device.
     audio::TetrisAudioSynth g_audio;
+
+    // P1b: IAudioSink adapter so step_core can request sounds without
+    // touching the audio edge directly.
+    struct MainAudioSink final : public game::IAudioSink {
+        bool enabled = true;
+        void play(int sound_id) override {
+            if (enabled) g_audio.play(static_cast<audio::SoundType>(sound_id));
+        }
+    };
+    MainAudioSink g_audio_sink;
 
     constexpr int CANVAS_WIDTH  = 1280;
     constexpr int CANVAS_HEIGHT = 720;
@@ -195,13 +245,29 @@ int main(int argc, char* argv[]) {
     }
     const bool headless = (screenshot_frame >= 0);
 
-    // --- Campaign stage selection (M2 manifest) ---------------------------------
-    const config::campaign::Stage* stage = config::campaign::find_stage(stage_number);
+    // --- Campaign stage selection (P3: data-driven from campaign.lua) -----------
+    auto campaign_load = tetris::game::load_campaign(TETRIS_SOURCE_ROOT);
+    if (campaign_load.used_fallback)
+        std::cerr << "[campaign] campaign.lua unavailable - fallback stages" << std::endl;
+    const auto& stages = campaign_load.stages;
+
+    const tetris::game::StageDef* stage = nullptr;
+    for (const auto& st : stages)
+        if (st.rules.mode_id == static_cast<int>(stage_number)
+            || (&st == &stages[stage_number - 1])) { stage = &st; break; }
     if (!stage) {
         std::cerr << "Unknown campaign stage: " << stage_number << std::endl;
         return 1;
     }
-    config::Rules rules = stage->make_rules();
+    config::Rules rules = stage->rules;
+
+    // P3.5: per-level level.lua refines the campaign entry (name + overrides).
+    std::string level_name = stage->name;
+    tetris::game::load_level(TETRIS_SOURCE_ROOT, stage->id, level_name, rules);
+#ifdef TETRIS_LUA_ENABLED
+    // level.lua may also carry a script reference; campaign script wins only
+    // if the level does not override it.
+#endif
 
     // --- Lua rule-script boot (value-in/value-out; native C++ fallback) ----------
     // Re-runnable per stage: advancing the campaign loads the next stage's
@@ -214,21 +280,31 @@ int main(int argc, char* argv[]) {
     // L4 special-piece scheduler state (cadence counter + armed cycle). Script
     // decisions become raw matrix commands that ride the boot queue like the
     // L3 stamp — the grid is only ever touched through plain intents.
-    powerups::PowerupSnapshot powerup_state{};
-    // L5 encounter state (pod 5). The overseer script decides phases/moods;
-    // its rulings cross as plain values; garbage volleys ride boot_commands.
-    environment::EnvironmentSnapshot env_state{};
+    // (P1a: powerup/env snapshots now live inside game::GameWorld)
     environment::EncounterConfig     env_cfg{};
+    // P1a: single world aggregate, declared early so lambdas/helpers see it.
+    game::GameWorld g_world{};
+    // Main-edge aliases into the world (single source of truth).
+    matrix::MatrixSnapshot&                world         = g_world.matrix_state;
+    progression::ScoreState&               score_state   = g_world.score;
+    powerups::PowerupSnapshot&             powerup_state = g_world.powerups_state;
+    environment::EnvironmentSnapshot&      env_state     = g_world.env;
+    spatial_fx::FxState&                   fx            = g_world.fx;
+    session::SessionSnapshot&              session       = g_world.session;
 #ifdef TETRIS_LUA_ENABLED
     std::unique_ptr<lua_edge::StatelessLuaEvaluator> lua_eval;   // fresh per load
+    lua_edge::StatelessLuaEvaluator* g_lua_eval = nullptr;        // global hook ptr
 #endif
-    auto apply_stage_script = [&](const config::campaign::Stage& st, config::Rules& r) {
+        auto apply_stage_script = [&](const tetris::game::StageDef& st, config::Rules& r) {
+        (void)st;
         script_hooks = progression::ScriptHooks{};   // null hooks ⇒ native rules
+#ifdef TETRIS_LUA_ENABLED
         g_lua_eval   = nullptr;
+#endif
         boot_commands.clear();
         canyon_seed_tag = 0;
-        powerup_state = powerups::PowerupSnapshot{};
-        env_state = environment::EnvironmentSnapshot{};
+        g_world.powerups_state = powerups::PowerupSnapshot{};
+        g_world.env            = environment::EnvironmentSnapshot{};
         env_cfg   = environment::EncounterConfig{};
 #ifdef TETRIS_LUA_ENABLED
         lua_eval.reset();
@@ -374,7 +450,7 @@ int main(int argc, char* argv[]) {
     SDL_AudioDeviceID audio_dev      = 0;
 
     if (!headless) {
-        window         = SDL_CreateWindow(stage->display_name,
+        window         = SDL_CreateWindow(stage->name.c_str(),
                                           SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                           CANVAS_WIDTH, CANVAS_HEIGHT, SDL_WINDOW_SHOWN);
         sdl_renderer   = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
@@ -404,36 +480,31 @@ int main(int argc, char* argv[]) {
 
     FrameMemoryResource frame_memory;
 
-    // --- Persistent pod states ------------------------------------------------------
-    matrix::MatrixSnapshot world;
+    // --- Persistent pod states (P1a: GameWorld declared above) ----------------------
     world.active.type = matrix::pull_next_piece(world.rng_state, world.next_queue);
     world.active.pos  = { 4, 19 };
+    g_world.rules = rules;
 
-    progression::ScoreState score_state;
     score_state.target_score = rules.target_score;
     score_state.mode_id      = rules.mode_id;
     score_state.time_left    = rules.time_limit;
 
-    // NOTE: default resource, NOT the frame arena — particles/rings outlive frames.
-    spatial_fx::FxState fx(std::pmr::get_default_resource());
-
     ui::HudState hud;
 
     // --- Session layer (M1): meta game-state machine ---------------------------------
-    session::SessionSnapshot session;
-    session.stage_count = config::campaign::STAGE_COUNT;
+    session.stage_count = (int)stages.size();
     if (headless) {
         // Verification runs skip menus entirely: straight into PLAYING.
         session.screen         = session::Screen::PLAYING;
         session.current_stage  = stage_number - 1;
-        session.unlocked_stages = config::campaign::STAGE_COUNT;
+        session.unlocked_stages = (int)stages.size();
     } else if (stage_number > 1) {
         // Windowed --stage=N: jump straight into that stage's run (rules and
         // script were already applied above). Without --stage, boot to TITLE.
         session.screen          = session::Screen::PLAYING;
         session.current_stage   = stage_number - 1;
         session.stage_cursor    = stage_number - 1;
-        session.unlocked_stages = config::campaign::STAGE_COUNT;
+        session.unlocked_stages = (int)stages.size();
     }
 
     int session_high = 0;   // best score across stages this session
@@ -442,9 +513,10 @@ int main(int argc, char* argv[]) {
     // script sandbox. This is what guarantees NO stale level-finished GUI
     // (modal, banners, floaters, particles) leaks into the next level —
     // every presentation surface is reset here.
-    auto load_stage = [&](const config::campaign::Stage* st) {
+        auto load_stage = [&](const tetris::game::StageDef* st) {
         stage = st;
-        rules = st->make_rules();
+        rules = st->rules;
+        g_world.rules = st->rules;
         apply_stage_script(*st, rules);
         world = matrix::MatrixSnapshot{};
         world.active.type = matrix::pull_next_piece(world.rng_state, world.next_queue);
@@ -457,16 +529,18 @@ int main(int argc, char* argv[]) {
         score_state.high_score   = session_high;
         hud = ui::HudState{};
         fx  = spatial_fx::FxState(std::pmr::get_default_resource());
-        if (window) SDL_SetWindowTitle(window, st->display_name);
+        if (window) SDL_SetWindowTitle(window, st->name.c_str());
     };
 
     // Manifest metadata for the level-select carousel (ui-edge projection input).
-    const char* stage_names[config::campaign::STAGE_COUNT];
-    const char* stage_tiers[config::campaign::STAGE_COUNT];
-    for (int i = 0; i < config::campaign::STAGE_COUNT; ++i) {
-        stage_names[i] = config::campaign::STAGES[i].display_name;
-        stage_tiers[i] = config::campaign::STAGES[i].script_path[0] != '\0'
-                             ? ui::TAG_SCRIPTED : ui::TAG_PURE;
+    static std::vector<std::string> stage_name_strs;
+    static std::vector<const char*> stage_names;
+    static std::vector<const char*> stage_tiers;
+    for (const auto& st : stages) {
+        stage_name_strs.push_back(st.name);
+        stage_names.push_back(stage_name_strs.back().c_str());
+        stage_tiers.push_back(st.script_path.empty() ? ui::TAG_PURE
+                                                     : ui::TAG_SCRIPTED);
     }
 
     bool   quit  = false;
@@ -505,10 +579,10 @@ int main(int argc, char* argv[]) {
         for (const auto& sev : sstep.events) {
             switch (sev.type) {
             case session::SessionEventType::STAGE_SELECTED:
-                load_stage(config::campaign::find_stage(sev.stage + 1));
+                if (sev.stage >= 0 && sev.stage < (int)stages.size()) load_stage(&stages[sev.stage]);
                 break;
             case session::SessionEventType::RUN_RESTART_REQUESTED:
-                load_stage(config::campaign::find_stage(session.current_stage + 1));
+                if (session.current_stage + 1 < (int)stages.size()) load_stage(&stages[session.current_stage + 1]);
                 break;
             case session::SessionEventType::QUIT_REQUESTED:
                 quit = true;
@@ -529,276 +603,41 @@ int main(int argc, char* argv[]) {
 
         // Gameplay pods only step during a live run; menus freeze everything.
         if (playing) {
-            // Restart preservation: high score survives a manual reset (main-edge duty)
-            bool restart_requested = false;
-            for (const auto& cmd : in.commands) {
-                if (std::holds_alternative<matrix::RestartIntent>(cmd)) restart_requested = true;
-            }
+            // P1b: the FULL tick lives in game/step.hpp now — scripting via
+            // IScriptHost, sounds via IAudioSink, both platform-wired here.
+#ifdef TETRIS_LUA_ENABLED
+            LuaScriptHost script_host(lua_eval.get());
+#else
+            game::IScriptHost* script_host = nullptr;
+#endif
+            game::StepContext s_ctx{};
+            s_ctx.dt          = dt;
+            s_ctx.frame       = frame;
+            s_ctx.headless    = headless;
+            s_ctx.audio       = &g_audio_sink;
+            g_audio_sink.enabled = !headless;
+#ifdef TETRIS_LUA_ENABLED
+            s_ctx.scripts     = lua_eval && lua_eval->valid()
+                                ? static_cast<game::IScriptHost*>(&script_host)
+                                : nullptr;
+#else
+            s_ctx.scripts     = nullptr;
+#endif
+            s_ctx.rain_every  = env_cfg.valid ? env_cfg.rain_every : 0.0f;
 
-            // Blitz time-up freezes the run: no commands reach the matrix, no gravity.
-            // A restart press thaws that frame so the reset reaches the board too.
-            const bool frozen = score_state.time_up && !restart_requested;
-            auto cmd_span = frozen
-                ? std::span<const matrix::TetrisCommand>()
-                : std::span<const matrix::TetrisCommand>(in.commands.data(), in.commands.size());
-            const float matrix_dt = frozen ? 0.0f : dt;
+            game::FrameInput fin{};
+            fin.commands       = std::span<const matrix::TetrisCommand>(
+                in.commands.data(), in.commands.size());
+            fin.soft_drop_held = in.soft_drop_held;
 
-            // Part 6 input-feel: soft drop is a HELD STATE read continuously;
-            // fold it into the command frame so the reducer sees it each tick.
-            if (!frozen && in.soft_drop_held)
-                cmd_span = cmd_span; // held flag passed below via frame struct
+            game::CoreStepResult cres;
+            game::step_core(g_world, fin, s_ctx, boot_commands, hud, cres);
 
-            // Gravity cadence wired from progression level through pure config math
-            world.drop_interval = rules.gravity_for_level(score_state.level);
-
-            // Boot queue first: the L3 initial-board stamp rides in as an
-            // ordinary command on the frame right after a stage load.
-            if (!boot_commands.empty()) {
-                std::vector<matrix::TetrisCommand> merged;
-                merged.reserve(boot_commands.size() + in.commands.size());
-                for (auto& c : boot_commands) merged.push_back(std::move(c));
-                boot_commands.clear();
-                for (const auto& c : cmd_span) merged.push_back(c);
-                cmd_span = std::span<const matrix::TetrisCommand>(merged.data(), merged.size());
-            }
-
-            // 2. PURE SIMULATION CORE
-            // Part 6: fold the held soft-drop flag into the frame so the
-            // reducer's gravity branch reads continuous state.
-            auto folded = std::vector<matrix::TetrisCommand>(
-                cmd_span.begin(), cmd_span.end());
-            if (in.soft_drop_held)
-                folded.push_back(matrix::SoftDropIntent{});
-            const auto folded_span = std::span<const matrix::TetrisCommand>(
-                folded.data(), folded.size());
-            matrix::MatrixStepResult step = matrix::reduce_matrix(world, folded_span, matrix_dt, arena);
-            world = std::move(step.next_state);
-
-            // 3. EVENT-FED PROGRESSION (+ blitz clock via injected rule hooks)
-            if (restart_requested) {
-                const int preserved_high = score_state.high_score;
-                session_high = std::max(session_high, preserved_high);
-                score_state = progression::ScoreState{};
-                score_state.target_score = rules.target_score;
-                score_state.mode_id      = rules.mode_id;
-                score_state.time_left    = rules.time_limit;
-                score_state.high_score   = preserved_high;
-                hud = ui::HudState{};   // no stale banners/floaters across resets
-                powerup_state = powerups::PowerupSnapshot{};
-                env_state = environment::EnvironmentSnapshot{};   // L5 fresh show
-            }
-            progression::ProgressionStep prog = progression::reduce_progression(
-                std::span<const matrix::MatrixEvent>(step.events.data(), step.events.size()),
-                score_state, rules, arena,
-                dt, compute_stack_height(world), script_hooks
-            );
-            score_state = std::move(prog.next);
-
-            // Environment mood wire (pod-5 embryo): amber intensity rises as the
-            // blitz clock drains; untimed modes stay neutral. The canyon stage
-            // pins the dusk environment on instead (mesas/torches/sandstone).
-            fx.mood_intensity = (rules.time_limit > 0.0f && rules.mode_id != config::MODE_GARBAGE_CANYON)
-                ? glm::clamp(1.0f - score_state.time_left / rules.time_limit, 0.0f, 1.0f)
-                : 0.0f;
-            fx.env_dusk = (rules.mode_id == config::MODE_GARBAGE_CANYON) ? 1.0f : 0.0f;
-            fx.env_neon = (rules.mode_id == config::MODE_CYBER_STORM) ? 1.0f : 0.0f;
-            fx.env_finale = (rules.mode_id == config::MODE_ENCORE_FINALE) ? 1.0f : 0.0f;
-
-            // 3c. L5 ENCOUNTER OVERSEER (event-fed; rulings cross as plain values)
-            if (fx.env_finale > 0.5f) {
-                // Crowd pulses from discrete events (value-in/value-out).
-                environment::CrowdPulse pulse{};
-                for (const auto& ev : step.events) {
-                    if (ev.type == matrix::MatrixEventType::LINES_CLEARED) {
-                        pulse = lua_eval && lua_eval->valid()
-                            ? lua_eval->call_on_event("Encounter", 1,
-                                  (int)ev.lines_cleared_count)
-                            : environment::CrowdPulse{ true, 0.25f + 0.15f * ev.lines_cleared_count };
-                    }
-                }
-                for (const auto& pev : prog.events) {
-                    if (pev.type == progression::ProgressionEventType::OBJECTIVE_COMPLETED) {
-                        pulse = lua_eval && lua_eval->valid()
-                            ? lua_eval->call_on_event("Encounter", 2, 1)
-                            : environment::CrowdPulse{ true, 1.0f };
-                    }
-                }
-
-                // Danger = stack near the ceiling (same projection as the HUD).
-                const int stack_h = compute_stack_height(world);
-                const bool danger = stack_h >= matrix::VISIBLE_H - 4;
-
-                const environment::OverseerRuling ruling =
-                    (lua_eval && lua_eval->valid())
-                        ? lua_eval->call_decide_phase("Encounter",
-                              env_state.phase, env_state.phase_time,
-                              score_state.lines_cleared, danger)
-                        : environment::OverseerRuling{};   // no script ⇒ static CALM
-
-                const environment::EnvironmentStepResult estep =
-                    environment::reduce_environment(env_state, ruling, pulse, dt,
-                                                    env_cfg.valid ? env_cfg.rain_every : 0.0f);
-                env_state = estep.next;
-
-                // Rain cadence: one volley per elapsed interval, holes decided
-                // deterministically from frame parity + volley index (raw facts
-                // only; the script owns WHEN/HOW MUCH, not the grid layout).
-                if (estep.rain_due) {
-                    matrix::AddGarbageRowsIntent rain;
-                    rain.rows = env_cfg.valid ? (uint8_t)std::min(env_cfg.rain_rows, 4) : 1;
-                    const int rows = (int)rain.rows;
-                    for (int r = 0; r < rows; ++r) {
-                        rain.hole_x[r] = (uint8_t)((frame * 7 + r * 5) % matrix::GRID_W);
-                    }
-                    boot_commands.push_back(rain);
-                    // Warning beat: brief pre-volley flash + HUD banner.
-                    hud.flash = std::max(hud.flash, 0.20f);
-                }
-
-                // Phase-transition set pieces: white-out wipe + banner text.
-                if (estep.phase_changed) {
-                    fx.screen_flash = std::max(fx.screen_flash, 0.85f);   // white-out wipe
-                    switch (env_state.phase) {
-                    case environment::PHASE_RAIN:
-                        hud.spawn_floater("GARBAGE RAIN", shs::Color{ 255, 160, 60, 255 }, 2.2f);
-                        if (!headless) g_audio.play(audio::SND_THUD);
-                        break;
-                    case environment::PHASE_BLACKOUT:
-                        hud.spawn_floater("BLACKOUT", shs::Color{ 140, 150, 220, 255 }, 2.2f);
-                        break;
-                    case environment::PHASE_CRESCENDO:
-                        hud.spawn_floater("FINALE", shs::Color{ 255, 210, 60, 255 }, 2.6f);
-                        if (!headless) g_audio.play(audio::SND_TETRIS_FOUR);
-                        break;
-                    default: break;
-                    }
-                }
-
-                // Plain-value wires into FX (planner consumes these directly).
-                fx.mood_phase   = env_state.mood;
-                fx.dim          = env_state.dim;
-                fx.ghost_hidden = env_state.dim > 0.5f;   // ghost hides past halfway
-                fx.crowd_pulse  = env_state.crowd_pulse;
-                fx.finale_phase = env_state.phase;   // plain-value phase mirror
-            }
-
-            // 3b. L4 POWERUP SCHEDULER (event-fed; rulings cross as plain values)
-            // Cadence counts spawns; when a special locks, its lock ruling from
-            // the stage script becomes raw ClearCells / FreezeGravity commands.
-            std::pmr::vector<powerups::ApplyRulingIntent> frame_rulings(arena);
-            if (lua_eval && lua_eval->valid()
-                && lua_eval->has_function("CyberRules", "on_special_lock")) {
-                for (const auto& ev : step.events) {
-                    if (ev.type != matrix::MatrixEventType::SPECIAL_LOCKED) continue;
-                    const auto ruling = lua_eval->call_on_special_lock(
-                        "CyberRules", ev.special_type, ev.lock_x, ev.lock_y, world.grid);
-                    if (!ruling.valid) continue;
-                    frame_rulings.push_back(powerups::ApplyRulingIntent{
-                        ruling, static_cast<int16_t>(ev.lock_x),
-                        static_cast<int16_t>(ev.lock_y) });
-                    if (ruling.fx_id == 1 || ruling.fx_id == 2) {   // bomb/laser flash
-                        hud.flash = std::max(hud.flash,
-                            ruling.fx_id == 1 ? 0.55f : 0.35f);
-                    }
-                }
-            }
-            powerups::PowerupStep pstep = powerups::reduce_powerups(
-                powerup_state,
-                std::span<const matrix::MatrixEvent>(step.events.data(), step.events.size()),
-                std::span<const powerups::ApplyRulingIntent>(
-                    frame_rulings.data(), frame_rulings.size()),
-                rules.special_every_n, rules.freeze_seconds, arena);
-            powerup_state = std::move(pstep.next);
-            for (auto& mut : pstep.mutations) boot_commands.push_back(std::move(mut));
-
-            // Fulfill a latched special request ONCE (edge-triggered by this
-            // frame's SPAWN_SPECIAL_REQUESTED event) via the script's pure
-            // decide_spawn(); the queued piece enters the bag next frame.
-            bool spawn_requested_now = false;
-            for (const auto& uev : pstep.events) {
-                if (uev.type == powerups::PowerupEventType::SPAWN_SPECIAL_REQUESTED) {
-                    spawn_requested_now = true;
-                }
-            }
-            if (spawn_requested_now && lua_eval && lua_eval->valid()
-                && lua_eval->has_function("CyberRules", "decide_spawn")) {
-                const auto dec = lua_eval->call_decide_spawn("CyberRules",
-                    pstep.next.pieces_since_special,
-                    static_cast<int>(pstep.next.armed_next));
-                if (dec.valid) {
-                    matrix::QueueSpecialIntent q;
-                    q.special_type = dec.special_type;
-                    boot_commands.push_back(q);
-                }
-            }
-
-            // Run-end latch: hand the finished run to the RESULTS screen.
-            if (score_state.victory || score_state.time_up || world.game_over) {
-                session.run_victory     = score_state.victory;
-                session.run_time_up     = score_state.time_up;
-                session.final_score     = score_state.score;
-                session.final_lines     = score_state.lines_cleared;
-                session.final_max_combo = score_state.max_combo;
-                session.final_seconds   = world.game_time;
-                if (score_state.victory) {
-                    session.unlocked_stages = std::min(session.stage_count,
-                        std::max(session.unlocked_stages, session.current_stage + 2));
-                }
-                session.cursor = 0;
-                session.screen = session::Screen::RESULTS;
-            }
-
-            // 4. FX STEP (particles + rings + camera spring/pulse, deterministic xorshift)
-            spatial_fx::step_fx(fx,
-                std::span<const matrix::MatrixEvent>(step.events.data(), step.events.size()),
-                std::span<const progression::ProgressionEvent>(prog.events.data(), prog.events.size()),
-                dt);
-
-            // HUD transient presentation state (banners/floaters + dust trigger)
-            ui::step_hud(hud,
-                std::span<const progression::ProgressionEvent>(prog.events.data(), prog.events.size()),
-                dt,
-                std::span<const matrix::MatrixEvent>(step.events.data(), step.events.size()));
-
-            // Audio edge mapping (windowed mode only)
-            if (!headless) {
-                for (const auto& ev : step.events) {
-                    switch (ev.type) {
-                    case matrix::MatrixEventType::PIECE_MOVED:       g_audio.play(audio::SND_MOVE);        break;
-                    case matrix::MatrixEventType::PIECE_ROTATED:     g_audio.play(audio::SND_ROTATE);      break;
-                    case matrix::MatrixEventType::PIECE_LOCK_IMPACT: g_audio.play(audio::SND_DROP_SLAM);   break;
-                    case matrix::MatrixEventType::HOLD_SWAPPED:      g_audio.play(audio::SND_HOLD);        break;
-                    case matrix::MatrixEventType::GAME_OVER:         g_audio.play(audio::SND_GAME_OVER);   break;
-                    case matrix::MatrixEventType::HARD_DROP_SLAM:    g_audio.play(audio::SND_DROP_SLAM);   break;
-                    case matrix::MatrixEventType::LINES_CLEARED:
-                        g_audio.play(ev.lines_cleared_count >= 4 ? audio::SND_TETRIS_FOUR
-                                                                 : audio::SND_LINE_CLEAR);
-                        // Heavy garbage collapse: layered deep thud under the chime.
-                        if (ev.garbage_cells >= 12) g_audio.play(audio::SND_THUD);
-                        break;
-                    default: break;
-                    }
-                }
-                for (const auto& pev : prog.events) {
-                    switch (pev.type) {
-                    case progression::ProgressionEventType::CLOCK_TICK:          g_audio.play(audio::SND_TICK);        break;
-                    case progression::ProgressionEventType::TIME_UP:             g_audio.play(audio::SND_GAME_OVER);   break;
-                    case progression::ProgressionEventType::OBJECTIVE_COMPLETED: g_audio.play(audio::SND_TETRIS_FOUR); break;
-                    default: break;
-                    }
-                }
-                for (const auto& uev : pstep.events) {
-                    switch (uev.type) {
-                    case powerups::PowerupEventType::POWERUP_TRIGGERED:
-                        g_audio.play(uev.powerup == 1 ? audio::SND_BLAST
-                                   : uev.powerup == 2 ? audio::SND_ZAP
-                                                      : audio::SND_FROST);
-                        break;
-                    default: break;
-                    }
-                }
-            }
-        }
+            // Aliases for remaining main-side blocks (rendering etc).
+            auto& world        = g_world.matrix_state;
+            auto& score_state  = g_world.score;
+            auto& env_state    = g_world.env;   // encore HUD projection reads this
+        }  // playing
 
         // 5. PURE SCENE PLANNER (per-level camera preset rides in via Rules)
         spatial_fx::PipelineExecutionPlan plan = spatial_fx::plan_tetris_scene(
@@ -887,8 +726,8 @@ int main(int argc, char* argv[]) {
             ui::draw_title_screen(canvas, session);
             break;
         case session::Screen::LEVEL_SELECT:
-            ui::draw_level_select(canvas, session, stage_names, stage_tiers,
-                                  config::campaign::STAGE_COUNT);
+            ui::draw_level_select(canvas, session, stage_names.data(),
+                                  stage_tiers.data(), (int)stages.size());
             break;
         case session::Screen::PAUSED:
             ui::draw_hud(canvas, world, score_state, hud, false, canyon_info, cyber_info);
@@ -898,8 +737,10 @@ int main(int argc, char* argv[]) {
             ui::draw_results_screen(canvas, session);
             break;
         default: // PLAYING
+            const bool more_stages =
+                (stage - stages.data()) < (int)stages.size() - 1;
             ui::draw_hud(canvas, world, score_state, hud,
-                         stage->index < config::campaign::STAGE_COUNT, canyon_info,
+                         more_stages, canyon_info,
                          cyber_info, encore_info);
             ui::draw_encore_hud(canvas, encore_info, hud);
             break;

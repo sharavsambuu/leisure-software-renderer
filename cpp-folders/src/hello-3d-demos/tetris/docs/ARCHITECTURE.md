@@ -11,6 +11,7 @@ pass (per-demo docs convention, mirroring snake).
 | :--- | :--- |
 | `ARCHITECTURE.md` | This file — pod theory, Lua philosophy, as-built tree/dataflow/ownership, Lua design rules, conventions |
 | `TODOS.md` | Living tracker: pod/edge status + level/mode campaign proposals (Part 4) |
+| `STRUCTURE_PLAN.md` | Final-version structure plan: target tree (app/engine/game/render), phases P0-P6, structural debts D1-D6 |
 | `STATUS.md` | Verification log: build results, headless gates, DoD, pitfalls, migration history |
 
 ---
@@ -298,59 +299,107 @@ With this setup:
 
 # Part III — As-Built Reference (tetris)
 
+> REWRITTEN 2026-08-25 after P0-P5 (STRUCTURE_PLAN.md). The pre-P1 tree is
+> preserved in git history; this section reflects the layered as-built.
+
+## 0. Layer map (the one-paragraph architecture)
+
+    app/main.cpp-ish (hello_3d_tetris.cpp)  platform shell: SDL, args, wiring
+        └── game/   THE TICK: step_core(world, input, ctx) - all pods advance
+              ├── domains/  PURE CENTER: pods with suffix laws (no framework,
+              │             no platform; enforced by purity greps)
+              ├── engine -> cpp-folders/libs/engine (shs::engine, shared)
+              └── edges/   PLATFORM: input/audio/rasterizer/ui/lua
+
+Knowledge rules: engine knows nothing about tetris; game knows nothing about
+SDL; only main touches both. Scripting: Lua lives ONLY in edges/lua; scripts
+are pure functions (sandbox purity gate). Levels/campaign are Lua DATA
+(assets/) since P3 - content needs no recompiles.
+
 ## 1. As-built tree
 
 ```text
+cpp-folders/libs/engine/            shs::engine INTERFACE lib (shared across demos)
+└── include/engine/loop.hpp         fixed-step accumulator (pure, no SDL)
+
 tetris/
-├── hello_3d_tetris.cpp        # main edge (~600 lines): SDL lifecycle, per-frame PMR arena, session wiring,
-│                              # event→sound map, headless hooks
-├── verify.sh                  # reproducible headless verification battery
-├── CMakeLists.txt             # single -I root; target-scoped include order
+├── hello_3d_tetris.cpp             ~760 lines: SDL lifecycle, arg parsing,
+│                                   LuaScriptHost + MainAudioSink adapters,
+│                                   render/present wiring. The TICK lives in game/.
+├── game/
+│   ├── include/game/world.hpp      GameWorld aggregate of ALL pod states
+│   ├── include/game/step.hpp       step_core(): restart latch -> freeze gate ->
+│   │                               boot queue -> matrix -> progression ->
+│   │                               env overseer (IScriptHost) -> powerups
+│   │                               (IScriptHost) -> fx/hud; IAudioSink sounds
+│   └── include/game/stage.hpp      StageDef + load_campaign() from Lua data
+├── assets/
+│   ├── campaign/campaign.lua       ordered manifest (id/name/unlock/rules/script)
+│   └── levels/                     per-level data (P3+; content without recompiles)
 ├── config/
-│   ├── rules.hpp              # tetris::config::Rules — every gameplay number
-│   ├── levels/marathon_01.hpp # tetris::config level definitions (marathon_01, blitz_120)
-│   └── campaign/main_campaign.hpp # ordered stage manifest {rules factory, script_path, display_name}
+│   ├── rules.hpp                   tetris::config::Rules - gameplay numbers +
+│   │                               MODE_* ids (referenced by campaign.lua)
+│   ├── levels/*.hpp                LEGACY reference (superseded by assets/)
+│   └── campaign/main_campaign.hpp  LEGACY reference (superseded by campaign.lua)
 ├── domains/
-│   ├── matrix/                # contract / action / event / reducer (pure grid rulebook)
-│   ├── progression/           # contract / event / reducer (event-fed scoring)
-│   ├── spatial_fx/            # contract / reducer / plan (vocabulary + fx + planner)
-│   └── session/                # contract / action / reducer (meta screen state machine)
+│   ├── matrix/                     contract / action / event / reducer / gen.lua
+│   ├── progression/                contract / event / reducer / blitz_mode.lua
+│   ├── powerups/                   contract / action / event / reducer / cyber_storm.lua
+│   ├── environment/                contract / reducer / plan / encounter_overseer.lua
+│   ├── spatial_fx/                 contract / reducer / plan (SoA particles)
+│   ├── session/                    contract / action / reducer (screen FSM)
+│   └── shared/event_ids.hpp        P4 FACT REGISTRY: FactId enum + name/producer
 ├── edges/
-│   ├── input/tetris.input.hpp     # SDL polling → intent tokens
-│   ├── audio/tetris.audio.hpp     # verbatim synth port (12 voices, SPSC ring)
-│   ├── rasterizer/tetris.rasterizer.hpp # screen-space helpers (tetris::raster::vop)
-│   ├── ui/tetris.hud.hpp          # Mongolian UTF-8 font engine + HUD/menu screen projections
-│   └── lua/lua.edge.hpp           # StatelessLuaEvaluator — wired via ScriptHooks bridges (see §4)
-└── docs/                      # ARCHITECTURE.md · TODOS.md · STATUS.md
+│   ├── input/tetris.input.hpp      stateful InputEdge: held-state FSM + DAS/ARR
+│   │                               (150/40ms), soft-drop held flag, focus-loss
+│   │                               release; OS key-repeat never trusted
+│   ├── audio/tetris.audio.hpp      synth port (15 voices, SPSC ring)
+│   ├── rasterizer/tetris.rasterizer.hpp  screen-space helpers over shs::Raster
+│   ├── ui/tetris.hud.hpp           Mongolian UTF-8 font engine + HUD projections
+│   └── lua/lua.edge.hpp            StatelessLuaEvaluator sandbox (+ raw() for P3)
+├── tests/
+│   ├── reducer_tests.cpp           20 pod-level behavioral pins
+│   ├── step_tests.cpp              19 whole-frame + input DAS/ARR harness tests
+│   └── script_purity.sh            per-file Lua purity ctest
+├── scripts/generate-event-flow.mjs registry-driven EVENT_FLOW generator
+├── verify.sh                       headless gate battery (+UNIT gate)
+└── docs/
+    ├── ARCHITECTURE.md · TODOS.md · STATUS.md · STRUCTURE_PLAN.md
+    └── pods/                       genre-agnostic playbook (see doc map above)
 ```
 
-## 2. Frame dataflow (as built)
+## 2. Frame dataflow (as built, post-P1b)
 
-```
-input::poll_input(arena) ─► InputState{quit, span<TetrisCommand>}
+```text
+input_edge.poll() ──► InputState{commands, soft_drop_held}     [edges/input]
         │
         ▼
-world.drop_interval = rules.gravity_for_level(score.level)   ← main-edge wiring
+game::step_core(GameWorld&, FrameInput, StepContext,
+                boot_commands, HudState&, CoreStepResult&)      [game/step.hpp]
         │
-matrix::reduce_matrix(world, commands, dt, arena)
-        │  → MatrixStepResult{MatrixSnapshot, pmr::vector<MatrixEvent>}   RAW FACTS
-        ├──────────────────────────────────────────┐
-        ▼                                          ▼
-progression::reduce_progression(events, …)   spatial_fx::step_fx(fx, events, dt)
-        │  → ScoreState + ProgressionEvents         │  (particles, shake, fx clock)
-        │                                           ▼
-        │                          spatial_fx::plan_tetris_scene(world, fx, W, H, arena)
-        │                                          │  → PipelineExecutionPlan
-        │                                          ▼
-        │                          tiled raster jobs ×N (raster::vop helpers)
-        ▼                                          ▼
-ui::draw_hud(canvas, world, score_state)    present / screenshot
-audio map (main): MatrixEvent → audio::SND_* via SPSC ring
+        ├─ restart latch + freeze gate (time_up blocks; R thaws)
+        ├─ boot queue merge (L3 stamp / L4 specials / L5 rain)
+        ├─ fold held soft-drop into intents
+        ├─ matrix::reduce_matrix ──► MatrixEvents          RAW FACTS
+        ├─ progression::reduce_progression(events, rules, hooks)
+        ├─ mood wires (amber/dusk/neon/finale by mode)
+        ├─ env overseer: IScriptHost.decide_phase/on_event or native CALM
+        │     └─ rain volleys ride boot_commands; floaters + thud via IAudioSink
+        ├─ powerups: IScriptHost.on_special_lock rulings -> ApplyRulingIntents;
+        │     decide_spawn latching; POWERUP_TRIGGERED audio
+        ├─ run-end latch -> session RESULTS + stage unlock
+        └─ spatial_fx::step_fx + ui::step_hud
+        │
+        ▼
+spatial_fx::plan_tetris_scene(world, fx, W, H, arena, camera)
+        ▼
+tiled raster jobs over shs::Canvas/ZBuffer → present / screenshot
 ```
 
-Contact rules honored: pods talk only through **event spans**, **plain values
-wired by main** (`drop_interval`, restart preservation), and the planner's
-**read-only** access to the matrix contract.
+Contact rules honored: pods talk only through **event spans**, **plain values**
+(IScriptHost/IAudioSink adapters), and the planner's **read-only** access to
+the matrix contract. main() never contains tick logic; game/ never includes
+SDL.
 
 ## 3. Ownership map (what moved where)
 

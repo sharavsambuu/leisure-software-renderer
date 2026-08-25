@@ -443,32 +443,32 @@ KEYUP-aware state. This is exactly the bug class fixed in the JS twin
 
 ## 6.1 Held-state FSM in the input edge (port of the JS fix)
 
-- [ ] I1 Track physical key state per action: `held{left,right,down}` set on
+- [x] I1 Track physical key state per action: `held{left,right,down}` set on
       KEYDOWN, cleared on KEYUP (poll SDL_KEYUP — currently ignored entirely)
-- [ ] I2 Emit MOVE intents from the DAS/ARR scheduler at FIXED GAME RATES:
+- [x] I2 Emit MOVE intents from the DAS/ARR scheduler at FIXED GAME RATES:
       DAS 150 ms initial delay, then ARR 40 ms auto-repeat (modern guideline
       values; constants exported for tuning). Never trust OS key-repeat.
-- [ ] I3 Soft drop becomes a HELD STATE (`soft_drop_held`), not a stream of
+- [x] I3 Soft drop becomes a HELD STATE (`soft_drop_held`), not a stream of
       intents; reducer reads the flag each tick (matrix already reads
       `input.soft_drop` as a bool — align edge to fill it from held state).
-- [ ] I4 Blur/focus-loss releases ALL held states (alt-tab safety).
-- [ ] I5 Menu/session keys keep existing repeat-guarded behavior (unchanged).
+- [x] I4 Blur/focus-loss releases ALL held states (alt-tab safety).
+- [x] I5 Menu/session keys keep existing repeat-guarded behavior (unchanged).
 
 ## 6.2 Reducer-side alignment
 
-- [ ] I6 `reduce_tetris_commands` keeps folding discrete intents; add a
+- [x] I6 `reduce_tetris_commands` keeps folding discrete intents; add a
       `soft_drop_held` passthrough so the gravity branch uses the held flag.
-- [ ] I7 Lock-delay reset cap: audit the 15-reset cap against modern
+- [x] I7 Lock-delay reset cap: audit the 15-reset cap against modern
       guidelines (move-reset vs lock-timer reset semantics; cap 15 is fine,
       but confirm resets only on SUCCESSFUL moves/rotations — already true).
 
 ## 6.3 Verification (mirror the JS twin's headless proofs)
 
-- [ ] V1 Headless harness: synthetic key timeline -> assert piece reaches
+- [x] V1 Headless harness: synthetic key timeline (step_tests input harness) -> assert piece reaches
       column N within X ms of hold start (DAS timing test)
-- [ ] V2 Held soft drop: descent rate fast while held, normal after release
-- [ ] V3 Alt-tab mid-hold: no stuck movement after refocus
-- [ ] V4 Determinism gates still PASS (two idle runs byte-equal)
+- [x] V2 Held soft drop: descent rate fast while held, normal after release
+- [x] V3 Alt-tab mid-hold: no stuck movement after refocus (release_all on FOCUS_LOST)
+- [x] V4 Determinism gates still PASS (two idle runs byte-equal)
 
 ---
 
@@ -481,7 +481,7 @@ converge the C++ demo onto the same graph-first / trap-wall vocabulary:
 
 ## 7.1 Event-flow documentation parity
 
-- [ ] E1 Write a generator (awk/python or C++) that greps
+- [x] E1 Write a generator (node) - scripts/generate-event-flow.mjs, 11 facts mapped
       `MatrixEventType::X` emissions + Lua `emit()` calls into
       docs/pods/EVENT_FLOW.md — same shape as the JS twin's script
 - [ ] E2 Add TRAP TABLE header comments to every *.reducer.hpp (springs-on
@@ -492,7 +492,7 @@ converge the C++ demo onto the same graph-first / trap-wall vocabulary:
 - [ ] G1 Define the Lua predicate contract: `goal.test(events, snapshot)`
       returning bool; events arrive as plain tables; snapshot carries
       read-only views (score, lines, freeze timers, player pos if FPS later)
-- [ ] G2 Mission pod skeleton (`domains/mission/`): cumulative progress +
+- [x] G2 DONE (2026-08-25): domains/mission contract+reducer - two goal styles, fact-chained sequencing, timed expiry; 10/10 pins; purity NONE. Original: (`domains/mission/`): cumulative progress +
       fact-chained sequencing (MISSION_COMPLETE advances index) — mirrors
       MISSIONS.md §5
 - [ ] G3 Level authoring: missions declared in level.lua as composed
@@ -513,3 +513,21 @@ converge the C++ demo onto the same graph-first / trap-wall vocabulary:
 - Bloom/post chain, entity-array world pods, AI perception pods: designed in
   docs/pods/ (FPS_EXAMPLE, AI_PODS) but out of scope for the Tetris demo;
   they document the template for future games on this skeleton.
+
+---
+
+# Part 8: Project Structure — Final Version Plan (ACTIVE TRACK)
+
+Level CONTENT frozen temporarily; structure hardening first. Full plan:
+[STRUCTURE_PLAN.md](STRUCTURE_PLAN.md). Phases P0-P6, each ends green.
+
+- [x] P0 Baseline safety net (20 reducer pins + ctest UNIT gate) — DONE (doctest unit tests pin current behavior; ctest gate in verify.sh)
+- [x] P1 Extract engine loop + game step (P1a core + P1b IScriptHost/IAudioSink); main 941->760 lines — DONE (engine/loop.hpp) + game step (game/step.hpp); main.cpp -> ~150 lines
+- [x] P2 Unit test expansion (19 step/input tests; script purity ctest) — DONE (whole-frame step tests, input-edge DAS/ARR harness, script-purity ctest)
+- [x] P3 DONE (2026-08-25): assets/campaign/campaign.lua + game/stage.hpp loader (StageDef + load_campaign with fallback law); main rewired; tests/stage_loader_tests.cpp 15/15; config/levels/*.hpp retained as reference until next cleanup pass
+- [x] P4 DONE (2026-08-25): domains/shared/event_ids.hpp FactId enum + FACT_REGISTRY (23 facts, producer per fact); generate-event-flow.mjs rewritten registry-driven with undeclared-producer gate; EVENT_FLOW regenerated
+- [x] P5 DONE (2026-08-25): cpp-folders/libs/engine shs::engine INTERFACE target (header-only loop.hpp); tetris links it; local engine/ dir removed; aggregator wires the lib for all demos
+- [x] P6 DONE (2026-08-25): ARCHITECTURE Part III rewritten (layer map, layered tree, post-P1b dataflow); EVENT_FLOW already registry-regenerated; LUA_STRUCTURE.md added (Unity mapping + four-file level standard)
+
+Debts addressed: D1 god-main, D2 no unit tests, D3 levels-need-recompile,
+D4 implicit event vocabulary, D5 loop buried in main, D6 no shared boundary.

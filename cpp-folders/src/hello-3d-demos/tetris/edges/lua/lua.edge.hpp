@@ -26,6 +26,7 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <glm/glm.hpp>
 
 namespace tetris::lua_edge {
 
@@ -132,6 +133,167 @@ namespace tetris::lua_edge {
             const bool ok = lua_istable(L_, -1) != 0;
             lua_pop(L_, 1);
             return ok;
+        }
+
+        // ---- P3 generic data access (stage/level loaders) ------------------
+        // campaign[i] / Level tables: plain data reads, no behavior invoked.
+
+        int table_length(const char* table) {
+            if (!L_) return 0;
+            lua_getglobal(L_, table);
+            int n = 0;
+            if (lua_istable(L_, -1)) n = static_cast<int>(lua_rawlen(L_, -1));
+            lua_pop(L_, 1);
+            return n;
+        }
+
+        // table[i][key] as string ("" when absent)
+        std::string table_string(const char* table, int i, const char* key) {
+            std::string out;
+            if (!L_) return out;
+            lua_getglobal(L_, table);                       // [table]
+            if (lua_istable(L_, -1)) {
+                lua_rawgeti(L_, -1, i);                     // [table, entry]
+                if (lua_istable(L_, -1)) {
+                    lua_getfield(L_, -1, key);              // [.., value]
+                    if (lua_isstring(L_, -1)) out = lua_tostring(L_, -1);
+                    lua_pop(L_, 1);
+                }
+                lua_pop(L_, 1);
+            }
+            lua_pop(L_, 1);
+            return out;
+        }
+
+        // table[i][key] as integer (0 when absent)
+        int table_int(const char* table, int i, const char* key) {
+            if (!L_) return 0;
+            int out = 0;
+            lua_getglobal(L_, table);
+            if (lua_istable(L_, -1)) {
+                lua_rawgeti(L_, -1, i);
+                if (lua_istable(L_, -1)) {
+                    lua_getfield(L_, -1, key);
+                    if (lua_isnumber(L_, -1)) out = static_cast<int>(lua_tointeger(L_, -1));
+                    lua_pop(L_, 1);
+                }
+                lua_pop(L_, 1);
+            }
+            lua_pop(L_, 1);
+            return out;
+        }
+
+        // table[key] as integer at depth 1 (Level.mode_id etc.)
+        int global_table_int(const char* table, const char* key) {
+            if (!L_) return 0;
+            int out = 0;
+            lua_getglobal(L_, table);
+            if (lua_istable(L_, -1)) {
+                lua_getfield(L_, -1, key);
+                if (lua_isnumber(L_, -1)) out = static_cast<int>(lua_tointeger(L_, -1));
+                lua_pop(L_, 1);
+            }
+            lua_pop(L_, 1);
+            return out;
+        }
+
+        float global_table_float(const char* table, const char* key) {
+            if (!L_) return 0.0f;
+            float out = 0.0f;
+            lua_getglobal(L_, table);
+            if (lua_istable(L_, -1)) {
+                lua_getfield(L_, -1, key);
+                if (lua_isnumber(L_, -1)) out = static_cast<float>(lua_tonumber(L_, -1));
+                lua_pop(L_, 1);
+            }
+            lua_pop(L_, 1);
+            return out;
+        }
+
+        // Does table[key] exist at all (any type)?
+        bool has_field(const char* table, int i, const char* key) {
+            if (!L_) return false;
+            bool ok = false;
+            lua_getglobal(L_, table);
+            if (lua_istable(L_, -1)) {
+                if (i > 0) lua_rawgeti(L_, -1, i);          // indexed entry
+                else       lua_getfield(L_, -1, key);       // named field path
+                if (lua_istable(L_, -1) || i == 0) {
+                    if (i > 0) { lua_getfield(L_, -1, key); }
+                    ok = !lua_isnil(L_, -1);
+                    lua_pop(L_, 1);
+                }
+                lua_pop(L_, 1);
+            }
+            lua_pop(L_, 1);
+            return ok;
+        }
+
+        float table_float_field(const char* table, const char* sub,
+                                const char* key) {
+            if (!L_) return 0.0f;
+            float out = 0.0f;
+            lua_getglobal(L_, table);                       // [table]
+            if (lua_istable(L_, -1)) {
+                lua_getfield(L_, -1, sub);                  // [table, sub]
+                if (lua_istable(L_, -1)) {
+                    lua_getfield(L_, -1, key);              // [sub, value]
+                    if (lua_isnumber(L_, -1)) out = static_cast<float>(lua_tonumber(L_, -1));
+                    lua_pop(L_, 1);
+                }
+                lua_pop(L_, 1);
+            }
+            lua_pop(L_, 1);
+            return out;
+        }
+
+        float table_int_field(const char* table, int i, const char* key) {
+            return static_cast<float>(table_int(table, i, key));
+        }
+
+        bool has_number(const char* table, const char* sub, const char* key) {
+            if (!L_) return false;
+            bool ok = false;
+            lua_getglobal(L_, table);
+            if (lua_istable(L_, -1)) {
+                lua_getfield(L_, -1, sub);
+                if (lua_istable(L_, -1)) {
+                    lua_getfield(L_, -1, key);
+                    ok = lua_isnumber(L_, -1) != 0;
+                    lua_pop(L_, 1);
+                }
+                lua_pop(L_, 1);
+            }
+            lua_pop(L_, 1);
+            return ok;
+        }
+
+        glm::vec3 table_vec3_field(const char* table, const char* sub,
+                                   const char* key) {
+            if (!L_) return glm::vec3{};
+            glm::vec3 out{};
+            lua_getglobal(L_, table);
+            if (lua_istable(L_, -1)) {
+                lua_getfield(L_, -1, sub);
+                if (lua_istable(L_, -1)) {
+                    lua_getfield(L_, -1, key);              // [sub, vec]
+                    if (lua_istable(L_, -1)) {
+                        lua_rawgeti(L_, -1, 1);
+                        out.x = lua_isnumber(L_, -1) ? (float)lua_tonumber(L_, -1) : 0.f;
+                        lua_pop(L_, 1);
+                        lua_rawgeti(L_, -1, 2);
+                        out.y = lua_isnumber(L_, -1) ? (float)lua_tonumber(L_, -1) : 0.f;
+                        lua_pop(L_, 1);
+                        lua_rawgeti(L_, -1, 3);
+                        out.z = lua_isnumber(L_, -1) ? (float)lua_tonumber(L_, -1) : 0.f;
+                        lua_pop(L_, 1);
+                    }
+                    lua_pop(L_, 1);
+                }
+                lua_pop(L_, 1);
+            }
+            lua_pop(L_, 1);
+            return out;
         }
 
         // <table>.generate(difficulty, seed) -> plain-value generation result.
@@ -401,6 +563,10 @@ namespace tetris::lua_edge {
 
         bool fail() { error_ = true; return false; }
 
+    public:
+        // P3: raw state access for the data-driven campaign loader
+        // (game/stage.hpp). Read-only walks only; callers must balance stack.
+        lua_State* raw() { return L_; }
         lua_State* L_ = nullptr;
         bool       error_ = false;
     };
