@@ -25,24 +25,45 @@ find_package(assimp CONFIG REQUIRED)
 # --- Lua (optional): rule-scripting edge (L2 Blitz 120) ----------------------
 # Found ⇒ TETRIS_LUA_ENABLED is defined and the evaluator edge compiles in.
 # Missing ⇒ pods fall back to native C++ rules; the build stays green either way.
+find_package(unofficial-lua CONFIG QUIET)
+if (unofficial-lua_FOUND AND NOT LUA_FOUND)
+    set(LUA_FOUND TRUE)
+    set(LUA_LIBRARIES unofficial::lua::lua)
+    message(STATUS ">>> tetris: Lua via vcpkg unofficial-lua target")
+endif()
 find_package(Lua QUIET)
+
+# vcpkg fallback root/triplet (cross-platform; used by include dirs below).
+if (WIN32)
+    if (CMAKE_SYSTEM_PROCESSOR MATCHES "^(ARM64|arm64)$")
+        set(_TETRIS_VCPKG_TRIPLET arm64-windows)
+    else()
+        set(_TETRIS_VCPKG_TRIPLET x64-windows)
+    endif()
+elseif(APPLE)
+    if (CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)$")
+        set(_TETRIS_VCPKG_TRIPLET arm64-osx)
+    else()
+        set(_TETRIS_VCPKG_TRIPLET x64-osx)
+    endif()
+else()
+    set(_TETRIS_VCPKG_TRIPLET x64-linux)
+endif()
+set(_TETRIS_VCPKG_ROOT /opt/vcpkg)
+set(_TETRIS_VCPKG_INSTALLED_DIR "${_TETRIS_VCPKG_ROOT}/installed/${_TETRIS_VCPKG_TRIPLET}")
+
 if (NOT LUA_FOUND)
-    # Explicit fallback: vcpkg's lua lives in the standard installed tree.
-    if (EXISTS /opt/vcpkg/installed/x64-linux/include/lua.hpp)
+    # Explicit fallback: vcpkg installed tree, per-platform triplet.
+    if (EXISTS "${_TETRIS_VCPKG_INSTALLED_DIR}/include/lua.hpp")
         set(LUA_FOUND TRUE)
-        set(LUA_INCLUDE_DIR /opt/vcpkg/installed/x64-linux/include)
-        set(LUA_LIBRARIES /opt/vcpkg/installed/x64-linux/lib/liblua.a)
-        if (NOT EXISTS ${LUA_LIBRARIES})
-            file(GLOB LUA_LIBRARIES /opt/vcpkg/installed/x64-linux/lib/liblua*.a)
-            list(GET LUA_LIBRARIES 0 LUA_LIBRARIES)
-        endif()
+        set(LUA_INCLUDE_DIR "${_TETRIS_VCPKG_INSTALLED_DIR}/include")
+        file(GLOB LUA_LIBRARIES
+             "${_TETRIS_VCPKG_INSTALLED_DIR}/lib/lua*.lib"
+             "${_TETRIS_VCPKG_INSTALLED_DIR}/lib/liblua*.a"
+             "${_TETRIS_VCPKG_INSTALLED_DIR}/debug/lib/lua*.lib")
+        list(GET LUA_LIBRARIES 0 LUA_LIBRARIES)
         message(STATUS ">>> tetris: Lua via vcpkg fallback (${LUA_LIBRARIES})")
     endif()
-endif()
-if (LUA_FOUND)
-    message(STATUS ">>> Hello3DTetris: Lua ${LUA_VERSION_STRING} found — rule scripting ENABLED")
-else()
-    message(STATUS ">>> Hello3DTetris: Lua NOT found — native C++ rules only")
 endif()
 
 include_directories(${ASSIMP_INCLUDE_DIR})
@@ -208,13 +229,17 @@ set_property(TARGET tetris_step_tests PROPERTY INCLUDE_DIRECTORIES
     ${SDL2_INCLUDE_DIRS}
     ${CMAKE_BINARY_DIR}
     ${stb_SOURCE_DIR}
-    /opt/vcpkg/installed/x64-linux/include
+    ${_TETRIS_VCPKG_INSTALLED_DIR}/include
 )
 target_compile_definitions(tetris_step_tests PRIVATE
     TETRIS_SOURCE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}")
+if (WIN32)
+    # SDL_main.h #defines main -> SDL_main; these tests use plain int main().
+    target_compile_definitions(tetris_step_tests PRIVATE SDL_MAIN_HANDLED)
+endif()
 target_compile_features(tetris_step_tests PRIVATE cxx_std_20)
 target_link_libraries(tetris_step_tests PRIVATE SDL2::SDL2 glm::glm shs::engine)
-target_include_directories(tetris_step_tests PRIVATE /opt/vcpkg/installed/x64-linux/include)
+target_include_directories(tetris_step_tests PRIVATE ${_TETRIS_VCPKG_INSTALLED_DIR}/include)
 if (MSVC)
     target_compile_options(tetris_step_tests PRIVATE /W4)
 else()
@@ -267,14 +292,13 @@ set_property(TARGET tetris_goal_bridge_tests PROPERTY INCLUDE_DIRECTORIES
     ${SDL2_INCLUDE_DIRS}
     ${CMAKE_BINARY_DIR}
     ${stb_SOURCE_DIR}
-    /opt/vcpkg/installed/x64-linux/include
+    ${_TETRIS_VCPKG_INSTALLED_DIR}/include
 )
 target_compile_features(tetris_goal_bridge_tests PRIVATE cxx_std_20)
 target_compile_definitions(tetris_goal_bridge_tests PRIVATE
     TETRIS_SOURCE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}")
 if (LUA_FOUND)
-    target_link_libraries(tetris_goal_bridge_tests PRIVATE
-        /opt/vcpkg/installed/x64-linux/lib/liblua.a)
+    target_link_libraries(tetris_goal_bridge_tests PRIVATE ${LUA_LIBRARIES})
     target_compile_definitions(tetris_goal_bridge_tests PRIVATE TETRIS_LUA_ENABLED=1)
 endif()
 target_link_libraries(tetris_goal_bridge_tests PRIVATE glm::glm)
@@ -297,7 +321,7 @@ set_property(TARGET tetris_stage_tests PROPERTY INCLUDE_DIRECTORIES
     ${SDL2_INCLUDE_DIRS}
     ${CMAKE_BINARY_DIR}
     ${stb_SOURCE_DIR}
-    /opt/vcpkg/installed/x64-linux/include
+    ${_TETRIS_VCPKG_INSTALLED_DIR}/include
 )
 target_compile_features(tetris_stage_tests PRIVATE cxx_std_20)
 target_compile_definitions(tetris_stage_tests PRIVATE
