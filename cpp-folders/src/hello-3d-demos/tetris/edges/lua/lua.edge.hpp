@@ -60,6 +60,65 @@ namespace tetris::lua_edge {
         int  seed_tag     = 0;
     };
 
+    // ---------------------------------------------------------------------------
+    // G4 sandbox purity (TODOS.md Part 7.2): goal/rule scripts must iterate
+    // tables in a DETERMINISTIC order. Lua's default pairs() walks the hash in
+    // an implementation-defined order that can differ between identical states.
+    // The sandbox replaces pairs() with a key-sorted implementation: same table
+    // contents => same traversal order, always.
+    // ---------------------------------------------------------------------------
+
+    // Total-order key comparator for table.sort (cross-type safe).
+    static int pairs_key_less(lua_State* L) {
+        const int ta = lua_type(L, 1), tb = lua_type(L, 2);
+        if (ta != tb) {
+            return std::strcmp(lua_typename(L, ta), lua_typename(L, tb)) < 0;
+        }
+        switch (ta) {
+            case LUA_TSTRING:  return std::strcmp(lua_tostring(L, 1),
+                                                  lua_tostring(L, 2)) < 0;
+            case LUA_TNUMBER:  return lua_tonumber(L, 1) < lua_tonumber(L, 2);
+            case LUA_TBOOLEAN: return lua_toboolean(L, 1) < lua_toboolean(L, 2);
+            default:           return lua_topointer(L, 1) < lua_topointer(L, 2);
+        }
+    }
+
+    // Iterator body: upvalue 1 = sorted keys table, upvalue 2 = cursor.
+    // Returns next key (+ value) or nothing when exhausted.
+    static int pairs_sorted_iter(lua_State* L) {
+        lua_Integer i = lua_tointeger(L, lua_upvalueindex(2)) + 1;
+        lua_pushinteger(L, i);
+        lua_replace(L, lua_upvalueindex(2));              // advance cursor
+        lua_rawgeti(L, lua_upvalueindex(1), (int)i);      // [k]
+        if (lua_isnil(L, -1)) return 0;                   // exhausted
+        lua_pushvalue(L, -1);                             // [k, k]
+        lua_gettable(L, 1);                               // [k, v]  (t = arg 1)
+        return 2;
+    }
+
+    // pairs(t) replacement: collect keys, sort them, hand back the iterator.
+    static int pairs_sorted(lua_State* L) {
+        luaL_checktype(L, 1, LUA_TTABLE);
+        lua_newtable(L);                                  // [t, keys]
+        const int keys = 2;
+        int n = 0;
+        lua_pushnil(L);
+        while (lua_next(L, 1) != 0) {                     // [t, keys, k, v]
+            lua_pop(L, 1);                                // drop v -> [t, keys, k]
+            lua_pushvalue(L, -1);                         // copy k
+            lua_rawseti(L, keys, ++n);                    // keys[n] = k
+        }                                                 // [t, keys]
+        lua_getglobal(L, "sort");                         // [t, keys, sort?]
+        if (!lua_isfunction(L, -1)) {
+            luaL_error(L, "sandbox pairs: table.sort unavailable");
+        }
+        lua_pushvalue(L, keys);
+        lua_pushcfunction(L, pairs_key_less);
+        lua_call(L, 2, 0);                                // keys sorted in place
+        lua_pushcclosure(L, pairs_sorted_iter, 2);        // upvalues: keys, 0
+        return 1;
+    }
+
     // Owns one sandboxed lua_State; scripts load once at boot, then every call
     // is a pure value-in/value-out evaluation ("stateless" = no C++ pointers
     // ever enter the state; results depend only on the inputs).
@@ -551,6 +610,19 @@ namespace tetris::lua_edge {
             }
             lua_pop(L_, 1);
             lua_pushnil(L_); lua_setglobal(L_, "print");    // keep stdout clean
+            // G4: never-opened libraries could still be reached via base-lib
+            // aliases; nil them out defensively. require/loadstring/dofile/
+            // load would pull in outside code; collectgarbage perturbs timing.
+            for (const char* name : { "require", "loadstring", "dofile",
+                                      "load", "collectgarbage",
+                                      "os", "io", "package", "debug" }) {
+                lua_pushnil(L_);
+                lua_setglobal(L_, name);
+            }
+            // G4: deterministic iteration — replace global pairs() with the
+            // key-sorted version above. ipairs()/table.* are already ordered.
+            lua_pushcfunction(L_, pairs_sorted);
+            lua_setglobal(L_, "pairs");
         }
 
         void report_error() {

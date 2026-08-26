@@ -126,6 +126,7 @@ using tetris::matrix::BLOCK_GAP;
     struct ProcessedTriangle {
         glm::vec4  c0, c1, c2;
         shs::Color lit_color;
+        shs::Color src_color{ 0, 0, 0, 0 };   // DEBUG: pre-lighting color
         float      depth_bias;
         uint8_t    alpha = 255;   // 255 = opaque (default); <255 blends
                                   // against dst AFTER the depth test without

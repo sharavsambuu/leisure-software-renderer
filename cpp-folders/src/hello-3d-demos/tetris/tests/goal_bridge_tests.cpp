@@ -78,10 +78,10 @@ int main() {
     GoalHost host(&eval);
 
     const std::string root = TETRIS_SOURCE_ROOT;
-    // goals.lua dofile()s the DSL via this global; set it in the sandbox.
-    lua_State* L0 = eval.raw();
-    lua_pushstring(L0, root.c_str());
-    lua_setglobal(L0, "TETRIS_SOURCE_ROOT");
+    // G4 purity: the sandbox has no dofile/require, so the host preloads the
+    // DSL chunk first; goals.lua reaches it via the GoalsDSL global.
+    check(host.load(root + "/assets/levels/goals_dsl.lua"),
+          "bridge: goals_dsl.lua loads in sandbox");
     check(host.load(root + "/assets/levels/cyber_storm/goals.lua"),
           "bridge: goals.lua loads in sandbox");
 

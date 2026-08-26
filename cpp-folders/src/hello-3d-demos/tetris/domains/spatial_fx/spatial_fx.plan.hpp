@@ -291,7 +291,12 @@ using tetris::matrix::get_piece_blocks;
             }
         }
 
-        // Transform and Shade Triangles
+        // Transform and Shade Triangles.
+        // NOTE: tris order is fully deterministic (single-threaded batch
+        // build above), so the plan triangle order is stable run-to-run. If
+        // this loop is ever parallelized, sort by a stable key afterwards or
+        // same-seed screenshot determinism breaks (depth ties resolve by
+        // draw order).
         for (const auto& tri : tris) {
             glm::vec4 c0 = plan.vp_matrix * glm::vec4(tri.p0, 1.0f);
             glm::vec4 c1 = plan.vp_matrix * glm::vec4(tri.p1, 1.0f);
@@ -326,6 +331,7 @@ using tetris::matrix::get_piece_blocks;
             plan.triangles.push_back({
                 c0, c1, c2,
                 lit_c,
+                tri.color,          // DEBUG src_color
                 tri.depth_bias,
                 tri.color.a
                 });

@@ -381,6 +381,12 @@ int main(int argc, char* argv[]) {
                 const lua_edge::GenerationResult gen =
                     lua_eval->call_generate("CanyonGen", 3, seed_value);
                 if (gen.valid) {
+                    if (std::getenv("TETRIS_DEBUG")) {
+                        for (int ry = 0; ry < gen.row_count; ++ry)
+                            std::fprintf(stderr, "[gen] %02d %s\n", ry,
+                                         gen.rows[ry]);
+                        std::fflush(stderr);
+                    }
                     matrix::StampInitialBoardIntent stamp;
                     stamp.cells = {};
                     const int rows = std::min(gen.row_count, matrix::GRID_H);
@@ -520,13 +526,19 @@ int main(int argc, char* argv[]) {
     shs::Canvas  canvas(CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{ 14, 16, 22, 255 });
     shs::ZBuffer z_buffer(CANVAS_WIDTH, CANVAS_HEIGHT, -1.0f, 1.0f);
 
-    shs::Job::ThreadedPriorityJobSystem job_system(static_cast<int>(thread_count()));
+    // Determinism probe: allow forcing single-threaded rasterization.
+    const char* jobs_env = std::getenv("TETRIS_JOBS");
+    const int job_threads = (jobs_env && std::atoi(jobs_env) > 0)
+        ? std::atoi(jobs_env) : static_cast<int>(thread_count());
+    shs::Job::ThreadedPriorityJobSystem job_system(job_threads);
     shs::Job::WaitGroup                 wg_render;
 
     FrameMemoryResource frame_memory;
 
     // --- Persistent pod states (P1a: GameWorld declared above) ----------------------
-    world.active.type = matrix::pull_next_piece(world.rng_state, world.next_queue);
+    // First piece spawns lazily in reduce_matrix (frame 1) so the RNG stream
+    // starts from the fixed seed regardless of boot ordering.
+    world.active.type = matrix::PieceType::None;
     world.active.pos  = { 4, 19 };
     g_world.rules = rules;
 
@@ -563,9 +575,11 @@ int main(int argc, char* argv[]) {
         rules = st->rules;
         g_world.rules = st->rules;
         apply_stage_script(*st, rules);
+        const uint32_t saved_rng = world.rng_state;   // keep the boot RNG stream
         world = matrix::MatrixSnapshot{};
-        world.active.type = matrix::pull_next_piece(world.rng_state, world.next_queue);
-        world.active.pos  = { 4, 19 };
+        world.rng_state     = saved_rng;
+        world.active.type   = matrix::PieceType::None; // reducer spawns frame 1
+        world.active.pos    = { 4, 19 };
         session_high = std::max(session_high, score_state.high_score);
         score_state = progression::ScoreState{};
         score_state.target_score = rules.target_score;
@@ -792,6 +806,82 @@ int main(int argc, char* argv[]) {
         }
 
         ++frame;
+
+        // TEMP DEBUG: state checksum probe (TETRIS_DEBUG=1)
+        if (headless && std::getenv("TETRIS_DEBUG")) {
+            unsigned long long sum = 0;
+            for (int y = 0; y < matrix::GRID_H; ++y)
+                for (int x = 0; x < matrix::GRID_W; ++x)
+                    sum = sum * 31 + g_world.matrix_state.grid[y][x];
+            // Per-triangle dump on mismatch: run twice, diff the dumps.
+            static unsigned long long last_trisum = 0;
+            unsigned long long fsum = 0;
+            const auto& tris = plan.triangles;
+            for (size_t ti = 0; ti < tris.size(); ++ti) {
+                const auto& t = tris[ti];
+                auto h1 = [&](const glm::vec4& v){
+                    unsigned long long x = *(unsigned*)&v.x;
+                    unsigned long long y = *(unsigned*)&v.y;
+                    unsigned long long z = *(unsigned*)&v.z;
+                    return (x*73856093ULL) ^ (y*19349663ULL) ^ (z*83492791ULL);
+                };
+                fsum = fsum*31 + h1(t.c0)+h1(t.c1)+h1(t.c2)
+                     + t.lit_color.r + t.lit_color.g + t.lit_color.b;
+            }
+            if (last_trisum != 0 && fsum != last_trisum) {
+                std::fprintf(stderr, "[dbg] PLAN MISMATCH at frame %d\n", frame);
+                for (size_t ti = 0; ti < tris.size(); ++ti) {
+                    const auto& t = tris[ti];
+                    std::fprintf(stderr,
+                        "[tri] %zu v=(%.6f,%.6f,%.6f|%.6f,%.6f,%.6f|%.6f,%.6f,%.6f)"
+                        " col=(%u,%u,%u,%u) src=(%u,%u,%u,%u) bias=%.5f a=%u\n",
+                        ti,
+                        t.c0.x,t.c0.y,t.c0.z, t.c1.x,t.c1.y,t.c1.z,
+                        t.c2.x,t.c2.y,t.c2.z,
+                        t.lit_color.r,t.lit_color.g,t.lit_color.b,t.lit_color.a,
+                        t.src_color.r,t.src_color.g,t.src_color.b,t.src_color.a,
+                        t.depth_bias, (unsigned)t.alpha);
+                }
+            }
+            last_trisum = fsum;
+            if (frame <= 4) {
+                std::fprintf(stderr, "[spawntrace] active=%d pos=%d,%d\n",
+                    (int)g_world.matrix_state.active.type,
+                    g_world.matrix_state.active.pos.x,
+                    g_world.matrix_state.active.pos.y);
+                std::fprintf(stderr, "[nq] full=%d,%d,%d,%d,%d rng=%u "
+                             "fx.time=%.6f dusk=%.4f neon=%.4f finale=%.4f "
+                             "mood=%.4f pulse=%.4f shake=%.4f\n",
+                    (int)g_world.matrix_state.next_queue[0],
+                    (int)g_world.matrix_state.next_queue[1],
+                    (int)g_world.matrix_state.next_queue[2],
+                    (int)g_world.matrix_state.next_queue[3],
+                    (int)g_world.matrix_state.next_queue[4],
+                    g_world.matrix_state.rng_state,
+                    g_world.fx.time, g_world.fx.env_dusk, g_world.fx.env_neon,
+                    g_world.fx.env_finale, g_world.fx.mood_intensity,
+                    g_world.fx.camera_pulse, g_world.fx.camera_shake);
+                for (int y = matrix::GRID_H - 1; y >= 0; --y) {
+                    std::fprintf(stderr, "[grid] %02d ", y);
+                    for (int x = 0; x < matrix::GRID_W; ++x)
+                        std::fprintf(stderr, "%X",
+                                     g_world.matrix_state.grid[y][x] & 0xF);
+                    std::fprintf(stderr, "\n");
+                }
+                std::fflush(stderr);
+            }
+            std::printf("[dbg] frame=%d gridsum=%llu active=%d pos=%d,%d "
+                        "nq=%d,%d,%d rng=%u tris=%zu trisum=%llu\n",
+                        frame, sum, (int)g_world.matrix_state.active.type,
+                        g_world.matrix_state.active.pos.x,
+                        g_world.matrix_state.active.pos.y,
+                        (int)g_world.matrix_state.next_queue[0],
+                        (int)g_world.matrix_state.next_queue[1],
+                        (int)g_world.matrix_state.next_queue[2],
+                        g_world.matrix_state.rng_state,
+                        tris.size(), fsum);
+            std::fflush(stdout);
+        }
 
         // Headless exit: save BMP and stop
         if (headless) {

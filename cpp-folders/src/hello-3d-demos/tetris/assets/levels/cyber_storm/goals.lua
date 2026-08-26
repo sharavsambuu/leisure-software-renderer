@@ -7,9 +7,12 @@
 -- Contract: Goals.test(goal_id, events, snapshot) -> truthy to complete.
 -- goal_id lets one script own several conditions cleanly.
 
+-- Purity note (G4): the sandbox nils dofile/require. The HOST preloads
+-- assets/levels/goals_dsl.lua into this same evaluator before loading this
+-- file; the DSL is reached via its global table, not by file access.
 Goals = {}
 
-local dsl = dofile(TETRIS_SOURCE_ROOT .. "/assets/levels/goals_dsl.lua")
+local dsl       = GoalsDSL
 local when      = dsl.when
 local during    = dsl.during
 local count_where = dsl.count_where

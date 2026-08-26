@@ -264,7 +264,9 @@ namespace tetris::matrix {
 
         s.game_time += dt;
 
-        // Initialize first piece if empty
+        // Initialize first piece if empty.
+        // NOTE: this pull must happen exactly once per run; double-pulls from
+        // multiple init paths desync the 7-bag stream across runs.
         if (s.active.type == PieceType::None) {
             s.active.type = pull_next_piece(s.rng_state, s.next_queue);
             if (s.pending_special != 0) {
