@@ -90,15 +90,12 @@ find_package(Lua 5.5)
 
 message(STATUS "Adding sub folders...")
 
-add_subdirectory("src/hello-shs-renderer")
-add_subdirectory("src/hello-pixel-primitives")
-add_subdirectory("src/hello-shaders")
-add_subdirectory("src/hello-parallelization")
-add_subdirectory("src/hello-3d-primitives")
-add_subdirectory("src/hello-3d-demos")
-add_subdirectory("src/hello-render-target")
-add_subdirectory("src/hello-other-exps")
-
-add_subdirectory("src/shs-renderer-lib")
-add_subdirectory("src/exp-plumbing")
-add_subdirectory("src/exp-rendering-techniques")
+# New layout (2026-09): backend-split + exp groups.
+# Order matters: libs first (software defines SDL2_image::Main + shs::renderer
+# compat alias), then exps-other (HelloSHSRenderer_SOURCE_DIR), then SW exps,
+# then GPU lib (sets SHS_RENDERER_HAS_VULKAN=ON), then GPU exps.
+add_subdirectory("src/shs-software-renderer-lib")
+add_subdirectory("src/shs-gpu-renderer-lib")
+add_subdirectory("src/exps-other")
+add_subdirectory("src/exps-software-renderer")
+add_subdirectory("src/exps-gpu-renderer")

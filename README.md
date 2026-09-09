@@ -152,11 +152,11 @@
                                                     # (HelloShadowMapping, HelloWater, HelloIblSkybox*, ...)
                                                     # NOTE: installs as SDL2_image::SDL2_image-static on x64-linux
     sudo vcpkg install glm                          # math library used everywhere
-    sudo vcpkg install assimp                       # model loading (hello-3d-primitives / render-target)
+    sudo vcpkg install assimp                       # model loading (exps-software-renderer/hello-3d-primitives + hello-render-target)
     sudo vcpkg install vulkan-memory-allocator      # REQUIRED at configure time even for CPU-only work
 
     # Optional / feature-gated:
-    sudo vcpkg install joltphysics                  # physics experiments (exp-plumbing)
+    sudo vcpkg install joltphysics                  # physics experiments (exps-gpu-renderer/exp-plumbing)
     sudo vcpkg install lua                          # scripting experiments (configure tolerates absence)
 
     see docs/dev/cpp_compilation_workflow.md for the validated build/test workflow,
@@ -166,11 +166,16 @@
     
     Compilation steps on ubuntu 24.04
 
+    Layout (2026-09): cpp-folders/src holds shs-software-renderer-lib/,
+    shs-gpu-renderer-lib/, exps-software-renderer/, exps-gpu-renderer/,
+    exps-other/, assets/.
+
     cd cpp-folders && mkdir build && cd build
     export VCPKG_ROOT="/opt/vcpkg"
     cmake .. -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake
     make -j20
-    cd src/hello-pixel-primitives && ./HelloPixel
+    cd src/exps-software-renderer/hello-pixel-primitives && ./HelloPixel
+    # Vulkan example: cd src/exps-gpu-renderer/exp-plumbing && ./HelloVulkanTriangle
     
 
 # On MacOS, it is similar
@@ -188,7 +193,7 @@
     glslangValidator --version
 
     CMake Vulkan detection behavior in this repo
-      - Global and automatic: shs-renderer-lib detects Vulkan + SDL2 Vulkan capability once, demos consume the shared result
+      - Global and automatic: shs-gpu-renderer-lib detects Vulkan + SDL2 Vulkan capability once (software lib stays Vulkan-free), demos consume the shared result
       - Linux/Windows: uses normal find_package(Vulkan) + find_program(glslangValidator)
       - macOS: tries normal detection first, then falls back to VULKAN_SDK path if needed
 
@@ -214,7 +219,7 @@
     export VK_LAYER_PATH="$VULKAN_SDK/share/vulkan/explicit_layer.d"
     cmake .. -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake
     make -j20
-    cd src/hello-plumbing &&./HelloPassBasicsVulkan
+    cd src/exps-gpu-renderer/exp-plumbing &&./HelloPassBasicsVulkan
 
 
 # On Windows 11
