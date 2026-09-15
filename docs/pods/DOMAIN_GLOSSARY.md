@@ -8,14 +8,14 @@
 
 | You want to choose… | Select | Defined in |
 | :--- | :--- | :--- |
-| Rendering technique | `RenderPathRenderingTechnique` (`ForwardLit`, `ForwardPlus`, `Deferred`) | `shs/pipeline/render_path_recipe.hpp` |
-| Light volume provider | `RenderPathLightVolumeProvider` (`Default`, `JoltShapeVolumes`, `ClusteredGrid`) | `shs/pipeline/render_path_recipe.hpp` |
-| View / shadow culling | `RenderPathCullingMode` (`None`, `Frustum`, `FrustumAndOcclusion`, `FrustumAndOptionalOcclusion`) | `shs/pipeline/render_path_recipe.hpp` |
-| Target backend | `RenderBackendType` (`Software`, `Vulkan`, …) | `shs/rhi/backend/backend.hpp` |
-| Post-processing stack | `RenderCompositionPostStackPreset` (`Default`, `Minimal`, `Temporal`, `Full`) | `shs/pipeline/render_composition_presets.hpp` |
-| Path preset (coarse) | `RenderPathPreset` (`Deferred`, `TiledDeferred`, …) | `shs/pipeline/render_path_presets.hpp` |
-| Technique mode (compat) | `TechniqueMode` (`Forward`, `ForwardPlus`, …) | `shs/pipeline/render_path_recipe.hpp` |
-| Per-pass participation | `RenderPathPassEntry` + `PassId` (`ShadowMap`, `DepthPrepass`, `LightCulling`, `PBRForward`, `PBRForwardPlus`, `Tonemap`, `MotionBlur`) | `shs/pipeline/render_path_recipe.hpp` |
+| Rendering technique | `RenderPathRenderingTechnique` (`ForwardLit`, `ForwardPlus`, `Deferred`) | `shs/execution/pipeline/render_path_recipe.hpp` |
+| Light volume provider | `RenderPathLightVolumeProvider` (`Default`, `JoltShapeVolumes`, `ClusteredGrid`) | `shs/execution/pipeline/render_path_recipe.hpp` |
+| View / shadow culling | `RenderPathCullingMode` (`None`, `Frustum`, `FrustumAndOcclusion`, `FrustumAndOptionalOcclusion`) | `shs/execution/pipeline/render_path_recipe.hpp` |
+| Target backend | `RenderBackendType` (`Software`, `Vulkan`, …) | `shs/execution/rhi/core/backend.hpp` |
+| Post-processing stack | `RenderCompositionPostStackPreset` (`Default`, `Minimal`, `Temporal`, `Full`) | `shs/execution/pipeline/render_composition_presets.hpp` |
+| Path preset (coarse) | `RenderPathPreset` (`Deferred`, `TiledDeferred`, …) | `shs/execution/pipeline/render_path_presets.hpp` |
+| Technique mode (compat) | `TechniqueMode` (`Forward`, `ForwardPlus`, …) | `shs/execution/pipeline/render_path_recipe.hpp` |
+| Per-pass participation | `RenderPathPassEntry` + `PassId` (`ShadowMap`, `DepthPrepass`, `LightCulling`, `PBRForward`, `PBRForwardPlus`, `Tonemap`, `MotionBlur`) | `shs/execution/pipeline/render_path_recipe.hpp` |
 
 ## 2. The Composite Values (structs you assemble or pick)
 
@@ -29,7 +29,7 @@
 | What the device allows | `RenderPathCapabilitySet` | capability gating happens *before* any backend touch |
 | Scene draw list | `RenderItemSpan` from `SceneObjectSet::to_render_items(view, proj, &arena)` | backend-neutral |
 | Cullable light payload | flat GPU buffers from `LightSet::to_cullable_gpu(...)` | backend-neutral |
-| Physics-derived culling/volume geometry | Jolt shape adapters (`shs/geometry/jolt_shapes.hpp`, `jolt_culling.hpp`) | value-typed SHS data stays authoritative |
+| Physics-derived culling/volume geometry | Jolt shape adapters (`shs/domains/geometry/jolt_shapes.hpp`, `jolt_culling.hpp`) | value-typed SHS data stays authoritative |
 
 ## 3. Named Recipes (the "pick one identifier" catalog)
 

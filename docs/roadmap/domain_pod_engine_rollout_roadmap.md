@@ -85,7 +85,8 @@ include/shs/
 | `gfx/` (5) | `domains/gfx/` | handle types = contract; registry = edge subfolder |
 | `resources/` (8) | `domains/resources/` | value types + load planners |
 | `passes/`, `rhi/`, `sw_render/`, `platform/`, `job/`, `shader/`, `app/` | `execution/…` (unchanged names) | edges, declared as such |
-| `assets/` (empty), `logic/` (2) | delete / fold into `core/` | vestigial |
+| `assets/` (empty) | delete | vestigial-empty (removed during execution) |
+| `logic/` (2) | `domains/logic/` | ~~vestigial~~ corrected during execution: live consumers exist in `exps-gpu-renderer/exp-plumbing` demos — moved with facades instead of deleted |
 
 ### Migration protocol (non-breaking by construction)
 
@@ -101,6 +102,22 @@ include/shs/
 **DoD**: tree matches the target map; all facade headers forward correctly; build +
 existing `ctest` suite green; boundary linter (from old P5, pulled forward) enforces
 `domains/ → {core, memory, containers, domains}` include-direction from day one.
+
+> **Status (2026-09-15): DONE.** All zones moved: `frame/input/camera/scene/lighting/
+> sky/gfx/geometry/resources/logic` → `shs/domains/…`, `pipeline/passes/rhi/sw_render/
+> platform/job/shader/app` → `shs/execution/…`. 140 headers moved, 140 facade shims
+> written (each `#pragma message`-deprecated and forwarding to its canonical path);
+> `shs/` now contains only `core/`, `domains/`, `execution/`. Two deviations from the
+> original plan, both recorded in the move map above: (1) `logic/` moved rather than
+> deleted; (2) `pipeline/` moved wholesale to `execution/pipeline/` — the value-spine
+> split into `domains/renderpath/` is P1's re-export contract, as already specified.
+> Zero file content changes; all internal includes still use legacy paths and resolve
+> through facades (canonicalized in P5). Verification: full build (lib + tests + every
+> demo incl. gpu/vulkan exps) green, `ctest` 100%, boundary linter extended with two
+> new gates — facade sanity (every facade forwards to an existing non-self canonical
+> header) and the domains include-direction law on canonical include text. Legacy-path
+> includes inside `domains/` (5 today) are counted as an advisory INFO until P5.
+> Migration tooling: `tools/move_zone.sh` (zone mover + facade generator).
 
 ## Phase P1 — `renderpath` Pod in the Engine Lib
 

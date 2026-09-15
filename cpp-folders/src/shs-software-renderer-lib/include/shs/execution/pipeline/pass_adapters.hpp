@@ -1,0 +1,1570 @@
+#pragma once
+
+/*
+    SHS РЕНДЕРЕР САН
+
+    ФАЙЛ: pass_adapters.hpp
+    МОДУЛЬ: pipeline
+    ЗОРИЛГО: Энэ файл нь shs-renderer-lib-ийн pipeline модульд хамаарах төрөл/функцийн
+            интерфэйс эсвэл хэрэгжүүлэлтийг тодорхойлно.
+*/
+
+
+#include <algorithm>
+#include <cmath>
+#include <vector>
+
+#include <glm/gtc/matrix_transform.hpp>
+
+#include "shs/geometry/jolt_culling.hpp"
+#include "shs/geometry/jolt_adapter.hpp"
+#include "shs/geometry/jolt_shapes.hpp"
+#include "shs/gfx/rt_handle.hpp"
+#include "shs/lighting/light_set.hpp"
+#include "shs/passes/pass_light_shafts.hpp"
+#include "shs/passes/pass_motion_blur.hpp"
+#include "shs/passes/pass_pbr_forward.hpp"
+#include "shs/passes/pass_shadow_map.hpp"
+#include "shs/passes/pass_tonemap.hpp"
+#include "shs/pipeline/pass_registry.hpp"
+#include "shs/pipeline/pass_contract_registry.hpp"
+#include "shs/pipeline/render_pass.hpp"
+#include "shs/sw_render/rasterizer.hpp"
+#include "shs/resources/resource_registry.hpp"
+#include "shs/shader/program.hpp"
+
+namespace shs
+{
+    namespace detail
+    {
+        inline glm::mat4 make_item_model_matrix(const RenderItem& item)
+        {
+            glm::mat4 model(1.0f);
+            model = glm::translate(model, item.tr.pos);
+            model = glm::rotate(model, item.tr.rot_euler.x, glm::vec3(1.0f, 0.0f, 0.0f));
+            model = glm::rotate(model, item.tr.rot_euler.y, glm::vec3(0.0f, 1.0f, 0.0f));
+            model = glm::rotate(model, item.tr.rot_euler.z, glm::vec3(0.0f, 0.0f, 1.0f));
+            model = glm::scale(model, item.tr.scl);
+            return model;
+        }
+
+        inline Plane make_oriented_plane_from_points(
+            const glm::vec3& a,
+            const glm::vec3& b,
+            const glm::vec3& c,
+            const glm::vec3& inside_point)
+        {
+            Plane p{};
+            glm::vec3 n = glm::cross(b - a, c - a);
+            const float len2 = glm::dot(n, n);
+            if (len2 <= 1e-12f)
+            {
+                p.normal = glm::vec3(0.0f, 1.0f, 0.0f);
+                p.d = -glm::dot(p.normal, a);
+                return p;
+            }
+            n *= 1.0f / std::sqrt(len2);
+            p.normal = n;
+            p.d = -glm::dot(n, a);
+            if (p.signed_distance(inside_point) < 0.0f)
+            {
+                p.normal = -p.normal;
+                p.d = -p.d;
+            }
+            return p;
+        }
+
+        inline glm::vec3 world_from_ndc(const glm::mat4& inv_view_proj, const glm::vec3& ndc)
+        {
+            const glm::vec4 hp = inv_view_proj * glm::vec4(ndc, 1.0f);
+            if (std::abs(hp.w) <= 1e-8f) return glm::vec3(hp);
+            return glm::vec3(hp) / hp.w;
+        }
+
+        inline CullingCell make_screen_tile_culling_cell(
+            const glm::mat4& view_proj,
+            int viewport_w,
+            int viewport_h,
+            uint32_t tile_size,
+            uint32_t tile_x,
+            uint32_t tile_y)
+        {
+            CullingCell cell{};
+            cell.kind = CullingCellKind::ScreenTileCell;
+            cell.user_data = glm::uvec4(tile_x, tile_y, 0u, 0u);
+            if (viewport_w <= 0 || viewport_h <= 0 || tile_size == 0u) return cell;
+
+            const float inv_w = 1.0f / static_cast<float>(viewport_w);
+            const float inv_h = 1.0f / static_cast<float>(viewport_h);
+            const float px0 = static_cast<float>(tile_x * tile_size);
+            const float px1 = static_cast<float>(std::min<uint32_t>((tile_x + 1u) * tile_size, static_cast<uint32_t>(viewport_w)));
+            const float py0 = static_cast<float>(tile_y * tile_size);
+            const float py1 = static_cast<float>(std::min<uint32_t>((tile_y + 1u) * tile_size, static_cast<uint32_t>(viewport_h)));
+
+            const float nx0 = px0 * (2.0f * inv_w) - 1.0f;
+            const float nx1 = px1 * (2.0f * inv_w) - 1.0f;
+            const float ny_top = 1.0f - py0 * (2.0f * inv_h);
+            const float ny_bottom = 1.0f - py1 * (2.0f * inv_h);
+
+            const glm::mat4 inv_view_proj = glm::inverse(view_proj);
+            const glm::vec3 nbl = world_from_ndc(inv_view_proj, glm::vec3(nx0, ny_bottom, -1.0f));
+            const glm::vec3 nbr = world_from_ndc(inv_view_proj, glm::vec3(nx1, ny_bottom, -1.0f));
+            const glm::vec3 ntl = world_from_ndc(inv_view_proj, glm::vec3(nx0, ny_top, -1.0f));
+            const glm::vec3 ntr = world_from_ndc(inv_view_proj, glm::vec3(nx1, ny_top, -1.0f));
+            const glm::vec3 fbl = world_from_ndc(inv_view_proj, glm::vec3(nx0, ny_bottom, 1.0f));
+            const glm::vec3 fbr = world_from_ndc(inv_view_proj, glm::vec3(nx1, ny_bottom, 1.0f));
+            const glm::vec3 ftl = world_from_ndc(inv_view_proj, glm::vec3(nx0, ny_top, 1.0f));
+            const glm::vec3 ftr = world_from_ndc(inv_view_proj, glm::vec3(nx1, ny_top, 1.0f));
+            const glm::vec3 inside = (nbl + nbr + ntl + ntr + fbl + fbr + ftl + ftr) * (1.0f / 8.0f);
+
+            culling_cell_add_plane(cell, make_oriented_plane_from_points(nbl, nbr, ntr, inside)); // near
+            culling_cell_add_plane(cell, make_oriented_plane_from_points(fbr, fbl, ftl, inside)); // far
+            culling_cell_add_plane(cell, make_oriented_plane_from_points(nbl, ntl, ftl, inside)); // left
+            culling_cell_add_plane(cell, make_oriented_plane_from_points(ntr, nbr, fbr, inside)); // right
+            culling_cell_add_plane(cell, make_oriented_plane_from_points(nbr, nbl, fbl, inside)); // bottom
+            culling_cell_add_plane(cell, make_oriented_plane_from_points(ntl, ntr, ftr, inside)); // top
+            return cell;
+        }
+
+        inline glm::mat4 make_basis_transform(
+            const glm::vec3& position,
+            const glm::vec3& axis_x,
+            const glm::vec3& axis_y,
+            const glm::vec3& axis_z)
+        {
+            glm::mat4 m(1.0f);
+            m[0] = glm::vec4(axis_x, 0.0f);
+            m[1] = glm::vec4(axis_y, 0.0f);
+            m[2] = glm::vec4(axis_z, 0.0f);
+            m[3] = glm::vec4(position, 1.0f);
+            return m;
+        }
+
+        inline void make_basis_from_forward(
+            const glm::vec3& forward,
+            glm::vec3& axis_x,
+            glm::vec3& axis_y,
+            glm::vec3& axis_z)
+        {
+            axis_z = normalize_or(forward, glm::vec3(0.0f, 0.0f, 1.0f));
+            const glm::vec3 up_hint = (std::abs(axis_z.y) > 0.98f) ? glm::vec3(1.0f, 0.0f, 0.0f) : glm::vec3(0.0f, 1.0f, 0.0f);
+            axis_x = normalize_or(glm::cross(up_hint, axis_z), glm::vec3(1.0f, 0.0f, 0.0f));
+            axis_y = normalize_or(glm::cross(axis_z, axis_x), glm::vec3(0.0f, 1.0f, 0.0f));
+        }
+
+        inline void make_basis_from_axis_y(
+            const glm::vec3& axis_y_in,
+            glm::vec3& axis_x,
+            glm::vec3& axis_y,
+            glm::vec3& axis_z)
+        {
+            axis_y = normalize_or(axis_y_in, glm::vec3(0.0f, 1.0f, 0.0f));
+            const glm::vec3 ref = (std::abs(axis_y.y) > 0.98f) ? glm::vec3(0.0f, 0.0f, 1.0f) : glm::vec3(0.0f, 1.0f, 0.0f);
+            axis_x = normalize_or(glm::cross(ref, axis_y), glm::vec3(1.0f, 0.0f, 0.0f));
+            axis_z = normalize_or(glm::cross(axis_x, axis_y), glm::vec3(0.0f, 0.0f, 1.0f));
+        }
+
+        inline void append_local_light_shapes_from_set(
+            const LightSet& set,
+            std::vector<SceneShape>& out_shapes)
+        {
+            out_shapes.reserve(out_shapes.size() + set.local_light_count());
+
+            const auto push_shape = [&](JPH::ShapeRefC shape, const glm::mat4& model) {
+                SceneShape s{};
+                s.shape = std::move(shape);
+                s.transform = jolt::to_jph(model);
+                s.stable_id = static_cast<uint32_t>(out_shapes.size());
+                out_shapes.push_back(std::move(s));
+            };
+
+            for (const PointLight& l : set.points)
+            {
+                const glm::mat4 model = glm::translate(glm::mat4(1.0f), l.common.position_ws);
+                push_shape(jolt::make_point_light_volume(l.common.range), model);
+            }
+
+            for (const SpotLight& l : set.spots)
+            {
+                glm::vec3 axis_x{};
+                glm::vec3 axis_y{};
+                glm::vec3 axis_z{};
+                make_basis_from_forward(l.direction_ws, axis_x, axis_y, axis_z);
+                const glm::mat4 model = make_basis_transform(l.common.position_ws, axis_x, axis_y, axis_z);
+                push_shape(jolt::make_spot_light_volume(l.common.range, l.outer_angle_rad), model);
+            }
+
+            for (const RectAreaLight& l : set.rect_areas)
+            {
+                const glm::vec3 dir = normalize_or(l.direction_ws, glm::vec3(0.0f, -1.0f, 0.0f));
+                glm::vec3 axis_x = l.right_ws - dir * glm::dot(l.right_ws, dir);
+                axis_x = normalize_or(axis_x, glm::vec3(1.0f, 0.0f, 0.0f));
+                const glm::vec3 axis_y = normalize_or(glm::cross(dir, axis_x), glm::vec3(0.0f, 1.0f, 0.0f));
+                const glm::vec3 axis_z = -dir;
+                const glm::mat4 model = make_basis_transform(l.common.position_ws, axis_x, axis_y, axis_z);
+                push_shape(jolt::make_rect_area_light_volume(l.half_extents, l.common.range), model);
+            }
+
+            for (const TubeAreaLight& l : set.tube_areas)
+            {
+                glm::vec3 axis_x{};
+                glm::vec3 axis_y{};
+                glm::vec3 axis_z{};
+                make_basis_from_axis_y(l.axis_ws, axis_x, axis_y, axis_z);
+                const glm::mat4 model = make_basis_transform(l.common.position_ws, axis_x, axis_y, axis_z);
+                push_shape(jolt::make_tube_area_light_volume(l.half_length, l.radius), model);
+            }
+        }
+
+        inline bool technique_uses_light_culling(const FrameParams& fp)
+        {
+            return
+                fp.technique.light_culling ||
+                fp.technique.mode == TechniqueMode::ForwardPlus ||
+                fp.technique.mode == TechniqueMode::TiledDeferred ||
+                fp.technique.mode == TechniqueMode::ClusteredForward;
+        }
+
+        inline bool execute_generic_light_culling(
+            Context& ctx,
+            const Scene& scene,
+            const FrameParams& fp,
+            RTRegistry& rtr,
+            RT_Motion rt_motion,
+            LightCullingRuntimePayload* light_culling,
+            bool depth_prepass_ready,
+            bool force_enable)
+        {
+            (void)ctx;
+            const bool light_culling_enabled = force_enable || technique_uses_light_culling(fp);
+            if (!light_culling_enabled) return false;
+            if (!light_culling) return false;
+            if (fp.technique.depth_prepass && !depth_prepass_ready) return false;
+
+            int w = fp.w;
+            int h = fp.h;
+            if (rt_motion.valid())
+            {
+                auto* motion = static_cast<RT_ColorDepthMotion*>(rtr.get(rt_motion));
+                if (motion && motion->w > 0 && motion->h > 0)
+                {
+                    w = motion->w;
+                    h = motion->h;
+                }
+            }
+            if (w <= 0 || h <= 0) return false;
+
+            const uint32_t tile_size = std::max<uint32_t>(1u, fp.technique.tile_size);
+            const uint32_t tile_x = (uint32_t)((w + (int)tile_size - 1) / (int)tile_size);
+            const uint32_t tile_y = (uint32_t)((h + (int)tile_size - 1) / (int)tile_size);
+            const uint32_t total_tiles = tile_x * tile_y;
+            const uint32_t max_per_tile = std::max<uint32_t>(1u, fp.technique.max_lights_per_tile);
+
+            const uint32_t directional_light_count = (scene.sun.intensity > 0.0f) ? 1u : 0u;
+
+            std::vector<SceneShape> local_light_shapes{};
+            if (scene.local_lights)
+            {
+                append_local_light_shapes_from_set(*scene.local_lights, local_light_shapes);
+            }
+
+            if (!local_light_shapes.empty())
+            {
+                const CullingCell camera_cell = extract_frustum_cell(
+                    scene.cam.viewproj,
+                    CullingCellKind::CameraFrustumPerspective);
+                
+                // Broad phase camera cull
+                const CullResult camera_cull = cull_vs_cell(std::span<const SceneShape>{local_light_shapes}, camera_cell);
+                
+                if (camera_cull.visible_indices.size() != local_light_shapes.size())
+                {
+                    std::vector<SceneShape> visible_shapes{};
+                    visible_shapes.reserve(camera_cull.visible_indices.size());
+                    for (size_t idx : camera_cull.visible_indices)
+                    {
+                        if (idx < local_light_shapes.size()) visible_shapes.push_back(local_light_shapes[idx]);
+                    }
+                    local_light_shapes.swap(visible_shapes);
+                }
+            }
+
+            auto& fwdp = *light_culling;
+            fwdp.tile_size = tile_size;
+            fwdp.tile_count_x = tile_x;
+            fwdp.tile_count_y = tile_y;
+            fwdp.max_lights_per_tile = max_per_tile;
+            fwdp.visible_light_count = directional_light_count + static_cast<uint32_t>(local_light_shapes.size());
+            fwdp.tile_light_counts.assign((size_t)total_tiles, std::min(max_per_tile, directional_light_count));
+
+            if (!local_light_shapes.empty())
+            {
+                const CullTolerance tile_cull_tol{}; // Use defaults or customize if needed
+
+                for (uint32_t ty = 0; ty < tile_y; ++ty)
+                {
+                    for (uint32_t tx = 0; tx < tile_x; ++tx)
+                    {
+                        const uint32_t tile_index = ty * tile_x + tx;
+                        const CullingCell tile_cell = make_screen_tile_culling_cell(
+                            scene.cam.viewproj,
+                            w,
+                            h,
+                            tile_size,
+                            tx,
+                            ty);
+
+                        uint32_t local_visible = 0;
+                        for (const SceneShape& shape : local_light_shapes)
+                        {
+                            const CullClass c = classify_vs_cell(shape, tile_cell, tile_cull_tol);
+                            if (!cull_class_is_visible(c, true)) continue;
+                            ++local_visible;
+                            if (directional_light_count + local_visible >= max_per_tile) break;
+                        }
+
+                        fwdp.tile_light_counts[(size_t)tile_index] = std::min(
+                            max_per_tile,
+                            directional_light_count + local_visible);
+                    }
+                }
+            }
+            return true;
+        }
+
+        inline ShaderProgram make_depth_prepass_program()
+        {
+            ShaderProgram p{};
+            p.vs = [](const ShaderVertex& vin, const ShaderUniforms& u) -> VertexOut {
+                VertexOut out{};
+                const glm::vec4 wp4 = u.model * glm::vec4(vin.position, 1.0f);
+                out.world_pos = glm::vec3(wp4);
+                out.clip = u.viewproj * wp4;
+                return out;
+            };
+            p.fs = [](const FragmentIn& fin, const ShaderUniforms& u) -> FragmentOut {
+                (void)fin;
+                (void)u;
+                FragmentOut out{};
+                out.color = ColorF{0.0f, 0.0f, 0.0f, 1.0f};
+                return out;
+            };
+            return p;
+        }
+    }
+
+    class PassShadowMapAdapter final : public IRenderPass
+    {
+    public:
+        explicit PassShadowMapAdapter(RT_Shadow rt_shadow)
+            : rt_shadow_(rt_shadow)
+        {}
+
+        const char* id() const override { return "shadow_map"; }
+        RenderBackendType preferred_backend() const override { return RenderBackendType::Software; }
+        bool supports_backend(RenderBackendType backend) const override { return backend == RenderBackendType::Software; }
+        TechniquePassContract describe_contract() const override
+        {
+            TechniquePassContract c{};
+            c.role = TechniquePassRole::Visibility;
+            c.supported_modes_mask = technique_mode_mask_all();
+            c.semantics = {
+                write_semantic(PassSemantic::ShadowMap, ContractDomain::Software, "shadow")
+            };
+            return c;
+        }
+        PassIODesc describe_io() const override
+        {
+            PassIODesc io{};
+            io.write(make_rt_resource_ref(static_cast<const RTHandle&>(rt_shadow_), PassResourceType::Shadow, "shadow", PassResourceDomain::Software));
+            return io;
+        }
+
+        PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
+        {
+            if (!request.valid) return PassExecutionResult::not_executed();
+            if (!request.inputs.scene || !request.inputs.frame || !request.inputs.registry) return PassExecutionResult::not_executed();
+            PassShadowMap::Inputs in{};
+            in.scene = request.inputs.scene;
+            in.fp = request.inputs.frame;
+            in.rtr = request.inputs.registry;
+            in.rt_shadow = rt_shadow_;
+            pass_.execute(ctx, in);
+            return PassExecutionResult::executed_no_outputs();
+        }
+
+    private:
+        RT_Shadow rt_shadow_{};
+        PassShadowMap pass_{};
+    };
+
+    class PassDepthPrepassAdapter final : public IRenderPass
+    {
+    public:
+        PassDepthPrepassAdapter(RT_Motion rt_motion, RTHandle rt_scratch_hdr = {})
+            : rt_motion_(rt_motion), rt_scratch_hdr_(rt_scratch_hdr)
+        {}
+
+        const char* id() const override { return "depth_prepass"; }
+        RenderBackendType preferred_backend() const override { return RenderBackendType::Software; }
+        bool supports_backend(RenderBackendType backend) const override { return backend == RenderBackendType::Software; }
+        TechniquePassContract describe_contract() const override
+        {
+            TechniquePassContract c{};
+            c.role = TechniquePassRole::Visibility;
+            c.supported_modes_mask =
+                technique_mode_bit(TechniqueMode::ForwardPlus) |
+                technique_mode_bit(TechniqueMode::TiledDeferred) |
+                technique_mode_bit(TechniqueMode::ClusteredForward);
+            c.semantics = {
+                write_semantic(PassSemantic::Depth, ContractDomain::Software, "depth")
+            };
+            return c;
+        }
+        PassIODesc describe_io() const override
+        {
+            PassIODesc io{};
+            io.write(make_named_resource_ref("technique.depth_prepass", PassResourceType::Temp, PassResourceDomain::Software));
+            return io;
+        }
+
+        PassExecutionRequest build_execution_request(
+            const Context& ctx,
+            const Scene& scene,
+            const FrameParams& fp,
+            RTRegistry& rtr) const override
+        {
+            (void)ctx;
+            PassExecutionRequest req = IRenderPass::build_execution_request(ctx, scene, fp, rtr);
+            if (!req.valid || !fp.technique.depth_prepass || !rt_motion_.valid()) return req;
+            auto* motion = static_cast<RT_ColorDepthMotion*>(rtr.get(rt_motion_));
+            if (!motion || motion->w <= 0 || motion->h <= 0) return req;
+
+            RTHandle scratch_hdr = rt_scratch_hdr_;
+            if (!scratch_hdr.valid())
+            {
+                scratch_hdr = rtr.ensure_transient_color_hdr("depth_prepass.auto_hdr", motion->w, motion->h);
+            }
+            if (!scratch_hdr.valid())
+            {
+                req.valid = false;
+                return req;
+            }
+            req.set_named_rt("depth_prepass.scratch_hdr", scratch_hdr);
+            return req;
+        }
+
+        PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
+        {
+            if (!request.valid) return PassExecutionResult::not_executed();
+            if (!request.inputs.scene || !request.inputs.frame || !request.inputs.registry) return PassExecutionResult::not_executed();
+            const bool produced_depth = execute_with_scratch(
+                ctx,
+                *request.inputs.scene,
+                *request.inputs.frame,
+                *request.inputs.registry,
+                request.find_named_rt("depth_prepass.scratch_hdr"));
+            if (!produced_depth) return PassExecutionResult::not_executed();
+            PassExecutionResult out = PassExecutionResult::executed_no_outputs();
+            out.produced_depth = true;
+            return out;
+        }
+
+    private:
+        bool execute_with_scratch(
+            Context& ctx,
+            const Scene& scene,
+            const FrameParams& fp,
+            RTRegistry& rtr,
+            RTHandle scratch_hdr)
+        {
+            if (!fp.technique.depth_prepass) return false;
+            if (!rt_motion_.valid()) return false;
+
+            auto* motion = static_cast<RT_ColorDepthMotion*>(rtr.get(rt_motion_));
+            if (!motion || motion->w <= 0 || motion->h <= 0) return false;
+
+            auto* hdr = static_cast<RT_ColorHDR*>(rtr.get(scratch_hdr));
+            if (!hdr || hdr->w <= 0 || hdr->h <= 0) return false;
+
+            motion->depth.clear(1.0f);
+            motion->motion.clear(Motion2f{});
+
+            hdr->clear(ColorF{0.0f, 0.0f, 0.0f, 1.0f});
+
+            const ShaderProgram depth_prog = detail::make_depth_prepass_program();
+            RasterizerTarget target{};
+            target.hdr = hdr;
+            target.depth_motion = motion;
+
+            RasterizerConfig rast_cfg{};
+            rast_cfg.front_face_ccw = fp.front_face_ccw;
+            rast_cfg.job_system = ctx.job_system;
+            switch (fp.cull_mode)
+            {
+                case CullMode::None: rast_cfg.cull_mode = RasterizerCullMode::None; break;
+                case CullMode::Front: rast_cfg.cull_mode = RasterizerCullMode::Front; break;
+                case CullMode::Back:
+                default: rast_cfg.cull_mode = RasterizerCullMode::Back; break;
+            }
+
+            for (const auto& item : scene.items)
+            {
+                if (!item.visible) continue;
+                if (!scene.resources) continue;
+                const MeshData* mesh = scene.resources->get_mesh((MeshAssetHandle)item.mesh);
+                if (!mesh || mesh->empty()) continue;
+
+                ShaderUniforms uniforms{};
+                uniforms.model = detail::make_item_model_matrix(item);
+                uniforms.viewproj = scene.cam.viewproj;
+                uniforms.enable_motion_vectors = false;
+                (void)rasterize_mesh(*mesh, depth_prog, uniforms, target, rast_cfg);
+            }
+            return true;
+        }
+        RT_Motion rt_motion_{};
+        RTHandle rt_scratch_hdr_{};
+    };
+
+    class PassLightCullingAdapter final : public IRenderPass
+    {
+    public:
+        explicit PassLightCullingAdapter(RT_Motion rt_motion)
+            : rt_motion_(rt_motion)
+        {}
+
+        const char* id() const override { return "light_culling"; }
+        RenderBackendType preferred_backend() const override { return RenderBackendType::Software; }
+        RHIQueueClass preferred_queue() const override { return RHIQueueClass::Compute; }
+        bool supports_backend(RenderBackendType backend) const override { return backend == RenderBackendType::Software; }
+        TechniquePassContract describe_contract() const override
+        {
+            TechniquePassContract c{};
+            c.role = TechniquePassRole::LightCulling;
+            c.supported_modes_mask =
+                technique_mode_bit(TechniqueMode::ForwardPlus) |
+                technique_mode_bit(TechniqueMode::TiledDeferred) |
+                technique_mode_bit(TechniqueMode::ClusteredForward);
+            c.requires_depth_prepass = true;
+            c.prefer_async_compute = true;
+            c.semantics = {
+                read_semantic(PassSemantic::Depth, ContractDomain::Software, "depth"),
+                write_semantic(PassSemantic::LightGrid, ContractDomain::Software, "light_grid"),
+                write_semantic(PassSemantic::LightIndexList, ContractDomain::Software, "light_index_list")
+            };
+            return c;
+        }
+        PassIODesc describe_io() const override
+        {
+            PassIODesc io{};
+            io.read(make_named_resource_ref("technique.depth_prepass", PassResourceType::Temp, PassResourceDomain::Software));
+            io.write(make_named_resource_ref("technique.light_grid", PassResourceType::Temp, PassResourceDomain::Software));
+            io.write(make_named_resource_ref("technique.light_index_list", PassResourceType::Temp, PassResourceDomain::Software));
+            return io;
+        }
+
+        PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
+        {
+            if (!request.valid) return PassExecutionResult::not_executed();
+            if (!request.inputs.scene || !request.inputs.frame || !request.inputs.registry) return PassExecutionResult::not_executed();
+            const bool produced_light_data = detail::execute_generic_light_culling(
+                ctx,
+                *request.inputs.scene,
+                *request.inputs.frame,
+                *request.inputs.registry,
+                rt_motion_,
+                request.inputs.light_culling,
+                request.depth_prepass_ready,
+                false);
+            if (!produced_light_data) return PassExecutionResult::not_executed();
+            PassExecutionResult out = PassExecutionResult::executed_no_outputs();
+            out.produced_light_grid = true;
+            out.produced_light_index_list = true;
+            return out;
+        }
+
+    private:
+        RT_Motion rt_motion_{};
+    };
+
+    class PassClusterBuildAdapter final : public IRenderPass
+    {
+    public:
+        explicit PassClusterBuildAdapter(RT_Motion rt_motion)
+            : rt_motion_(rt_motion)
+        {}
+
+        const char* id() const override { return "cluster_build"; }
+        RenderBackendType preferred_backend() const override { return RenderBackendType::Software; }
+        RHIQueueClass preferred_queue() const override { return RHIQueueClass::Compute; }
+        bool supports_backend(RenderBackendType backend) const override { return backend == RenderBackendType::Software; }
+        TechniquePassContract describe_contract() const override
+        {
+            TechniquePassContract c{};
+            c.role = TechniquePassRole::LightCulling;
+            c.supported_modes_mask = technique_mode_bit(TechniqueMode::ClusteredForward);
+            c.requires_depth_prepass = true;
+            c.prefer_async_compute = true;
+            c.semantics = {
+                read_semantic(PassSemantic::Depth, ContractDomain::Software, "depth"),
+                write_semantic(PassSemantic::LightClusters, ContractDomain::Software, "clusters")
+            };
+            return c;
+        }
+        PassIODesc describe_io() const override
+        {
+            PassIODesc io{};
+            io.read(make_named_resource_ref("technique.depth_prepass", PassResourceType::Temp, PassResourceDomain::Software));
+            io.write(make_named_resource_ref("technique.cluster_grid", PassResourceType::Temp, PassResourceDomain::Software));
+            return io;
+        }
+
+        PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
+        {
+            if (!request.valid) return PassExecutionResult::not_executed();
+            if (!request.inputs.frame || !request.inputs.registry) return PassExecutionResult::not_executed();
+
+            const FrameParams& fp = *request.inputs.frame;
+            RTRegistry& rtr = *request.inputs.registry;
+            if (fp.technique.depth_prepass && !request.depth_prepass_ready) return PassExecutionResult::not_executed();
+
+            int w = fp.w;
+            int h = fp.h;
+            if (rt_motion_.valid())
+            {
+                auto* motion = static_cast<RT_ColorDepthMotion*>(rtr.get(rt_motion_));
+                if (motion && motion->w > 0 && motion->h > 0)
+                {
+                    w = motion->w;
+                    h = motion->h;
+                }
+            }
+            if (w <= 0 || h <= 0) return PassExecutionResult::not_executed();
+
+            auto* fwdp = request.inputs.light_culling;
+            if (!fwdp) return PassExecutionResult::not_executed();
+            fwdp->tile_size = std::max<uint32_t>(1u, fp.technique.tile_size);
+            fwdp->tile_count_x = (uint32_t)((w + (int)fwdp->tile_size - 1) / (int)fwdp->tile_size);
+            fwdp->tile_count_y = (uint32_t)((h + (int)fwdp->tile_size - 1) / (int)fwdp->tile_size);
+            if (fwdp->tile_light_counts.size() != (size_t)fwdp->tile_count_x * (size_t)fwdp->tile_count_y)
+            {
+                fwdp->tile_light_counts.assign((size_t)fwdp->tile_count_x * (size_t)fwdp->tile_count_y, 0u);
+            }
+            return PassExecutionResult::executed_no_outputs();
+        }
+
+    private:
+        RT_Motion rt_motion_{};
+    };
+
+    class PassClusterLightAssignAdapter final : public IRenderPass
+    {
+    public:
+        explicit PassClusterLightAssignAdapter(RT_Motion rt_motion)
+            : rt_motion_(rt_motion)
+        {}
+
+        const char* id() const override { return "cluster_light_assign"; }
+        RenderBackendType preferred_backend() const override { return RenderBackendType::Software; }
+        RHIQueueClass preferred_queue() const override { return RHIQueueClass::Compute; }
+        bool supports_backend(RenderBackendType backend) const override { return backend == RenderBackendType::Software; }
+        TechniquePassContract describe_contract() const override
+        {
+            TechniquePassContract c{};
+            c.role = TechniquePassRole::LightCulling;
+            c.supported_modes_mask = technique_mode_bit(TechniqueMode::ClusteredForward);
+            c.requires_depth_prepass = true;
+            c.prefer_async_compute = true;
+            c.semantics = {
+                read_semantic(PassSemantic::Depth, ContractDomain::Software, "depth"),
+                read_semantic(PassSemantic::LightClusters, ContractDomain::Software, "clusters"),
+                write_semantic(PassSemantic::LightGrid, ContractDomain::Software, "light_grid"),
+                write_semantic(PassSemantic::LightIndexList, ContractDomain::Software, "light_index_list")
+            };
+            return c;
+        }
+        PassIODesc describe_io() const override
+        {
+            PassIODesc io{};
+            io.read(make_named_resource_ref("technique.depth_prepass", PassResourceType::Temp, PassResourceDomain::Software));
+            io.read(make_named_resource_ref("technique.cluster_grid", PassResourceType::Temp, PassResourceDomain::Software));
+            io.write(make_named_resource_ref("technique.light_grid", PassResourceType::Temp, PassResourceDomain::Software));
+            io.write(make_named_resource_ref("technique.light_index_list", PassResourceType::Temp, PassResourceDomain::Software));
+            return io;
+        }
+
+        PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
+        {
+            if (!request.valid) return PassExecutionResult::not_executed();
+            if (!request.inputs.scene || !request.inputs.frame || !request.inputs.registry) return PassExecutionResult::not_executed();
+            const bool produced_light_data = detail::execute_generic_light_culling(
+                ctx,
+                *request.inputs.scene,
+                *request.inputs.frame,
+                *request.inputs.registry,
+                rt_motion_,
+                request.inputs.light_culling,
+                request.depth_prepass_ready,
+                true);
+            if (!produced_light_data) return PassExecutionResult::not_executed();
+            PassExecutionResult out = PassExecutionResult::executed_no_outputs();
+            out.produced_light_grid = true;
+            out.produced_light_index_list = true;
+            return out;
+        }
+
+    private:
+        RT_Motion rt_motion_{};
+    };
+
+    class PassGBufferAdapter final : public IRenderPass
+    {
+    public:
+        const char* id() const override { return "gbuffer"; }
+        RenderBackendType preferred_backend() const override { return RenderBackendType::Software; }
+        bool supports_backend(RenderBackendType backend) const override { return backend == RenderBackendType::Software; }
+        TechniquePassContract describe_contract() const override
+        {
+            TechniquePassContract c{};
+            c.role = TechniquePassRole::GBuffer;
+            c.supported_modes_mask =
+                technique_mode_bit(TechniqueMode::Deferred) |
+                technique_mode_bit(TechniqueMode::TiledDeferred);
+            c.semantics = {
+                write_semantic(PassSemantic::Albedo, ContractDomain::Software, "albedo"),
+                write_semantic(PassSemantic::Normal, ContractDomain::Software, "normal"),
+                write_semantic(PassSemantic::Material, ContractDomain::Software, "material")
+            };
+            return c;
+        }
+        PassIODesc describe_io() const override
+        {
+            PassIODesc io{};
+            io.write(make_named_resource_ref("technique.albedo", PassResourceType::Temp, PassResourceDomain::Software));
+            io.write(make_named_resource_ref("technique.normal", PassResourceType::Temp, PassResourceDomain::Software));
+            io.write(make_named_resource_ref("technique.material", PassResourceType::Temp, PassResourceDomain::Software));
+            return io;
+        }
+
+        PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
+        {
+            (void)ctx;
+            if (!request.valid) return PassExecutionResult::not_executed();
+            return PassExecutionResult::executed_no_outputs();
+        }
+    };
+
+    class PassSSAOAdapter final : public IRenderPass
+    {
+    public:
+        const char* id() const override { return "ssao"; }
+        RenderBackendType preferred_backend() const override { return RenderBackendType::Software; }
+        bool supports_backend(RenderBackendType backend) const override { return backend == RenderBackendType::Software; }
+        TechniquePassContract describe_contract() const override
+        {
+            TechniquePassContract c{};
+            c.role = TechniquePassRole::PostProcess;
+            c.supported_modes_mask =
+                technique_mode_bit(TechniqueMode::Deferred) |
+                technique_mode_bit(TechniqueMode::TiledDeferred);
+            c.semantics = {
+                read_semantic(PassSemantic::Depth, ContractDomain::Software, "depth"),
+                read_semantic(PassSemantic::Normal, ContractDomain::Software, "normal"),
+                write_semantic(PassSemantic::AmbientOcclusion, ContractDomain::Software, "ao")
+            };
+            return c;
+        }
+        PassIODesc describe_io() const override
+        {
+            PassIODesc io{};
+            io.read(make_named_resource_ref("technique.depth_prepass", PassResourceType::Temp, PassResourceDomain::Software));
+            io.read(make_named_resource_ref("technique.normal", PassResourceType::Temp, PassResourceDomain::Software));
+            io.write(make_named_resource_ref("technique.ao", PassResourceType::Temp, PassResourceDomain::Software));
+            return io;
+        }
+
+        PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
+        {
+            (void)ctx;
+            if (!request.valid) return PassExecutionResult::not_executed();
+            return PassExecutionResult::executed_no_outputs();
+        }
+    };
+
+    class PassDeferredLightingAdapter final : public IRenderPass
+    {
+    public:
+        PassDeferredLightingAdapter(RTHandle rt_hdr, RT_Motion rt_motion, RTHandle rt_shadow)
+            : rt_hdr_(rt_hdr), rt_motion_(rt_motion), rt_shadow_(rt_shadow)
+        {}
+
+        const char* id() const override { return "deferred_lighting"; }
+        RenderBackendType preferred_backend() const override { return RenderBackendType::Software; }
+        bool supports_backend(RenderBackendType backend) const override { return backend == RenderBackendType::Software; }
+        TechniquePassContract describe_contract() const override
+        {
+            TechniquePassContract c{};
+            c.role = TechniquePassRole::Lighting;
+            c.supported_modes_mask = technique_mode_bit(TechniqueMode::Deferred);
+            c.semantics = {
+                read_semantic(PassSemantic::ShadowMap, ContractDomain::Software, "shadow"),
+                read_semantic(PassSemantic::Albedo, ContractDomain::Software, "albedo"),
+                read_semantic(PassSemantic::Normal, ContractDomain::Software, "normal"),
+                read_semantic(PassSemantic::Material, ContractDomain::Software, "material"),
+                read_semantic(PassSemantic::AmbientOcclusion, ContractDomain::Software, "ao"),
+                write_semantic(PassSemantic::ColorHDR, ContractDomain::Software, "hdr"),
+                write_semantic(PassSemantic::MotionVectors, ContractDomain::Software, "motion")
+            };
+            return c;
+        }
+        PassIODesc describe_io() const override
+        {
+            PassIODesc io{};
+            io.read(make_rt_resource_ref(rt_shadow_, PassResourceType::Shadow, "shadow", PassResourceDomain::Software));
+            io.read(make_named_resource_ref("technique.albedo", PassResourceType::Temp, PassResourceDomain::Software));
+            io.read(make_named_resource_ref("technique.normal", PassResourceType::Temp, PassResourceDomain::Software));
+            io.read(make_named_resource_ref("technique.material", PassResourceType::Temp, PassResourceDomain::Software));
+            io.read(make_named_resource_ref("technique.ao", PassResourceType::Temp, PassResourceDomain::Software));
+            io.write(make_rt_resource_ref(rt_hdr_, PassResourceType::ColorHDR, "hdr", PassResourceDomain::Software));
+            io.write(make_rt_resource_ref(static_cast<const RTHandle&>(rt_motion_), PassResourceType::Motion, "motion", PassResourceDomain::Software));
+            return io;
+        }
+
+        PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
+        {
+            if (!request.valid) return PassExecutionResult::not_executed();
+            if (!request.inputs.scene || !request.inputs.frame || !request.inputs.registry) return PassExecutionResult::not_executed();
+            const Scene& scene = *request.inputs.scene;
+            const FrameParams& fp = *request.inputs.frame;
+            RTRegistry& rtr = *request.inputs.registry;
+            PassPBRForward::Inputs in{};
+            in.scene = &scene;
+            in.fp = &fp;
+            in.rtr = &rtr;
+            in.rt_hdr = rt_hdr_;
+            in.rt_motion = rt_motion_;
+            in.rt_shadow = rt_shadow_;
+            pass_.execute(ctx, in);
+            return PassExecutionResult::executed_no_outputs();
+        }
+
+    private:
+        RTHandle rt_hdr_{};
+        RT_Motion rt_motion_{};
+        RTHandle rt_shadow_{};
+        PassPBRForward pass_{};
+    };
+
+    class PassDeferredLightingTiledAdapter final : public IRenderPass
+    {
+    public:
+        PassDeferredLightingTiledAdapter(RTHandle rt_hdr, RT_Motion rt_motion, RTHandle rt_shadow)
+            : rt_hdr_(rt_hdr), rt_motion_(rt_motion), rt_shadow_(rt_shadow)
+        {}
+
+        const char* id() const override { return "deferred_lighting_tiled"; }
+        RenderBackendType preferred_backend() const override { return RenderBackendType::Software; }
+        bool supports_backend(RenderBackendType backend) const override { return backend == RenderBackendType::Software; }
+        TechniquePassContract describe_contract() const override
+        {
+            TechniquePassContract c{};
+            c.role = TechniquePassRole::Lighting;
+            c.supported_modes_mask = technique_mode_bit(TechniqueMode::TiledDeferred);
+            c.requires_depth_prepass = true;
+            c.requires_light_culling = true;
+            c.semantics = {
+                read_semantic(PassSemantic::ShadowMap, ContractDomain::Software, "shadow"),
+                read_semantic(PassSemantic::Albedo, ContractDomain::Software, "albedo"),
+                read_semantic(PassSemantic::Normal, ContractDomain::Software, "normal"),
+                read_semantic(PassSemantic::Material, ContractDomain::Software, "material"),
+                read_semantic(PassSemantic::AmbientOcclusion, ContractDomain::Software, "ao"),
+                read_semantic(PassSemantic::Depth, ContractDomain::Software, "depth"),
+                read_semantic(PassSemantic::LightGrid, ContractDomain::Software, "light_grid"),
+                read_semantic(PassSemantic::LightIndexList, ContractDomain::Software, "light_index_list"),
+                write_semantic(PassSemantic::ColorHDR, ContractDomain::Software, "hdr"),
+                write_semantic(PassSemantic::MotionVectors, ContractDomain::Software, "motion")
+            };
+            return c;
+        }
+        PassIODesc describe_io() const override
+        {
+            PassIODesc io{};
+            io.read(make_rt_resource_ref(rt_shadow_, PassResourceType::Shadow, "shadow", PassResourceDomain::Software));
+            io.read(make_named_resource_ref("technique.albedo", PassResourceType::Temp, PassResourceDomain::Software));
+            io.read(make_named_resource_ref("technique.normal", PassResourceType::Temp, PassResourceDomain::Software));
+            io.read(make_named_resource_ref("technique.material", PassResourceType::Temp, PassResourceDomain::Software));
+            io.read(make_named_resource_ref("technique.ao", PassResourceType::Temp, PassResourceDomain::Software));
+            io.read(make_named_resource_ref("technique.depth_prepass", PassResourceType::Temp, PassResourceDomain::Software));
+            io.read(make_named_resource_ref("technique.light_grid", PassResourceType::Temp, PassResourceDomain::Software));
+            io.read(make_named_resource_ref("technique.light_index_list", PassResourceType::Temp, PassResourceDomain::Software));
+            io.write(make_rt_resource_ref(rt_hdr_, PassResourceType::ColorHDR, "hdr", PassResourceDomain::Software));
+            io.write(make_rt_resource_ref(static_cast<const RTHandle&>(rt_motion_), PassResourceType::Motion, "motion", PassResourceDomain::Software));
+            return io;
+        }
+
+        PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
+        {
+            if (!request.valid) return PassExecutionResult::not_executed();
+            if (!request.inputs.scene || !request.inputs.frame || !request.inputs.registry) return PassExecutionResult::not_executed();
+            const Scene& scene = *request.inputs.scene;
+            const FrameParams& fp = *request.inputs.frame;
+            RTRegistry& rtr = *request.inputs.registry;
+
+            const bool depth_ready = (!fp.technique.depth_prepass) || request.depth_prepass_ready;
+            const bool culling_ready = (!detail::technique_uses_light_culling(fp)) || request.light_culling_ready;
+
+            PassPBRForward::Inputs in{};
+            in.scene = &scene;
+            in.fp = &fp;
+            in.rtr = &rtr;
+            in.rt_hdr = rt_hdr_;
+            in.rt_motion = rt_motion_;
+            in.rt_shadow = rt_shadow_;
+            in.preserve_existing_depth = depth_ready && culling_ready && fp.technique.depth_prepass;
+            pass_.execute(ctx, in);
+            return PassExecutionResult::executed_no_outputs();
+        }
+
+    private:
+        RTHandle rt_hdr_{};
+        RT_Motion rt_motion_{};
+        RTHandle rt_shadow_{};
+        PassPBRForward pass_{};
+    };
+
+    class PassPBRForwardClusteredAdapter final : public IRenderPass
+    {
+    public:
+        PassPBRForwardClusteredAdapter(RTHandle rt_hdr, RT_Motion rt_motion, RTHandle rt_shadow)
+            : rt_hdr_(rt_hdr), rt_motion_(rt_motion), rt_shadow_(rt_shadow)
+        {}
+
+        const char* id() const override { return "pbr_forward_clustered"; }
+        RenderBackendType preferred_backend() const override { return RenderBackendType::Software; }
+        bool supports_backend(RenderBackendType backend) const override { return backend == RenderBackendType::Software; }
+        TechniquePassContract describe_contract() const override
+        {
+            TechniquePassContract c{};
+            c.role = TechniquePassRole::ForwardOpaque;
+            c.supported_modes_mask = technique_mode_bit(TechniqueMode::ClusteredForward);
+            c.requires_depth_prepass = true;
+            c.requires_light_culling = true;
+            c.semantics = {
+                read_semantic(PassSemantic::ShadowMap, ContractDomain::Software, "shadow"),
+                read_semantic(PassSemantic::Depth, ContractDomain::Software, "depth"),
+                read_semantic(PassSemantic::LightGrid, ContractDomain::Software, "light_grid"),
+                read_semantic(PassSemantic::LightIndexList, ContractDomain::Software, "light_index_list"),
+                write_semantic(PassSemantic::ColorHDR, ContractDomain::Software, "hdr"),
+                write_semantic(PassSemantic::MotionVectors, ContractDomain::Software, "motion")
+            };
+            return c;
+        }
+        PassIODesc describe_io() const override
+        {
+            PassIODesc io{};
+            io.read(make_rt_resource_ref(rt_shadow_, PassResourceType::Shadow, "shadow", PassResourceDomain::Software));
+            io.read(make_named_resource_ref("technique.depth_prepass", PassResourceType::Temp, PassResourceDomain::Software));
+            io.read(make_named_resource_ref("technique.light_grid", PassResourceType::Temp, PassResourceDomain::Software));
+            io.read(make_named_resource_ref("technique.light_index_list", PassResourceType::Temp, PassResourceDomain::Software));
+            io.write(make_rt_resource_ref(rt_hdr_, PassResourceType::ColorHDR, "hdr", PassResourceDomain::Software));
+            io.write(make_rt_resource_ref(static_cast<const RTHandle&>(rt_motion_), PassResourceType::Motion, "motion", PassResourceDomain::Software));
+            return io;
+        }
+
+        PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
+        {
+            if (!request.valid) return PassExecutionResult::not_executed();
+            if (!request.inputs.scene || !request.inputs.frame || !request.inputs.registry) return PassExecutionResult::not_executed();
+            const Scene& scene = *request.inputs.scene;
+            const FrameParams& fp = *request.inputs.frame;
+            RTRegistry& rtr = *request.inputs.registry;
+
+            const bool depth_ready = (!fp.technique.depth_prepass) || request.depth_prepass_ready;
+            const bool culling_ready = (!detail::technique_uses_light_culling(fp)) || request.light_culling_ready;
+
+            PassPBRForward::Inputs in{};
+            in.scene = &scene;
+            in.fp = &fp;
+            in.rtr = &rtr;
+            in.rt_hdr = rt_hdr_;
+            in.rt_motion = rt_motion_;
+            in.rt_shadow = rt_shadow_;
+            in.preserve_existing_depth = depth_ready && culling_ready && fp.technique.depth_prepass;
+            pass_.execute(ctx, in);
+            return PassExecutionResult::executed_no_outputs();
+        }
+
+    private:
+        RTHandle rt_hdr_{};
+        RT_Motion rt_motion_{};
+        RTHandle rt_shadow_{};
+        PassPBRForward pass_{};
+    };
+
+    class PassPBRForwardAdapter final : public IRenderPass
+    {
+    public:
+        PassPBRForwardAdapter(RTHandle rt_hdr, RT_Motion rt_motion, RTHandle rt_shadow)
+            : rt_hdr_(rt_hdr), rt_motion_(rt_motion), rt_shadow_(rt_shadow)
+        {}
+
+        const char* id() const override { return "pbr_forward"; }
+        RenderBackendType preferred_backend() const override { return RenderBackendType::Software; }
+        bool supports_backend(RenderBackendType backend) const override { return backend == RenderBackendType::Software; }
+        TechniquePassContract describe_contract() const override
+        {
+            TechniquePassContract c{};
+            c.role = TechniquePassRole::ForwardOpaque;
+            c.supported_modes_mask =
+                technique_mode_bit(TechniqueMode::Forward) |
+                technique_mode_bit(TechniqueMode::ForwardPlus) |
+                technique_mode_bit(TechniqueMode::ClusteredForward);
+            c.semantics = {
+                read_semantic(PassSemantic::ShadowMap, ContractDomain::Software, "shadow"),
+                write_semantic(PassSemantic::ColorHDR, ContractDomain::Software, "hdr"),
+                write_semantic(PassSemantic::MotionVectors, ContractDomain::Software, "motion")
+            };
+            return c;
+        }
+        PassIODesc describe_io() const override
+        {
+            PassIODesc io{};
+            io.read(make_rt_resource_ref(rt_shadow_, PassResourceType::Shadow, "shadow", PassResourceDomain::Software));
+            io.write(make_rt_resource_ref(rt_hdr_, PassResourceType::ColorHDR, "hdr", PassResourceDomain::Software));
+            io.write(make_rt_resource_ref(static_cast<const RTHandle&>(rt_motion_), PassResourceType::Motion, "motion", PassResourceDomain::Software));
+            return io;
+        }
+
+        PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
+        {
+            if (!request.valid) return PassExecutionResult::not_executed();
+            if (!request.inputs.scene || !request.inputs.frame || !request.inputs.registry) return PassExecutionResult::not_executed();
+            const Scene& scene = *request.inputs.scene;
+            const FrameParams& fp = *request.inputs.frame;
+            RTRegistry& rtr = *request.inputs.registry;
+            PassPBRForward::Inputs in{};
+            in.scene = &scene;
+            in.fp = &fp;
+            in.rtr = &rtr;
+            in.rt_hdr = rt_hdr_;
+            in.rt_motion = rt_motion_;
+            in.rt_shadow = rt_shadow_;
+            pass_.execute(ctx, in);
+            return PassExecutionResult::executed_no_outputs();
+        }
+
+    private:
+        RTHandle rt_hdr_{};
+        RT_Motion rt_motion_{};
+        RTHandle rt_shadow_{};
+        PassPBRForward pass_{};
+    };
+
+    class PassPBRForwardPlusAdapter final : public IRenderPass
+    {
+    public:
+        PassPBRForwardPlusAdapter(RTHandle rt_hdr, RT_Motion rt_motion, RTHandle rt_shadow)
+            : rt_hdr_(rt_hdr), rt_motion_(rt_motion), rt_shadow_(rt_shadow)
+        {}
+
+        const char* id() const override { return "pbr_forward_plus"; }
+        RenderBackendType preferred_backend() const override { return RenderBackendType::Software; }
+        bool supports_backend(RenderBackendType backend) const override { return backend == RenderBackendType::Software; }
+        TechniquePassContract describe_contract() const override
+        {
+            TechniquePassContract c{};
+            c.role = TechniquePassRole::ForwardOpaque;
+            c.supported_modes_mask = technique_mode_bit(TechniqueMode::ForwardPlus);
+            c.requires_depth_prepass = true;
+            c.requires_light_culling = true;
+            c.semantics = {
+                read_semantic(PassSemantic::ShadowMap, ContractDomain::Software, "shadow"),
+                read_semantic(PassSemantic::Depth, ContractDomain::Software, "depth"),
+                read_semantic(PassSemantic::LightGrid, ContractDomain::Software, "light_grid"),
+                read_semantic(PassSemantic::LightIndexList, ContractDomain::Software, "light_index_list"),
+                write_semantic(PassSemantic::ColorHDR, ContractDomain::Software, "hdr"),
+                write_semantic(PassSemantic::MotionVectors, ContractDomain::Software, "motion")
+            };
+            return c;
+        }
+        PassIODesc describe_io() const override
+        {
+            PassIODesc io{};
+            io.read(make_rt_resource_ref(rt_shadow_, PassResourceType::Shadow, "shadow", PassResourceDomain::Software));
+            io.read(make_named_resource_ref("technique.depth_prepass", PassResourceType::Temp, PassResourceDomain::Software));
+            io.read(make_named_resource_ref("technique.light_grid", PassResourceType::Temp, PassResourceDomain::Software));
+            io.read(make_named_resource_ref("technique.light_index_list", PassResourceType::Temp, PassResourceDomain::Software));
+            io.write(make_rt_resource_ref(rt_hdr_, PassResourceType::ColorHDR, "hdr", PassResourceDomain::Software));
+            io.write(make_rt_resource_ref(static_cast<const RTHandle&>(rt_motion_), PassResourceType::Motion, "motion", PassResourceDomain::Software));
+            return io;
+        }
+
+        PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
+        {
+            if (!request.valid) return PassExecutionResult::not_executed();
+            if (!request.inputs.scene || !request.inputs.frame || !request.inputs.registry) return PassExecutionResult::not_executed();
+            const Scene& scene = *request.inputs.scene;
+            const FrameParams& fp = *request.inputs.frame;
+            RTRegistry& rtr = *request.inputs.registry;
+
+            const bool light_culling_enabled = fp.technique.light_culling || fp.technique.mode == TechniqueMode::ForwardPlus;
+            const bool depth_ready = (!fp.technique.depth_prepass) || request.depth_prepass_ready;
+            const bool culling_ready = (!light_culling_enabled) || request.light_culling_ready;
+
+            PassPBRForward::Inputs in{};
+            in.scene = &scene;
+            in.fp = &fp;
+            in.rtr = &rtr;
+            in.rt_hdr = rt_hdr_;
+            in.rt_motion = rt_motion_;
+            in.rt_shadow = rt_shadow_;
+            in.preserve_existing_depth = depth_ready && culling_ready && fp.technique.depth_prepass;
+            pass_.execute(ctx, in);
+            return PassExecutionResult::executed_no_outputs();
+        }
+
+    private:
+        RTHandle rt_hdr_{};
+        RT_Motion rt_motion_{};
+        RTHandle rt_shadow_{};
+        PassPBRForward pass_{};
+    };
+
+    class PassTonemapAdapter final : public IRenderPass
+    {
+    public:
+        PassTonemapAdapter(RTHandle rt_hdr, RTHandle rt_ldr)
+            : rt_hdr_(rt_hdr), rt_ldr_(rt_ldr)
+        {}
+
+        const char* id() const override { return "tonemap"; }
+        RenderBackendType preferred_backend() const override { return RenderBackendType::Software; }
+        bool supports_backend(RenderBackendType backend) const override { return backend == RenderBackendType::Software; }
+        TechniquePassContract describe_contract() const override
+        {
+            TechniquePassContract c{};
+            c.role = TechniquePassRole::Composite;
+            c.supported_modes_mask = technique_mode_mask_all();
+            c.semantics = {
+                read_semantic(PassSemantic::ColorHDR, ContractDomain::Software, "hdr"),
+                write_semantic(PassSemantic::ColorLDR, ContractDomain::Software, "ldr")
+            };
+            return c;
+        }
+        PassIODesc describe_io() const override
+        {
+            PassIODesc io{};
+            io.read(make_rt_resource_ref(rt_hdr_, PassResourceType::ColorHDR, "hdr", PassResourceDomain::Software));
+            io.write(make_rt_resource_ref(rt_ldr_, PassResourceType::ColorLDR, "ldr", PassResourceDomain::Software));
+            return io;
+        }
+
+        PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
+        {
+            if (!request.valid) return PassExecutionResult::not_executed();
+            if (!request.inputs.frame || !request.inputs.registry) return PassExecutionResult::not_executed();
+            const FrameParams& fp = *request.inputs.frame;
+            RTRegistry& rtr = *request.inputs.registry;
+            PassTonemap::Inputs in{};
+            in.fp = &fp;
+            in.rtr = &rtr;
+            in.rt_hdr = rt_hdr_;
+            in.rt_ldr = rt_ldr_;
+            pass_.execute(ctx, in);
+            return PassExecutionResult::executed_no_outputs();
+        }
+
+    private:
+        RTHandle rt_hdr_{};
+        RTHandle rt_ldr_{};
+        PassTonemap pass_{};
+    };
+
+    class PassLightShaftsAdapter final : public IRenderPass
+    {
+    public:
+        PassLightShaftsAdapter(RTHandle rt_ldr_inout, RTHandle rt_depth_like, RTHandle rt_shafts_tmp)
+            : rt_ldr_(rt_ldr_inout), rt_depth_like_(rt_depth_like), rt_shafts_tmp_(rt_shafts_tmp)
+        {}
+
+        const char* id() const override { return "light_shafts"; }
+        RenderBackendType preferred_backend() const override { return RenderBackendType::Software; }
+        bool supports_backend(RenderBackendType backend) const override { return backend == RenderBackendType::Software; }
+        TechniquePassContract describe_contract() const override
+        {
+            TechniquePassContract c{};
+            c.role = TechniquePassRole::PostProcess;
+            c.supported_modes_mask = technique_mode_mask_all();
+            // Light shafts can run without a dedicated depth-prepass; it consumes
+            // the motion/depth-like buffer produced by the forward pass.
+            c.semantics = {
+                read_write_semantic(PassSemantic::ColorLDR, ContractDomain::Software, "ldr"),
+                read_semantic(PassSemantic::MotionVectors, ContractDomain::Software, "depth_like")
+            };
+            return c;
+        }
+        PassIODesc describe_io() const override
+        {
+            PassIODesc io{};
+            io.read_write(make_rt_resource_ref(rt_ldr_, PassResourceType::ColorLDR, "ldr", PassResourceDomain::Software));
+            io.read(make_rt_resource_ref(rt_depth_like_, PassResourceType::Motion, "motion", PassResourceDomain::Software));
+            if (rt_shafts_tmp_.valid())
+            {
+                io.write(make_rt_resource_ref(rt_shafts_tmp_, PassResourceType::Temp, "shafts_tmp", PassResourceDomain::Software));
+            }
+            else
+            {
+                io.write(make_named_resource_ref("light_shafts.auto_tmp", PassResourceType::Temp, PassResourceDomain::Software));
+            }
+            return io;
+        }
+
+        PassExecutionRequest build_execution_request(
+            const Context& ctx,
+            const Scene& scene,
+            const FrameParams& fp,
+            RTRegistry& rtr) const override
+        {
+            PassExecutionRequest req = IRenderPass::build_execution_request(ctx, scene, fp, rtr);
+            if (!req.valid) return req;
+            RTHandle tmp = rt_shafts_tmp_;
+            if (!tmp.valid())
+            {
+                auto* ldr = static_cast<RT_ColorLDR*>(rtr.get(rt_ldr_));
+                if (ldr) tmp = rtr.ensure_transient_color_ldr("light_shafts.auto_tmp", ldr->w, ldr->h);
+            }
+            req.set_named_rt("light_shafts.tmp", tmp);
+            return req;
+        }
+
+        PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
+        {
+            if (!request.valid) return PassExecutionResult::not_executed();
+            if (!request.inputs.scene || !request.inputs.frame || !request.inputs.registry) return PassExecutionResult::not_executed();
+            execute_with_tmp(
+                ctx,
+                *request.inputs.scene,
+                *request.inputs.frame,
+                *request.inputs.registry,
+                request.find_named_rt("light_shafts.tmp"));
+            return PassExecutionResult::executed_no_outputs();
+        }
+
+    private:
+        void execute_with_tmp(
+            Context& ctx,
+            const Scene& scene,
+            const FrameParams& fp,
+            RTRegistry& rtr,
+            RTHandle tmp)
+        {
+            PassLightShafts::Inputs in{};
+            in.scene = &scene;
+            in.fp = &fp;
+            in.rtr = &rtr;
+            in.rt_input_ldr = rt_ldr_;
+            in.rt_output_ldr = rt_ldr_;
+            in.rt_depth_like = rt_depth_like_;
+            in.rt_shafts_tmp = tmp;
+            pass_.execute(ctx, in);
+        }
+        RTHandle rt_ldr_{};
+        RTHandle rt_depth_like_{};
+        RTHandle rt_shafts_tmp_{};
+        PassLightShafts pass_{};
+    };
+
+    class PassMotionBlurAdapter final : public IRenderPass
+    {
+    public:
+        PassMotionBlurAdapter(RTHandle rt_ldr_inout, RTHandle rt_motion, RTHandle rt_tmp)
+            : rt_ldr_(rt_ldr_inout), rt_motion_(rt_motion), rt_tmp_(rt_tmp)
+        {}
+
+        const char* id() const override { return "motion_blur"; }
+        RenderBackendType preferred_backend() const override { return RenderBackendType::Software; }
+        bool supports_backend(RenderBackendType backend) const override { return backend == RenderBackendType::Software; }
+        TechniquePassContract describe_contract() const override
+        {
+            TechniquePassContract c{};
+            c.role = TechniquePassRole::PostProcess;
+            c.supported_modes_mask = technique_mode_mask_all();
+            c.semantics = {
+                read_write_semantic(PassSemantic::ColorLDR, ContractDomain::Software, "ldr"),
+                read_semantic(PassSemantic::MotionVectors, ContractDomain::Software, "motion")
+            };
+            return c;
+        }
+        PassIODesc describe_io() const override
+        {
+            PassIODesc io{};
+            io.read_write(make_rt_resource_ref(rt_ldr_, PassResourceType::ColorLDR, "ldr", PassResourceDomain::Software));
+            io.read(make_rt_resource_ref(rt_motion_, PassResourceType::Motion, "motion", PassResourceDomain::Software));
+            if (rt_tmp_.valid())
+            {
+                io.write(make_rt_resource_ref(rt_tmp_, PassResourceType::Temp, "motion_tmp", PassResourceDomain::Software));
+            }
+            else
+            {
+                io.write(make_named_resource_ref("motion_blur.auto_tmp", PassResourceType::Temp, PassResourceDomain::Software));
+            }
+            return io;
+        }
+
+        PassExecutionRequest build_execution_request(
+            const Context& ctx,
+            const Scene& scene,
+            const FrameParams& fp,
+            RTRegistry& rtr) const override
+        {
+            PassExecutionRequest req = IRenderPass::build_execution_request(ctx, scene, fp, rtr);
+            if (!req.valid) return req;
+            RTHandle tmp = rt_tmp_;
+            if (!tmp.valid())
+            {
+                auto* ldr = static_cast<RT_ColorLDR*>(rtr.get(rt_ldr_));
+                if (ldr) tmp = rtr.ensure_transient_color_ldr("motion_blur.auto_tmp", ldr->w, ldr->h);
+            }
+            req.set_named_rt("motion_blur.tmp", tmp);
+            return req;
+        }
+
+        PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
+        {
+            if (!request.valid) return PassExecutionResult::not_executed();
+            if (!request.inputs.frame || !request.inputs.registry) return PassExecutionResult::not_executed();
+            execute_with_tmp(
+                ctx,
+                *request.inputs.frame,
+                *request.inputs.registry,
+                request.find_named_rt("motion_blur.tmp"));
+            return PassExecutionResult::executed_no_outputs();
+        }
+
+    private:
+        void execute_with_tmp(
+            Context& ctx,
+            const FrameParams& fp,
+            RTRegistry& rtr,
+            RTHandle tmp)
+        {
+            PassMotionBlur::Inputs in{};
+            in.fp = &fp;
+            in.rtr = &rtr;
+            in.rt_input_ldr = rt_ldr_;
+            in.rt_output_ldr = rt_ldr_;
+            in.rt_motion = rt_motion_;
+            in.rt_tmp = tmp;
+            pass_.execute(ctx, in);
+        }
+        RTHandle rt_ldr_{};
+        RTHandle rt_motion_{};
+        RTHandle rt_tmp_{};
+        PassMotionBlur pass_{};
+    };
+
+    class PassDepthOfFieldAdapter final : public IRenderPass
+    {
+    public:
+        const char* id() const override { return "depth_of_field"; }
+        RenderBackendType preferred_backend() const override { return RenderBackendType::Software; }
+        bool supports_backend(RenderBackendType backend) const override { return backend == RenderBackendType::Software; }
+        TechniquePassContract describe_contract() const override
+        {
+            TechniquePassContract c{};
+            c.role = TechniquePassRole::PostProcess;
+            c.supported_modes_mask =
+                technique_mode_bit(TechniqueMode::Deferred) |
+                technique_mode_bit(TechniqueMode::TiledDeferred);
+            c.semantics = {
+                read_write_semantic(PassSemantic::ColorLDR, ContractDomain::Software, "ldr"),
+                read_semantic(PassSemantic::Depth, ContractDomain::Software, "depth")
+            };
+            return c;
+        }
+        PassIODesc describe_io() const override
+        {
+            PassIODesc io{};
+            io.read_write(make_named_resource_ref("technique.ldr", PassResourceType::ColorLDR, PassResourceDomain::Software));
+            io.read(make_named_resource_ref("technique.depth_prepass", PassResourceType::Temp, PassResourceDomain::Software));
+            return io;
+        }
+
+        PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
+        {
+            (void)ctx;
+            if (!request.valid) return PassExecutionResult::not_executed();
+            return PassExecutionResult::executed_no_outputs();
+        }
+    };
+
+    class PassTemporalAAAdapter final : public IRenderPass
+    {
+    public:
+        explicit PassTemporalAAAdapter(RTHandle rt_ldr_inout)
+            : rt_ldr_(rt_ldr_inout)
+        {}
+
+        const char* id() const override { return "taa"; }
+        RenderBackendType preferred_backend() const override { return RenderBackendType::Software; }
+        bool supports_backend(RenderBackendType backend) const override { return backend == RenderBackendType::Software; }
+        TechniquePassContract describe_contract() const override
+        {
+            TechniquePassContract c{};
+            c.role = TechniquePassRole::PostProcess;
+            c.supported_modes_mask = technique_mode_mask_all();
+            c.semantics = {
+                read_write_semantic(PassSemantic::ColorLDR, ContractDomain::Software, "ldr"),
+                read_semantic(PassSemantic::HistoryColor, ContractDomain::Software, "history_in"),
+                write_semantic(PassSemantic::HistoryColor, ContractDomain::Software, "history_out")
+            };
+            return c;
+        }
+        PassIODesc describe_io() const override
+        {
+            PassIODesc io{};
+            io.read_write(make_rt_resource_ref(rt_ldr_, PassResourceType::ColorLDR, "ldr", PassResourceDomain::Software));
+            io.read(make_named_resource_ref("technique.history_color", PassResourceType::Temp, PassResourceDomain::Software));
+            io.write(make_named_resource_ref("technique.history_color", PassResourceType::Temp, PassResourceDomain::Software));
+            return io;
+        }
+
+        void reset_history(Context& ctx, RTRegistry& rtr) override
+        {
+            (void)rtr;
+            ctx.temporal_aa.reset();
+        }
+
+        PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
+        {
+            if (!request.valid) return PassExecutionResult::not_executed();
+            if (!request.inputs.registry) return PassExecutionResult::not_executed();
+            RTRegistry& rtr = *request.inputs.registry;
+            auto* ldr = static_cast<RT_ColorLDR*>(rtr.get(rt_ldr_));
+            if (!ldr || ldr->w <= 0 || ldr->h <= 0) return PassExecutionResult::not_executed();
+
+            auto& taa = ctx.temporal_aa;
+            const int w = ldr->w;
+            const int h = ldr->h;
+            const size_t count = static_cast<size_t>(w) * static_cast<size_t>(h);
+            if (taa.history_w != w || taa.history_h != h || taa.history.size() != count)
+            {
+                taa.history.assign(count, Color{0, 0, 0, 255});
+                taa.history_w = w;
+                taa.history_h = h;
+                taa.history_valid = false;
+            }
+
+            const float blend = 0.12f;
+            const float keep = 1.0f - blend;
+            if (!taa.history_valid)
+            {
+                for (size_t i = 0; i < count; ++i)
+                {
+                    taa.history[i] = ldr->color.data[i];
+                }
+                taa.history_valid = true;
+                return PassExecutionResult::executed_no_outputs();
+            }
+
+            for (size_t i = 0; i < count; ++i)
+            {
+                const Color cur = ldr->color.data[i];
+                const Color prev = taa.history[i];
+
+                auto lerp_chan = [keep, blend](uint8_t a, uint8_t b) -> uint8_t {
+                    const float v = keep * static_cast<float>(a) + blend * static_cast<float>(b);
+                    const int iv = static_cast<int>(v + 0.5f);
+                    return static_cast<uint8_t>(std::clamp(iv, 0, 255));
+                };
+
+                Color out{};
+                out.r = lerp_chan(cur.r, prev.r);
+                out.g = lerp_chan(cur.g, prev.g);
+                out.b = lerp_chan(cur.b, prev.b);
+                out.a = cur.a;
+                ldr->color.data[i] = out;
+                taa.history[i] = out;
+            }
+            return PassExecutionResult::executed_no_outputs();
+        }
+
+    private:
+        RTHandle rt_ldr_{};
+    };
+
+    inline PassFactoryRegistry make_standard_pass_factory_registry(
+        RT_Shadow rt_shadow,
+        RTHandle rt_hdr,
+        RT_Motion rt_motion,
+        RTHandle rt_ldr,
+        RTHandle rt_shafts_tmp,
+        RTHandle rt_motion_blur_tmp
+    )
+    {
+        PassFactoryRegistry reg{};
+        const uint32_t sw_only_backend_mask = PassFactoryRegistry::backend_bit(RenderBackendType::Software);
+        auto register_standard = [&](PassId pass_id, PassFactoryRegistry::Factory f) {
+            reg.register_factory(pass_id, std::move(f));
+            TechniquePassContract c{};
+            if (lookup_standard_pass_contract(pass_id, c))
+            {
+                reg.register_descriptor(pass_id, c, sw_only_backend_mask, true);
+            }
+        };
+
+        register_standard(PassId::ShadowMap, [=]() {
+            return std::make_unique<PassShadowMapAdapter>(rt_shadow);
+        });
+        register_standard(PassId::PBRForward, [=]() {
+            return std::make_unique<PassPBRForwardAdapter>(rt_hdr, rt_motion, RTHandle{rt_shadow.id});
+        });
+        register_standard(PassId::DepthPrepass, [=]() {
+            return std::make_unique<PassDepthPrepassAdapter>(rt_motion);
+        });
+        register_standard(PassId::LightCulling, [=]() {
+            return std::make_unique<PassLightCullingAdapter>(rt_motion);
+        });
+        register_standard(PassId::ClusterBuild, [=]() {
+            return std::make_unique<PassClusterBuildAdapter>(rt_motion);
+        });
+        register_standard(PassId::ClusterLightAssign, [=]() {
+            return std::make_unique<PassClusterLightAssignAdapter>(rt_motion);
+        });
+        register_standard(PassId::PBRForwardPlus, [=]() {
+            return std::make_unique<PassPBRForwardPlusAdapter>(rt_hdr, rt_motion, RTHandle{rt_shadow.id});
+        });
+        register_standard(PassId::PBRForwardClustered, [=]() {
+            return std::make_unique<PassPBRForwardClusteredAdapter>(rt_hdr, rt_motion, RTHandle{rt_shadow.id});
+        });
+        register_standard(PassId::GBuffer, [=]() {
+            return std::make_unique<PassGBufferAdapter>();
+        });
+        register_standard(PassId::SSAO, [=]() {
+            return std::make_unique<PassSSAOAdapter>();
+        });
+        register_standard(PassId::DeferredLighting, [=]() {
+            return std::make_unique<PassDeferredLightingAdapter>(rt_hdr, rt_motion, RTHandle{rt_shadow.id});
+        });
+        register_standard(PassId::DeferredLightingTiled, [=]() {
+            return std::make_unique<PassDeferredLightingTiledAdapter>(rt_hdr, rt_motion, RTHandle{rt_shadow.id});
+        });
+        register_standard(PassId::Tonemap, [=]() {
+            return std::make_unique<PassTonemapAdapter>(rt_hdr, rt_ldr);
+        });
+        reg.register_factory("light_shafts", [=]() {
+            return std::make_unique<PassLightShaftsAdapter>(rt_ldr, rt_motion, rt_shafts_tmp);
+        });
+        register_standard(PassId::MotionBlur, [=]() {
+            return std::make_unique<PassMotionBlurAdapter>(rt_ldr, rt_motion, rt_motion_blur_tmp);
+        });
+        register_standard(PassId::DepthOfField, [=]() {
+            return std::make_unique<PassDepthOfFieldAdapter>();
+        });
+        register_standard(PassId::TAA, [=]() {
+            return std::make_unique<PassTemporalAAAdapter>(rt_ldr);
+        });
+        return reg;
+    }
+}

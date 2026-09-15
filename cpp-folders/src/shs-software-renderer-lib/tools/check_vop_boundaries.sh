@@ -3,7 +3,8 @@ set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 lib_root="$(cd "${script_dir}/.." && pwd)"
-pipeline_dir="${lib_root}/include/shs/pipeline"
+pipeline_dir="${lib_root}/include/shs/execution/pipeline"
+domains_dir="${lib_root}/include/shs/domains"
 
 if command -v rg >/dev/null 2>&1; then
   search_cmd=(rg -n)
@@ -39,6 +40,58 @@ check_pattern() {
 check_pattern '#include[[:space:]]+[<"]shs/rhi/drivers/' "planner headers include backend driver headers"
 check_pattern '#include[[:space:]]+[<"]shs/rhi/sync/' "planner headers include runtime sync headers"
 check_pattern 'dynamic_cast[[:space:]]*<' "planner headers use dynamic_cast policy branching"
+
+# --- P0.5 pod-first tree restructure checks ---
+
+# Facade sanity: every migration facade must forward to exactly one existing
+# canonical header, which must not be the facade itself (guards self-include).
+facade_count=0
+for facade in $(find "${lib_root}/include/shs" -name '*.hpp' | sort); do
+  rel="${facade#"${lib_root}/include/"}"
+  case "${rel}" in
+    shs/domains/*|shs/execution/*|shs/core/*|shs/memory/*|shs/containers/*) continue ;;
+  esac
+  facade_count=$((facade_count + 1))
+  target="$(grep -oE '#include[[:space:]]*"[^"]+"' "${facade}" | grep -oE '"[^"]+"' | tr -d '"' | head -1)"
+  if [[ -z "${target}" ]]; then
+    echo "[vop-boundary] FAIL: facade ${rel} has no forwarding #include"
+    failed=1
+    continue
+  fi
+  if [[ ! -f "${lib_root}/include/${target}" ]]; then
+    echo "[vop-boundary] FAIL: facade ${rel} forwards to missing ${target}"
+    failed=1
+    continue
+  fi
+  if [[ "${target}" == "${rel}" ]]; then
+    echo "[vop-boundary] FAIL: facade ${rel} forwards to itself (include cycle)"
+    failed=1
+    continue
+  fi
+done
+echo "[vop-boundary] OK: ${facade_count} migration facades forward to existing canonical headers"
+
+# Domain direction law: headers under shs/domains/ must never directly include
+# execution zones (canonical include text). Legacy-path includes that resolve
+# through migration facades are counted as advisory until P5 canonicalization.
+forbidden_domains_include='^shs/(execution|pipeline|passes|rhi|sw_render|platform|shader|app|job)/'
+legacy_count=0
+for h in $(find "${domains_dir}" -name '*.hpp' | sort); do
+  rel="${h#"${lib_root}/include/"}"
+  hits="$("${search_cmd[@]}" "#include[[:space:]]*[<\"]${forbidden_domains_include}" "${h}" 2>/dev/null || true)"
+  if [[ -n "${hits}" ]]; then
+    echo "[vop-boundary] FAIL: domain header ${rel} directly includes an execution zone"
+    echo "${hits}"
+    failed=1
+  fi
+  n="$(grep -cE '#include[[:space:]]*[<\"]shs/(pipeline|passes|rhi|sw_render|platform|shader|app|job)/' "${h}" 2>/dev/null || true)"
+  legacy_count=$((legacy_count + n))
+done
+if [[ "${failed}" -ne 0 ]]; then
+  exit 1
+fi
+echo "[vop-boundary] OK: domain headers carry no direct execution-zone includes"
+echo "[vop-boundary] INFO: ${legacy_count} legacy-path includes in domains/ resolve via migration facades (canonicalized in P5)"
 
 if [[ "${failed}" -ne 0 ]]; then
   exit 1

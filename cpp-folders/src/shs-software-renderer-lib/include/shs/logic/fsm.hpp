@@ -1,13 +1,2 @@
-#pragma once
-
-/*
-    SHS РЕНДЕРЕР САН
-
-    ФАЙЛ: fsm.hpp
-    МОДУЛЬ: logic
-    ЗОРИЛГО: FSM хэрэгжүүлэлтийн төв include (aggregation header).
-*/
-
-
-#include "shs/logic/state_machine.hpp"
-
+#pragma message("shs/logic/fsm.hpp is deprecated: include shs/domains/logic/fsm.hpp (P0.5 pod-first migration)")
+#include "shs/domains/logic/fsm.hpp"

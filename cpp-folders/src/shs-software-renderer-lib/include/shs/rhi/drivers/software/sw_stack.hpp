@@ -1,15 +1,2 @@
-#pragma once
-
-/*
-    SHS РЕНДЕРЕР САН
-
-    ФАЙЛ: sw_stack.hpp
-    МОДУЛЬ: rhi/drivers/software
-    ЗОРИЛГО: Software backend-д шаардлагатай нийтлэг include-уудыг нэг дороос авах aggregation header.
-*/
-
-
-#include "shs/rhi/drivers/software/sw_backend.hpp"
-#include "shs/gfx/rt_types.hpp"
-#include "shs/sw_render/rasterizer.hpp"
-
+#pragma message("shs/rhi/drivers/software/sw_stack.hpp is deprecated: include shs/execution/rhi/drivers/software/sw_stack.hpp (P0.5 pod-first migration)")
+#include "shs/execution/rhi/drivers/software/sw_stack.hpp"
