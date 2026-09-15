@@ -3,6 +3,9 @@
 > Status: active plan (2026-09). Owner: shs-renderer-lib shader pipeline.
 > Predecessor docs: `docs/dev/build_and_setup.md` (Slang install, pinned v2026.17.1),
 > `docs/roadmap/domain_pod_engine_rollout_roadmap.md` (pod architecture).
+> Technique curriculum (which passes we build, in what order):
+> `docs/education/rendering_techniques_curriculum.md` — the two docs are one
+> braided track: each curriculum tier migrates its passes to Slang on landing.
 
 ## 0. Policy: GLSL is frozen
 
