@@ -37,6 +37,10 @@ namespace shs::demo
         ToggleTemporalAccumulation,
         PrintHelp,
         ToggleAutoCycleTechnique,
+        // Renderpath pod intents (Run 1 / P3 task 2): path/technique hot-swap
+        // requests are translated to renderpath::RenderPathCommand intents.
+        CycleRenderPathRecipe,
+        CycleRenderingTechnique,
         // Light/shadow tuning cluster — handled by the pure reducer below.
         ToggleSunShadow,
         LightOrbitScaleDec,

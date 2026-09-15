@@ -227,3 +227,16 @@ if(MSVC)
 else()
     target_compile_options(shs_demo_input_actions_tests PRIVATE -Wall -Wextra -Wpedantic)
 endif()
+
+# Run 1 (P3 task 2): GPU-free tests for the demo -> renderpath intent bridge
+# (demo_renderpath_bridge.hpp) incl. the pure reduce_render_path accept/reject
+# and hot-swap flow. No SDL/Vulkan/GLM dependency.
+add_executable(shs_demo_renderpath_bridge_tests demo_renderpath_bridge_tests.cpp)
+add_test(NAME shs_demo_renderpath_bridge_tests COMMAND shs_demo_renderpath_bridge_tests)
+target_compile_features(shs_demo_renderpath_bridge_tests PRIVATE cxx_std_20)
+target_link_libraries(shs_demo_renderpath_bridge_tests PRIVATE shs::renderer-values)
+if(MSVC)
+    target_compile_options(shs_demo_renderpath_bridge_tests PRIVATE /W4)
+else()
+    target_compile_options(shs_demo_renderpath_bridge_tests PRIVATE -Wall -Wextra -Wpedantic)
+endif()

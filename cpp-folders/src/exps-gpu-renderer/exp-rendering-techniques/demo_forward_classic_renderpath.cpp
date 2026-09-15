@@ -28,6 +28,12 @@
 #include <vulkan/vulkan.h>
 
 #include "demo_input_actions.hpp"
+#include "demo_renderpath_bridge.hpp"
+
+#include <deque>
+#include <memory_resource>
+#include <type_traits>
+#include <variant>
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -883,7 +889,7 @@ private:
         std::fprintf(stderr, "  F1         : toggle recording mode (inline / MT-secondary)\n");
         std::fprintf(stderr, "  F2         : cycle rendering path (Forward/Forward+/Deferred/TiledDeferred/ClusteredForward)\n");
         std::fprintf(stderr, "  F3         : cycle composed presets ({path + technique + post-stack variant})\n");
-        std::fprintf(stderr, "  F4         : cycle rendering-technique recipe (PBR/Blinn)\n");
+        std::fprintf(stderr, "  F4         : cycle rendering technique (Forward/Forward+/Deferred) via renderpath pod\n");
         std::fprintf(stderr, "  F5         : cycle forward-focused debug targets (final/albedo/normal/material/depth/ao/shadow/hdr/ldr)\n");
         std::fprintf(stderr, "  I          : cycle full framebuffer debug preset set (advanced)\n");
         std::fprintf(stderr, "  Tab        : cycle rendering path (alias)\n");
@@ -5768,6 +5774,13 @@ private:
     {
         const shs::RenderPathExecutionPlan& plan = render_path_executor_.active_plan();
         const shs::RenderPathRecipe& recipe = render_path_executor_.active_recipe();
+
+        // Keep the renderpath pod mirror in sync with whatever the executor
+        // actually applied (accepted swaps and fallbacks both land here).
+        render_path_pod_.recipe = recipe;
+        render_path_pod_.plan =
+            render_path_compiler_.compile(recipe, render_path_caps_, &pass_contract_registry_);
+        render_path_pod_.has_plan = render_path_pod_.plan.valid;
         const shs::RenderPathResourcePlan& resource_plan = render_path_executor_.active_resource_plan();
         const shs::RenderPathBarrierPlan& barrier_plan = render_path_executor_.active_barrier_plan();
 
@@ -5844,24 +5857,106 @@ private:
         return true;
     }
 
-    bool apply_render_path_recipe_by_index(size_t index)
+    // Renderpath pod edge (Run 1 / P3 task 2): path/technique changes are
+    // requested as intents; the pure reducer (reduce_render_path) accepts or
+    // rejects them at the per-frame dispatch; only accepted swaps reach the
+    // executor below.
+    void request_render_path_recipe_by_index(size_t index)
     {
         if (!render_path_executor_.has_recipes())
         {
-            apply_technique_mode(shs::TechniqueMode::Deferred);
-            return false;
+            request_technique_mode(shs::TechniqueMode::Deferred);
+            return;
         }
+        pending_resolved_render_paths_.push_back(
+            render_path_executor_.resolve_index(index, ctx_, &pass_contract_registry_));
+        pending_renderpath_commands_.push_back(
+            shs::renderpath::SelectPathPresetIntent{
+                pending_resolved_render_paths_.back().recipe});
+    }
 
-        const shs::RenderPathResolvedState resolved_path_state =
-            render_path_executor_.resolve_index(index, ctx_, &pass_contract_registry_);
-        const bool plan_valid = render_path_executor_.apply_resolved(resolved_path_state);
-        return consume_active_render_path_apply_result(plan_valid);
+    void request_technique_mode(shs::TechniqueMode mode)
+    {
+        pending_renderpath_commands_.push_back(
+            shs::renderpath::SetRenderingTechniqueIntent{
+                shs::demo::technique_for_mode(mode)});
+    }
+
+    // Frame-edge consumer: reduces queued intents through the pure renderpath
+    // reducer; only accepted swaps reach the demo executor. One command per
+    // frame keeps event->payload attribution trivial.
+    void dispatch_renderpath_commands()
+    {
+        if (pending_renderpath_commands_.empty()) return;
+
+        const shs::renderpath::RenderPathCommand command = pending_renderpath_commands_.front();
+        pending_renderpath_commands_.erase(pending_renderpath_commands_.begin());
+        const bool command_is_path =
+            std::holds_alternative<shs::renderpath::SelectPathPresetIntent>(command);
+
+        renderpath_events_.clear();
+        shs::renderpath::reduce_render_path(
+            render_path_pod_,
+            std::span<const shs::renderpath::RenderPathCommand>{&command, 1},
+            render_path_compiler_,
+            render_path_caps_,
+            renderpath_events_);
+
+        bool last_swap_rejected = false;
+        for (const shs::renderpath::RenderPathEvent& event : renderpath_events_)
+        {
+            std::visit(
+                [&](const auto& ev) {
+                    using T = std::decay_t<decltype(ev)>;
+                    if constexpr (std::is_same_v<T, shs::renderpath::PathCompiledEvent>)
+                    {
+                        last_swap_rejected = false;
+                        if (command_is_path && !pending_resolved_render_paths_.empty())
+                        {
+                            const shs::RenderPathResolvedState resolved =
+                                std::move(pending_resolved_render_paths_.front());
+                            pending_resolved_render_paths_.pop_front();
+                            const bool plan_valid = render_path_executor_.apply_resolved(resolved);
+                            (void)consume_active_render_path_apply_result(plan_valid);
+                        }
+                    }
+                    else if constexpr (std::is_same_v<T, shs::renderpath::PathSwapRejectedEvent>)
+                    {
+                        last_swap_rejected = true;
+                        std::fprintf(
+                            stderr,
+                            "[render-path][pod] PATH_SWAP_REJECTED (reason=%u). Previous plan kept.\n",
+                            static_cast<unsigned>(ev.reason));
+                        if (command_is_path && !pending_resolved_render_paths_.empty())
+                        {
+                            pending_resolved_render_paths_.pop_front();
+                        }
+                    }
+                    else if constexpr (std::is_same_v<T, shs::renderpath::TechniqueSwitchedEvent>)
+                    {
+                        if (!last_swap_rejected)
+                        {
+                            apply_technique_mode(shs::demo::mode_for_technique(ev.current));
+                        }
+                        std::fprintf(
+                            stderr,
+                            "[render-path][pod] technique -> %d%s\n",
+                            static_cast<int>(ev.current),
+                            last_swap_rejected ? " (swap rejected; profile unchanged)" : "");
+                    }
+                    else
+                    {
+                        // CullingModeChanged / RuntimeToggled: pod state only.
+                    }
+                },
+                event);
+        }
     }
 
     void cycle_render_path_recipe()
     {
         if (!render_path_executor_.has_recipes()) return;
-        (void)apply_render_path_recipe_by_index(render_path_executor_.active_index() + 1u);
+        request_render_path_recipe_by_index(render_path_executor_.active_index() + 1u);
     }
 
     void cycle_lighting_technique()
@@ -5910,6 +6005,15 @@ private:
         };
 
         active_composition_recipe_ = recipe;
+
+        // Renderpath pod init (Run 1 / P3 task 2): capability snapshot + the
+        // initial recipe/plan, so intent dispatch validates against reality.
+        render_path_caps_ = shs::make_render_path_capability_set(ctx_, shs::RenderBackendType::Vulkan);
+        render_path_pod_.recipe = resolved.path_recipe;
+        render_path_pod_.plan = render_path_compiler_.compile(
+            resolved.path_recipe, render_path_caps_, &pass_contract_registry_);
+        render_path_pod_.has_plan = render_path_pod_.plan.valid;
+
         apply_render_composition_resolved(resolved);
 
         print_composition_catalog();
@@ -8765,6 +8869,9 @@ private:
             case SDLK_F10: return DemoInputAction::PrintHelp;
             case SDLK_F11: return DemoInputAction::ToggleAutoCycleTechnique;
             case SDLK_F12: return DemoInputAction::ToggleSunShadow;
+            case SDLK_F2:
+            case SDLK_TAB: return DemoInputAction::CycleRenderPathRecipe;
+            case SDLK_F4: return DemoInputAction::CycleRenderingTechnique;
             case SDLK_1: return DemoInputAction::LightOrbitScaleDec;
             case SDLK_2: return DemoInputAction::LightOrbitScaleInc;
             case SDLK_3: return DemoInputAction::LightHeightBiasDec;
@@ -8908,6 +9015,7 @@ private:
             input_latch_ = shs::reduce_runtime_input_latch(input_latch_, pending_input_events_);
             pending_input_events_.clear();
             apply_pending_keydown_actions();
+            dispatch_renderpath_commands();
 
             const bool look_drag = input_latch_.left_mouse_down || input_latch_.right_mouse_down;
             if (look_drag != relative_mouse_mode_)
@@ -9017,6 +9125,22 @@ private:
                 case shs::demo::DemoInputAction::ToggleAutoCycleTechnique:
                     auto_cycle_technique_ = !auto_cycle_technique_;
                     technique_switch_accum_sec_ = 0.0f;
+                    break;
+                case shs::demo::DemoInputAction::CycleRenderPathRecipe:
+                    if (render_path_executor_.has_recipes())
+                    {
+                        request_render_path_recipe_by_index(
+                            render_path_executor_.active_index() + 1u);
+                    }
+                    else
+                    {
+                        std::fprintf(
+                            stderr,
+                            "[render-path][pod] No render-path recipes registered; F2/TAB inactive.\n");
+                    }
+                    break;
+                case shs::demo::DemoInputAction::CycleRenderingTechnique:
+                    request_technique_mode(active_technique_);
                     break;
                 default:
                     // Light/shadow tuning cluster: pure reducer on token values
@@ -9246,6 +9370,13 @@ private:
     uint32_t frame_graph_barrier_edges_emitted_ = 0u;
     uint32_t frame_graph_barrier_fallback_count_ = 0u;
     shs::RenderPathExecutor render_path_executor_{};
+    // Renderpath pod (Run 1 / P3 task 2): intent queue + pure reducer state.
+    shs::RenderPathCompiler render_path_compiler_{};
+    shs::RenderPathCapabilitySet render_path_caps_{};
+    shs::renderpath::RenderPathPodState render_path_pod_{};
+    std::vector<shs::renderpath::RenderPathCommand> pending_renderpath_commands_{};
+    std::deque<shs::RenderPathResolvedState> pending_resolved_render_paths_{};
+    std::pmr::vector<shs::renderpath::RenderPathEvent> renderpath_events_{};
     shs::PassFactoryRegistry pass_contract_registry_{};
     shs::PassFactoryRegistry pass_contract_registry_sw_{};
     shs::RenderPathPassDispatcher<FramePassExecutionContext> frame_pass_dispatcher_{};
