@@ -12,6 +12,23 @@ else()
     )
 endif()
 
+# Tranche 1 (de-Vulkanization): the demo executable is defined UNCONDITIONALLY
+# so the tree configures and builds GPU-free. The demo TU guards its Vulkan
+# code paths with SHS_HAS_VULKAN (exported PUBLIC by shs::gpu-renderer only
+# when Vulkan was found); SHS_VK_FP_* shader paths inside the gate below are
+# added as compile definitions only when the Vulkan shader build is enabled.
+add_executable(demo_forward_classic_renderpath demo_forward_classic_renderpath.cpp)
+target_link_libraries(demo_forward_classic_renderpath PRIVATE shs::gpu-renderer)
+set_target_properties(demo_forward_classic_renderpath PROPERTIES FOLDER "Demos/RenderingTechniques")
+if(MSVC)
+    target_compile_options(demo_forward_classic_renderpath PRIVATE /W4)
+else()
+    target_compile_options(demo_forward_classic_renderpath PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(demo_forward_classic_renderpath PRIVATE $<$<CONFIG:Release>:-O3>)
+    target_compile_options(demo_forward_classic_renderpath PRIVATE $<$<CONFIG:Debug>:-g>)
+endif()
+target_compile_features(demo_forward_classic_renderpath PRIVATE cxx_std_20)
+
 if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
     set(SHADER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/shaders")
     set(OUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/shaders")
@@ -185,11 +202,10 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
         "${FP_LIGHT_CULL_COMP_SPV}"
         "${FP_DEPTH_REDUCE_COMP_SPV}")
 
-    # 1.1 Classic Forward (RenderPath Implementation)
-    add_executable(demo_forward_classic_renderpath demo_forward_classic_renderpath.cpp)
+    # 1.1 Classic Forward (RenderPath Implementation) — Vulkan-only inputs
+    # (SPIR-V compilation, shader dependency, shader path defines) stay in the
+    # Vulkan gate; the target itself is defined unconditionally below.
     add_dependencies(demo_forward_classic_renderpath DemoStandardShaders)
-    target_link_libraries(demo_forward_classic_renderpath PRIVATE shs::gpu-renderer)
-    set_target_properties(demo_forward_classic_renderpath PROPERTIES FOLDER "Demos/RenderingTechniques")
     target_compile_definitions(demo_forward_classic_renderpath PRIVATE
         SHS_VK_FP_SCENE_VERT_SPV="${FP_SCENE_VERT_SPV}"
         SHS_VK_FP_SCENE_FRAG_SPV="${FP_SCENE_FRAG_SPV}"
@@ -203,15 +219,6 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
         SHS_VK_FP_LIGHT_CULL_COMP_SPV="${FP_LIGHT_CULL_COMP_SPV}"
         SHS_VK_FP_DEPTH_REDUCE_COMP_SPV="${FP_DEPTH_REDUCE_COMP_SPV}"
     )
-
-    if(MSVC)
-        target_compile_options(demo_forward_classic_renderpath PRIVATE /W4)
-    else()
-        target_compile_options(demo_forward_classic_renderpath PRIVATE -Wall -Wextra -Wpedantic)
-        target_compile_options(demo_forward_classic_renderpath PRIVATE $<$<CONFIG:Release>:-O3>)
-        target_compile_options(demo_forward_classic_renderpath PRIVATE $<$<CONFIG:Debug>:-g>)
-    endif()
-    target_compile_features(demo_forward_classic_renderpath PRIVATE cxx_std_20)
 
 endif()
 

@@ -190,6 +190,7 @@ struct Instance
     MeshKind mesh_kind = MeshKind::Sphere;
 };
 
+#ifdef SHS_HAS_VULKAN
 struct GpuBuffer
 {
     VkBuffer buffer = VK_NULL_HANDLE;
@@ -197,7 +198,9 @@ struct GpuBuffer
     VkDeviceSize size = 0;
     void* mapped = nullptr;
 };
+#endif
 
+#ifdef SHS_HAS_VULKAN
 struct FrameResources
 {
     GpuBuffer camera_buffer{};
@@ -208,7 +211,9 @@ struct FrameResources
     GpuBuffer tile_depth_ranges_buffer{};
     VkDescriptorSet global_set = VK_NULL_HANDLE;
 };
+#endif
 
+#ifdef SHS_HAS_VULKAN
 struct DepthTarget
 {
     VkImage image = VK_NULL_HANDLE;
@@ -220,7 +225,9 @@ struct DepthTarget
     uint32_t w = 0;
     uint32_t h = 0;
 };
+#endif
 
+#ifdef SHS_HAS_VULKAN
 struct GBufferAttachment
 {
     VkImage image = VK_NULL_HANDLE;
@@ -228,7 +235,9 @@ struct GBufferAttachment
     VkImageView view = VK_NULL_HANDLE;
     VkFormat format = VK_FORMAT_UNDEFINED;
 };
+#endif
 
+#ifdef SHS_HAS_VULKAN
 struct GBufferTarget
 {
     std::array<GBufferAttachment, 4> colors{};
@@ -237,7 +246,9 @@ struct GBufferTarget
     uint32_t w = 0;
     uint32_t h = 0;
 };
+#endif
 
+#ifdef SHS_HAS_VULKAN
 struct AmbientOcclusionTarget
 {
     VkImage image = VK_NULL_HANDLE;
@@ -249,7 +260,9 @@ struct AmbientOcclusionTarget
     uint32_t w = 0;
     uint32_t h = 0;
 };
+#endif
 
+#ifdef SHS_HAS_VULKAN
 struct PostColorTarget
 {
     VkImage image = VK_NULL_HANDLE;
@@ -261,7 +274,9 @@ struct PostColorTarget
     uint32_t w = 0;
     uint32_t h = 0;
 };
+#endif
 
+#ifdef SHS_HAS_VULKAN
 struct LayeredDepthTarget
 {
     VkImage image = VK_NULL_HANDLE;
@@ -275,11 +290,14 @@ struct LayeredDepthTarget
     uint32_t h = 0;
     uint32_t layers = 0;
 };
+#endif
 
+#ifdef SHS_HAS_VULKAN
 struct WorkerPool
 {
     std::array<VkCommandPool, kWorkerPoolRingSize> pools{VK_NULL_HANDLE, VK_NULL_HANDLE};
 };
+#endif
 
 struct GpuPassTimestampSample
 {
@@ -832,7 +850,9 @@ public:
         init_jobs();
         init_scene_data();
         initialize_phase_i_parity_report();
+#ifdef SHS_HAS_VULKAN
         init_gpu_resources();
+#endif
         initialize_phase_f_benchmark();
         initialize_phase_g_soak();
         print_controls();
@@ -849,6 +869,7 @@ public:
         // free through keep_).
         if (headless_software_mode_) return;
 
+#ifdef SHS_HAS_VULKAN
         if (vk_) vk_->wait_idle();
 
         destroy_gpu_pass_timestamp_resources();
@@ -863,9 +884,12 @@ public:
         destroy_layered_depth_target(local_shadow_target_);
 
         destroy_worker_pools();
+#endif
         if (jobs_) jobs_.reset();
-        
+
+#ifdef SHS_HAS_VULKAN
         destroy_buffer(vertex_buffer_);
+        destroy_buffer(index_buffer_);
         destroy_buffer(index_buffer_);
         destroy_buffer(floor_vertex_buffer_);
         destroy_buffer(floor_index_buffer_);
@@ -924,9 +948,12 @@ public:
                 global_set_layout_ = VK_NULL_HANDLE;
             }
         }
+#endif // SHS_HAS_VULKAN
 
         keep_.clear();
+#ifdef SHS_HAS_VULKAN
         vk_ = nullptr;
+#endif
 
         if (win_)
         {
@@ -2351,7 +2378,11 @@ private:
             SDL_WINDOWPOS_CENTERED,
             kDefaultW,
             kDefaultH,
+#ifdef SHS_HAS_VULKAN
             SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE
+#else
+            SDL_WINDOW_RESIZABLE
+#endif
         );
         if (!win_)
         {
@@ -2361,6 +2392,7 @@ private:
 
     void init_backend()
     {
+#ifdef SHS_HAS_VULKAN
         shs::RenderBackendCreateResult created = shs::create_render_backend(shs::RenderBackendType::Vulkan);
         if (!created.note.empty()) std::fprintf(stderr, "[shs] %s\n", created.note.c_str());
         if (!created.backend) throw std::runtime_error("Backend factory did not return a backend");
@@ -2408,6 +2440,7 @@ private:
 
         ctx_.set_primary_backend(vk_);
         std::fprintf(stderr, "[shs] active backend: %s\n", ctx_.active_backend_name());
+#endif // SHS_HAS_VULKAN
     }
 
     void init_jobs()
@@ -2616,6 +2649,7 @@ private:
         }
     }
 
+#ifdef SHS_HAS_VULKAN
     const GpuBuffer& vertex_buffer_for_mesh(Instance::MeshKind kind) const
     {
         switch (kind)
@@ -2641,6 +2675,7 @@ private:
             default: return index_buffer_;
         }
     }
+#endif
 
     uint32_t index_count_for_mesh(Instance::MeshKind kind) const
     {
@@ -2967,6 +3002,7 @@ private:
         vulkan_culler_backend_ = VulkanCullerBackend::GpuCompute;
     }
 
+#ifdef SHS_HAS_VULKAN
     void init_gpu_resources()
     {
         if (!vk_ || vk_->device() == VK_NULL_HANDLE) throw std::runtime_error("Vulkan device unavailable");
@@ -2981,7 +3017,9 @@ private:
         create_pipelines(true, "init");
         observed_swapchain_generation_ = vk_->swapchain_generation();
     }
+#endif
 
+#ifdef SHS_HAS_VULKAN
     void create_worker_pools()
     {
         destroy_worker_pools();
@@ -3017,7 +3055,9 @@ private:
         }
         worker_pools_.clear();
     }
+#endif
 
+#ifdef SHS_HAS_VULKAN
     void destroy_gpu_pass_timestamp_resources()
     {
         gpu_pass_timestamps_supported_ = false;
@@ -3058,7 +3098,9 @@ private:
             }
         }
     }
+#endif
 
+#ifdef SHS_HAS_VULKAN
     void create_gpu_pass_timestamp_resources()
     {
         destroy_gpu_pass_timestamp_resources();
@@ -3233,7 +3275,9 @@ private:
         gpu_pass_timing_state_ = "ready";
         gpu_pass_timing_valid_ = true;
     }
+#endif
 
+#ifdef SHS_HAS_VULKAN
     void begin_gpu_pass_timing_recording(VkCommandBuffer cmd, uint32_t frame_slot)
     {
         gpu_pass_timestamp_recording_active_ = false;
@@ -3348,7 +3392,9 @@ private:
         end_gpu_pass_timestamp(ctx, token, ok);
         return ok;
     }
+#endif
 
+#ifdef SHS_HAS_VULKAN
     void create_buffer(
         VkDeviceSize size,
         VkBufferUsageFlags usage,
@@ -5299,6 +5345,8 @@ private:
         pipeline_last_rebuild_reason_ = (reason && *reason) ? reason : "runtime";
     }
 
+#endif // SHS_HAS_VULKAN
+
     shs::RenderPathLightGridRuntimeLayout make_active_light_grid_runtime_layout(uint32_t frame_w, uint32_t frame_h) const
     {
         return shs::make_render_path_light_grid_runtime_layout(
@@ -5309,6 +5357,7 @@ private:
             frame_h);
     }
 
+#ifdef SHS_HAS_VULKAN
     void ensure_render_targets(uint32_t w, uint32_t h)
     {
         if (w == 0 || h == 0) return;
@@ -5381,6 +5430,7 @@ private:
         update_global_descriptor_sets();
         create_pipelines(true, "targets-recreated");
     }
+#endif // SHS_HAS_VULKAN
 
     void refresh_active_composition_recipe()
     {
@@ -5566,7 +5616,9 @@ private:
         temporal_settings_.jitter_enabled = path_has_taa_pass_;
         if (!path_has_taa_pass_)
         {
+#ifdef SHS_HAS_VULKAN
             shs::vk_render_path_invalidate_history_color(temporal_resources_);
+#endif
         }
 
         refresh_depth_prepass_state();
@@ -5680,7 +5732,9 @@ private:
             std::fprintf(stderr, "[render-path][stress][error] Failed to register one or more builtin presets.\n");
         }
 
+#ifdef SHS_HAS_VULKAN
         build_frame_pass_dispatcher();
+#endif // SHS_HAS_VULKAN
         pass_dispatch_warning_emitted_ = false;
     }
 
@@ -6139,6 +6193,7 @@ private:
         enable_depth_prepass_ = profile_depth_prepass_enabled_ || needs_depth_for_culling;
     }
 
+#ifdef SHS_HAS_VULKAN
     void update_culling_debug_stats(uint32_t frame_slot)
     {
         if (!frame_resources_.valid_slot(frame_slot) || tile_w_ == 0 || tile_h_ == 0)
@@ -6184,6 +6239,7 @@ private:
         cull_debug_list_count_ = list_count;
         cull_debug_max_list_size_ = max_list;
     }
+#endif
 
     void rebuild_instance_cull_shapes()
     {
@@ -6447,7 +6503,11 @@ private:
         const bool temporal_active =
             active_taa_pass_enabled() &&
             temporal_settings_.accumulation_enabled &&
+#ifdef SHS_HAS_VULKAN
             supports_swapchain_history_copy();
+#else
+            false;
+#endif
         temporal_state_.jitter_ndc = (temporal_settings_.jitter_enabled && temporal_active)
             ? shs::compute_taa_jitter_ndc(temporal_state_.frame_index, w, h, temporal_settings_.jitter_scale)
             : glm::vec2(0.0f);
@@ -6475,7 +6535,11 @@ private:
         camera_ubo_.exposure_gamma = glm::vec4(tonemap_exposure_, tonemap_gamma_, 0.0f, 0.0f);
         camera_ubo_.temporal_params = glm::vec4(
             temporal_active ? 1.0f : 0.0f,
+#ifdef SHS_HAS_VULKAN
             (temporal_active && shs::vk_render_path_history_color_valid(temporal_resources_)) ? 1.0f : 0.0f,
+#else
+            (temporal_active && false) ? 1.0f : 0.0f,
+#endif
             std::clamp(temporal_settings_.history_blend, 0.0f, 1.0f),
             0.0f);
         // Keep directional shadow optional and subtle in this stress demo
@@ -6977,6 +7041,7 @@ private:
         }
         visible_light_count_ = visible_light_count;
         camera_ubo_.screen_tile_lightcount.w = visible_light_count_;
+#ifdef SHS_HAS_VULKAN
         if (!frame_resources_.valid_slot(frame_slot))
         {
             throw std::runtime_error("Invalid frame slot for dynamic uploads");
@@ -6996,8 +7061,10 @@ private:
         tube_count_active_ = static_cast<uint32_t>(light_set_.tube_areas.size());
         spot_shadow_count_ = used_spot_shadow;
         point_shadow_count_ = used_point_shadow;
+#endif // SHS_HAS_VULKAN
     }
 
+#ifdef SHS_HAS_VULKAN
     void begin_render_pass_depth(VkCommandBuffer cmd)
     {
         VkClearValue clear{};
@@ -7240,6 +7307,7 @@ private:
         }
     }
 
+#endif // SHS_HAS_VULKAN
     glm::mat4 make_point_volume_debug_model(const glm::vec3& pos_ws, float range) const
     {
         const float r = std::max(range, 0.10f);
@@ -7307,7 +7375,7 @@ private:
         const float ez = std::max(radius * 2.0f, 0.10f);
         return model_from_basis_and_scale(pos_ws, axis, up, side, glm::vec3(ex, ey, ez));
     }
-
+#ifdef SHS_HAS_VULKAN
     void draw_light_volumes_debug(VkCommandBuffer cmd, VkPipelineLayout layout, uint32_t frame_slot)
     {
         if (!show_light_volumes_debug_) return;
@@ -7632,11 +7700,13 @@ private:
             nullptr);
     }
 
+#endif // SHS_HAS_VULKAN
     shs::PassId resolve_compiled_pass_kind(const shs::RenderPathCompiledPass& pass) const
     {
         return shs::pass_id_is_standard(pass.pass_id) ? pass.pass_id : shs::parse_pass_id(pass.id);
     }
 
+#ifdef SHS_HAS_VULKAN
     bool emit_graph_barrier_from_edge(VkCommandBuffer cmd, const shs::RenderPathBarrierEdge& edge)
     {
         if (cmd == VK_NULL_HANDLE) return false;
@@ -8050,7 +8120,9 @@ private:
 
     using FramePassExecutionContext =
         shs::VkRenderPathPassExecutionContext<shs::VulkanRenderBackend::FrameInfo>;
+#endif // SHS_HAS_VULKAN
 
+#ifdef SHS_HAS_VULKAN
     void draw_scene_clear_only(VkCommandBuffer cmd, const shs::VulkanRenderBackend::FrameInfo& fi, uint32_t frame_slot)
     {
         VkClearValue clear[2]{};
@@ -8069,7 +8141,9 @@ private:
         draw_light_volumes_debug(cmd, scene_pipeline_layout_, frame_slot);
         vkCmdEndRenderPass(cmd);
     }
+#endif // SHS_HAS_VULKAN
 
+#ifdef SHS_HAS_VULKAN
     bool execute_pass_shadow_map(FramePassExecutionContext& ctx, const shs::RenderPathCompiledPass& pass)
     {
         return shs::vk_execute_shadow_map_pass(
@@ -8689,6 +8763,8 @@ private:
         }
     }
 
+#endif // SHS_HAS_VULKAN
+#ifdef SHS_HAS_VULKAN
     void draw_frame(float dt, float t)
     {
         int dw = 0;
@@ -8932,6 +9008,7 @@ private:
         }
         ctx_.frame_index++;
     }
+#endif // SHS_HAS_VULKAN
 
     void update_window_title(float avg_ms)
     {
@@ -9111,11 +9188,13 @@ private:
                 pending_keydown_actions_.push_back(*action);
             }
         }
+#ifdef SHS_HAS_VULKAN
         if (e.type == SDL_WINDOWEVENT &&
             (e.window.event == SDL_WINDOWEVENT_SIZE_CHANGED || e.window.event == SDL_WINDOWEVENT_RESIZED))
         {
             vk_->request_resize(e.window.data1, e.window.data2);
         }
+#endif // SHS_HAS_VULKAN
     }
 
     void main_loop()
@@ -9179,7 +9258,9 @@ private:
             }
 
             auto cpu_t0 = clock::now();
+#ifdef SHS_HAS_VULKAN
             draw_frame(dt, time_sec_);
+#endif // SHS_HAS_VULKAN
             auto cpu_t1 = clock::now();
 
             const float frame_ms = std::chrono::duration<float, std::milli>(cpu_t1 - cpu_t0).count();
@@ -9201,10 +9282,12 @@ private:
             }
         }
 
+#ifdef SHS_HAS_VULKAN
         if (vk_ && vk_->device() != VK_NULL_HANDLE)
         {
             (void)vkDeviceWaitIdle(vk_->device());
         }
+#endif // SHS_HAS_VULKAN
         if (relative_mouse_mode_)
         {
             SDL_SetRelativeMouseMode(SDL_FALSE);
@@ -9256,6 +9339,7 @@ private:
                         stderr,
                         "[render-path][temporal] Accumulation+jitter: %s\n",
                         temporal_settings_.accumulation_enabled ? "ON" : "OFF");
+#ifdef SHS_HAS_VULKAN
                     if (temporal_settings_.accumulation_enabled && !supports_swapchain_history_copy())
                     {
                         std::fprintf(
@@ -9263,6 +9347,7 @@ private:
                             "[render-path][temporal] Warning: swapchain transfer-src unsupported, temporal history copy disabled.\n");
                     }
                     break;
+#endif // SHS_HAS_VULKAN
                 case shs::demo::DemoInputAction::PrintHelp:
                     print_controls();
                     print_composition_catalog();
@@ -9332,11 +9417,15 @@ private:
 
     shs::Context ctx_{};
     std::vector<std::unique_ptr<shs::IRenderBackend>> keep_{};
+#ifdef SHS_HAS_VULKAN
     shs::VulkanRenderBackend* vk_ = nullptr;
+#endif // SHS_HAS_VULKAN
 
     std::unique_ptr<shs::ThreadPoolJobSystem> jobs_{};
     uint32_t worker_count_ = 1;
+#ifdef SHS_HAS_VULKAN
     std::vector<WorkerPool> worker_pools_{};
+#endif // SHS_HAS_VULKAN
 
     std::vector<Vertex> vertices_{};
     std::vector<uint32_t> indices_{};
@@ -9395,6 +9484,7 @@ private:
     glm::vec4 floor_material_color_{1.0f};
     glm::vec4 floor_material_params_{0.0f, 0.72f, 1.0f, 0.0f};
 
+#ifdef SHS_HAS_VULKAN
     GpuBuffer vertex_buffer_{};
     GpuBuffer index_buffer_{};
     GpuBuffer floor_vertex_buffer_{};
@@ -9411,8 +9501,10 @@ private:
     GpuBuffer cylinder_vertex_buffer_{};
     GpuBuffer cylinder_index_buffer_{};
     shs::VkFrameRing<FrameResources, kWorkerPoolRingSize> frame_resources_{};
+#endif // SHS_HAS_VULKAN
 
     CameraUBO camera_ubo_{};
+#ifdef SHS_HAS_VULKAN
     DepthTarget depth_target_{};
     GBufferTarget gbuffer_target_{};
     AmbientOcclusionTarget ao_target_{};
@@ -9433,7 +9525,9 @@ private:
     VkDescriptorSet deferred_post_a_set_ = VK_NULL_HANDLE;
     VkDescriptorSet deferred_post_b_set_ = VK_NULL_HANDLE;
     VkSampler depth_sampler_ = VK_NULL_HANDLE;
+#endif // SHS_HAS_VULKAN
 
+#ifdef SHS_HAS_VULKAN
     VkPipelineLayout shadow_pipeline_layout_ = VK_NULL_HANDLE;
     VkPipeline shadow_pipeline_ = VK_NULL_HANDLE;
     VkPipelineLayout depth_pipeline_layout_ = VK_NULL_HANDLE;
@@ -9454,6 +9548,7 @@ private:
     VkPipelineLayout compute_pipeline_layout_ = VK_NULL_HANDLE;
     VkPipeline depth_reduce_pipeline_ = VK_NULL_HANDLE;
     VkPipeline compute_pipeline_ = VK_NULL_HANDLE;
+#endif // SHS_HAS_VULKAN
 
     uint64_t pipeline_gen_ = 0;
     uint64_t observed_swapchain_generation_ = 0;
@@ -9530,7 +9625,9 @@ private:
     std::pmr::vector<shs::renderpath::RenderPathEvent> renderpath_events_{};
     shs::PassFactoryRegistry pass_contract_registry_{};
     shs::PassFactoryRegistry pass_contract_registry_sw_{};
+#ifdef SHS_HAS_VULKAN
     shs::RenderPathPassDispatcher<FramePassExecutionContext> frame_pass_dispatcher_{};
+#endif // SHS_HAS_VULKAN
 
     // Frame-plan arena (Run 1 / P3 task 3): the pure planner builds its
     // DemoFrameCommand span here; released at the start of every frame.
@@ -9541,7 +9638,9 @@ private:
     double dispatch_total_cpu_ms_ = 0.0;
     double dispatch_slowest_pass_cpu_ms_ = 0.0;
     std::string dispatch_slowest_pass_id_{};
+#ifdef SHS_HAS_VULKAN
     std::array<VkQueryPool, kWorkerPoolRingSize> gpu_pass_query_pools_{};
+#endif // SHS_HAS_VULKAN
     std::array<GpuPassTimestampFrameState, kWorkerPoolRingSize> gpu_pass_timestamp_frames_{};
     bool gpu_pass_timestamps_supported_ = false;
     float gpu_timestamp_period_ns_ = 0.0f;
@@ -9573,10 +9672,14 @@ private:
     bool phase_f_snapshot_completed_ = false;
     bool phase_f_snapshot_failed_ = false;
     std::string phase_f_snapshot_path_{};
+#ifdef SHS_HAS_VULKAN
     GpuBuffer phase_f_snapshot_readback_buffer_{};
+#endif // SHS_HAS_VULKAN
     uint32_t phase_f_snapshot_readback_w_ = 0u;
     uint32_t phase_f_snapshot_readback_h_ = 0u;
+#ifdef SHS_HAS_VULKAN
     VkFormat phase_f_snapshot_readback_format_ = VK_FORMAT_UNDEFINED;
+#endif // SHS_HAS_VULKAN
     PhaseGSoakConfig phase_g_config_{};
     std::ofstream phase_g_metrics_stream_{};
     PhaseGSoakState phase_g_state_{};

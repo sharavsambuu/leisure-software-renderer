@@ -36,6 +36,7 @@ struct SDL_Window;
 #include "shs/rhi/drivers/vulkan/vk_memory_utils.hpp"
 #endif
 
+#ifdef SHS_HAS_VULKAN
 namespace shs
 {
     class VulkanRenderBackend final : public IRenderBackend
@@ -2282,3 +2283,6 @@ namespace shs
     };
 }
 #endif
+#endif
+
+
