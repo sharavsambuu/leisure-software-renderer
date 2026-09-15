@@ -67,9 +67,11 @@ set(CROSS_PLATFORM_DETERMINISTIC OFF CACHE BOOL "" FORCE)
 set(INTERPROCEDURAL_OPTIMIZATION OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(JoltPhysics)
 
-# VulkanMemoryAllocator via vcpkg
-message(STATUS "Fetching VulkanMemoryAllocator library...")
-find_package(VulkanMemoryAllocator CONFIG REQUIRED)
+# VulkanMemoryAllocator via vcpkg (Run 2 / P3: optional — only consumed when
+# Vulkan is found; shs-gpu-renderer-lib gates usage on the GPUOpen:: target
+# existing, so GPU-free machines configure without it).
+message(STATUS "Looking for VulkanMemoryAllocator library...")
+find_package(VulkanMemoryAllocator CONFIG QUIET)
 
 
 # Lua 5.5

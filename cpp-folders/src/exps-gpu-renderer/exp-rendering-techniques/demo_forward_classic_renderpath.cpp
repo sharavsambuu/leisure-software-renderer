@@ -756,12 +756,76 @@ public:
         cleanup();
     }
 
+    // Run 2 / P3 (GPU-free demo mode): headless software run. Honors the
+    // backend factory's fallback instead of hard-failing on the concrete
+    // Vulkan type: the demo executes its recipe/composition surface
+    // end-to-end through the software backend (same recipe resolution ->
+    // plan compile -> pipeline configure -> frame execute pipeline the
+    // visual mode drives), with no window, no Vulkan SDK and no GPU.
+    // Selected via SHS_RENDER_BACKEND=software or SHS_DEMO_HEADLESS=1.
+    void run_headless_software_mode()
+    {
+        headless_software_mode_ = true;
+
+        shs::RenderBackendCreateResult created =
+            shs::create_render_backend(shs::RenderBackendType::Software);
+        if (!created.note.empty()) std::fprintf(stderr, "[shs] %s\n", created.note.c_str());
+        if (!created.backend) throw std::runtime_error("Software backend create failed (headless mode)");
+
+        keep_.push_back(std::move(created.backend));
+        for (auto& aux : created.auxiliary_backends)
+        {
+            if (aux) keep_.push_back(std::move(aux));
+        }
+        for (const auto& b : keep_)
+        {
+            ctx_.register_backend(b.get());
+        }
+        ctx_.set_primary_backend(keep_.front().get());
+
+        init_render_path_registry();
+        init_scene_data();
+
+        // Seed the builtin composition cycle so the GPU-free parity/runtime
+        // harness covers the full path x technique surface.
+        if (composition_cycle_order_.empty())
+        {
+            composition_cycle_order_ = shs::make_default_render_composition_recipes();
+        }
+
+        phase_i_config_.enabled = true;
+        phase_i_config_.runtime_sw_execute = true;
+        initialize_phase_i_parity_report();
+
+        std::fprintf(
+            stderr,
+            "[shs] GPU-free run complete (backend=%s, compositions=%zu). See %s\n",
+            shs::render_backend_type_name(shs::RenderBackendType::Software),
+            composition_cycle_order_.size(),
+            phase_i_config_.output_path.c_str());
+    }
+
     void run()
     {
         shs::jolt::init_jolt();
         configure_phase_f_from_env();
         configure_phase_g_from_env();
         configure_phase_i_from_env();
+
+        // Run 2 / P3: backend selection edge — the factory fallback decides,
+        // not the concrete Vulkan type. SHS_RENDER_BACKEND=software (or
+        // SHS_DEMO_HEADLESS=1) runs the demo GPU-free; anything else keeps
+        // the visual Vulkan path.
+        const char* backend_env = std::getenv("SHS_RENDER_BACKEND");
+        if (parse_env_bool(std::getenv("SHS_DEMO_HEADLESS"), false) ||
+            (backend_env != nullptr && backend_env[0] != '\0' &&
+             shs::to_lower_ascii(backend_env) != "vulkan" &&
+             shs::to_lower_ascii(backend_env) != "vk"))
+        {
+            run_headless_software_mode();
+            return;
+        }
+
         init_sdl();
         init_backend();
         configure_vulkan_culler_backend_from_env();
@@ -779,6 +843,11 @@ public:
     {
         if (cleaned_up_) return;
         cleaned_up_ = true;
+
+        // Run 2 / P3: GPU-free headless run never created Vulkan/window
+        // resources — skip GPU teardown entirely (software backend objects
+        // free through keep_).
+        if (headless_software_mode_) return;
 
         if (vk_) vk_->wait_idle();
 
@@ -5558,6 +5627,42 @@ private:
         register_custom_contracts(pass_contract_registry_, shs::RenderBackendType::Vulkan);
         register_custom_contracts(pass_contract_registry_sw_, shs::RenderBackendType::Software);
 
+        // Run 2 / P3: the software contract registry needs standard-pass
+        // descriptor hints (backend/mode capability) so GPU-free SW plan
+        // compilation works end-to-end — without these the compiler rejects
+        // every standard pass and the headless/Phase-I SW runtime never
+        // executes. The Vulkan registry is left untouched (visual-mode
+        // provenance unchanged).
+        {
+            const uint32_t sw_backend_mask =
+                shs::PassFactoryRegistry::backend_bit(shs::RenderBackendType::Software);
+            const shs::PassId standard_pass_ids[] = {
+                shs::PassId::ShadowMap,
+                shs::PassId::DepthPrepass,
+                shs::PassId::LightCulling,
+                shs::PassId::ClusterBuild,
+                shs::PassId::ClusterLightAssign,
+                shs::PassId::GBuffer,
+                shs::PassId::SSAO,
+                shs::PassId::DeferredLighting,
+                shs::PassId::DeferredLightingTiled,
+                shs::PassId::PBRForward,
+                shs::PassId::PBRForwardPlus,
+                shs::PassId::PBRForwardClustered,
+                shs::PassId::Tonemap,
+                shs::PassId::MotionBlur,
+                shs::PassId::DepthOfField,
+                shs::PassId::TAA
+            };
+            for (const shs::PassId pass_id : standard_pass_ids)
+            {
+                shs::TechniquePassContract contract{};
+                if (!shs::lookup_standard_pass_contract(pass_id, contract)) continue;
+                pass_contract_registry_sw_.register_descriptor(
+                    pass_id, contract, sw_backend_mask, true);
+            }
+        }
+
         if (pass_contract_registry_.ids().empty())
         {
             std::fprintf(stderr, "[render-path][stress][error] Standard pass contract registry is empty.\n");
@@ -9201,6 +9306,9 @@ private:
 
 private:
     bool cleaned_up_ = false;
+    // Run 2 / P3: set when the demo runs GPU-free through the software
+    // backend (no window, no Vulkan) — cleanup() then skips GPU teardown.
+    bool headless_software_mode_ = false;
     bool running_ = false;
     bool sdl_ready_ = false;
     SDL_Window* win_ = nullptr;
