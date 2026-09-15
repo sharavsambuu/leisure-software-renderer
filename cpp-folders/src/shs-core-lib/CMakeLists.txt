@@ -17,12 +17,36 @@ find_package(SDL2_image CONFIG REQUIRED)
 find_package(glm CONFIG REQUIRED)
 find_package(assimp CONFIG REQUIRED)
 
+# Vulkan discovery (absorbed from shs-gpu-lib): QUIET — the lib configures and
+# builds GPU-free when Vulkan is absent; the runtime edge sources are simply
+# not compiled and SHS_HAS_VULKAN stays unset.
+if(APPLE AND DEFINED ENV{VULKAN_SDK})
+    list(PREPEND CMAKE_PREFIX_PATH "$ENV{VULKAN_SDK}")
+endif()
+find_package(Vulkan QUIET)
+if(APPLE AND NOT Vulkan_FOUND AND DEFINED ENV{VULKAN_SDK})
+    set(_shs_vk_sdk "$ENV{VULKAN_SDK}")
+    set(_shs_vk_header "${_shs_vk_sdk}/include/vulkan/vulkan.h")
+    set(_shs_vk_lib "${_shs_vk_sdk}/lib/libvulkan.dylib")
+    if(EXISTS "${_shs_vk_header}" AND EXISTS "${_shs_vk_lib}" AND NOT TARGET Vulkan::Vulkan)
+        add_library(Vulkan::Vulkan SHARED IMPORTED GLOBAL)
+        set_target_properties(Vulkan::Vulkan PROPERTIES
+            IMPORTED_LOCATION "${_shs_vk_lib}"
+            INTERFACE_INCLUDE_DIRECTORIES "${_shs_vk_sdk}/include"
+        )
+        set(Vulkan_FOUND TRUE)
+    endif()
+endif()
+
 # NOTE: since P2 the value-desc Vulkan driver pod lives HERE under
 # include/shs/execution/rhi/drivers/vulkan/ (header-only, pure translation +
 # hash-keyed explicit caches, GPU-free testable). The lib stays Vulkan-free by
 # default — the driver compiles only where Vulkan headers are used (test target
-# above, backend_factory under SHS_HAS_VULKAN). The SDL/windowed GPU monolith
-# remains in src/shs-gpu-lib until the P3 decomposition retires it.
+# above, backend_factory under SHS_HAS_VULKAN).
+# Since 2026-09 the absorbed runtime edge from shs-gpu-lib also lives here:
+# include/shs/rhi/drivers/vulkan/ (SDL/windowed monolith backend) +
+# include/shs/pipeline/vk_* — gated behind SHS_HAS_VULKAN; its P3 pod
+# decomposition into the pod-aligned driver remains future work.
 
 option(SHS_RENDERER_BUILD_SHARED "Build shs_core as a shared library" OFF)
 set(_shs_renderer_lib_type STATIC)
@@ -115,9 +139,25 @@ if(TARGET Jolt)
 endif()
 set(SHS_RENDERER_HAS_JOLT "${SHS_RENDERER_HAS_JOLT}" PARENT_SCOPE)
 
-# Vulkan ownership moved to src/shs-gpu-lib. Report OFF here;
-# the GPU lib re-exports ON to the parent scope when Vulkan is found.
-set(SHS_RENDERER_HAS_VULKAN OFF PARENT_SCOPE)
+# Vulkan runtime edge (absorbed from shs-gpu-lib, 2026-09): the monolith
+# backend + VMA implementation compile into shs_core only when Vulkan was
+# found; otherwise the lib stays GPU-free and the pod-aligned driver
+# (shs/execution/rhi/drivers/vulkan/) remains the only Vulkan code.
+set(SHS_RENDERER_HAS_VULKAN OFF)
+if(Vulkan_FOUND AND TARGET Vulkan::Vulkan)
+    set(SHS_RENDERER_HAS_VULKAN ON)
+    target_sources(shs_core PRIVATE
+        src/shs_gpu_runtime_edge.cpp
+        src/shs_vma.cpp
+    )
+    target_compile_definitions(shs_core PUBLIC SHS_HAS_VULKAN=1)
+    target_link_libraries(shs_core PUBLIC Vulkan::Vulkan)
+    if(TARGET GPUOpen::VulkanMemoryAllocator)
+        target_link_libraries(shs_core PUBLIC GPUOpen::VulkanMemoryAllocator)
+        target_compile_definitions(shs_core PUBLIC SHS_HAS_VMA=1)
+    endif()
+endif()
+set(SHS_RENDERER_HAS_VULKAN "${SHS_RENDERER_HAS_VULKAN}" PARENT_SCOPE)
 set(SHS_SDL2_HAS_VULKAN "${SHS_SDL2_HAS_VULKAN}" PARENT_SCOPE)
 
 # Header-only value-layer target: include dirs + header-only deps ONLY.

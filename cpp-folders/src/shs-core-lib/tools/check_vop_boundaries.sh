@@ -49,7 +49,7 @@ facade_count=0
 for facade in $(find "${lib_root}/include/shs" -name '*.hpp' | sort); do
   rel="${facade#"${lib_root}/include/"}"
   case "${rel}" in
-    shs/domains/*|shs/execution/*|shs/core/*|shs/memory/*|shs/containers/*) continue ;;
+    shs/domains/*|shs/execution/*|shs/core/*|shs/memory/*|shs/containers/*|shs/pipeline/*|shs/rhi/*) continue ;;
   esac
   facade_count=$((facade_count + 1))
   target="$(grep -oE '#include[[:space:]]*"[^"]+"' "${facade}" | grep -oE '"[^"]+"' | tr -d '"' | head -1)"
