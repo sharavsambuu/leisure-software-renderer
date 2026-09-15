@@ -14,6 +14,7 @@
 */
 
 #include <cstdint>
+#include <expected>
 #include <memory_resource>
 #include <span>
 #include <string>
@@ -96,9 +97,30 @@ namespace shs::renderpath
 
     namespace detail
     {
+        // First std::expected adoption slot (VOP spec §8): compile → classify
+        // as an honest expected value instead of a (plan, valid, errors[])
+        // pod followed by a stringly-typed classification ladder. The closed
+        // enum error payload keeps the channel constitution-compatible.
+        inline std::expected<RenderPathExecutionPlan, PathSwapRejectionReason>
+        compile_render_path_plan(
+            const RenderPathRecipe& candidate,
+            const RenderPathCompiler& compiler,
+            const RenderPathCapabilitySet& caps)
+        {
+            RenderPathExecutionPlan plan = compiler.compile(candidate, caps);
+            if (!plan.valid)
+            {
+                return std::unexpected(classify_plan_rejection(plan));
+            }
+            return plan;
+        }
+
         // Compile a candidate recipe against capabilities; on success the pod
         // state adopts recipe + plan, on failure the previous plan stays
         // untouched and PATH_SWAP_REJECTED is emitted (reducer invariant).
+        // Monadic chain per VOP spec §8: the events side-effects stay in the
+        // transform/or_else continuations; the value/error channel carries
+        // only the plan or its closed-enum rejection reason.
         inline void try_swap_plan(
             RenderPathPodState& state,
             const RenderPathRecipe& candidate,
@@ -106,22 +128,22 @@ namespace shs::renderpath
             const RenderPathCapabilitySet& caps,
             std::pmr::vector<RenderPathEvent>& events)
         {
-            const RenderPathExecutionPlan candidate_plan = compiler.compile(candidate, caps);
-            if (candidate_plan.valid)
-            {
-                state.recipe = candidate;
-                state.plan = candidate_plan;
-                state.has_plan = true;
-                events.push_back(PathCompiledEvent{
-                    candidate_plan.technique_mode,
-                    candidate_plan.render_technique,
-                    static_cast<uint32_t>(candidate_plan.pass_chain.size())
+            compile_render_path_plan(candidate, compiler, caps)
+                .transform([&](RenderPathExecutionPlan&& candidate_plan) {
+                    state.recipe = candidate;
+                    state.plan = std::move(candidate_plan);
+                    state.has_plan = true;
+                    events.push_back(PathCompiledEvent{
+                        state.plan.technique_mode,
+                        state.plan.render_technique,
+                        static_cast<uint32_t>(state.plan.pass_chain.size())
+                    });
+                })
+                .or_else([&](const PathSwapRejectionReason reason)
+                             -> std::expected<void, PathSwapRejectionReason> {
+                    events.push_back(PathSwapRejectedEvent{ reason });
+                    return {};
                 });
-            }
-            else
-            {
-                events.push_back(PathSwapRejectedEvent{ classify_plan_rejection(candidate_plan) });
-            }
         }
     } // namespace detail
 
