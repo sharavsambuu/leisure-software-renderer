@@ -251,4 +251,5 @@ That banner appears on **every** command and is harmless — it only describes t
 - Project constitutions (architecture): `docs/spec/conventions.md`, `docs/spec/value_oriented_programming.md`, `docs/spec/dod_ecs_architecture.md`
 - VOP roadmap: `docs/roadmap/value_oriented_programming_first_class_roadmap.md`
 - Per-demo canonical state: `cpp-folders/src/hello-3d-demos/<demo>/docs/STATUS.md` where present (e.g. `snake/docs/STATUS.md`)
-- README top-level build instructions (incl. vcpkg package list) for Ubuntu / macOS / Windows.
+- Per-platform setup guide (packages, Vulkan SDK, Slang/slangc, GPU-free configure): `docs/dev/build_and_setup.md` (canonical)
+- README top-level build summary for Ubuntu / macOS / Windows.

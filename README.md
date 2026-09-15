@@ -159,23 +159,33 @@
     sudo vcpkg install joltphysics                  # physics experiments (exps-gpu-renderer/exp-plumbing)
     sudo vcpkg install lua                          # scripting experiments (configure tolerates absence)
 
-    see docs/dev/cpp_compilation_workflow.md for the validated build/test workflow,
+    # Slang (slangc) — chosen shader compiler toolchain for the Vulkan edge.
+    # No vcpkg slang port exists as of 2026-09; install the official prebuilt release.
+    mkdir -p ~/slang && cd ~/slang
+    wget https://github.com/shader-slang/slang/releases/download/v2026.17.1/slang-2026.17.1-linux-x86_64.tar.gz
+    tar -xzf slang-2026.17.1-linux-x86_64.tar.gz
+    # add to ~/.bashrc:  export PATH="$HOME/slang/slang/bin:$PATH"
+
+    see docs/dev/build_and_setup.md for the full per-platform setup guide
+    (packages, Vulkan SDK, Slang, GPU-free configure), and
+    docs/dev/cpp_compilation_workflow.md for the validated build/test workflow,
     shell-quoting traps through the Windows->WSL bridge, and CMake/C++ pitfalls before running anything.
 
 
     
     Compilation steps on ubuntu 24.04
 
-    Layout (2026-09): cpp-folders/src holds shs-software-renderer-lib/,
-    shs-gpu-renderer-lib/, exps-software-renderer/, exps-gpu-renderer/,
-    exps-other/, assets/.
+    Layout (2026-09, post-convergence): cpp-folders/src holds shs-renderer-lib/
+    (the single converged library; shs-gpu-lib was absorbed, shs-core-lib renamed),
+    exps-software-renderer/, exps-gpu-renderer/, exps-other/, assets/.
+    Demos are parked; the root CMakeLists adds only shs-renderer-lib.
 
-    cd cpp-folders && mkdir build && cd build
+    cd cpp-folders && mkdir -p build && cd build
     export VCPKG_ROOT="/opt/vcpkg"
     cmake .. -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake
     make -j20
-    cd src/exps-software-renderer/hello-pixel-primitives && ./HelloPixel
-    # Vulkan example: cd src/exps-gpu-renderer/exp-plumbing && ./HelloVulkanTriangle
+    ctest --output-on-failure
+    # Demo (software path, still runs): cd src/exps-software-renderer/hello-pixel-primitives && ./HelloPixel
     
 
 # On MacOS, it is similar
@@ -212,6 +222,11 @@
     vcpkg install "vulkan-memory-allocator:arm64-osx"
     vcpkg install "lua:arm64-osx"
 
+    Slang (slangc): download slang-2026.17.1-macos-aarch64.tar.gz from
+      https://github.com/shader-slang/slang/releases
+    extract, add the bin dir to PATH (Intel Macs: macos-x86_64 variant).
+    Full steps: docs/dev/build_and_setup.md
+
 
     cd cpp-folders && mkdir build && cd build
     export VCPKG_ROOT="$HOME/vcpkg"
@@ -240,6 +255,11 @@
     vcpkg install joltphysics
     vcpkg install vulkan-memory-allocator:x64-windows
     vcpkg install lua:x64-windows
+
+    Slang (slangc): download slang-2026.17.1-windows-x86_64.zip from
+      https://github.com/shader-slang/slang/releases
+    extract (e.g. C:\slang), add C:\slang\bin to PATH.
+    Full per-platform guide: docs/dev/build_and_setup.md
 
 
     Use CMake-GUI with Visual Studio 17 2022
