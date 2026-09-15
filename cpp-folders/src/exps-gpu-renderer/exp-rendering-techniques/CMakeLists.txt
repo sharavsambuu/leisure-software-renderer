@@ -14,11 +14,11 @@ endif()
 
 # Tranche 1 (de-Vulkanization): the demo executable is defined UNCONDITIONALLY
 # so the tree configures and builds GPU-free. The demo TU guards its Vulkan
-# code paths with SHS_HAS_VULKAN (exported PUBLIC by shs::gpu only
+# code paths with SHS_HAS_VULKAN (exported PUBLIC by shs::renderer only
 # when Vulkan was found); SHS_VK_FP_* shader paths inside the gate below are
 # added as compile definitions only when the Vulkan shader build is enabled.
 add_executable(demo_forward_classic_renderpath demo_forward_classic_renderpath.cpp)
-target_link_libraries(demo_forward_classic_renderpath PRIVATE shs::gpu)
+target_link_libraries(demo_forward_classic_renderpath PRIVATE shs::renderer)
 set_target_properties(demo_forward_classic_renderpath PROPERTIES FOLDER "Demos/RenderingTechniques")
 if(MSVC)
     target_compile_options(demo_forward_classic_renderpath PRIVATE /W4)
@@ -34,7 +34,7 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
     set(OUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/shaders")
     file(MAKE_DIRECTORY "${OUT_DIR}")
 
-    set(VK_DEFAULT_SHADER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../shs-gpu-renderer-lib/shaders/vulkan")
+    set(VK_DEFAULT_SHADER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../shs-renderer-lib/shaders/vulkan")
     set(VK_SHADER_COMMON_DIR "${VK_DEFAULT_SHADER_DIR}/common")
     set(VK_COMMON_MATH "${VK_SHADER_COMMON_DIR}/math.glsl")
     set(VK_COMMON_LIGHT_CONSTANTS "${VK_SHADER_COMMON_DIR}/light_constants.glsl")
@@ -241,7 +241,7 @@ endif()
 add_executable(shs_demo_renderpath_bridge_tests demo_renderpath_bridge_tests.cpp)
 add_test(NAME shs_demo_renderpath_bridge_tests COMMAND shs_demo_renderpath_bridge_tests)
 target_compile_features(shs_demo_renderpath_bridge_tests PRIVATE cxx_std_20)
-target_link_libraries(shs_demo_renderpath_bridge_tests PRIVATE shs::core-values)
+target_link_libraries(shs_demo_renderpath_bridge_tests PRIVATE shs::renderer-values)
 if(MSVC)
     target_compile_options(shs_demo_renderpath_bridge_tests PRIVATE /W4)
 else()
@@ -254,7 +254,7 @@ endif()
 add_executable(shs_demo_frame_planner_tests demo_frame_planner_tests.cpp)
 add_test(NAME shs_demo_frame_planner_tests COMMAND shs_demo_frame_planner_tests)
 target_compile_features(shs_demo_frame_planner_tests PRIVATE cxx_std_20)
-target_link_libraries(shs_demo_frame_planner_tests PRIVATE shs::core-values)
+target_link_libraries(shs_demo_frame_planner_tests PRIVATE shs::renderer-values)
 if(MSVC)
     target_compile_options(shs_demo_frame_planner_tests PRIVATE /W4)
 else()

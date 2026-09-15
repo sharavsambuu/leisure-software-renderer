@@ -100,7 +100,7 @@ message(STATUS "Adding sub folders...")
 #
 # New layout (2026-09): single renderer library — shs-gpu-lib absorbed into
 # shs-core-lib (Vulkan runtime edge gated behind SHS_HAS_VULKAN).
-add_subdirectory("src/shs-core-lib")
+add_subdirectory("src/shs-renderer-lib")
 # add_subdirectory("src/exps-other")
 # add_subdirectory("src/exps-software-renderer")
 # add_subdirectory("src/exps-gpu-renderer")

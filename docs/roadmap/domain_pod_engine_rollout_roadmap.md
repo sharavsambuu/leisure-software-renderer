@@ -130,10 +130,19 @@ existing `ctest` suite green; boundary linter (from old P5, pulled forward) enfo
 > `shs::gpu`, temporary keep). All exps demos/probes parked at the CMake level
 > (source kept; ctest baseline 14 → **5**, lib tests only). Per-pod header
 > suffixing (Core 4) remains future work.
+>
+> **Single-library convergence (2026-09-15, same day):** `shs-gpu-lib` retired
+> ahead of P3 — its trees (SDL/windowed monolith `shs/rhi/drivers/vulkan/`,
+> `shs/pipeline/vk_*`, `shaders/vulkan/`, VMA implementation) were absorbed
+> into the surviving lib and are `SHS_HAS_VULKAN`-gated (GPU-free configure +
+> build still green). The lib then took its final name: `shs-core-lib` →
+> **`shs-renderer-lib`** (targets `shs_renderer` / `shs::renderer`, values
+> `shs_renderer_values` / `shs::renderer-values` — no legacy aliases kept).
+> The monolith's P3 pod decomposition remains future work.
 
 ## Phase P1 — `renderpath` Pod in the Engine Lib
 
-Goal: the first formal Domain Pod in `shs-core-lib`, wrapping the
+Goal: the first formal Domain Pod in `shs-renderer-lib`, wrapping the
 existing recipe → compiler → plans spine.
 
 - [x] Create `include/shs/domains/renderpath/` with `contract` (re-export of recipe /
@@ -318,17 +327,19 @@ extension role, and the classification is machine-checked.
       `#pragma message` forwards.
 - [ ] **Retire legacy seams** — audit `frame_graph.hpp` / `pluggable_pipeline.hpp`
       for removal once the renderpath pod covers their use cases.
-- [ ] **Converge to a single renderer library** — once `shs-gpu-lib`
-      retires (P3) and the facade shims are gone (done early, 2026-09-15
-      convergence addendum), rename the surviving
-      `shs-core-lib` to **`shs-renderer-lib`**. "Software vs GPU" is
-      then a driver-pod selection (`drivers/software`, `drivers/vulkan`,
-      `drivers/opengl`) behind the one `IRenderBackend` contract + capability
-      gates — not a library split. Update CMake target names in the same
-      commit to the converged scheme (`shs_core` → `shs_renderer`,
-      `shs::core` → `shs::renderer`, `shs_core_values`/`shs::core-values` →
-      `shs_renderer_values`/`shs::renderer-values` — no legacy aliases kept),
-      plus the §6.4 classification table and the Domain Glossary.
+- [x] **Converge to a single renderer library** — DONE 2026-09-15, ahead of
+      the original sequencing: `shs-gpu-lib` was absorbed into the surviving
+      lib (monolith `shs/rhi/` + `shs/pipeline/vk_*` + VMA edge moved in,
+      `SHS_HAS_VULKAN`-gated) and `shs-core-lib` renamed to
+      **`shs-renderer-lib`** with the converged target scheme
+      (`shs_renderer` / `shs::renderer`, `shs_renderer_values` /
+      `shs::renderer-values` — no legacy aliases kept). "Software vs GPU" is
+      now a driver-pod selection (`drivers/software`,
+      `drivers/vulkan`, `drivers/opengl`) behind the one `IRenderBackend`
+      contract + capability gates — not a library split. Remaining follow-ups
+      (not blocking the rename): §6.4 classification table + Domain Glossary
+      sync, and the P3 decomposition of the absorbed monolith into the
+      pod-aligned driver.
 - [ ] **Linter ↔ docs sync** — the structure linter (landed in P0.5) now also
       checks §6.4 classification table ↔ physical zone agreement, the Domain
       Glossary rows point at final homes, and — per Constitution §2.2(3) — law

@@ -16,8 +16,10 @@
 >
 > **Status (2026-09-15): PAUSED.** All exps demos/probes are parked (commented
 > out at the root CMake level, source kept on disk); ctest baseline is now
-> **5/5** (lib tests only) and libraries are renamed (`shs-core-lib` →
-> `shs::core`, `shs-gpu-lib` → `shs::gpu`). The remaining Wave 2 pairs below
+> **5/5** (lib tests only). Libraries converged into a single
+> **`shs-renderer-lib`** (`shs::renderer`, `shs::renderer-values`); the old
+> `shs-gpu-lib` is absorbed (monolith runtime edge lives behind
+> `SHS_HAS_VULKAN`). The remaining Wave 2 pairs below
 > resume only when the demos are restarted; the old probe TUs are not expected
 > to build as-is (they reference retired facade include paths).
 
@@ -70,6 +72,7 @@
 
 ## Non-goals
 
-- No changes to `shs-gpu-lib` (drivers stay; only demo/probe TUs retire).
+- `shs-gpu-lib` is absorbed into `shs-renderer-lib` (2026-09-15); its driver
+  trees are untouched and stay behind `SHS_HAS_VULKAN`.
 - No deletion of anything referenced by main-tree ctest.
 - No deletion of the `SHS_HAS_VULKAN` guard structure.

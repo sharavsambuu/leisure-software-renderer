@@ -28,7 +28,7 @@ transitions.
 ## 3. The `renderpath` Domain Pod (Core 4 mapping)
 
 ```text
-shs-core-lib/include/shs/domains/renderpath/
+shs-renderer-lib/include/shs/domains/renderpath/
 ├── renderpath.contract.hpp   # CORE 1. TYPES
 │       RenderPathRecipe, RenderPathExecutionPlan, RenderPathCompatibilityRules,
 │       RenderPathCapabilitySet, RenderPathRuntimeState, RenderPathPassEntry,
