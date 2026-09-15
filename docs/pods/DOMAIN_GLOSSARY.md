@@ -19,6 +19,14 @@
 
 ## 2. The Composite Values (structs you assemble or pick)
 
+> **Pod home (P1):** the recipe → compiler → plan spine is owned by the
+> `renderpath` Domain Pod — `include/shs/domains/renderpath/` (Core 4:
+> `renderpath.contract.hpp` re-exports everything below, `renderpath.action.hpp`
+> carries the closed `RenderPathCommand` variant, `renderpath.event.hpp` the
+> closed `RenderPathEvent` variant, `renderpath.reducer.hpp` the pure
+> `reduce_render_path`). The `shs/execution/pipeline/` paths below remain the
+> canonical definition sites; the pod is the sanctioned seam (P1).
+
 | Concept | Type | Notes |
 | :--- | :--- | :--- |
 | **A complete renderer definition** | `RenderPathRecipe` | technique + light volumes + culling + pass chain + knobs; pure value |
@@ -39,7 +47,7 @@
 | `RenderPathPreset::Deferred` / `::TiledDeferred` | coarse classic path selections |
 | `RenderCompositionPostStackPreset::Full` | ssao + taa + motion blur + dof |
 
-> Target state (roadmap P1): the catalog becomes `inline constexpr` named recipes in a
+> Target state (post-P1): the catalog becomes `inline constexpr` named recipes in a
 > presets header (`preset::DeferredPlusVulkan`, `preset::MobileForwardLite`, …), and a
 > novel renderer = a preset + `with_*` deltas (Constitution II §6.5 rule 3–4).
 

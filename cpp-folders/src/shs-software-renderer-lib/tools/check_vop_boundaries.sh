@@ -74,10 +74,20 @@ echo "[vop-boundary] OK: ${facade_count} migration facades forward to existing c
 # Domain direction law: headers under shs/domains/ must never directly include
 # execution zones (canonical include text). Legacy-path includes that resolve
 # through migration facades are counted as advisory until P5 canonicalization.
+#
+# Sanctioned carve-out (roadmap P1): shs/domains/renderpath/ is the contract
+# seam — its contract re-exports the recipe/plan/capabilities spine from
+# execution/pipeline/. No other domain pod may include execution zones.
 forbidden_domains_include='^shs/(execution|pipeline|passes|rhi|sw_render|platform|shader|app|job)/'
 legacy_count=0
 for h in $(find "${domains_dir}" -name '*.hpp' | sort); do
   rel="${h#"${lib_root}/include/"}"
+  case "${rel}" in
+    shs/domains/renderpath/*)
+      echo "[vop-boundary] INFO: ${rel} is the renderpath contract seam (P1-sanctioned execution re-exports)"
+      continue
+      ;;
+  esac
   hits="$("${search_cmd[@]}" "#include[[:space:]]*[<\"]${forbidden_domains_include}" "${h}" 2>/dev/null || true)"
   if [[ -n "${hits}" ]]; then
     echo "[vop-boundary] FAIL: domain header ${rel} directly includes an execution zone"

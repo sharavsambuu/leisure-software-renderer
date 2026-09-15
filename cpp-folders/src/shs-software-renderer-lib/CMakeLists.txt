@@ -117,6 +117,28 @@ set(SHS_RENDERER_HAS_JOLT "${SHS_RENDERER_HAS_JOLT}" PARENT_SCOPE)
 set(SHS_RENDERER_HAS_VULKAN OFF PARENT_SCOPE)
 set(SHS_SDL2_HAS_VULKAN "${SHS_SDL2_HAS_VULKAN}" PARENT_SCOPE)
 
+# Header-only value-layer target: include dirs + header-only deps ONLY.
+# Pure value code (pods, reducers, planners) must build and test against this
+# with zero SDL/assimp/Vulkan links (VOP Constitution §7 headless-test law).
+add_library(shs_renderer_values INTERFACE)
+add_library(shs::renderer-values ALIAS shs_renderer_values)
+target_include_directories(shs_renderer_values INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_BINARY_DIR}
+    ${stb_SOURCE_DIR}
+)
+target_compile_features(shs_renderer_values INTERFACE cxx_std_20)
+# glm is header-only; safe to propagate without linking any compiled lib.
+target_link_libraries(shs_renderer_values INTERFACE glm::glm)
+if(TARGET xsimd::xsimd)
+    target_link_libraries(shs_renderer_values INTERFACE xsimd::xsimd)
+    target_compile_definitions(shs_renderer_values INTERFACE SHS_HAS_XSIMD=1)
+elseif(TARGET xsimd)
+    target_link_libraries(shs_renderer_values INTERFACE xsimd)
+    target_compile_definitions(shs_renderer_values INTERFACE SHS_HAS_XSIMD=1)
+endif()
+
 option(SHS_RENDERER_BUILD_TESTS "Build shs_renderer core tests" ON)
 if(SHS_RENDERER_BUILD_TESTS)
     enable_testing()
@@ -130,6 +152,19 @@ if(SHS_RENDERER_BUILD_TESTS)
         target_compile_options(shs_renderer_vop_tests PRIVATE /W4)
     else()
         target_compile_options(shs_renderer_vop_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+
+    # P1 renderpath pod tests: pure value tests, frame-arena events, no
+    # platform links (only shs::renderer-values + glm headers).
+    add_executable(shs_renderer_vop_renderpath_tests
+        tests/vop_renderpath_tests.cpp
+    )
+    target_link_libraries(shs_renderer_vop_renderpath_tests PRIVATE shs::renderer-values)
+    target_compile_features(shs_renderer_vop_renderpath_tests PRIVATE cxx_std_20)
+    if(MSVC)
+        target_compile_options(shs_renderer_vop_renderpath_tests PRIVATE /W4)
+    else()
+        target_compile_options(shs_renderer_vop_renderpath_tests PRIVATE -Wall -Wextra -Wpedantic)
     endif()
 
     add_custom_target(shs_renderer_vop_boundary_check
@@ -152,6 +187,14 @@ if(SHS_RENDERER_BUILD_TESTS)
         COMMAND shs_renderer_vop_tests
     )
     set_tests_properties(shs_renderer_vop_tests PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    )
+
+    add_test(
+        NAME shs_renderer_vop_renderpath_tests
+        COMMAND shs_renderer_vop_renderpath_tests
+    )
+    set_tests_properties(shs_renderer_vop_renderpath_tests PROPERTIES
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     )
 endif()

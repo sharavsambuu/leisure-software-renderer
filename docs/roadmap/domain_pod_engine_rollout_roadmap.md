@@ -124,17 +124,39 @@ existing `ctest` suite green; boundary linter (from old P5, pulled forward) enfo
 Goal: the first formal Domain Pod in `shs-software-renderer-lib`, wrapping the
 existing recipe → compiler → plans spine.
 
-- [ ] Create `include/shs/domains/renderpath/` with `contract` (re-export of recipe /
+- [x] Create `include/shs/domains/renderpath/` with `contract` (re-export of recipe /
       plan / capabilities / runtime-state types), `action` (closed
       `RenderPathCommand` variant), `event` (closed `RenderPathEvent` variant),
       `reducer` (`reduce_render_path` wrapping `RenderPathCompiler` value-fully).
-- [ ] Reducer invariant: invalid compile ⇒ keep previous plan + `PATH_SWAP_REJECTED`.
-- [ ] `ctest` gate: `shs_renderer_vop_renderpath_*` — reducer tests compile and pass
+- [x] Reducer invariant: invalid compile ⇒ keep previous plan + `PATH_SWAP_REJECTED`.
+- [x] `ctest` gate: `shs_renderer_vop_renderpath_*` — reducer tests compile and pass
       with zero Vulkan/SDL links (pure value tests, frame-arena events).
 
 **DoD**: path selection, technique switching, culling-mode changes, and rejection
 behavior all provable via pure unit tests; `pipeline/` headers unchanged for existing
 consumers (pod re-exports, no breakage).
+
+> **Execution record (2026-09-15 — DONE).** Core 4 landed as
+> `renderpath.contract.hpp` / `renderpath.action.hpp` / `renderpath.event.hpp` /
+> `renderpath.reducer.hpp` in `include/shs/domains/renderpath/`. The contract
+> re-exports the spine via using-declarations under `shs::renderpath` (canonical
+> `shs::` names preserved). Commands: `SelectPathPresetIntent`,
+> `SetRenderingTechniqueIntent`, `SetViewCullingModeIntent`,
+> `SetShadowCullingModeIntent`, `SetRuntimeToggleIntent` (closed `RuntimeToggle`
+> key set). Events: `PathCompiledEvent`, `PathSwapRejectedEvent` (reason enum,
+> no `std::string` payloads), `TechniqueSwitchedEvent`, `CullingModeChangedEvent`,
+> `RuntimeToggledEvent`. Deviations from the checkbox text: (1) `pipeline/` moved
+> wholesale to `execution/pipeline/` in P0.5, so the pod's re-exports point there —
+> `pipeline/` facades keep old-path consumers working untouched; (2) the boundary
+> linter gained a P1-sanctioned carve-out: `shs/domains/renderpath/` is the only
+> domain pod allowed to include execution zones (it IS the contract seam). The
+> `shs::renderer-values` INTERFACE target (header-only: include dirs + glm only,
+> no SDL/assimp/Vulkan) landed with this phase — the renderpath test binary's
+> link line is `libglm.a` and nothing else. ctest: `shs_renderer_vop_renderpath_tests`
+> covers path selection, technique switching, culling accept/reject, the
+> previous-plan-kept rejection invariant, and pre-plan runtime toggles; events
+> allocate on a `std::pmr::monotonic_buffer_resource` frame arena.
+
 
 
 ## Phase P1.5 — Contiguous Container Infrastructure (Prerequisite for Cache Streaming)
