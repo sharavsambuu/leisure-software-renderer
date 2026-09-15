@@ -33,6 +33,7 @@ namespace shs::demo
         CycleForwardFramebufferDebugTarget,
         ToggleGpuCuller,
         ToggleLightVolumeDebug,
+        ToggleAabbDebug,
         CycleSemanticDebugTarget,
         ToggleTemporalAccumulation,
         PrintHelp,

@@ -992,6 +992,7 @@ private:
         std::fprintf(stderr, "  Tab        : cycle rendering path (alias)\n");
         std::fprintf(stderr, "  F6         : toggle Vulkan culler backend (gpu / disabled)\n");
         std::fprintf(stderr, "  F7         : toggle light debug wireframe draw\n");
+        std::fprintf(stderr, "  B          : toggle per-instance AABB debug overlay (culling visualization)\n");
         std::fprintf(stderr, "  F8         : cycle semantic debug target from active resource plan\n");
         std::fprintf(stderr, "  F9         : toggle temporal accumulation (history blend + jitter, when TAA pass exists)\n");
         std::fprintf(stderr, "  F10        : print controls/help + composition catalog (includes VK/SW parity)\n");
@@ -7376,23 +7377,34 @@ private:
         return model_from_basis_and_scale(pos_ws, axis, up, side, glm::vec3(ex, ey, ez));
     }
 #ifdef SHS_HAS_VULKAN
-    void draw_light_volumes_debug(VkCommandBuffer cmd, VkPipelineLayout layout, uint32_t frame_slot)
+    // Debug wireframe overlays (light volumes + per-instance AABB culling
+    // boxes) drawn through the shared unlit scene_wire_pipeline_.
+    void draw_debug_wireframe_overlays(VkCommandBuffer cmd, VkPipelineLayout layout, uint32_t frame_slot)
     {
-        if (!show_light_volumes_debug_) return;
-        if (light_volume_debug_draws_.empty()) return;
+        if (!show_light_volumes_debug_ && !show_aabb_debug_) return;
         if (!frame_resources_.valid_slot(frame_slot)) return;
         if (scene_wire_pipeline_ == VK_NULL_HANDLE) return;
 
         const VkDescriptorSet global_set = frame_resources_.at_slot(frame_slot).global_set;
         if (global_set == VK_NULL_HANDLE) return;
 
+        rebuild_aabb_debug_draws();
+        const bool draw_lights = show_light_volumes_debug_ && !light_volume_debug_draws_.empty();
+        const bool draw_aabbs = show_aabb_debug_ && !aabb_debug_draws_.empty();
+        if (!draw_lights && !draw_aabbs) return;
+
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, scene_wire_pipeline_);
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &global_set, 0, nullptr);
+        if (draw_lights) draw_wireframe_draw_list(cmd, layout, light_volume_debug_draws_);
+        if (draw_aabbs) draw_wireframe_draw_list(cmd, layout, aabb_debug_draws_);
+    }
 
-        const uint32_t draw_count = std::min<uint32_t>(static_cast<uint32_t>(light_volume_debug_draws_.size()), 512u);
+    void draw_wireframe_draw_list(VkCommandBuffer cmd, VkPipelineLayout layout, const std::vector<LightVolumeDebugDraw>& draws)
+    {
+        const uint32_t draw_count = std::min<uint32_t>(static_cast<uint32_t>(draws.size()), 512u);
         for (uint32_t i = 0; i < draw_count; ++i)
         {
-            const LightVolumeDebugDraw& d = light_volume_debug_draws_[i];
+            const LightVolumeDebugDraw& d = draws[i];
             const GpuBuffer* vb = nullptr;
             const GpuBuffer* ib = nullptr;
             uint32_t index_count = 0u;
@@ -7436,6 +7448,43 @@ private:
                 sizeof(DrawPush),
                 &pc);
             vkCmdDrawIndexed(cmd, index_count, 1, 0, 0, 0);
+        }
+    }
+
+    // Per-instance AABB overlay (merged from the hello_culling_sw/vk probes):
+    // one unit-box wireframe per visible instance, sized to the world-space
+    // AABB of the instance's mesh. Built from the authoritative visibility
+    // mask so frustum/occlusion rejections are reflected live.
+    void rebuild_aabb_debug_draws()
+    {
+        aabb_debug_draws_.clear();
+        if (!show_aabb_debug_) return;
+        const size_t count = std::min(instance_visible_mask_.size(), instance_models_.size());
+        aabb_debug_draws_.reserve(std::min<size_t>(count, 512u));
+        const glm::vec3 box_min = box_local_aabb_.minv;
+        const glm::vec3 box_ext = box_local_aabb_.extent();
+        const glm::vec3 box_ext_safe(
+            std::max(box_ext.x, 1e-4f),
+            std::max(box_ext.y, 1e-4f),
+            std::max(box_ext.z, 1e-4f));
+        for (size_t i = 0; i < count && aabb_debug_draws_.size() < 512u; ++i)
+        {
+            if (instance_visible_mask_[i] == 0u) continue;
+            const shs::AABB world = shs::transform_aabb(
+                local_aabb_for_mesh(instances_[i].mesh_kind),
+                instance_models_[i]);
+            const glm::vec3 world_ext = world.extent();
+            // Map the box mesh's local [min, max] onto the world AABB exactly:
+            // p_world = (p_box - box_min) * (world_ext / box_ext) + world_min.
+            const glm::mat4 model =
+                glm::translate(glm::mat4(1.0f), world.minv) *
+                glm::scale(glm::mat4(1.0f), world_ext / box_ext_safe) *
+                glm::translate(glm::mat4(1.0f), -box_min);
+            LightVolumeDebugDraw d{};
+            d.mesh = DebugVolumeMeshKind::Box;
+            d.model = model;
+            d.color = glm::vec4(1.0f, 0.94f, 0.31f, 1.0f);
+            aabb_debug_draws_.push_back(d);
         }
     }
 
@@ -8138,7 +8187,7 @@ private:
         rp.clearValueCount = vk_->has_depth_attachment() ? 2u : 1u;
         rp.pClearValues = clear;
         vkCmdBeginRenderPass(cmd, &rp, VK_SUBPASS_CONTENTS_INLINE);
-        draw_light_volumes_debug(cmd, scene_pipeline_layout_, frame_slot);
+        draw_debug_wireframe_overlays(cmd, scene_pipeline_layout_, frame_slot);
         vkCmdEndRenderPass(cmd);
     }
 #endif // SHS_HAS_VULKAN
@@ -8272,7 +8321,7 @@ private:
                     frame_slot);
             },
             [this](VkCommandBuffer cmd, uint32_t frame_slot) {
-                draw_light_volumes_debug(cmd, scene_pipeline_layout_, frame_slot);
+                draw_debug_wireframe_overlays(cmd, scene_pipeline_layout_, frame_slot);
             });
     }
 
@@ -8461,7 +8510,7 @@ private:
                 0,
                 nullptr);
             vkCmdDraw(ctx.fi->cmd, 3, 1, 0, 0);
-            draw_light_volumes_debug(ctx.fi->cmd, scene_pipeline_layout_, ctx.frame_slot);
+            draw_debug_wireframe_overlays(ctx.fi->cmd, scene_pipeline_layout_, ctx.frame_slot);
             vkCmdEndRenderPass(ctx.fi->cmd);
             post_target_a_layout_ = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
@@ -8508,7 +8557,7 @@ private:
                 0,
                 nullptr);
             vkCmdDraw(ctx.fi->cmd, 3, 1, 0, 0);
-            draw_light_volumes_debug(ctx.fi->cmd, scene_pipeline_layout_, ctx.frame_slot);
+            draw_debug_wireframe_overlays(ctx.fi->cmd, scene_pipeline_layout_, ctx.frame_slot);
             vkCmdEndRenderPass(ctx.fi->cmd);
             ctx.scene_pass_executed = true;
         }
@@ -9069,6 +9118,7 @@ private:
             case SDLK_i: return DemoInputAction::CycleForwardFramebufferDebugTarget;
             case SDLK_F6: return DemoInputAction::ToggleGpuCuller;
             case SDLK_F7: return DemoInputAction::ToggleLightVolumeDebug;
+            case SDLK_b: return DemoInputAction::ToggleAabbDebug;
             case SDLK_F8: return DemoInputAction::CycleSemanticDebugTarget;
             case SDLK_F9: return DemoInputAction::ToggleTemporalAccumulation;
             case SDLK_F10: return DemoInputAction::PrintHelp;
@@ -9322,6 +9372,13 @@ private:
                 case shs::demo::DemoInputAction::ToggleLightVolumeDebug:
                     show_light_volumes_debug_ = !show_light_volumes_debug_;
                     break;
+                case shs::demo::DemoInputAction::ToggleAabbDebug:
+                    show_aabb_debug_ = !show_aabb_debug_;
+                    std::fprintf(
+                        stderr,
+                        "[render-path][culling] Per-instance AABB overlay: %s\n",
+                        show_aabb_debug_ ? "ON" : "OFF");
+                    break;
                 case shs::demo::DemoInputAction::CycleSemanticDebugTarget:
                     cycle_semantic_debug_target();
                     break;
@@ -9571,6 +9628,8 @@ private:
     uint32_t spot_shadow_count_ = 0;
     bool show_light_volumes_debug_ = false;
     std::vector<LightVolumeDebugDraw> light_volume_debug_draws_{};
+    bool show_aabb_debug_ = false;
+    std::vector<LightVolumeDebugDraw> aabb_debug_draws_{};
     bool enable_scene_occlusion_ = false;
     bool enable_light_occlusion_ = false;
     shs::LightObjectCullMode light_object_cull_mode_ = shs::LightObjectCullMode::None;
