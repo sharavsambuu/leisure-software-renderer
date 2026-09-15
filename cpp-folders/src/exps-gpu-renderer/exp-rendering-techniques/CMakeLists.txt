@@ -214,3 +214,16 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
     target_compile_features(demo_forward_classic_renderpath PRIVATE cxx_std_20)
 
 endif()
+
+# Run 1 (P3): GPU-free tests for the demo input edge token vocabulary and the
+# pure tuning reducer (demo_input_actions.hpp). No SDL/Vulkan/GLM dependency —
+# always configured with the tree, proving the token layer is GPU-free.
+enable_testing()
+add_executable(shs_demo_input_actions_tests demo_input_actions_tests.cpp)
+add_test(NAME shs_demo_input_actions_tests COMMAND shs_demo_input_actions_tests)
+target_compile_features(shs_demo_input_actions_tests PRIVATE cxx_std_20)
+if(MSVC)
+    target_compile_options(shs_demo_input_actions_tests PRIVATE /W4)
+else()
+    target_compile_options(shs_demo_input_actions_tests PRIVATE -Wall -Wextra -Wpedantic)
+endif()

@@ -15,6 +15,7 @@
 #include <initializer_list>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <random>
 #include <stdexcept>
 #include <string>
@@ -25,6 +26,8 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_vulkan.h>
 #include <vulkan/vulkan.h>
+
+#include "demo_input_actions.hpp"
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -89,8 +92,6 @@ constexpr int kDefaultH = 720;
 constexpr uint32_t kDefaultTileSize = 16;
 constexpr uint32_t kMaxLightsPerTile = 128;
 constexpr uint32_t kMaxLights = 768;
-constexpr uint32_t kDefaultLightCount = 384;
-constexpr float kDefaultLightRangeScale = 0.72f;
 constexpr int kSceneOccW = 320;
 constexpr int kSceneOccH = 180;
 constexpr int kLightOccW = 320;
@@ -1652,7 +1653,7 @@ private:
         line += "\"frame_ms\":" + std::to_string(frame_ms) + ",";
         line += "\"ema_ms\":" + std::to_string(ema_ms) + ",";
         line += "\"visible_lights\":" + std::to_string(visible_light_count_) + ",";
-        line += "\"active_lights\":" + std::to_string(active_light_count_) + ",";
+        line += "\"active_lights\":" + std::to_string(tuning_.active_light_count) + ",";
         line += "\"rebuild_target\":" + std::to_string(render_target_rebuild_count_) + ",";
         line += "\"rebuild_pipeline\":" + std::to_string(pipeline_rebuild_count_) + ",";
         line += "\"swapchain_generation\":" + std::to_string(swapchain_generation_change_count_) + ",";
@@ -2150,7 +2151,7 @@ private:
             phase_f_accumulator_.frame_ms_max = std::max(phase_f_accumulator_.frame_ms_max, static_cast<double>(frame_ms));
             phase_f_accumulator_.dispatch_cpu_ms_sum += dispatch_total_cpu_ms_;
             phase_f_accumulator_.visible_lights_sum += visible_light_count_;
-            phase_f_accumulator_.active_lights_sum += active_light_count_;
+            phase_f_accumulator_.active_lights_sum += tuning_.active_light_count;
             phase_f_accumulator_.gbuffer_frames += frame_gbuffer_pass_executed_ ? 1u : 0u;
             phase_f_accumulator_.ssao_frames += frame_ssao_pass_executed_ ? 1u : 0u;
             phase_f_accumulator_.deferred_frames += frame_deferred_lighting_pass_executed_ ? 1u : 0u;
@@ -6242,7 +6243,7 @@ private:
         temporal_state_.current_view_proj = camera_ubo_.view_proj;
         camera_ubo_.camera_pos_time = glm::vec4(cam_pos, t);
         camera_ubo_.sun_dir_intensity = glm::vec4(glm::normalize(glm::vec3(-0.35f, -1.0f, -0.18f)), 0.78f);
-        camera_ubo_.screen_tile_lightcount = glm::uvec4(w, h, tile_w_, active_light_count_);
+        camera_ubo_.screen_tile_lightcount = glm::uvec4(w, h, tile_w_, tuning_.active_light_count);
         camera_ubo_.params = glm::uvec4(tile_h_, kMaxLightsPerTile, light_tile_size_, static_cast<uint32_t>(culling_mode_));
         const uint32_t semantic_debug_mode = active_semantic_debug_mode();
         const uint32_t semantic_debug_id =
@@ -6264,13 +6265,13 @@ private:
         // Keep directional shadow optional and subtle in this stress demo
         // so local-light behavior remains readable.
         const float dir_shadow_strength =
-            (shadow_settings_.enable && enable_sun_shadow_)
-                ? std::clamp(sun_shadow_strength_, 0.0f, 1.0f)
+            (shadow_settings_.enable && tuning_.sun_shadow_enabled)
+                ? std::clamp(tuning_.sun_shadow_strength, 0.0f, 1.0f)
                 : 0.0f;
         camera_ubo_.sun_shadow_params = glm::vec4(dir_shadow_strength, 0.0012f, 0.0030f, 2.0f);
         camera_ubo_.sun_shadow_filter = glm::vec4(
             shadow_settings_.quality.pcf_step,
-            (shadow_settings_.enable && enable_sun_shadow_) ? 1.0f : 0.0f,
+            (shadow_settings_.enable && tuning_.sun_shadow_enabled) ? 1.0f : 0.0f,
             0.0f,
             0.0f);
 
@@ -6376,7 +6377,7 @@ private:
         };
 
         light_set_.clear_local_lights();
-        const uint32_t lc = std::min<uint32_t>(active_light_count_, static_cast<uint32_t>(light_anim_.size()));
+        const uint32_t lc = std::min<uint32_t>(tuning_.active_light_count, static_cast<uint32_t>(light_anim_.size()));
         uint32_t visible_light_count = 0;
         light_volume_debug_draws_.clear();
         light_volume_debug_draws_.reserve(lc);
@@ -6387,8 +6388,8 @@ private:
         {
             const LightAnim& la = light_anim_[i];
             const float a = la.angle0 + la.speed * t;
-            const float orbit_r = std::max(2.0f, la.orbit_radius * light_orbit_scale_);
-            const float y = (la.height + light_height_bias_) + std::sin(a * 1.7f + la.phase) * 1.2f;
+            const float orbit_r = std::max(2.0f, la.orbit_radius * tuning_.orbit_scale);
+            const float y = (la.height + tuning_.height_bias) + std::sin(a * 1.7f + la.phase) * 1.2f;
             const glm::vec3 p(std::cos(a) * orbit_r, y, std::sin(a) * orbit_r);
             float shape_range = la.range;
             switch (la.type)
@@ -6422,8 +6423,8 @@ private:
                     break;
                 }
             }
-            const float tuned_range = std::max(0.60f, shape_range * light_range_scale_);
-            const float tuned_intensity = std::max(0.0f, la.intensity * light_intensity_scale_);
+            const float tuned_range = std::max(0.60f, shape_range * tuning_.range_scale);
+            const float tuned_intensity = std::max(0.0f, la.intensity * tuning_.intensity_scale);
 
             switch (la.type)
             {
@@ -8736,13 +8737,52 @@ private:
             framebuffer_debug_name,
             framebuffer_debug_state,
             visible_light_count_,
-            active_light_count_,
+            tuning_.active_light_count,
             visible_draws,
             total_draws,
             cull_name,
             culler_backend,
             avg_ms);
         SDL_SetWindowTitle(win_, title);
+    }
+
+    // Input edge (Run 1 / P3): the ONLY SDL-keycode knowledge in the demo.
+    // Translates raw keysyms into the closed demo action vocabulary; everything
+    // downstream consumes tokens (see demo_input_actions.hpp).
+    static std::optional<shs::demo::DemoInputAction> map_keydown_to_action(SDL_Keycode key)
+    {
+        using shs::demo::DemoInputAction;
+        switch (key)
+        {
+            case SDLK_ESCAPE: return DemoInputAction::Quit;
+            case SDLK_F1: return DemoInputAction::ToggleMultithreadRecording;
+            case SDLK_F5: return DemoInputAction::CycleFramebufferDebugTarget;
+            case SDLK_i: return DemoInputAction::CycleForwardFramebufferDebugTarget;
+            case SDLK_F6: return DemoInputAction::ToggleGpuCuller;
+            case SDLK_F7: return DemoInputAction::ToggleLightVolumeDebug;
+            case SDLK_F8: return DemoInputAction::CycleSemanticDebugTarget;
+            case SDLK_F9: return DemoInputAction::ToggleTemporalAccumulation;
+            case SDLK_F10: return DemoInputAction::PrintHelp;
+            case SDLK_F11: return DemoInputAction::ToggleAutoCycleTechnique;
+            case SDLK_F12: return DemoInputAction::ToggleSunShadow;
+            case SDLK_1: return DemoInputAction::LightOrbitScaleDec;
+            case SDLK_2: return DemoInputAction::LightOrbitScaleInc;
+            case SDLK_3: return DemoInputAction::LightHeightBiasDec;
+            case SDLK_4: return DemoInputAction::LightHeightBiasInc;
+            case SDLK_5: return DemoInputAction::LightRangeScaleDec;
+            case SDLK_6: return DemoInputAction::LightRangeScaleInc;
+            case SDLK_7: return DemoInputAction::LightIntensityScaleDec;
+            case SDLK_8: return DemoInputAction::LightIntensityScaleInc;
+            case SDLK_9: return DemoInputAction::SunShadowStrengthDec;
+            case SDLK_0: return DemoInputAction::SunShadowStrengthInc;
+            case SDLK_r: return DemoInputAction::ResetLightControls;
+            case SDLK_MINUS:
+            case SDLK_KP_MINUS: return DemoInputAction::ActiveLightCountDec;
+            case SDLK_EQUALS:
+            case SDLK_PLUS:
+            case SDLK_KP_PLUS: return DemoInputAction::ActiveLightCountInc;
+            default: return std::nullopt;
+        }
     }
 
     void handle_event(const SDL_Event& e)
@@ -8831,9 +8871,11 @@ private:
 
         if (e.type == SDL_KEYDOWN)
         {
-            pending_keydown_actions_.push_back(e.key.keysym.sym);
+            if (const auto action = map_keydown_to_action(e.key.keysym.sym))
+            {
+                pending_keydown_actions_.push_back(*action);
+            }
         }
-
         if (e.type == SDL_WINDOWEVENT &&
             (e.window.event == SDL_WINDOWEVENT_SIZE_CHANGED || e.window.event == SDL_WINDOWEVENT_RESIZED))
         {
@@ -8919,47 +8961,35 @@ private:
 
     void apply_pending_keydown_actions()
     {
-        for (SDL_Keycode key : pending_keydown_actions_)
+        for (shs::demo::DemoInputAction action : pending_keydown_actions_)
         {
-            switch (key)
+            switch (action)
             {
-                case SDLK_ESCAPE:
+                case shs::demo::DemoInputAction::Quit:
                     pending_quit_action_ = true;
                     break;
-                case SDLK_F1:
+                case shs::demo::DemoInputAction::ToggleMultithreadRecording:
                     use_multithread_recording_ = !use_multithread_recording_;
                     break;
-                case SDLK_F2:
-                    // cycle_render_path_recipe();
-                    break;
-                case SDLK_TAB:
-                    // cycle_render_path_recipe();
-                    break;
-                case SDLK_F3:
-                    // cycle_render_composition_recipe();
-                    break;
-                case SDLK_F4:
-                    // cycle_lighting_technique();
-                    break;
-                case SDLK_F5:
+                case shs::demo::DemoInputAction::CycleFramebufferDebugTarget:
                     cycle_framebuffer_debug_target();
                     break;
-                case SDLK_i:
+                case shs::demo::DemoInputAction::CycleForwardFramebufferDebugTarget:
                     cycle_forward_framebuffer_debug_target();
                     break;
-                case SDLK_F6:
+                case shs::demo::DemoInputAction::ToggleGpuCuller:
                     vulkan_culler_backend_ =
                         (vulkan_culler_backend_ == VulkanCullerBackend::GpuCompute)
                             ? VulkanCullerBackend::Disabled
                             : VulkanCullerBackend::GpuCompute;
                     break;
-                case SDLK_F7:
+                case shs::demo::DemoInputAction::ToggleLightVolumeDebug:
                     show_light_volumes_debug_ = !show_light_volumes_debug_;
                     break;
-                case SDLK_F8:
+                case shs::demo::DemoInputAction::CycleSemanticDebugTarget:
                     cycle_semantic_debug_target();
                     break;
-                case SDLK_F9:
+                case shs::demo::DemoInputAction::ToggleTemporalAccumulation:
                     if (!active_taa_pass_enabled())
                     {
                         std::fprintf(
@@ -8980,65 +9010,18 @@ private:
                             "[render-path][temporal] Warning: swapchain transfer-src unsupported, temporal history copy disabled.\n");
                     }
                     break;
-                case SDLK_F10:
+                case shs::demo::DemoInputAction::PrintHelp:
                     print_controls();
                     print_composition_catalog();
                     break;
-                case SDLK_F11:
+                case shs::demo::DemoInputAction::ToggleAutoCycleTechnique:
                     auto_cycle_technique_ = !auto_cycle_technique_;
                     technique_switch_accum_sec_ = 0.0f;
                     break;
-                case SDLK_F12:
-                    enable_sun_shadow_ = !enable_sun_shadow_;
-                    break;
-                case SDLK_1:
-                    light_orbit_scale_ = std::clamp(light_orbit_scale_ - 0.10f, 0.35f, 2.50f);
-                    break;
-                case SDLK_2:
-                    light_orbit_scale_ = std::clamp(light_orbit_scale_ + 0.10f, 0.35f, 2.50f);
-                    break;
-                case SDLK_3:
-                    light_height_bias_ = std::clamp(light_height_bias_ - 0.25f, -3.0f, 6.0f);
-                    break;
-                case SDLK_4:
-                    light_height_bias_ = std::clamp(light_height_bias_ + 0.25f, -3.0f, 6.0f);
-                    break;
-                case SDLK_5:
-                    light_range_scale_ = std::clamp(light_range_scale_ - 0.10f, 0.50f, 2.00f);
-                    break;
-                case SDLK_6:
-                    light_range_scale_ = std::clamp(light_range_scale_ + 0.10f, 0.50f, 2.00f);
-                    break;
-                case SDLK_7:
-                    light_intensity_scale_ = std::clamp(light_intensity_scale_ - 0.10f, 0.30f, 2.50f);
-                    break;
-                case SDLK_8:
-                    light_intensity_scale_ = std::clamp(light_intensity_scale_ + 0.10f, 0.30f, 2.50f);
-                    break;
-                case SDLK_9:
-                    sun_shadow_strength_ = std::clamp(sun_shadow_strength_ - 0.05f, 0.0f, 1.0f);
-                    break;
-                case SDLK_0:
-                    sun_shadow_strength_ = std::clamp(sun_shadow_strength_ + 0.05f, 0.0f, 1.0f);
-                    break;
-                case SDLK_r:
-                    light_orbit_scale_ = 1.0f;
-                    light_height_bias_ = 0.0f;
-                    light_range_scale_ = kDefaultLightRangeScale;
-                    light_intensity_scale_ = 1.0f;
-                    enable_sun_shadow_ = true;
-                    sun_shadow_strength_ = 0.42f;
-                    break;
-                case SDLK_MINUS:
-                case SDLK_KP_MINUS:
-                    active_light_count_ = (active_light_count_ > 64u) ? (active_light_count_ - 64u) : 64u;
-                    break;
-                case SDLK_EQUALS:
-                case SDLK_PLUS:
-                case SDLK_KP_PLUS:
-                    active_light_count_ = std::min<uint32_t>(kMaxLights, active_light_count_ + 64u);
-                    break;
                 default:
+                    // Light/shadow tuning cluster: pure reducer on token values
+                    // (demo_input_actions.hpp) — no SDL knowledge here.
+                    shs::demo::apply_demo_light_tuning(tuning_, action);
                     break;
             }
         }
@@ -9209,7 +9192,7 @@ private:
     std::string pipeline_last_rebuild_reason_{"init"};
     uint32_t tile_w_ = 0;
     uint32_t tile_h_ = 0;
-    uint32_t active_light_count_ = kDefaultLightCount;
+    shs::demo::DemoLightTuningState tuning_{};
     uint32_t visible_light_count_ = 0;
     uint32_t visible_instance_count_ = 0;
     bool floor_visible_ = true;
@@ -9227,12 +9210,6 @@ private:
     uint32_t light_frustum_rejected_ = 0;
     uint32_t light_occlusion_rejected_ = 0;
     uint32_t light_prefilter_rejected_ = 0;
-    float light_orbit_scale_ = 1.0f;
-    float light_height_bias_ = 0.0f;
-    float light_range_scale_ = kDefaultLightRangeScale;
-    float light_intensity_scale_ = 1.0f;
-    bool enable_sun_shadow_ = true;
-    float sun_shadow_strength_ = 0.42f;
     bool use_forward_plus_ = true;
     shs::LightCullingMode culling_mode_ = shs::LightCullingMode::Tiled;
     uint32_t light_tile_size_ = kDefaultTileSize;
@@ -9350,7 +9327,7 @@ private:
     std::vector<shs::RuntimeInputEvent> pending_input_events_{};
     bool relative_mouse_mode_ = false;
     bool pending_quit_action_ = false;
-    std::vector<SDL_Keycode> pending_keydown_actions_{};
+    std::vector<shs::demo::DemoInputAction> pending_keydown_actions_{};
     shs::RuntimeState runtime_state_{};
     std::vector<shs::RuntimeAction> runtime_actions_{};
     float time_sec_ = 0.0f;
