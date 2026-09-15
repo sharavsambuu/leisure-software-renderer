@@ -29,6 +29,7 @@
 
 #include "demo_input_actions.hpp"
 #include "demo_renderpath_bridge.hpp"
+#include "demo_frame_planner.hpp"
 
 #include <deque>
 #include <memory_resource>
@@ -7939,29 +7940,6 @@ private:
     using FramePassExecutionContext =
         shs::VkRenderPathPassExecutionContext<shs::VulkanRenderBackend::FrameInfo>;
 
-    shs::RenderPathExecutionPlan make_active_frame_execution_plan() const
-    {
-        const shs::RenderPathExecutionPlan& active_plan = render_path_executor_.active_plan();
-        if (render_path_executor_.active_plan_valid() && !active_plan.pass_chain.empty())
-        {
-            return active_plan;
-        }
-
-        shs::RenderPathExecutionPlan fallback{};
-        fallback.recipe_name = std::string("fallback_") + shs::technique_mode_name(active_technique_);
-        fallback.backend = shs::RenderBackendType::Vulkan;
-        fallback.technique_mode = active_technique_;
-        fallback.valid = true;
-
-        const shs::TechniqueProfile profile = shs::make_default_technique_profile(active_technique_);
-        fallback.pass_chain.reserve(profile.passes.size());
-        for (const auto& p : profile.passes)
-        {
-            fallback.pass_chain.push_back(shs::RenderPathCompiledPass{p.id, p.pass_id, p.required});
-        }
-        return fallback;
-    }
-
     void draw_scene_clear_only(VkCommandBuffer cmd, const shs::VulkanRenderBackend::FrameInfo& fi, uint32_t frame_slot)
     {
         VkClearValue clear[2]{};
@@ -8648,44 +8626,6 @@ private:
 
         std::vector<VkCommandBuffer> depth_secondaries{};
         std::vector<VkCommandBuffer> scene_secondaries{};
-        if (use_multithread_recording_)
-        {
-            if ((enable_depth_prepass_ || enable_scene_pass_) && !reset_worker_pools_for_frame(frame_slot))
-            {
-                throw std::runtime_error("Failed to reset worker command pools");
-            }
-
-            if (enable_depth_prepass_ &&
-                !record_secondary_lists(
-                    depth_target_.render_pass,
-                    depth_target_.framebuffer,
-                    depth_pipeline_,
-                    depth_pipeline_layout_,
-                    depth_target_.w,
-                    depth_target_.h,
-                    true,
-                    true,
-                    frame_slot,
-                    depth_secondaries))
-            {
-                throw std::runtime_error("Failed to record depth secondary command buffers");
-            }
-            if (enable_scene_pass_ &&
-                !record_secondary_lists(
-                    fi.render_pass,
-                    fi.framebuffer,
-                    scene_pipeline_,
-                    scene_pipeline_layout_,
-                    fi.extent.width,
-                    fi.extent.height,
-                    true,
-                    true,
-                    frame_slot,
-                    scene_secondaries))
-            {
-                throw std::runtime_error("Failed to record scene secondary command buffers");
-            }
-        }
 
         VkCommandBufferBeginInfo bi{};
         bi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -8701,78 +8641,148 @@ private:
         begin_gpu_pass_timing_recording(fi.cmd, frame_slot);
         ensure_history_color_shader_read_layout(fi.cmd);
 
-        const shs::RenderPathExecutionPlan plan = make_active_frame_execution_plan();
+        // Pure per-frame planning (Run 1 / P3 task 3): plain-value inputs in,
+        // ordered DemoFrameCommand span out, built on the frame arena. The walk
+        // below only translates commands into recording — no planning here.
+        shs::demo::DemoFramePlanInputs plan_inputs{};
+        plan_inputs.active_plan = render_path_executor_.active_plan();
+        plan_inputs.active_plan_valid = render_path_executor_.active_plan_valid();
+        plan_inputs.technique_mode = active_technique_;
+        plan_inputs.depth_prepass_enabled = enable_depth_prepass_;
+        plan_inputs.scene_pass_enabled = enable_scene_pass_;
+        plan_inputs.light_culling_enabled = enable_light_culling_;
+        plan_inputs.gpu_light_culler_enabled = gpu_light_culler_enabled();
+        plan_inputs.multithread_recording_enabled = use_multithread_recording_;
+        plan_inputs.ssao_enabled = active_ssao_pass_enabled();
+        plan_inputs.motion_blur_enabled = active_motion_blur_pass_enabled();
+        plan_inputs.depth_of_field_enabled = active_depth_of_field_pass_enabled();
+        plan_inputs.taa_enabled = active_taa_pass_enabled();
+        frame_plan_arena_.release();
+        shs::demo::DemoFramePlan frame_plan =
+            shs::demo::plan_demo_frame(plan_inputs, &frame_plan_arena_);
+
         frame_graph_barrier_edges_emitted_ = 0u;
         frame_graph_barrier_fallback_count_ = 0u;
-        const auto plan_has_pass = [&plan](shs::PassId pass_id) -> bool {
-            for (const auto& p : plan.pass_chain)
-            {
-                if (p.pass_id == pass_id) return true;
-                if (shs::parse_pass_id(p.id) == pass_id) return true;
-            }
-            return false;
-        };
+
         FramePassExecutionContext pass_ctx{};
         pass_ctx.fi = &fi;
         pass_ctx.frame_slot = frame_slot;
         pass_ctx.global_set = global_set;
         pass_ctx.depth_secondaries = &depth_secondaries;
         pass_ctx.scene_secondaries = &scene_secondaries;
-        pass_ctx.depth_prepass_enabled = enable_depth_prepass_;
-        pass_ctx.scene_enabled = enable_scene_pass_;
-        pass_ctx.light_culling_enabled = enable_light_culling_;
-        pass_ctx.gpu_light_culler_enabled = gpu_light_culler_enabled();
-        pass_ctx.has_motion_blur_pass =
-            plan_has_pass(shs::PassId::MotionBlur) && active_motion_blur_pass_enabled();
-        pass_ctx.has_depth_of_field_pass =
-            plan_has_pass(shs::PassId::DepthOfField) && active_depth_of_field_pass_enabled();
+        pass_ctx.depth_prepass_enabled = frame_plan.gates.depth_prepass;
+        pass_ctx.scene_enabled = frame_plan.gates.scene;
+        pass_ctx.light_culling_enabled = frame_plan.gates.light_culling;
+        pass_ctx.gpu_light_culler_enabled = frame_plan.gates.gpu_light_culler;
+        pass_ctx.has_motion_blur_pass = frame_plan.gates.has_motion_blur_pass;
+        pass_ctx.has_depth_of_field_pass = frame_plan.gates.has_depth_of_field_pass;
         pass_ctx.post_color_valid = false;
         pass_ctx.post_color_source = 0u;
 
         shs::RenderPathPassDispatchResult dispatch_result{};
-        const bool dispatch_ok = frame_pass_dispatcher_.execute(plan, pass_ctx, &dispatch_result);
-        finalize_gpu_pass_timing_recording(frame_slot);
-        dispatch_total_cpu_ms_ = dispatch_result.total_cpu_ms;
-        dispatch_slowest_pass_cpu_ms_ = dispatch_result.slowest_cpu_ms;
-        dispatch_slowest_pass_id_ = dispatch_result.slowest_pass_id;
-        if (!dispatch_result.warnings.empty() && !pass_dispatch_warning_emitted_)
+        for (size_t command_index = 0; command_index < frame_plan.commands.size(); ++command_index)
         {
-            for (const auto& w : dispatch_result.warnings)
+            if (const auto* secondaries = std::get_if<shs::demo::DemoCmdRecordSecondaries>(
+                    &frame_plan.commands[command_index]))
             {
-                std::fprintf(stderr, "[render-path][dispatch][warn] %s\n", w.c_str());
+                if ((secondaries->depth || secondaries->scene) &&
+                    !reset_worker_pools_for_frame(frame_slot))
+                {
+                    throw std::runtime_error("Failed to reset worker command pools");
+                }
+                if (secondaries->depth &&
+                    !record_secondary_lists(
+                        depth_target_.render_pass,
+                        depth_target_.framebuffer,
+                        depth_pipeline_,
+                        depth_pipeline_layout_,
+                        depth_target_.w,
+                        depth_target_.h,
+                        true,
+                        true,
+                        frame_slot,
+                        depth_secondaries))
+                {
+                    throw std::runtime_error("Failed to record depth secondary command buffers");
+                }
+                if (secondaries->scene &&
+                    !record_secondary_lists(
+                        fi.render_pass,
+                        fi.framebuffer,
+                        scene_pipeline_,
+                        scene_pipeline_layout_,
+                        fi.extent.width,
+                        fi.extent.height,
+                        true,
+                        true,
+                        frame_slot,
+                        scene_secondaries))
+                {
+                    throw std::runtime_error("Failed to record scene secondary command buffers");
+                }
             }
-            pass_dispatch_warning_emitted_ = true;
-        }
-        if (!dispatch_ok || !dispatch_result.errors.empty())
-        {
-            const std::string err = dispatch_result.errors.empty()
-                ? std::string("Render-path pass dispatch failed.")
-                : dispatch_result.errors.front();
-            throw std::runtime_error(err);
-        }
+            else if (std::holds_alternative<shs::demo::DemoCmdExecutePassChain>(
+                         frame_plan.commands[command_index]))
+            {
+                const bool dispatch_ok =
+                    frame_pass_dispatcher_.execute(frame_plan.resolved_plan, pass_ctx, &dispatch_result);
+                finalize_gpu_pass_timing_recording(frame_slot);
+                dispatch_total_cpu_ms_ = dispatch_result.total_cpu_ms;
+                dispatch_slowest_pass_cpu_ms_ = dispatch_result.slowest_cpu_ms;
+                dispatch_slowest_pass_id_ = dispatch_result.slowest_pass_id;
+                if (!dispatch_result.warnings.empty() && !pass_dispatch_warning_emitted_)
+                {
+                    for (const auto& w : dispatch_result.warnings)
+                    {
+                        std::fprintf(stderr, "[render-path][dispatch][warn] %s\n", w.c_str());
+                    }
+                    pass_dispatch_warning_emitted_ = true;
+                }
+                if (!dispatch_ok || !dispatch_result.errors.empty())
+                {
+                    const std::string err = dispatch_result.errors.empty()
+                        ? std::string("Render-path pass dispatch failed.")
+                        : dispatch_result.errors.front();
+                    throw std::runtime_error(err);
+                }
 
-        frame_gbuffer_pass_executed_ = pass_ctx.gbuffer_pass_executed;
-        frame_ssao_pass_executed_ = pass_ctx.ssao_pass_executed;
-        frame_deferred_lighting_pass_executed_ = pass_ctx.deferred_lighting_pass_executed;
-        frame_motion_blur_pass_executed_ = pass_ctx.motion_blur_pass_executed;
-        frame_depth_of_field_pass_executed_ = pass_ctx.depth_of_field_pass_executed;
-        frame_taa_pass_executed_ = pass_ctx.taa_pass_executed;
-        frame_deferred_emulated_scene_pass_ = pass_ctx.deferred_emulated_scene_pass;
-        if (frame_deferred_emulated_scene_pass_ && !deferred_emulation_warning_emitted_)
-        {
-            std::fprintf(
-                stderr,
-                "[render-path][deferred][warn] Deferred pass chain is active, but lighting is currently emulated via scene pass.\n");
-            deferred_emulation_warning_emitted_ = true;
-        }
+                frame_gbuffer_pass_executed_ = pass_ctx.gbuffer_pass_executed;
+                frame_ssao_pass_executed_ = pass_ctx.ssao_pass_executed;
+                frame_deferred_lighting_pass_executed_ = pass_ctx.deferred_lighting_pass_executed;
+                frame_motion_blur_pass_executed_ = pass_ctx.motion_blur_pass_executed;
+                frame_depth_of_field_pass_executed_ = pass_ctx.depth_of_field_pass_executed;
+                frame_taa_pass_executed_ = pass_ctx.taa_pass_executed;
+                frame_deferred_emulated_scene_pass_ = pass_ctx.deferred_emulated_scene_pass;
+                if (frame_deferred_emulated_scene_pass_ && !deferred_emulation_warning_emitted_)
+                {
+                    std::fprintf(
+                        stderr,
+                        "[render-path][deferred][warn] Deferred pass chain is active, but lighting is currently emulated via scene pass.\n");
+                    deferred_emulation_warning_emitted_ = true;
+                }
 
-        if (!pass_ctx.scene_pass_executed)
-        {
-            draw_scene_clear_only(fi.cmd, fi, frame_slot);
+                // Followup planning is pure as well, driven by what executed.
+                shs::demo::DemoFrameDispatchSummary dispatch_summary{};
+                dispatch_summary.ok = dispatch_ok;
+                dispatch_summary.scene_pass_executed = pass_ctx.scene_pass_executed;
+                shs::demo::plan_demo_frame_followups(dispatch_summary, frame_plan.commands);
+            }
+            else if (std::holds_alternative<shs::demo::DemoCmdSceneClearOnly>(
+                         frame_plan.commands[command_index]))
+            {
+                draw_scene_clear_only(fi.cmd, fi, frame_slot);
+            }
+            else if (std::holds_alternative<shs::demo::DemoCmdHistoryColorCopy>(
+                         frame_plan.commands[command_index]))
+            {
+                record_history_color_copy(fi.cmd, fi);
+            }
+            else if (std::holds_alternative<shs::demo::DemoCmdPhaseFSnapshotCopy>(
+                         frame_plan.commands[command_index]))
+            {
+                (void)record_phase_f_snapshot_copy(fi.cmd, fi);
+            }
         }
-
-        record_history_color_copy(fi.cmd, fi);
-        (void)record_phase_f_snapshot_copy(fi.cmd, fi);
 
         if (vkEndCommandBuffer(fi.cmd) != VK_SUCCESS)
         {
@@ -9380,6 +9390,12 @@ private:
     shs::PassFactoryRegistry pass_contract_registry_{};
     shs::PassFactoryRegistry pass_contract_registry_sw_{};
     shs::RenderPathPassDispatcher<FramePassExecutionContext> frame_pass_dispatcher_{};
+
+    // Frame-plan arena (Run 1 / P3 task 3): the pure planner builds its
+    // DemoFrameCommand span here; released at the start of every frame.
+    std::byte frame_plan_buffer_[4096];
+    std::pmr::monotonic_buffer_resource frame_plan_arena_{
+        frame_plan_buffer_, sizeof(frame_plan_buffer_)};
     bool pass_dispatch_warning_emitted_ = false;
     double dispatch_total_cpu_ms_ = 0.0;
     double dispatch_slowest_pass_cpu_ms_ = 0.0;

@@ -240,3 +240,16 @@ if(MSVC)
 else()
     target_compile_options(shs_demo_renderpath_bridge_tests PRIVATE -Wall -Wextra -Wpedantic)
 endif()
+
+# Run 1 (P3 task 3): GPU-free tests for the pure per-frame demo planner
+# (demo_frame_planner.hpp) — plan resolution, gates, command ordering,
+# followups, determinism. No SDL/Vulkan/GLM dependency.
+add_executable(shs_demo_frame_planner_tests demo_frame_planner_tests.cpp)
+add_test(NAME shs_demo_frame_planner_tests COMMAND shs_demo_frame_planner_tests)
+target_compile_features(shs_demo_frame_planner_tests PRIVATE cxx_std_20)
+target_link_libraries(shs_demo_frame_planner_tests PRIVATE shs::renderer-values)
+if(MSVC)
+    target_compile_options(shs_demo_frame_planner_tests PRIVATE /W4)
+else()
+    target_compile_options(shs_demo_frame_planner_tests PRIVATE -Wall -Wextra -Wpedantic)
+endif()
