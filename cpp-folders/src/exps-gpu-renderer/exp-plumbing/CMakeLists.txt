@@ -388,15 +388,6 @@ endif()
 #  VK culling probes
 # -----------------------------------------------------------------------------
 if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
-    add_executable(hello_culling_vk hello_culling_vk.cpp)
-    add_dependencies(hello_culling_vk HelloCullingVkShaders)
-    target_link_libraries(hello_culling_vk PRIVATE shs::gpu-renderer)
-    set_target_properties(hello_culling_vk PROPERTIES FOLDER "Demos")
-    target_compile_definitions(hello_culling_vk PRIVATE
-        SHS_VK_CULLING_VERT_SPV="${VK_CULLING_VERT_SPV}"
-        SHS_VK_CULLING_FRAG_SPV="${VK_CULLING_FRAG_SPV}"
-    )
-
     add_executable(hello_occlusion_culling_vk hello_occlusion_culling_vk.cpp)
     add_dependencies(hello_occlusion_culling_vk HelloCullingVkShaders)
     target_link_libraries(hello_occlusion_culling_vk PRIVATE shs::gpu-renderer)
@@ -458,12 +449,7 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
     )
 endif()
 
-# Software culling demo (always available)
-add_executable(hello_culling_sw hello_culling_sw.cpp)
-target_link_libraries(hello_culling_sw PRIVATE shs::renderer)
-set_target_properties(hello_culling_sw PROPERTIES FOLDER "Demos")
-target_compile_features(hello_culling_sw PRIVATE cxx_std_20)
-
+# Software culling demos (always available)
 add_executable(hello_occlusion_culling_sw hello_occlusion_culling_sw.cpp)
 target_link_libraries(hello_occlusion_culling_sw PRIVATE shs::renderer)
 set_target_properties(hello_occlusion_culling_sw PROPERTIES FOLDER "Demos")
