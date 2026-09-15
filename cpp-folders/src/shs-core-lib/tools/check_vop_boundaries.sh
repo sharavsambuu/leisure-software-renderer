@@ -78,7 +78,19 @@ echo "[vop-boundary] OK: ${facade_count} migration facades forward to existing c
 # Sanctioned carve-out (roadmap P1): shs/domains/renderpath/ is the contract
 # seam — its contract re-exports the recipe/plan/capabilities spine from
 # execution/pipeline/. No other domain pod may include execution zones.
-forbidden_domains_include='^shs/(execution|pipeline|passes|rhi|sw_render|platform|shader|app|job)/'
+#
+# Known P5 debt (grandfathered INFO, tracked by the Core 4 completeness item):
+# these pre-canon domain headers predate the direction law and still reach into
+# execution zones directly. New headers must never join this list — the check
+# below FAILs on any file not grandfathered here.
+forbidden_domains_include='shs/(execution|pipeline|passes|rhi|sw_render|platform|shader|app|job)/'
+grandfathered_execution_includes=(
+  "shs/domains/camera/free_camera.hpp"            # platform edge; P5 Core 4
+  "shs/domains/scene/system_processors.hpp"       # pluggable_pipeline seam; P5 legacy-seam audit
+  "shs/domains/input/value_actions.hpp"           # app runtime_state; P5 Core 4
+  "shs/domains/input/command.hpp"                 # app runtime_state; P5 Core 4
+  "shs/domains/sky/skybox_renderer.hpp"           # job/parallel_for edge; P5 Core 4
+)
 legacy_count=0
 for h in $(find "${domains_dir}" -name '*.hpp' | sort); do
   rel="${h#"${lib_root}/include/"}"
@@ -90,9 +102,20 @@ for h in $(find "${domains_dir}" -name '*.hpp' | sort); do
   esac
   hits="$("${search_cmd[@]}" "#include[[:space:]]*[<\"]${forbidden_domains_include}" "${h}" 2>/dev/null || true)"
   if [[ -n "${hits}" ]]; then
-    echo "[vop-boundary] FAIL: domain header ${rel} directly includes an execution zone"
-    echo "${hits}"
-    failed=1
+    grandfathered=0
+    for gf in "${grandfathered_execution_includes[@]}"; do
+      if [[ "${rel}" == "${gf}" ]]; then
+        grandfathered=1
+        break
+      fi
+    done
+    if [[ "${grandfathered}" -eq 1 ]]; then
+      echo "[vop-boundary] INFO: ${rel} carries grandfathered execution-zone includes (known P5 Core 4 debt)"
+    else
+      echo "[vop-boundary] FAIL: domain header ${rel} directly includes an execution zone"
+      echo "${hits}"
+      failed=1
+    fi
   fi
   n="$(grep -cE '#include[[:space:]]*[<\"]shs/(pipeline|passes|rhi|sw_render|platform|shader|app|job)/' "${h}" 2>/dev/null || true)"
   legacy_count=$((legacy_count + n))
