@@ -10,7 +10,7 @@
 #cmake_minimum_required(VERSION 3.20)
 
 
-project(SHSSoftwareRenderer LANGUAGES CXX)
+project(SHSCore LANGUAGES CXX)
 
 find_package(SDL2 CONFIG REQUIRED)
 find_package(SDL2_image CONFIG REQUIRED)
@@ -22,21 +22,20 @@ find_package(assimp CONFIG REQUIRED)
 # hash-keyed explicit caches, GPU-free testable). The lib stays Vulkan-free by
 # default — the driver compiles only where Vulkan headers are used (test target
 # above, backend_factory under SHS_HAS_VULKAN). The SDL/windowed GPU monolith
-# remains in src/shs-gpu-renderer-lib until the P3 decomposition retires it.
+# remains in src/shs-gpu-lib until the P3 decomposition retires it.
 
-option(SHS_RENDERER_BUILD_SHARED "Build shs_software_renderer as a shared library" OFF)
+option(SHS_RENDERER_BUILD_SHARED "Build shs_core as a shared library" OFF)
 set(_shs_renderer_lib_type STATIC)
 if(SHS_RENDERER_BUILD_SHARED)
     set(_shs_renderer_lib_type SHARED)
 endif()
 
-add_library(shs_software_renderer ${_shs_renderer_lib_type}
+add_library(shs_core ${_shs_renderer_lib_type}
     src/shs_renderer_lib.cpp
 )
-add_library(shs::software-renderer ALIAS shs_software_renderer)
-# Compat: existing exps link shs::renderer; keep it pointing at software.
-# GPU consumers link shs::gpu-renderer (which links software PUBLIC).
-add_library(shs::renderer ALIAS shs_software_renderer)
+add_library(shs::core ALIAS shs_core)
+# Converged naming (2026-09): primary target shs_core, alias shs::core.
+# GPU consumers link shs::gpu (which links shs::core PUBLIC).
 
 set(SHS_SDL2_HAS_VULKAN OFF)
 set(_shs_sdl2_config "")
@@ -64,7 +63,7 @@ if(_shs_sdl2_config)
 endif()
 
 # C++ standard for everyone who links this
-target_compile_features(shs_software_renderer PUBLIC cxx_std_20)
+target_compile_features(shs_core PUBLIC cxx_std_20)
 
 # Packages (vcpkg config mode)
 find_package(SDL2 CONFIG REQUIRED)
@@ -81,7 +80,7 @@ find_package(glm CONFIG REQUIRED)
 find_package(assimp CONFIG REQUIRED)
 
 # Include paths that your headers need
-target_include_directories(shs_software_renderer PUBLIC
+target_include_directories(shs_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_BINARY_DIR}
@@ -89,7 +88,7 @@ target_include_directories(shs_software_renderer PUBLIC
 )
 
 # Link deps that demos will inherit automatically
-target_link_libraries(shs_software_renderer PUBLIC
+target_link_libraries(shs_core PUBLIC
     SDL2::SDL2
     SDL2_image::Main
     glm::glm
@@ -99,24 +98,24 @@ target_link_libraries(shs_software_renderer PUBLIC
 set(SHS_RENDERER_HAS_XSIMD OFF)
 if(TARGET xsimd)
     set(SHS_RENDERER_HAS_XSIMD ON)
-    target_link_libraries(shs_software_renderer PUBLIC xsimd)
-    target_compile_definitions(shs_software_renderer PUBLIC SHS_HAS_XSIMD=1)
+    target_link_libraries(shs_core PUBLIC xsimd)
+    target_compile_definitions(shs_core PUBLIC SHS_HAS_XSIMD=1)
 elseif(TARGET xsimd::xsimd)
     set(SHS_RENDERER_HAS_XSIMD ON)
-    target_link_libraries(shs_software_renderer PUBLIC xsimd::xsimd)
-    target_compile_definitions(shs_software_renderer PUBLIC SHS_HAS_XSIMD=1)
+    target_link_libraries(shs_core PUBLIC xsimd::xsimd)
+    target_compile_definitions(shs_core PUBLIC SHS_HAS_XSIMD=1)
 endif()
 set(SHS_RENDERER_HAS_XSIMD "${SHS_RENDERER_HAS_XSIMD}" PARENT_SCOPE)
 
 set(SHS_RENDERER_HAS_JOLT OFF)
 if(TARGET Jolt)
     set(SHS_RENDERER_HAS_JOLT ON)
-    target_link_libraries(shs_software_renderer PUBLIC Jolt)
-    target_compile_definitions(shs_software_renderer PUBLIC SHS_HAS_JOLT=1)
+    target_link_libraries(shs_core PUBLIC Jolt)
+    target_compile_definitions(shs_core PUBLIC SHS_HAS_JOLT=1)
 endif()
 set(SHS_RENDERER_HAS_JOLT "${SHS_RENDERER_HAS_JOLT}" PARENT_SCOPE)
 
-# Vulkan ownership moved to src/shs-gpu-renderer-lib. Report OFF here;
+# Vulkan ownership moved to src/shs-gpu-lib. Report OFF here;
 # the GPU lib re-exports ON to the parent scope when Vulkan is found.
 set(SHS_RENDERER_HAS_VULKAN OFF PARENT_SCOPE)
 set(SHS_SDL2_HAS_VULKAN "${SHS_SDL2_HAS_VULKAN}" PARENT_SCOPE)
@@ -124,54 +123,54 @@ set(SHS_SDL2_HAS_VULKAN "${SHS_SDL2_HAS_VULKAN}" PARENT_SCOPE)
 # Header-only value-layer target: include dirs + header-only deps ONLY.
 # Pure value code (pods, reducers, planners) must build and test against this
 # with zero SDL/assimp/Vulkan links (VOP Constitution §7 headless-test law).
-add_library(shs_renderer_values INTERFACE)
-add_library(shs::renderer-values ALIAS shs_renderer_values)
-target_include_directories(shs_renderer_values INTERFACE
+add_library(shs_core_values INTERFACE)
+add_library(shs::core-values ALIAS shs_core_values)
+target_include_directories(shs_core_values INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_BINARY_DIR}
     ${stb_SOURCE_DIR}
 )
-target_compile_features(shs_renderer_values INTERFACE cxx_std_20)
+target_compile_features(shs_core_values INTERFACE cxx_std_20)
 # glm is header-only; safe to propagate without linking any compiled lib.
-target_link_libraries(shs_renderer_values INTERFACE glm::glm)
+target_link_libraries(shs_core_values INTERFACE glm::glm)
 if(TARGET xsimd::xsimd)
-    target_link_libraries(shs_renderer_values INTERFACE xsimd::xsimd)
-    target_compile_definitions(shs_renderer_values INTERFACE SHS_HAS_XSIMD=1)
+    target_link_libraries(shs_core_values INTERFACE xsimd::xsimd)
+    target_compile_definitions(shs_core_values INTERFACE SHS_HAS_XSIMD=1)
 elseif(TARGET xsimd)
-    target_link_libraries(shs_renderer_values INTERFACE xsimd)
-    target_compile_definitions(shs_renderer_values INTERFACE SHS_HAS_XSIMD=1)
+    target_link_libraries(shs_core_values INTERFACE xsimd)
+    target_compile_definitions(shs_core_values INTERFACE SHS_HAS_XSIMD=1)
 endif()
 
 option(SHS_RENDERER_BUILD_TESTS "Build shs_renderer core tests" ON)
 if(SHS_RENDERER_BUILD_TESTS)
     enable_testing()
 
-    add_executable(shs_renderer_vop_tests
+    add_executable(shs_core_vop_tests
         tests/vop_core_tests.cpp
     )
-    target_link_libraries(shs_renderer_vop_tests PRIVATE shs::renderer)
-    target_compile_features(shs_renderer_vop_tests PRIVATE cxx_std_20)
+    target_link_libraries(shs_core_vop_tests PRIVATE shs::core)
+    target_compile_features(shs_core_vop_tests PRIVATE cxx_std_20)
     if(MSVC)
-        target_compile_options(shs_renderer_vop_tests PRIVATE /W4)
+        target_compile_options(shs_core_vop_tests PRIVATE /W4)
     else()
-        target_compile_options(shs_renderer_vop_tests PRIVATE -Wall -Wextra -Wpedantic)
+        target_compile_options(shs_core_vop_tests PRIVATE -Wall -Wextra -Wpedantic)
     endif()
 
     # P1 renderpath pod tests: pure value tests, frame-arena events, no
-    # platform links (only shs::renderer-values + glm headers).
-    add_executable(shs_renderer_vop_renderpath_tests
+    # platform links (only shs::core-values + glm headers).
+    add_executable(shs_core_vop_renderpath_tests
         tests/vop_renderpath_tests.cpp
     )
-    target_link_libraries(shs_renderer_vop_renderpath_tests PRIVATE shs::renderer-values)
-    target_compile_features(shs_renderer_vop_renderpath_tests PRIVATE cxx_std_20)
+    target_link_libraries(shs_core_vop_renderpath_tests PRIVATE shs::core-values)
+    target_compile_features(shs_core_vop_renderpath_tests PRIVATE cxx_std_20)
     if(MSVC)
-        target_compile_options(shs_renderer_vop_renderpath_tests PRIVATE /W4)
+        target_compile_options(shs_core_vop_renderpath_tests PRIVATE /W4)
     else()
-        target_compile_options(shs_renderer_vop_renderpath_tests PRIVATE -Wall -Wextra -Wpedantic)
+        target_compile_options(shs_core_vop_renderpath_tests PRIVATE -Wall -Wextra -Wpedantic)
     endif()
 
-    add_custom_target(shs_renderer_vop_boundary_check
+    add_custom_target(shs_core_vop_boundary_check
         COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_vop_boundaries.sh"
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
         COMMENT "Running VOP boundary checks for planner layer"
@@ -179,46 +178,46 @@ if(SHS_RENDERER_BUILD_TESTS)
     )
 
     add_test(
-        NAME shs_renderer_vop_boundary_check
+        NAME shs_core_vop_boundary_check
         COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_vop_boundaries.sh"
     )
-    set_tests_properties(shs_renderer_vop_boundary_check PROPERTIES
+    set_tests_properties(shs_core_vop_boundary_check PROPERTIES
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
     )
 
     add_test(
-        NAME shs_renderer_vop_tests
-        COMMAND shs_renderer_vop_tests
+        NAME shs_core_vop_tests
+        COMMAND shs_core_vop_tests
     )
-    set_tests_properties(shs_renderer_vop_tests PROPERTIES
+    set_tests_properties(shs_core_vop_tests PROPERTIES
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     )
 
     # P1.5 container/arena tests: header-only value tests, no platform links.
-    add_executable(shs_renderer_vop_containers_tests
+    add_executable(shs_core_vop_containers_tests
         tests/vop_containers_tests.cpp
     )
-    target_link_libraries(shs_renderer_vop_containers_tests PRIVATE shs::renderer-values)
-    target_compile_features(shs_renderer_vop_containers_tests PRIVATE cxx_std_20)
+    target_link_libraries(shs_core_vop_containers_tests PRIVATE shs::core-values)
+    target_compile_features(shs_core_vop_containers_tests PRIVATE cxx_std_20)
     if(MSVC)
-        target_compile_options(shs_renderer_vop_containers_tests PRIVATE /W4)
+        target_compile_options(shs_core_vop_containers_tests PRIVATE /W4)
     else()
-        target_compile_options(shs_renderer_vop_containers_tests PRIVATE -Wall -Wextra -Wpedantic)
+        target_compile_options(shs_core_vop_containers_tests PRIVATE -Wall -Wextra -Wpedantic)
     endif()
 
     add_test(
-        NAME shs_renderer_vop_renderpath_tests
-        COMMAND shs_renderer_vop_renderpath_tests
+        NAME shs_core_vop_renderpath_tests
+        COMMAND shs_core_vop_renderpath_tests
     )
-    set_tests_properties(shs_renderer_vop_renderpath_tests PROPERTIES
+    set_tests_properties(shs_core_vop_renderpath_tests PROPERTIES
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     )
 
     add_test(
-        NAME shs_renderer_vop_containers_tests
-        COMMAND shs_renderer_vop_containers_tests
+        NAME shs_core_vop_containers_tests
+        COMMAND shs_core_vop_containers_tests
     )
-    set_tests_properties(shs_renderer_vop_containers_tests PROPERTIES
+    set_tests_properties(shs_core_vop_containers_tests PROPERTIES
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     )
 
@@ -228,32 +227,32 @@ if(SHS_RENDERER_BUILD_TESTS)
     # Skipped cleanly when Vulkan is absent (lib stays Vulkan-free by default).
     find_package(Vulkan QUIET)
     if(Vulkan_FOUND)
-        add_executable(shs_renderer_vop_vk_driver_tests
+        add_executable(shs_core_vop_vk_driver_tests
             tests/vop_vk_driver_tests.cpp
         )
-        target_link_libraries(shs_renderer_vop_vk_driver_tests PRIVATE
-            shs::renderer-values
+        target_link_libraries(shs_core_vop_vk_driver_tests PRIVATE
+            shs::core-values
             Vulkan::Vulkan
         )
-        target_compile_features(shs_renderer_vop_vk_driver_tests PRIVATE cxx_std_20)
+        target_compile_features(shs_core_vop_vk_driver_tests PRIVATE cxx_std_20)
         if(MSVC)
-            target_compile_options(shs_renderer_vop_vk_driver_tests PRIVATE /W4)
+            target_compile_options(shs_core_vop_vk_driver_tests PRIVATE /W4)
         else()
-            target_compile_options(shs_renderer_vop_vk_driver_tests PRIVATE -Wall -Wextra -Wpedantic)
+            target_compile_options(shs_core_vop_vk_driver_tests PRIVATE -Wall -Wextra -Wpedantic)
         endif()
 
         add_test(
-            NAME shs_renderer_vop_vk_driver_tests
-            COMMAND shs_renderer_vop_vk_driver_tests
+            NAME shs_core_vop_vk_driver_tests
+            COMMAND shs_core_vop_vk_driver_tests
         )
-        set_tests_properties(shs_renderer_vop_vk_driver_tests PROPERTIES
+        set_tests_properties(shs_core_vop_vk_driver_tests PROPERTIES
             WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
         )
     else()
-        message(STATUS "Vulkan headers not found — skipping shs_renderer_vop_vk_driver_tests")
+        message(STATUS "Vulkan headers not found — skipping shs_core_vop_vk_driver_tests")
     endif()
 endif()
 
 
 # If you need ASSIMP_INCLUDE_DIR for some reason, prefer target includes:
-# target_include_directories(shs_software_renderer INTERFACE ${ASSIMP_INCLUDE_DIR})
+# target_include_directories(shs_core INTERFACE ${ASSIMP_INCLUDE_DIR})

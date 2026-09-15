@@ -12,7 +12,7 @@
 
 // Pure value tests for the §7.2 contiguous backing-store utilities (roadmap
 // P1.5 ctest gate: shs_renderer_vop_containers_*). Headless: the binary links
-// only the header-only shs::renderer-values INTERFACE target — no SDL, no
+// only the header-only shs::core-values INTERFACE target — no SDL, no
 // Vulkan, no assimp, no Context.
 namespace
 {

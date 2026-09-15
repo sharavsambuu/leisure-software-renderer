@@ -352,7 +352,7 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
 
     add_executable(HelloRenderingPaths hello_rendering_paths.cpp)
     add_dependencies(HelloRenderingPaths HelloRenderingPathsShaders)
-    target_link_libraries(HelloRenderingPaths PRIVATE shs::gpu-renderer)
+    target_link_libraries(HelloRenderingPaths PRIVATE shs::gpu)
     target_compile_definitions(HelloRenderingPaths PRIVATE
         SHS_VK_FP_SCENE_VERT_SPV="${VK_FP_SCENE_VERT_SPV}"
         SHS_VK_FP_SCENE_FRAG_SPV="${VK_FP_SCENE_FRAG_SPV}"
@@ -376,7 +376,7 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
     target_compile_features(HelloRenderingPaths PRIVATE cxx_std_20)
 else()
     if(NOT SHS_RENDERER_HAS_VULKAN)
-        message(STATUS "HelloRenderingPaths skipped (shs::renderer built without Vulkan support)")
+        message(STATUS "HelloRenderingPaths skipped (shs::core built without Vulkan support)")
     elseif(NOT GLSLANG_VALIDATOR)
         message(STATUS "HelloRenderingPaths skipped (glslangValidator not found)")
     elseif(NOT SHS_SDL2_HAS_VULKAN)
@@ -390,7 +390,7 @@ endif()
 if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
     add_executable(hello_occlusion_culling_vk hello_occlusion_culling_vk.cpp)
     add_dependencies(hello_occlusion_culling_vk HelloCullingVkShaders)
-    target_link_libraries(hello_occlusion_culling_vk PRIVATE shs::gpu-renderer)
+    target_link_libraries(hello_occlusion_culling_vk PRIVATE shs::gpu)
     set_target_properties(hello_occlusion_culling_vk PROPERTIES FOLDER "Demos")
     target_compile_definitions(hello_occlusion_culling_vk PRIVATE
         SHS_VK_CULLING_VERT_SPV="${VK_CULLING_VERT_SPV}"
@@ -399,7 +399,7 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
 
     add_executable(hello_light_types_culling_vk hello_light_types_culling_vk.cpp)
     add_dependencies(hello_light_types_culling_vk HelloLightTypesCullingVkShaders)
-    target_link_libraries(hello_light_types_culling_vk PRIVATE shs::gpu-renderer)
+    target_link_libraries(hello_light_types_culling_vk PRIVATE shs::gpu)
     set_target_properties(hello_light_types_culling_vk PROPERTIES FOLDER "Demos")
     target_compile_definitions(hello_light_types_culling_vk PRIVATE
         SHS_VK_LIGHT_TYPES_CULLING_VERT_SPV="${VK_LIGHT_TYPES_CULLING_VERT_SPV}"
@@ -408,7 +408,7 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
 
     add_executable(hello_soft_shadow_culling_vk hello_soft_shadow_culling_vk.cpp)
     add_dependencies(hello_soft_shadow_culling_vk HelloSoftShadowCullingVkShaders)
-    target_link_libraries(hello_soft_shadow_culling_vk PRIVATE shs::gpu-renderer)
+    target_link_libraries(hello_soft_shadow_culling_vk PRIVATE shs::gpu)
     set_target_properties(hello_soft_shadow_culling_vk PROPERTIES FOLDER "Demos")
     target_compile_definitions(hello_soft_shadow_culling_vk PRIVATE
         SHS_VK_CULLING_VERT_SPV="${VK_CULLING_VERT_SPV}"
@@ -420,7 +420,7 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
 
     add_executable(hello_modern_vulkan hello_modern_vulkan.cpp)
     add_dependencies(hello_modern_vulkan HelloModernVulkanShaders)
-    target_link_libraries(hello_modern_vulkan PRIVATE shs::gpu-renderer)
+    target_link_libraries(hello_modern_vulkan PRIVATE shs::gpu)
     set_target_properties(hello_modern_vulkan PROPERTIES FOLDER "Demos")
     target_compile_definitions(hello_modern_vulkan PRIVATE
         SHS_VK_MODERN_VERT_SPV="${VK_MODERN_VERT_SPV}"
@@ -431,7 +431,7 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
 
     add_executable(hello_mesh_shader hello_mesh_shader.cpp)
     add_dependencies(hello_mesh_shader HelloMeshShaderShaders)
-    target_link_libraries(hello_mesh_shader PRIVATE shs::gpu-renderer)
+    target_link_libraries(hello_mesh_shader PRIVATE shs::gpu)
     set_target_properties(hello_mesh_shader PROPERTIES FOLDER "Demos")
     target_compile_definitions(hello_mesh_shader PRIVATE
         SHS_VK_MESH_TRIANGLE_MESH_SPV="${VK_MESH_TRI_MESH_SPV}"
@@ -441,7 +441,7 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
     add_custom_target(HelloRayQueryShaders DEPENDS "${VK_RAY_QUERY_VERT_SPV}" "${VK_RAY_QUERY_FRAG_SPV}")
     add_executable(hello_ray_query hello_ray_query.cpp)
     add_dependencies(hello_ray_query HelloRayQueryShaders)
-    target_link_libraries(hello_ray_query PRIVATE shs::gpu-renderer)
+    target_link_libraries(hello_ray_query PRIVATE shs::gpu)
     set_target_properties(hello_ray_query PROPERTIES FOLDER "Demos")
     target_compile_definitions(hello_ray_query PRIVATE
         SHS_VK_RAY_QUERY_VERT_SPV="${VK_RAY_QUERY_VERT_SPV}"
@@ -451,16 +451,16 @@ endif()
 
 # Software culling demos (always available)
 add_executable(hello_occlusion_culling_sw hello_occlusion_culling_sw.cpp)
-target_link_libraries(hello_occlusion_culling_sw PRIVATE shs::renderer)
+target_link_libraries(hello_occlusion_culling_sw PRIVATE shs::core)
 set_target_properties(hello_occlusion_culling_sw PROPERTIES FOLDER "Demos")
 target_compile_features(hello_occlusion_culling_sw PRIVATE cxx_std_20)
 
 add_executable(hello_soft_shadow_culling_sw hello_soft_shadow_culling_sw.cpp)
-target_link_libraries(hello_soft_shadow_culling_sw PRIVATE shs::renderer)
+target_link_libraries(hello_soft_shadow_culling_sw PRIVATE shs::core)
 set_target_properties(hello_soft_shadow_culling_sw PROPERTIES FOLDER "Demos")
 target_compile_features(hello_soft_shadow_culling_sw PRIVATE cxx_std_20)
 
 add_executable(hello_light_types_culling_sw hello_light_types_culling_sw.cpp)
-target_link_libraries(hello_light_types_culling_sw PRIVATE shs::renderer)
+target_link_libraries(hello_light_types_culling_sw PRIVATE shs::core)
 set_target_properties(hello_light_types_culling_sw PROPERTIES FOLDER "Demos")
 target_compile_features(hello_light_types_culling_sw PRIVATE cxx_std_20)

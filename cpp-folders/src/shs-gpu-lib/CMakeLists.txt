@@ -1,10 +1,10 @@
 # SHS GPU renderer lib — Vulkan backend extracted from shs-renderer-lib.
-# Location: cpp-folders/src/shs-gpu-renderer-lib/CMakeLists.txt
+# Location: cpp-folders/src/shs-gpu-lib/CMakeLists.txt
 # Owns: include/shs/rhi/drivers/vulkan/, include/shs/pipeline/vk_*,
 #       shaders/vulkan/, src/shs_vma.cpp.
-# Links shs::software-renderer PUBLIC so consumers get both backends.
+# Links shs::core PUBLIC so consumers get both backends.
 
-project(SHSGpuRenderer LANGUAGES CXX)
+project(SHSGpu LANGUAGES CXX)
 
 find_package(SDL2 CONFIG REQUIRED)
 find_package(glm CONFIG REQUIRED)
@@ -28,26 +28,26 @@ if(APPLE AND NOT Vulkan_FOUND AND DEFINED ENV{VULKAN_SDK})
     endif()
 endif()
 
-option(SHS_RENDERER_BUILD_SHARED "Build shs_gpu_renderer as a shared library" OFF)
+option(SHS_RENDERER_BUILD_SHARED "Build shs_gpu as a shared library" OFF)
 set(_shs_gpu_lib_type STATIC)
 if(SHS_RENDERER_BUILD_SHARED)
     set(_shs_gpu_lib_type SHARED)
 endif()
 
-add_library(shs_gpu_renderer ${_shs_gpu_lib_type}
+add_library(shs_gpu ${_shs_gpu_lib_type}
     src/shs_gpu_lib.cpp
     src/shs_vma.cpp
 )
-add_library(shs::gpu-renderer ALIAS shs_gpu_renderer)
+add_library(shs::gpu ALIAS shs_gpu)
 
-target_compile_features(shs_gpu_renderer PUBLIC cxx_std_20)
+target_compile_features(shs_gpu PUBLIC cxx_std_20)
 
-target_include_directories(shs_gpu_renderer PUBLIC
+target_include_directories(shs_gpu PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
 # Software lib provides IRenderBackend + core types; GPU extends them.
-target_link_libraries(shs_gpu_renderer PUBLIC shs::software-renderer)
+target_link_libraries(shs_gpu PUBLIC shs::core)
 
 # SDL2 -> Vulkan surface capability probe (same logic as software lib).
 set(SHS_SDL2_HAS_VULKAN OFF)
@@ -78,12 +78,12 @@ endif()
 set(SHS_RENDERER_HAS_VULKAN OFF)
 if(Vulkan_FOUND AND TARGET Vulkan::Vulkan)
     set(SHS_RENDERER_HAS_VULKAN ON)
-    target_compile_definitions(shs_gpu_renderer PUBLIC SHS_HAS_VULKAN=1)
-    target_link_libraries(shs_gpu_renderer PUBLIC Vulkan::Vulkan)
+    target_compile_definitions(shs_gpu PUBLIC SHS_HAS_VULKAN=1)
+    target_link_libraries(shs_gpu PUBLIC Vulkan::Vulkan)
     if(TARGET GPUOpen::VulkanMemoryAllocator)
-        target_link_libraries(shs_gpu_renderer PUBLIC GPUOpen::VulkanMemoryAllocator)
+        target_link_libraries(shs_gpu PUBLIC GPUOpen::VulkanMemoryAllocator)
     endif()
-    target_compile_definitions(shs_gpu_renderer PUBLIC SHS_HAS_VMA=1)
+    target_compile_definitions(shs_gpu PUBLIC SHS_HAS_VMA=1)
 endif()
 set(SHS_RENDERER_HAS_VULKAN "${SHS_RENDERER_HAS_VULKAN}" PARENT_SCOPE)
 set(SHS_SDL2_HAS_VULKAN "${SHS_SDL2_HAS_VULKAN}" PARENT_SCOPE)

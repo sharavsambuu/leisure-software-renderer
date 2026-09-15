@@ -118,10 +118,22 @@ existing `ctest` suite green; boundary linter (from old P5, pulled forward) enfo
 > header) and the domains include-direction law on canonical include text. Legacy-path
 > includes inside `domains/` (5 today) are counted as an advisory INFO until P5.
 > Migration tooling: `tools/move_zone.sh` (zone mover + facade generator).
+>
+> **Convergence addendum (2026-09-15, later same day):** the deferred facade
+> deletion + canonicalization (old P5) was executed early as part of the
+> "finish the core library" push: all 140 facade headers + 1 stable re-export
+> deleted, every live include (both libs incl. tests and the GPU driver pods)
+> canonicalized to `shs/{core,memory,containers,domains,execution}`. Library
+> renamed to converged names: `shs-software-renderer-lib` → **`shs-core-lib`**
+> (targets `shs_core` / alias `shs::core`, values target `shs_core_values` /
+> `shs::core-values`), `shs-gpu-renderer-lib` → **`shs-gpu-lib`** (`shs_gpu` /
+> `shs::gpu`, temporary keep). All exps demos/probes parked at the CMake level
+> (source kept; ctest baseline 14 → **5**, lib tests only). Per-pod header
+> suffixing (Core 4) remains future work.
 
 ## Phase P1 — `renderpath` Pod in the Engine Lib
 
-Goal: the first formal Domain Pod in `shs-software-renderer-lib`, wrapping the
+Goal: the first formal Domain Pod in `shs-core-lib`, wrapping the
 existing recipe → compiler → plans spine.
 
 - [x] Create `include/shs/domains/renderpath/` with `contract` (re-export of recipe /
@@ -306,9 +318,9 @@ extension role, and the classification is machine-checked.
       `#pragma message` forwards.
 - [ ] **Retire legacy seams** — audit `frame_graph.hpp` / `pluggable_pipeline.hpp`
       for removal once the renderpath pod covers their use cases.
-- [ ] **Converge to a single renderer library** — once `shs-gpu-renderer-lib`
+- [ ] **Converge to a single renderer library** — once `shs-gpu-lib`
       retires (P3) and the facade shims are gone, rename the surviving
-      `shs-software-renderer-lib` to **`shs-renderer-lib`**. "Software vs GPU" is
+      `shs-core-lib` to **`shs-renderer-lib`**. "Software vs GPU" is
       then a driver-pod selection (`drivers/software`, `drivers/opengl`,
       `drivers/vulkan`) behind the one `IRenderBackend` contract + capability
       gates — not a library split. Update CMake target names

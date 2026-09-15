@@ -2,7 +2,7 @@
     SHS GPU RENDERER LIB
 
     FILE: shs_gpu_lib.cpp
-    MODULE: shs-gpu-renderer-lib
+    MODULE: shs-gpu-lib
     PURPOSE: Compiled library target anchor. Vulkan backend lives in
              include/shs/rhi/drivers/vulkan/ + include/shs/pipeline/vk_*.
 */

@@ -8,7 +8,7 @@
 
 // Pure value tests for the renderpath pod (roadmap P1 ctest gate:
 // shs_renderer_vop_renderpath_*). Zero Vulkan/SDL links: the test binary links
-// only the header-only shs::renderer-values INTERFACE target, and the reducer
+// only the header-only shs::core-values INTERFACE target, and the reducer
 // runs with no Context, no backend instances, and no pass registry.
 namespace
 {

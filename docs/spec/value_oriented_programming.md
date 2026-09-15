@@ -58,7 +58,7 @@ Value-Oriented Programming (VOP) combined with Data-Oriented Design (DOD) is ado
 > Types (contract), Command (action), Reducer, Event. Nothing else mutates state."**
 
 This constitution binds **all code in this repository**: every module of
-`shs-software-renderer-lib` and every demo domain (tetris, snake, fps, …) alike.
+`shs-core-lib` and every demo domain (tetris, snake, fps, …) alike.
 Concretely:
 
 1. **Core 4, always** — each stateful subsystem declares the four components in
@@ -126,7 +126,7 @@ To keep one authority per provision:
 8. **Discrete Event Sourcing (Rule 8.1)**: Gameplay domains must never directly invoke methods or mutate state in other domains. Cross-domain interaction must occur exclusively through immutable **Discrete Event Values** (`CombatEvent`, `QuestEvent`, `InventoryEvent`) emitted by pure reducers and consumed by downstream domain reducers or execution edges.
 9. **C++20 Value Abstractions**: Core APIs must leverage standard value types (`std::span`, `std::string_view` with `constexpr` hashing, `std::variant`, `std::pmr`, `std::expected`) to enforce safety and zero allocation overhead.
 10. **Universal Domain Pod Law (Constitution §2.1)**: Every stateful subsystem — in
-    `shs-software-renderer-lib` **and** in every demo — is a Domain Pod with the
+    `shs-core-lib` **and** in every demo — is a Domain Pod with the
     mandatory Core 4 (`*.contract.hpp`, `*.action.hpp`, `*.reducer.hpp`,
     `*.event.hpp`, each in its own file) and all state transitions through its pure
     reducer. Domain logic lives under `shs/domains/<pod>/` (library) or

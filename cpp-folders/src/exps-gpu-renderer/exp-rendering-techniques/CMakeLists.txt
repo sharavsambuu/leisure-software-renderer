@@ -14,11 +14,11 @@ endif()
 
 # Tranche 1 (de-Vulkanization): the demo executable is defined UNCONDITIONALLY
 # so the tree configures and builds GPU-free. The demo TU guards its Vulkan
-# code paths with SHS_HAS_VULKAN (exported PUBLIC by shs::gpu-renderer only
+# code paths with SHS_HAS_VULKAN (exported PUBLIC by shs::gpu only
 # when Vulkan was found); SHS_VK_FP_* shader paths inside the gate below are
 # added as compile definitions only when the Vulkan shader build is enabled.
 add_executable(demo_forward_classic_renderpath demo_forward_classic_renderpath.cpp)
-target_link_libraries(demo_forward_classic_renderpath PRIVATE shs::gpu-renderer)
+target_link_libraries(demo_forward_classic_renderpath PRIVATE shs::gpu)
 set_target_properties(demo_forward_classic_renderpath PROPERTIES FOLDER "Demos/RenderingTechniques")
 if(MSVC)
     target_compile_options(demo_forward_classic_renderpath PRIVATE /W4)
@@ -241,7 +241,7 @@ endif()
 add_executable(shs_demo_renderpath_bridge_tests demo_renderpath_bridge_tests.cpp)
 add_test(NAME shs_demo_renderpath_bridge_tests COMMAND shs_demo_renderpath_bridge_tests)
 target_compile_features(shs_demo_renderpath_bridge_tests PRIVATE cxx_std_20)
-target_link_libraries(shs_demo_renderpath_bridge_tests PRIVATE shs::renderer-values)
+target_link_libraries(shs_demo_renderpath_bridge_tests PRIVATE shs::core-values)
 if(MSVC)
     target_compile_options(shs_demo_renderpath_bridge_tests PRIVATE /W4)
 else()
@@ -254,7 +254,7 @@ endif()
 add_executable(shs_demo_frame_planner_tests demo_frame_planner_tests.cpp)
 add_test(NAME shs_demo_frame_planner_tests COMMAND shs_demo_frame_planner_tests)
 target_compile_features(shs_demo_frame_planner_tests PRIVATE cxx_std_20)
-target_link_libraries(shs_demo_frame_planner_tests PRIVATE shs::renderer-values)
+target_link_libraries(shs_demo_frame_planner_tests PRIVATE shs::core-values)
 if(MSVC)
     target_compile_options(shs_demo_frame_planner_tests PRIVATE /W4)
 else()

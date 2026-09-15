@@ -68,7 +68,7 @@ set(INTERPROCEDURAL_OPTIMIZATION OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(JoltPhysics)
 
 # VulkanMemoryAllocator via vcpkg (Run 2 / P3: optional — only consumed when
-# Vulkan is found; shs-gpu-renderer-lib gates usage on the GPUOpen:: target
+# Vulkan is found; shs-gpu-lib gates usage on the GPUOpen:: target
 # existing, so GPU-free machines configure without it).
 message(STATUS "Looking for VulkanMemoryAllocator library...")
 find_package(VulkanMemoryAllocator CONFIG QUIET)
@@ -101,8 +101,8 @@ message(STATUS "Adding sub folders...")
 # New layout (2026-09): backend-split + exp groups.
 # Order matters: libs first (core defines SDL2_image::Main), then GPU lib
 # (sets SHS_RENDERER_HAS_VULKAN=ON). exps-other needed HelloSHSRenderer_SOURCE_DIR.
-add_subdirectory("src/shs-software-renderer-lib")
-add_subdirectory("src/shs-gpu-renderer-lib")
+add_subdirectory("src/shs-core-lib")
+add_subdirectory("src/shs-gpu-lib")
 # add_subdirectory("src/exps-other")
 # add_subdirectory("src/exps-software-renderer")
 # add_subdirectory("src/exps-gpu-renderer")

@@ -13,6 +13,13 @@
 > the demo (grep evidence + golden visual run), (b) main-tree ctest stays 14/14,
 > and (c) the golden run (`xvfb` + lavapipe + `SHS_DEMO_FRAME_LIMIT=5`) exits 0
 > with no new VUIDs vs. baseline `970fae3`.
+>
+> **Status (2026-09-15): PAUSED.** All exps demos/probes are parked (commented
+> out at the root CMake level, source kept on disk); ctest baseline is now
+> **5/5** (lib tests only) and libraries are renamed (`shs-core-lib` →
+> `shs::core`, `shs-gpu-lib` → `shs::gpu`). The remaining Wave 2 pairs below
+> resume only when the demos are restarted; the old probe TUs are not expected
+> to build as-is (they reference retired facade include paths).
 
 ## Inventory (10 TUs remaining after Wave 2 pair 1; was 18 TUs, ~28.7k lines)
 
@@ -63,6 +70,6 @@
 
 ## Non-goals
 
-- No changes to `shs-gpu-renderer-lib` (drivers stay; only demo/probe TUs retire).
+- No changes to `shs-gpu-lib` (drivers stay; only demo/probe TUs retire).
 - No deletion of anything referenced by main-tree ctest.
 - No deletion of the `SHS_HAS_VULKAN` guard structure.
