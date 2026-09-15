@@ -92,12 +92,17 @@ find_package(Lua 5.5)
 
 message(STATUS "Adding sub folders...")
 
+# Demos/probes parked (2026-09): exps trees are commented out at the root so
+# the build covers core libs + lib tests only. Source is kept on disk —
+# demos will be restarted fresh later; re-enable by uncommenting these lines
+# (note: exps CMake/TUs still reference retired aliases + facade include
+# paths, so they need a pass before they build again).
+#
 # New layout (2026-09): backend-split + exp groups.
-# Order matters: libs first (software defines SDL2_image::Main + shs::renderer
-# compat alias), then exps-other (HelloSHSRenderer_SOURCE_DIR), then SW exps,
-# then GPU lib (sets SHS_RENDERER_HAS_VULKAN=ON), then GPU exps.
+# Order matters: libs first (core defines SDL2_image::Main), then GPU lib
+# (sets SHS_RENDERER_HAS_VULKAN=ON). exps-other needed HelloSHSRenderer_SOURCE_DIR.
 add_subdirectory("src/shs-software-renderer-lib")
 add_subdirectory("src/shs-gpu-renderer-lib")
-add_subdirectory("src/exps-other")
-add_subdirectory("src/exps-software-renderer")
-add_subdirectory("src/exps-gpu-renderer")
+# add_subdirectory("src/exps-other")
+# add_subdirectory("src/exps-software-renderer")
+# add_subdirectory("src/exps-gpu-renderer")
