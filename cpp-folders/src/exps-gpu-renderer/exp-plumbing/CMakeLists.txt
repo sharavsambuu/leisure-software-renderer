@@ -4,39 +4,6 @@ project(ExpPlumbing LANGUAGES CXX)
 file(COPY ../../assets DESTINATION "${CMAKE_CURRENT_BINARY_DIR}")
 
 
-add_executable(HelloPassBasics hello_pass_basics.cpp)
-target_link_libraries(HelloPassBasics PRIVATE shs::renderer)
-if(MSVC)
-    target_compile_options(HelloPassBasics PRIVATE /W4)
-else()
-    target_compile_options(HelloPassBasics PRIVATE -Wall -Wextra -Wpedantic)
-    target_compile_options(HelloPassBasics PRIVATE $<$<CONFIG:Release>:-O3>)
-    target_compile_options(HelloPassBasics PRIVATE $<$<CONFIG:Debug>:-g>)
-endif()
-target_compile_features(HelloPassBasics PRIVATE cxx_std_20)
-
-add_executable(HelloPassPlumbing hello_pass_plumbing.cpp)
-target_link_libraries(HelloPassPlumbing PRIVATE shs::renderer)
-if(MSVC)
-    target_compile_options(HelloPassPlumbing PRIVATE /W4)
-else()
-    target_compile_options(HelloPassPlumbing PRIVATE -Wall -Wextra -Wpedantic)
-    target_compile_options(HelloPassPlumbing PRIVATE $<$<CONFIG:Release>:-O3>)
-    target_compile_options(HelloPassPlumbing PRIVATE $<$<CONFIG:Debug>:-g>)
-endif()
-target_compile_features(HelloPassPlumbing PRIVATE cxx_std_20)
-
-add_executable(HelloSoftwareTriangle hello_software_triangle.cpp)
-target_link_libraries(HelloSoftwareTriangle PRIVATE shs::renderer)
-if(MSVC)
-    target_compile_options(HelloSoftwareTriangle PRIVATE /W4)
-else()
-    target_compile_options(HelloSoftwareTriangle PRIVATE -Wall -Wextra -Wpedantic)
-    target_compile_options(HelloSoftwareTriangle PRIVATE $<$<CONFIG:Release>:-O3>)
-    target_compile_options(HelloSoftwareTriangle PRIVATE $<$<CONFIG:Debug>:-g>)
-endif()
-target_compile_features(HelloSoftwareTriangle PRIVATE cxx_std_20)
-
 if(APPLE AND DEFINED ENV{VULKAN_SDK})
     find_program(GLSLANG_VALIDATOR
         NAMES glslangValidator glslang glslangValidator.exe
@@ -69,8 +36,6 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
     set(VK_COMMON_LIGHT_MATH "${VK_SHADER_COMMON_DIR}/light_math.glsl")
     set(VK_COMMON_CULLING_LIGHT_STRUCT "${VK_SHADER_COMMON_DIR}/culling_light_struct.glsl")
 
-    set(VK_TRI_VERT "${VK_TRI_SHADER_DIR}/vulkan_triangle.vert")
-    set(VK_TRI_FRAG "${VK_TRI_SHADER_DIR}/vulkan_triangle.frag")
     set(VK_MODERN_VERT "${VK_TRI_SHADER_DIR}/modern_instanced.vert")
     set(VK_MODERN_FRAG "${VK_TRI_SHADER_DIR}/modern_instanced.frag")
     set(VK_CULLING_VERT "${VK_TRI_SHADER_DIR}/culling_vk.vert")
@@ -79,8 +44,6 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
     set(VK_LIGHT_TYPES_CULLING_FRAG "${VK_TRI_SHADER_DIR}/light_types_culling_vk.frag")
     set(VK_SOFT_SHADOW_CULLING_VERT "${VK_TRI_SHADER_DIR}/soft_shadow_culling_vk.vert")
     set(VK_SOFT_SHADOW_CULLING_FRAG "${VK_TRI_SHADER_DIR}/soft_shadow_culling_vk.frag")
-    set(VK_TRI_VERT_SPV "${VK_TRI_OUT_DIR}/vulkan_triangle.vert.spv")
-    set(VK_TRI_FRAG_SPV "${VK_TRI_OUT_DIR}/vulkan_triangle.frag.spv")
     set(VK_MODERN_VERT_SPV "${VK_TRI_OUT_DIR}/modern_instanced.vert.spv")
     set(VK_MODERN_FRAG_SPV "${VK_TRI_OUT_DIR}/modern_instanced.frag.spv")
     set(VK_CULLING_VERT_SPV "${VK_TRI_OUT_DIR}/culling_vk.vert.spv")
@@ -138,18 +101,6 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
     set(VK_FP_LIGHT_CULL_COMP_SPV "${VK_TRI_OUT_DIR}/fp_stress_light_cull.comp.spv")
     set(VK_FP_DEPTH_REDUCE_COMP_SPV "${VK_TRI_OUT_DIR}/fp_stress_depth_reduce.comp.spv")
 
-    add_custom_command(
-        OUTPUT "${VK_TRI_VERT_SPV}"
-        COMMAND ${GLSLANG_VALIDATOR} -V "${VK_TRI_VERT}" -o "${VK_TRI_VERT_SPV}"
-        DEPENDS "${VK_TRI_VERT}"
-        VERBATIM
-    )
-    add_custom_command(
-        OUTPUT "${VK_TRI_FRAG_SPV}"
-        COMMAND ${GLSLANG_VALIDATOR} -V "${VK_TRI_FRAG}" -o "${VK_TRI_FRAG_SPV}"
-        DEPENDS "${VK_TRI_FRAG}"
-        VERBATIM
-    )
     add_custom_command(
         OUTPUT "${VK_MESH_TRI_MESH_SPV}"
         COMMAND ${GLSLANG_VALIDATOR} --target-env vulkan1.2 -V "${VK_MESH_TRI_MESH}" -o "${VK_MESH_TRI_MESH_SPV}"
@@ -369,7 +320,6 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
         DEPENDS "${VK_FP_DEPTH_REDUCE_COMP}"
         VERBATIM
     )
-    add_custom_target(HelloVulkanTriangleShaders DEPENDS "${VK_TRI_VERT_SPV}" "${VK_TRI_FRAG_SPV}")
     add_custom_target(HelloCullingVkShaders DEPENDS "${VK_CULLING_VERT_SPV}" "${VK_CULLING_FRAG_SPV}")
     add_custom_target(HelloLightTypesCullingVkShaders
         DEPENDS
@@ -385,19 +335,6 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
             "${VK_SOFT_SHADOW_CULLING_FRAG_SPV}"
             "${VK_PB_SHADOW_VERT_SPV}"
     )
-    add_custom_target(HelloPassBasicsVulkanShaders
-        DEPENDS
-            "${VK_PB_SHADOW_VERT_SPV}"
-            "${VK_PB_SCENE_VERT_SPV}"
-            "${VK_PB_SCENE_FRAG_SPV}"
-            "${VK_PB_POST_VERT_SPV}"
-            "${VK_PB_SKY_FRAG_SPV}"
-            "${VK_PB_BRIGHT_FRAG_SPV}"
-            "${VK_PB_SHAFTS_FRAG_SPV}"
-            "${VK_PB_FLARE_FRAG_SPV}"
-            "${VK_PB_COMPOSITE_FRAG_SPV}"
-            "${VK_PB_FXAA_FRAG_SPV}"
-    )
     add_custom_target(HelloRenderingPathsShaders
         DEPENDS
             "${VK_FP_SCENE_VERT_SPV}"
@@ -412,46 +349,6 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
             "${VK_FP_LIGHT_CULL_COMP_SPV}"
             "${VK_FP_DEPTH_REDUCE_COMP_SPV}"
     )
-
-    add_executable(HelloVulkanTriangle hello_vulkan_triangle.cpp)
-    add_dependencies(HelloVulkanTriangle HelloVulkanTriangleShaders)
-    target_link_libraries(HelloVulkanTriangle PRIVATE shs::gpu-renderer)
-    target_compile_definitions(HelloVulkanTriangle PRIVATE
-        SHS_VK_TRIANGLE_VERT_SPV="${VK_TRI_VERT_SPV}"
-        SHS_VK_TRIANGLE_FRAG_SPV="${VK_TRI_FRAG_SPV}"
-    )
-    if(MSVC)
-        target_compile_options(HelloVulkanTriangle PRIVATE /W4)
-    else()
-        target_compile_options(HelloVulkanTriangle PRIVATE -Wall -Wextra -Wpedantic)
-        target_compile_options(HelloVulkanTriangle PRIVATE $<$<CONFIG:Release>:-O3>)
-        target_compile_options(HelloVulkanTriangle PRIVATE $<$<CONFIG:Debug>:-g>)
-    endif()
-    target_compile_features(HelloVulkanTriangle PRIVATE cxx_std_20)
-
-    add_executable(HelloPassBasicsVulkan hello_pass_basics_vulkan.cpp)
-    add_dependencies(HelloPassBasicsVulkan HelloPassBasicsVulkanShaders)
-    target_link_libraries(HelloPassBasicsVulkan PRIVATE shs::gpu-renderer)
-    target_compile_definitions(HelloPassBasicsVulkan PRIVATE
-        SHS_VK_PB_SHADOW_VERT_SPV="${VK_PB_SHADOW_VERT_SPV}"
-        SHS_VK_PB_SCENE_VERT_SPV="${VK_PB_SCENE_VERT_SPV}"
-        SHS_VK_PB_SCENE_FRAG_SPV="${VK_PB_SCENE_FRAG_SPV}"
-        SHS_VK_PB_POST_VERT_SPV="${VK_PB_POST_VERT_SPV}"
-        SHS_VK_PB_SKY_FRAG_SPV="${VK_PB_SKY_FRAG_SPV}"
-        SHS_VK_PB_BRIGHT_FRAG_SPV="${VK_PB_BRIGHT_FRAG_SPV}"
-        SHS_VK_PB_SHAFTS_FRAG_SPV="${VK_PB_SHAFTS_FRAG_SPV}"
-        SHS_VK_PB_FLARE_FRAG_SPV="${VK_PB_FLARE_FRAG_SPV}"
-        SHS_VK_PB_COMPOSITE_FRAG_SPV="${VK_PB_COMPOSITE_FRAG_SPV}"
-        SHS_VK_PB_FXAA_FRAG_SPV="${VK_PB_FXAA_FRAG_SPV}"
-    )
-    if(MSVC)
-        target_compile_options(HelloPassBasicsVulkan PRIVATE /W4)
-    else()
-        target_compile_options(HelloPassBasicsVulkan PRIVATE -Wall -Wextra -Wpedantic)
-        target_compile_options(HelloPassBasicsVulkan PRIVATE $<$<CONFIG:Release>:-O3>)
-        target_compile_options(HelloPassBasicsVulkan PRIVATE $<$<CONFIG:Debug>:-g>)
-    endif()
-    target_compile_features(HelloPassBasicsVulkan PRIVATE cxx_std_20)
 
     add_executable(HelloRenderingPaths hello_rendering_paths.cpp)
     add_dependencies(HelloRenderingPaths HelloRenderingPathsShaders)
@@ -479,20 +376,6 @@ if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
     target_compile_features(HelloRenderingPaths PRIVATE cxx_std_20)
 else()
     if(NOT SHS_RENDERER_HAS_VULKAN)
-        message(STATUS "HelloVulkanTriangle skipped (shs::renderer built without Vulkan support)")
-    elseif(NOT GLSLANG_VALIDATOR)
-        message(STATUS "HelloVulkanTriangle skipped (glslangValidator not found)")
-    elseif(NOT SHS_SDL2_HAS_VULKAN)
-        message(STATUS "HelloVulkanTriangle skipped (SDL2 was built without Vulkan support)")
-    endif()
-    if(NOT SHS_RENDERER_HAS_VULKAN)
-        message(STATUS "HelloPassBasicsVulkan skipped (shs::renderer built without Vulkan support)")
-    elseif(NOT GLSLANG_VALIDATOR)
-        message(STATUS "HelloPassBasicsVulkan skipped (glslangValidator not found)")
-    elseif(NOT SHS_SDL2_HAS_VULKAN)
-        message(STATUS "HelloPassBasicsVulkan skipped (SDL2 was built without Vulkan support)")
-    endif()
-    if(NOT SHS_RENDERER_HAS_VULKAN)
         message(STATUS "HelloRenderingPaths skipped (shs::renderer built without Vulkan support)")
     elseif(NOT GLSLANG_VALIDATOR)
         message(STATUS "HelloRenderingPaths skipped (glslangValidator not found)")
@@ -502,21 +385,9 @@ else()
 endif()
 
 # -----------------------------------------------------------------------------
-#  Jolt Integration Demo
+#  VK culling probes
 # -----------------------------------------------------------------------------
 if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
-    add_executable(hello_jolt_integration hello_jolt_integration.cpp)
-    add_dependencies(hello_jolt_integration HelloRenderingPathsShaders)
-    target_link_libraries(hello_jolt_integration PRIVATE shs::gpu-renderer)
-    set_target_properties(hello_jolt_integration PROPERTIES FOLDER "Demos")
-    target_compile_definitions(hello_jolt_integration PRIVATE
-        SHS_VK_FP_SCENE_VERT_SPV="${VK_FP_SCENE_VERT_SPV}"
-        SHS_VK_FP_SCENE_FRAG_SPV="${VK_FP_SCENE_FRAG_SPV}"
-        SHS_VK_FP_SHADOW_VERT_SPV="${VK_FP_SHADOW_VERT_SPV}"
-        SHS_VK_FP_LIGHT_CULL_COMP_SPV="${VK_FP_LIGHT_CULL_COMP_SPV}"
-        SHS_VK_FP_DEPTH_REDUCE_COMP_SPV="${VK_FP_DEPTH_REDUCE_COMP_SPV}"
-    )
-
     add_executable(hello_culling_vk hello_culling_vk.cpp)
     add_dependencies(hello_culling_vk HelloCullingVkShaders)
     target_link_libraries(hello_culling_vk PRIVATE shs::gpu-renderer)

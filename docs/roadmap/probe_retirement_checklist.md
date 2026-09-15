@@ -14,16 +14,16 @@
 > and (c) the golden run (`xvfb` + lavapipe + `SHS_DEMO_FRAME_LIMIT=5`) exits 0
 > with no new VUIDs vs. baseline `970fae3`.
 
-## Inventory (18 TUs, ~28.7k lines)
+## Inventory (12 TUs remaining after Wave 1; was 18 TUs, ~28.7k lines)
 
 | Probe | Lines | Unique feature | Demo coverage (grep evidence) | Verdict |
 | :--- | ---: | :--- | :--- | :--- |
-| `hello_vulkan_triangle.cpp` | 407 | minimal Vulkan init + draw | full (demo backend init + swapchain present) | **Retire now** |
-| `hello_software_triangle.cpp` | 229 | minimal SW rasterizer draw | full (demo SW backend parity run) | **Retire now** (verify golden SW run first) |
-| `hello_pass_plumbing.cpp` | 440 | pass plumbing teaching TU | full (demo has 10 `vkCmdBeginRenderPass` sites) | **Retire now** |
-| `hello_pass_basics_vulkan.cpp` | 4008 | VK render pass/framebuffer teaching | full (no feature absent from demo) | **Retire now** |
-| `hello_pass_basics.cpp` | 1255 | SW pass basics; 1× `RenderPathCompiler` ref | near-full | Retire after confirming its single compiler reference is exercised by `hello_rendering_paths` |
-| `hello_jolt_integration.cpp` | 217 | JPH physics bridge (`JPH::Mat`, `JoltRenderable`) | full (24 Jolt refs; `RenderPathLightVolumeProvider::JoltShapeVolumes` recipe lives in demo) | **Retire now** |
+| `hello_vulkan_triangle.cpp` | 407 | minimal Vulkan init + draw | full (demo backend init + swapchain present) | **Retired (Wave 1)** |
+| `hello_software_triangle.cpp` | 229 | minimal SW rasterizer draw | full (demo SW backend parity run 10/10) | **Retired (Wave 1)** |
+| `hello_pass_plumbing.cpp` | 440 | pass plumbing teaching TU | full (demo has 10 `vkCmdBeginRenderPass` sites) | **Retired (Wave 1)** |
+| `hello_pass_basics_vulkan.cpp` | 4008 | VK render pass/framebuffer teaching | full (no feature absent from demo) | **Retired (Wave 1)** |
+| `hello_pass_basics.cpp` | 1255 | SW pass basics; 1× `RenderPathCompiler` ref | near-full (its `RenderPathExecutor` ref is also in `hello_rendering_paths`) | **Retired (Wave 1)** — compiler-reference check passed |
+| `hello_jolt_integration.cpp` | 217 | JPH physics bridge (`JPH::Mat`, `JoltRenderable`) | full (24 Jolt refs; `RenderPathLightVolumeProvider::JoltShapeVolumes` recipe lives in demo) | **Retired (Wave 1)** |
 | `hello_culling_sw.cpp` / `hello_culling_vk.cpp` | 393 / 1238 | light-cull compute pair | full pending task-16 merge (demo has light-cull comp + culling-debug stats) | Merge → retire |
 | `hello_light_types_culling_sw.cpp` / `_vk.cpp` | 1136 / 2016 | light-type variety + culling | full pending task-16 merge (demo: spot ×39, directional, point) | Merge → retire |
 | `hello_occlusion_culling_sw.cpp` / `_vk.cpp` | 478 / 1574 | **query-pool** occlusion (`vkCreateQueryPool` ×2, `vkCmdBeginQuery`) | partial — demo's occlusion is depth-reduce compute; demo has 1 `vkCreateQueryPool` (line 3153, culling-debug stats) | Merge → **verify query-path parity** before retire |
@@ -40,6 +40,11 @@
    `hello_jolt_integration` (≈6.6k lines with `hello_pass_basics`). Also
    `hello_pass_basics` after the compiler-reference check. Each: `git rm` (recoverable from history), drop its
    CMake block, full build + ctest 14/14 + golden run.
+   **✅ Done** — 6 TUs + `shaders/vulkan_triangle.{vert,frag}` deleted; `pb_*`
+   lib shaders kept (demo compiles them from `VK_DEFAULT_SHADER_DIR`).
+   Validation: main build clean + ctest **14/14**; GPU-free build `/tmp/swr-novk`
+   + ctest **13/13**; golden run (xvfb + lavapipe, frame limit 5) **exit 0**
+   with VUIDs identical to baseline (`09600`×10, `06532`×1).
 2. **Wave 2 — after task-16 merges**: the four `_sw`/`_vk` culling pairs
    (≈11.3k lines). Retire each pair only when its merge tranche lands with
    golden-run parity.
