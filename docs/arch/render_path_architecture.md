@@ -56,6 +56,61 @@ Edit `shs/pipeline/render_path_presets.hpp`:
 2.  **Define Contract**: Add its input/output semantic requirements in `pass_contract_registry.hpp`.
 3.  **Implement Handler**: Register a dispatch handler in the backend (e.g., `vk_render_path_pass_context.hpp` or `shs_renderer_lib.cpp`).
 
+### Demo-Authored Techniques (Technology-Demo Story)
+The core ships small, complete renderer cores (e.g., the builtin Blinn-Phong /
+PBR technique recipes) plus the shared abstractions — culling, light volumes,
+pass contracts, temporal core. The *showcase* techniques (Deferred, Forward+,
+Tiled Deferred, Clustered Forward+) are demonstrated through demos, which are
+first-class users of the same extension points — no core edits required:
+1.  Register a demo-owned `PassId` and its semantic contract.
+2.  Author the pass logic (GLSL/Slang shader or C++ software shading).
+3.  Register the dispatch handler alongside the builtin ones and reference it
+    from a demo recipe.
+
+This keeps the maturity rule ("presets are not demo-specific code paths") true
+for the *core*: demo experiments graduate into builtin presets only after they
+prove out in a demo, via the same Recipe → Compiler → Plan pipeline.
+
+## 4. Long-Term Extensibility Contract
+
+> Constitutionalized as **Constitution I §7 — No User Lock-In (Pluggability)**
+> (`docs/spec/conventions.md`). This section is the formal extension-point
+> contract that law refers to.
+## 4. Long-Term Extensibility Contract
+
+Vision: the core renderer satisfies *every class* of complex rendering technique —
+materials, lighting, light culling, compute-based effects up to UE5-class
+complexity — by being a **small closed vocabulary + open registries**, with
+consumer complexity added as *additive abstractions* built on the Domain POD
+concepts (value descs, contracts, recipes — never by editing the core).
+
+Already first-class in the value vocabulary:
+- **Compute** — `RHICmdDispatchDesc` + compute pipeline descs + compute queue
+  class + `async_compute` capability: compute-based effects (SSAO-class post,
+  particle sims, light propagation, voxelization) are ordinary passes, not
+  special cases.
+- **Culling / light volumes** — culling strategies are recipe data; light-grid
+  and cluster structures are canonical semantics, not hardcoded pass internals.
+
+Graduation requirements (tracked, not yet built):
+1. **Open pass IDs** — `PassId` is a closed 16-value enum; consumer/demo-owned
+   passes need a builtin range + open registered range (or stable-string-hash
+   contract keys). Blocking for the demo-authoring story above.
+2. **Open light/light-volume registries** — `RenderPathLightVolumeProvider` and
+   the builtin light structs in `shader/types.hpp` are closed enums today;
+   custom light abstractions (area/IES/volumetric/custom game lights) require
+   the same open-registry treatment, with light *types* additive on top of the
+   shared lighting math library.
+3. **Material graph compiler** — complex material authoring follows the
+   material-system roadmap (lib → assembler → node graph → multi-target
+   emission: GLSL/Slang/C++), not core enumeration.
+
+UE5-class features (virtualized geometry, GI/VCT/Lumen-class, compute VFX) are
+tracked in their own roadmaps (`global_illumination_roadmap.md`,
+`angstrom_era_virtual_spu_roadmap.md`, `vulkan_modernization_roadmap.md`,
+`future-vulkan-features.md`) — this contract is what lets them land as
+*additions* to the core rather than rewrites of it.
+
 ---
 
 ## 4. Current Implementation Status (L4 Maturity)

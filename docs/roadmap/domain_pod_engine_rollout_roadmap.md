@@ -218,17 +218,29 @@ streaming-store kernels land on real contiguous columns.
 Goal: create the missing `rhi/drivers/vulkan/` against the existing value-desc
 vocabulary (`resource_desc`, `command_desc`, `pipeline_desc`, `sync_desc`).
 
-- [ ] `vk_backend.hpp` implementing `IRenderBackend` (fills the aspirational
-      `backend_factory.hpp` include).
-- [ ] `vk_device.hpp` / `vk_resources.hpp` / `vk_pipelines.hpp` / `vk_commands.hpp` /
+- [x] `vk_backend.hpp` implementing `IRenderBackend` (fills the aspirational
+      `backend_factory.hpp` include via the `shs/rhi/drivers/vulkan/` facade).
+- [x] `vk_device.hpp` / `vk_resources.hpp` / `vk_pipelines.hpp` / `vk_commands.hpp` /
       `vk_sync.hpp` per the architecture doc §4.
-- [ ] Descriptor-hash-keyed explicit caches (no lazy hidden caches, no per-node alloc).
-- [ ] `CommandDesc` stream recording: passes emit value command spans on the frame
-      arena; driver translates.
+- [x] Descriptor-hash-keyed explicit caches (no lazy hidden caches, no per-node alloc;
+      registry + pipeline cache are GPU-free testable via create hooks).
+- [x] `CommandDesc` stream recording: `record_commands<Sink>` 8-way variant
+      dispatch (BeginPass, BindPipeline, BindVertex/IndexBuffer, DrawIndexed,
+      Dispatch, Barrier, EndPass); `VulkanCommandRecorder` is the device-bound sink.
+- [x] `VulkanFrameSync` slot bookkeeping (frame-in-flight slots + per-queue timeline
+      signal via `VulkanLikeRuntime`; synchronous driver submission drains on end_frame).
+- [x] `vop_vk_driver_tests.cpp` — 15 GPU-free cases (mappers, hashes, registry dedupe /
+      failure semantics, pipeline cache, spy-sink stream ordering, frame-sync slots,
+      headless backend contract, create-info purity); registered as
+      `shs_renderer_vop_vk_driver_tests` behind optional `find_package(Vulkan)`
+      (links the loader only so never-executed GPU paths resolve; binary stays
+      GPU-free at runtime).
+- [x] Grep gate: no `Vk*` token outside `include/shs/execution/rhi/drivers/vulkan/`
+      in the lib (facade shims carry no Vk tokens); `check_vop_boundaries.sh` green.
 
-**DoD**: `hello_vulkan_triangle` parity rebuilt on the driver; no `Vk*` handle escapes
-the driver boundary (checked by grep gate in CI); GPU object creation happens only on
-`PATH_COMPILED` / resource-plan events.
+**DoD status**: translation/cache/record layers complete and GPU-free testable; the
+`hello_vulkan_triangle` parity probe stays compile-gated — its runtime path needs a
+device (no ICD in CI), so it lands with Phase J / P6 integration rather than here.
 
 ## Phase P3 — Monolith Decomposition
 
@@ -241,6 +253,21 @@ Goal: `demo_forward_classic_renderpath.cpp` (9,373 lines) → thin pod compositi
       `CommandDesc` spans.
 - [ ] Main loop becomes: input edge → reducers → plan → executor edge → present
       (tetris shape).
+- [ ] Hybrid / GPU-free demo mode — demos must honor the backend factory's
+      fallback instead of hard-failing on the concrete Vulkan type: branch on
+      `RenderBackendCreateResult::active` + `BackendCapabilities` (the planner's
+      existing `dynamic_cast` policy-branching pattern), so `SHS_RENDER_BACKEND=software`
+      (the default) runs anywhere. Paired `_sw`/`_vk` demo binaries converge into
+      one binary with runtime backend selection. Also make the top-level
+      `find_package(VulkanMemoryAllocator ... REQUIRED)` optional/QUIET and gate
+      all Vulkan sources/targets behind `SHS_HAS_VULKAN` so configure+build
+      succeeds on machines with no GPU and no Vulkan SDK.
+- [ ] Open pass-ID / light-registry extensibility (Constitution I §7) — `PassId`
+      gains a builtin range + open registered range (or stable-string-hash
+      contract keys) so demo/consumer-owned passes need no core edit; apply the
+      same open-registry treatment to `RenderPathLightVolumeProvider` and
+      technique/light preset enums as consumers require custom abstractions.
+      (Formal contract: `render_path_architecture.md` §4.)
 - [ ] Migrate or retire `hello_*_vulkan.cpp` probes.
 
 **DoD**: demo under ~1.5k lines; all 5 path presets × techniques hot-swappable at
@@ -279,14 +306,29 @@ extension role, and the classification is machine-checked.
       `#pragma message` forwards.
 - [ ] **Retire legacy seams** — audit `frame_graph.hpp` / `pluggable_pipeline.hpp`
       for removal once the renderpath pod covers their use cases.
+- [ ] **Converge to a single renderer library** — once `shs-gpu-renderer-lib`
+      retires (P3) and the facade shims are gone, rename the surviving
+      `shs-software-renderer-lib` to **`shs-renderer-lib`**. "Software vs GPU" is
+      then a driver-pod selection (`drivers/software`, `drivers/opengl`,
+      `drivers/vulkan`) behind the one `IRenderBackend` contract + capability
+      gates — not a library split. Update CMake target names
+      (`shs::renderer-values` keeps working), the §6.4 classification table, and
+      the Domain Glossary in the same commit.
 - [ ] **Linter ↔ docs sync** — the structure linter (landed in P0.5) now also
       checks §6.4 classification table ↔ physical zone agreement, the Domain
       Glossary rows point at final homes, and — per Constitution §2.2(3) — law
       citations across docs are valid (no dangling "Rule N"/"Constitution N"
       references; restatements reference the Constitution instead of re-numbering).
+      Add the pluggability check per Constitution I §7: extension points
+      (registries/contracts/recipes) must never require core edits — lint that
+      consumer/demo-owned pass, light, and technique abstractions resolve
+      through open registries, and that no core header is a hard dependency of
+      the extension mechanism.
 
 **DoD**: zero old-path includes; every `domains/<pod>/` passes the Core 4
 completeness check; §6.4 table and glossary match the tree exactly (CI-verified).
+End state: single **`shs-renderer-lib`** (the P3/P5 retirement decision above);
+software vs GPU backends differ only by driver pod.
 
 ## Phase P6 — Integration Hardening (with Phase J Vulkan work)
 

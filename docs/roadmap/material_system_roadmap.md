@@ -17,6 +17,18 @@ This roadmap outlines the implementation phases for transitioning the renderer t
 - **Action**: Define a node-based schema (JSON/C++) for mathematical operations and texture samples.
 - **Action**: Implement a compiler that traverses these graphs and emits the `shs_evaluate_material()` function.
 
+## Phase 3b: Multi-Target Shader Emission (GLSL / Slang / C++)
+- **Goal**: The same authored shading logic must run on every backend — GLSL/Slang
+      on GPU drivers, plain C++ (glm math) on the software driver.
+- **Action**: Generalize the graph compiler's emission into targets: **GLSL**
+      (SPIR-V via glslang/shaderc), **Slang** (Kronos-group language, compiles to
+      SPIR-V/DXIL; adds modules/interfaces where the C++ side uses concepts), and
+      **C++ (glm)** — a CPU evaluation of `shs_evaluate_material()` for
+      `drivers/software`, keeping the software/Vulkan contract parity intact
+      (material logic is shared; only the emission target changes).
+- **Action**: Keep the node schema backend-neutral; language-specific constructs
+      live in per-target emitter modules, not in material definitions.
+
 ## Phase 4: Production Optimization
 - **Goal**: Ensure the system is performant and scalable.
 - **Action**: Implement a **Vulkan Pipeline Cache** to reuse PSOs for identical graphs.

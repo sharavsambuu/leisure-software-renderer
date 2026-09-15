@@ -105,10 +105,41 @@ To prevent "direction drift," all shading math remains in **SHS World Space**.
 
 ---
 
-## 7. Constitutional Links
+## 7. No User Lock-In (Pluggability)
+
+The renderer must never lock users into the engine's capacity. Users plug
+whatever parts they want, whenever they want:
+
+1. **Additive, not closed** — passes, techniques, materials, lights, light
+   volumes, and compute effects are added *through* extension points
+   (registries, contracts, recipes), never by editing the core. Builtin enums
+   (`PassId`, technique/light presets) must eventually expose open registered
+   ranges so consumer-owned abstractions need no core change (tracked in
+   `docs/arch/render_path_architecture.md` §4).
+2. **Backend choice is never a fork** — `SHS_RENDER_BACKEND` selects software /
+   OpenGL / Vulkan at runtime; a build without GPU support degrades gracefully
+   to software (backend factory fallback + hybrid auxiliary backends), never
+   hard-fails. Software vs GPU is a driver-pod selection, not a product split.
+3. **Shader language is a target, not a cage** — the same authored shading
+   logic must be emittable to GLSL / Slang / C++ (material-system roadmap);
+   users are never forced into one shader language.
+4. **Demos and users are first-class extension authors** — custom passes and
+   techniques register through the same mechanism builtin ones use; proven
+   experiments graduate into builtin presets, never the reverse dependency.
+5. **Replacement over abandonment** — any builtin part (preset, pass, technique,
+   backend driver) must be replaceable by a user implementation honoring the
+   same value-desc contract; the core must stay implementable as a thin,
+   GPU-free-testable library (`shs-renderer-lib` end state).
+
+*Formal extension-point contract: `docs/arch/render_path_architecture.md` §3–4.*
+
+---
+
+## 8. Constitutional Links
  
  This document is Constitution I. SHS renderer also defines Constitution II for Value-Oriented Programming (VOP) and Constitution III for Data-Oriented Design (DOD).
 
  - **Constitution II (VOP & DOD)**: `docs/spec/value_oriented_programming.md` (Formal Specification)
  - **Constitution III (DOD & ECS)**: `docs/spec/dod_ecs_architecture.md`
  - **Constitutional rule of thumb**: keep pure value transforms in the center, keep backend side effects at execution boundaries, and prioritize cache-friendly Data-Oriented Design (SoA, ECS) for logic.
+ - **Pluggability law (§7)**: no user lock-in — every part pluggable through extension points; see §7 and the §3–4 extension contract in `docs/arch/render_path_architecture.md`.
