@@ -135,7 +135,69 @@ whatever parts they want, whenever they want:
 
 ---
 
-## 8. Constitutional Links
+## 8. Code Style Law — Vertical Alignment (NASA/JPL rule)
+
+All C/C++/Slang/GLSL sources in this repository follow the **NASA/JPL vertical
+alignment style** (as used in JPL's C coding standard and Gerard Holzmann's
+*The Power of Ten*). The purpose is human scan-ability: a reviewer must be able
+to compare values, types, and names *down a column*, not token by token.
+
+### The Law
+
+1. **Aligned declaration blocks** — when consecutive lines declare related
+   entities, align the type column, the name column, and the initializer column.
+2. **Aligned assignment blocks** — in a block of related assignments, align the
+   `=` signs (or the expression start) so values form a column.
+3. **Aligned trailing comments** — when several lines carry end-of-line
+   comments, align the comments into one column.
+4. **Aligned member tables** — struct definitions that act as data tables
+   (vertex layouts, state structs, descriptor setups) align type, name, and
+   comment columns.
+5. **Never break alignment silently** — renaming/re-typing a member realigns
+   the whole block it belongs to. A diff that changes one identifier but leaves
+   its column ragged is an incomplete change.
+
+### Compliant example
+
+```cpp
+struct T0Vertex
+{
+    float    pos[3];    // NDC position (GLM_FORCE_DEPTH_ZERO_TO_ONE)
+    float    col[4];    // vertex color (linear, unfiltered)
+    float    uv[2];     // texture coords, may exceed 1.0 (REPEAT wrap)
+};
+
+const int    width    = 640;               // framebuffer width
+const int    height   = 480;               // aspect-fixed height
+const float  aspect   = width / height;    // guarded against div-by-zero
+const size_t vcount   = quads.size();      // 6 verts per quad, 2 quads
+```
+
+### Non-compliant example
+
+```cpp
+// WRONG: ragged columns — the eye must re-focus on every line
+const int width = 640;
+const float aspect = width / height; // aspect
+const size_t vcount = quads.size();
+```
+
+### Scope & limits
+
+- **Applies to**: declarations/struct tables, related assignment blocks, enum
+  and constant tables, trailing comment columns.
+- **Does not apply to**: single isolated statements, control-flow bodies, or
+  expressions where alignment would obscure operator precedence.
+- **Tooling note**: alignment is whitespace-only and must never alter token
+  semantics; keep `clang-format` exclusions minimal and prefer manual column
+  alignment inside table-like blocks.
+- Anchor example of the desired end state: the `VkDraw` table in
+  `exps-rendering-adventures/tier0-rasterization-foundations/04_texture_sampling_scissor/texture_sampling_vk.cpp`.
+
+---
+
+## 9. Constitutional Links
+
  
  This document is Constitution I. SHS renderer also defines Constitution II for Value-Oriented Programming (VOP) and Constitution III for Data-Oriented Design (DOD).
 

@@ -100,7 +100,21 @@ message(STATUS "Adding sub folders...")
 #
 # New layout (2026-09): single renderer library — shs-gpu-lib absorbed into
 # shs-core-lib (Vulkan runtime edge gated behind SHS_HAS_VULKAN).
+# Demos/probes parked (2026-09): exps trees are commented out at the root so
+# the build covers core libs + lib tests only. Source is kept on disk —
+# demos will be restarted fresh later; re-enable by uncommenting these lines
+# (note: exps CMake/TUs still reference retired aliases + facade include
+# paths, so they need a pass before they build again).
+#
+# New layout (2026-09): single renderer library — shs-gpu-lib absorbed into
+# shs-core-lib (Vulkan runtime edge gated behind SHS_HAS_VULKAN).
 add_subdirectory("src/shs-renderer-lib")
+
+# Active curriculum demo tree (2026-09): tiered rendering-techniques demos,
+# each as *_sw (GLM C++) + *_vk (Vulkan + Slang) pairs, headless-PNG based.
+# Self-gating: GPU-free configure keeps working (Slang/Vulkan targets skip).
+# See docs/education/rendering_techniques_curriculum.md.
+add_subdirectory("src/exps-rendering-adventures")
 # add_subdirectory("src/exps-other")
 # add_subdirectory("src/exps-software-renderer")
 # add_subdirectory("src/exps-gpu-renderer")

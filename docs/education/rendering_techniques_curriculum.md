@@ -24,6 +24,9 @@
 
 ## Tier 0 — Rasterization foundations (✅ done in software + Vulkan edges)
 
+> Post-mortem with lessons, pitfalls, and a parity-harness note:
+> `docs/education/tier0_rasterization_lessons.md` — read before starting Tier 1.
+
 1. ✅ Triangle rasterization with barycentric varying interpolation
 2. ✅ Perspective & orthographic projection, view frustum
 3. ✅ Depth test, alpha blending, render-order
