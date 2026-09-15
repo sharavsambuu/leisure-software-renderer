@@ -6,7 +6,8 @@
     ФАЙЛ: resource_desc.hpp
     МОДУЛЬ: rhi/resource
     ЗОРИЛГО: Buffer/Image/Sampler resource descriptor-уудыг backend-neutral хэлбэрт оруулна.
-            Vulkan руу порт хийх үед VkBufferCreateInfo/VkImageCreateInfo руу хөрвүүлэх үндэс.
+            Driver pod-ууд (жишээ нь vulkan) энэ desc-үүдийг өөрсдийн create-info
+            бүтцэд хөрвүүлнэ (drivers/vulkan zone дотор).
 */
 
 

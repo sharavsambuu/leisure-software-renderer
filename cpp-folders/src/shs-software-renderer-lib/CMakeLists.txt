@@ -17,8 +17,12 @@ find_package(SDL2_image CONFIG REQUIRED)
 find_package(glm CONFIG REQUIRED)
 find_package(assimp CONFIG REQUIRED)
 
-# NOTE: Vulkan lives in src/shs-gpu-renderer-lib (rhi/drivers/vulkan/,
-# pipeline/vk_*, shaders/vulkan/, src/shs_vma.cpp). This lib is Vulkan-free.
+# NOTE: since P2 the value-desc Vulkan driver pod lives HERE under
+# include/shs/execution/rhi/drivers/vulkan/ (header-only, pure translation +
+# hash-keyed explicit caches, GPU-free testable). The lib stays Vulkan-free by
+# default — the driver compiles only where Vulkan headers are used (test target
+# above, backend_factory under SHS_HAS_VULKAN). The SDL/windowed GPU monolith
+# remains in src/shs-gpu-renderer-lib until the P3 decomposition retires it.
 
 option(SHS_RENDERER_BUILD_SHARED "Build shs_software_renderer as a shared library" OFF)
 set(_shs_renderer_lib_type STATIC)
@@ -217,6 +221,37 @@ if(SHS_RENDERER_BUILD_TESTS)
     set_tests_properties(shs_renderer_vop_containers_tests PROPERTIES
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     )
+
+    # P2 Vulkan driver pod tests: pure translation/bookkeeping tests. The
+    # binary never EXECUTES vk* entry points at runtime (headless, no ICD
+    # needed) but links the loader so the never-taken GPU code paths resolve.
+    # Skipped cleanly when Vulkan is absent (lib stays Vulkan-free by default).
+    find_package(Vulkan QUIET)
+    if(Vulkan_FOUND)
+        add_executable(shs_renderer_vop_vk_driver_tests
+            tests/vop_vk_driver_tests.cpp
+        )
+        target_link_libraries(shs_renderer_vop_vk_driver_tests PRIVATE
+            shs::renderer-values
+            Vulkan::Vulkan
+        )
+        target_compile_features(shs_renderer_vop_vk_driver_tests PRIVATE cxx_std_20)
+        if(MSVC)
+            target_compile_options(shs_renderer_vop_vk_driver_tests PRIVATE /W4)
+        else()
+            target_compile_options(shs_renderer_vop_vk_driver_tests PRIVATE -Wall -Wextra -Wpedantic)
+        endif()
+
+        add_test(
+            NAME shs_renderer_vop_vk_driver_tests
+            COMMAND shs_renderer_vop_vk_driver_tests
+        )
+        set_tests_properties(shs_renderer_vop_vk_driver_tests PROPERTIES
+            WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+        )
+    else()
+        message(STATUS "Vulkan headers not found — skipping shs_renderer_vop_vk_driver_tests")
+    endif()
 endif()
 
 

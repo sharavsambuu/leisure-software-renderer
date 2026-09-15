@@ -11,6 +11,7 @@
 
 
 #include <cstdint>
+#include <variant>
 #include "shs/rhi/sync/sync_desc.hpp"
 
 namespace shs
@@ -69,5 +70,38 @@ namespace shs
     {
         RHIMemoryBarrierDesc memory{};
     };
+
+    // P2 driver contract: passes emit a closed value command stream (an arena
+    // span of RHICmd); the driver translates it. No Vk* types appear here —
+    // stable 64-bit resource IDs only (arch doc §4 rule 1).
+    struct RHICmdEndPassDesc
+    {
+        uint8_t reserved = 0;
+    };
+
+    using RHICmdPayload = std::variant<
+        RHICmdBeginPassDesc,
+        RHICmdBindPipelineDesc,
+        RHICmdBindVertexBufferDesc,
+        RHICmdBindIndexBufferDesc,
+        RHICmdDrawIndexedDesc,
+        RHICmdDispatchDesc,
+        RHICmdBarrierDesc,
+        RHICmdEndPassDesc
+    >;
+
+    struct RHICmd
+    {
+        RHICmdPayload payload{};
+    };
+
+    inline RHICmd rhi_cmd_begin_pass(const RHICmdBeginPassDesc& d) { return RHICmd{d}; }
+    inline RHICmd rhi_cmd_bind_pipeline(uint64_t pipeline) { return RHICmd{RHICmdBindPipelineDesc{pipeline}}; }
+    inline RHICmd rhi_cmd_bind_vertex_buffer(uint64_t buffer, uint64_t offset) { return RHICmd{RHICmdBindVertexBufferDesc{buffer, offset}}; }
+    inline RHICmd rhi_cmd_bind_index_buffer(uint64_t buffer, uint64_t offset, bool index_u32) { return RHICmd{RHICmdBindIndexBufferDesc{buffer, offset, index_u32}}; }
+    inline RHICmd rhi_cmd_draw_indexed(const RHICmdDrawIndexedDesc& d) { return RHICmd{d}; }
+    inline RHICmd rhi_cmd_dispatch(uint32_t x, uint32_t y, uint32_t z) { return RHICmd{RHICmdDispatchDesc{x, y, z}}; }
+    inline RHICmd rhi_cmd_barrier(const RHIMemoryBarrierDesc& b) { return RHICmd{RHICmdBarrierDesc{b}}; }
+    inline RHICmd rhi_cmd_end_pass() { return RHICmd{RHICmdEndPassDesc{}}; }
 }
 
