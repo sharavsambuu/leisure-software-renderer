@@ -9133,6 +9133,16 @@ private:
         auto title_t0 = last;
         float ema_ms = 16.0f;
 
+        // Optional frame budget for headless/ci golden runs:
+        // SHS_DEMO_FRAME_LIMIT=3 runs exactly 3 frames and exits cleanly;
+        // unset or 0 keeps the traditional run-until-quit behavior.
+        uint64_t frame_limit = 0;
+        if (const char* env = std::getenv("SHS_DEMO_FRAME_LIMIT"))
+        {
+            frame_limit = std::strtoull(env, nullptr, 10);
+        }
+        uint64_t frames_run = 0;
+
         while (running_)
         {
             SDL_Event e{};
@@ -9176,6 +9186,13 @@ private:
             ema_ms = glm::mix(ema_ms, frame_ms, 0.08f);
             phase_f_step_after_frame(frame_ms, ema_ms);
             phase_g_step_after_frame(frame_ms, ema_ms, dt);
+            ++frames_run;
+            if (frame_limit != 0 && frames_run >= frame_limit)
+            {
+                std::fprintf(stdout, "SHS_DEMO_FRAME_LIMIT reached (%llu frames)\n",
+                             static_cast<unsigned long long>(frames_run));
+                running_ = false;
+            }
 
             if (std::chrono::duration<float>(now - title_t0).count() >= 0.20f)
             {

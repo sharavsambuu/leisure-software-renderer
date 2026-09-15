@@ -282,6 +282,11 @@ namespace shs
             if (reset_fence != VK_SUCCESS) return;
 
             bool used_compute = info.has_compute_work && info.compute_cmd != VK_NULL_HANDLE;
+            if (info.image_index >= present_finished_.size())
+            {
+                return;
+            }
+            const VkSemaphore present_finished = present_finished_[info.image_index];
             if (used_compute)
             {
 #if defined(VK_STRUCTURE_TYPE_SUBMIT_INFO_2) && defined(VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT)
@@ -367,7 +372,7 @@ namespace shs
 
                 VkSemaphoreSubmitInfo signal_info{};
                 signal_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-                signal_info.semaphore = render_finished_[cur];
+                signal_info.semaphore = present_finished;
                 signal_info.value = 0;
 #if defined(VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT)
                 signal_info.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
@@ -418,7 +423,7 @@ namespace shs
                 si.commandBufferCount = 1;
                 si.pCommandBuffers = &info.cmd;
                 si.signalSemaphoreCount = 1;
-                si.pSignalSemaphores = &render_finished_[cur];
+                si.pSignalSemaphores = &present_finished;
                 submit_res = vkQueueSubmit(graphics_q_, 1, &si, inflight_fences_[cur]);
             }
             if (submit_res == VK_ERROR_DEVICE_LOST)
@@ -437,7 +442,7 @@ namespace shs
             VkPresentInfoKHR pi{};
             pi.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
             pi.waitSemaphoreCount = 1;
-            pi.pWaitSemaphores = &render_finished_[cur];
+            pi.pWaitSemaphores = &present_finished;
             pi.swapchainCount = 1;
             pi.pSwapchains = &swapchain_;
             pi.pImageIndices = &info.image_index;
@@ -1728,6 +1733,19 @@ namespace shs
                 if (vkCreateImageView(device_, &iv, nullptr, &views_[i]) != VK_SUCCESS) return false;
             }
             images_in_flight_.assign(images_.size(), VK_NULL_HANDLE);
+            destroy_present_finished_semaphores();
+            present_finished_.assign(images_.size(), VK_NULL_HANDLE);
+            {
+                VkSemaphoreCreateInfo sem{};
+                sem.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+                for (VkSemaphore& present_sem : present_finished_)
+                {
+                    if (vkCreateSemaphore(device_, &sem, nullptr, &present_sem) != VK_SUCCESS)
+                    {
+                        return false;
+                    }
+                }
+            }
             ++swapchain_generation_;
             return true;
         }
@@ -1924,9 +1942,6 @@ namespace shs
                 if (image_available_[i] == VK_NULL_HANDLE &&
                     vkCreateSemaphore(device_, &sem, nullptr, &image_available_[i]) != VK_SUCCESS)
                     return false;
-                if (render_finished_[i] == VK_NULL_HANDLE &&
-                    vkCreateSemaphore(device_, &sem, nullptr, &render_finished_[i]) != VK_SUCCESS)
-                    return false;
                 if (compute_finished_[i] == VK_NULL_HANDLE &&
                     vkCreateSemaphore(device_, &sem, nullptr, &compute_finished_[i]) != VK_SUCCESS)
                     return false;
@@ -1970,9 +1985,26 @@ namespace shs
             swapchain_usage_ = 0;
             if (swapchain_ != VK_NULL_HANDLE)
             {
+                // Present semaphores die with the swapchain they were sized
+                // for; recreate_swapchain() calls this after vkDeviceWaitIdle,
+                // so no pending present can still hold them.
+                destroy_present_finished_semaphores();
                 vkDestroySwapchainKHR(device_, swapchain_, nullptr);
                 swapchain_ = VK_NULL_HANDLE;
             }
+        }
+
+        void destroy_present_finished_semaphores()
+        {
+            if (device_ == VK_NULL_HANDLE) return;
+            for (VkSemaphore& present_sem : present_finished_)
+            {
+                if (present_sem != VK_NULL_HANDLE)
+                {
+                    vkDestroySemaphore(device_, present_sem, nullptr);
+                }
+            }
+            present_finished_.clear();
         }
 
         bool recreate_swapchain()
@@ -2032,11 +2064,9 @@ namespace shs
             for (uint32_t i = 0; i < kMaxFramesInFlight; ++i)
             {
                 if (image_available_[i] != VK_NULL_HANDLE) vkDestroySemaphore(device_, image_available_[i], nullptr);
-                if (render_finished_[i] != VK_NULL_HANDLE) vkDestroySemaphore(device_, render_finished_[i], nullptr);
                 if (compute_finished_[i] != VK_NULL_HANDLE) vkDestroySemaphore(device_, compute_finished_[i], nullptr);
                 if (inflight_fences_[i] != VK_NULL_HANDLE) vkDestroyFence(device_, inflight_fences_[i], nullptr);
                 image_available_[i] = VK_NULL_HANDLE;
-                render_finished_[i] = VK_NULL_HANDLE;
                 compute_finished_[i] = VK_NULL_HANDLE;
                 inflight_fences_[i] = VK_NULL_HANDLE;
             }
@@ -2182,7 +2212,13 @@ namespace shs
         std::unordered_map<std::thread::id, ThreadCmdPool> thread_pools_;
         std::vector<VkFence> images_in_flight_{};
         VkSemaphore image_available_[kMaxFramesInFlight]{VK_NULL_HANDLE};
-        VkSemaphore render_finished_[kMaxFramesInFlight]{VK_NULL_HANDLE};
+        // Present-finished semaphores are indexed by SWAPCHAIN IMAGE, not by
+        // frames-in-flight slot: the presentation engine consumes them
+        // asynchronously, so a slot-indexed semaphore can still be held by a
+        // pending present of a different image when the slot recycles
+        // (VUID-vkQueueSubmit-pSignalSemaphores-00067). One per swapchain
+        // image, recreated with the swapchain.
+        std::vector<VkSemaphore> present_finished_{};
         VkSemaphore compute_finished_[kMaxFramesInFlight]{VK_NULL_HANDLE};
         VkFence inflight_fences_[kMaxFramesInFlight]{VK_NULL_HANDLE};
         uint64_t current_frame_ = 0;
