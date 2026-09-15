@@ -362,6 +362,39 @@ outside arenas; event log overlay ships in the demo.
   migration. P1.5 (container infrastructure) lands before P2/P3 — cache-streaming
   (§7.1) has nothing to stream unless pod columns are §7.2-contiguous first.
   P4 is independent — can run in parallel any time.
+- **Execution batching (backlog plan, 2026-09-15):** the P3–P6 + material tasks
+  are grouped into 5 runs by touch surface (minimizes context switching; each
+  run is independently committable and verifiable):
+
+  - **Run 1 — Monolith Decomposition** (P3 #1–4): input/camera edges →
+    `shs/input`; path config via `renderpath` intents; pure planner emitting
+    `CommandDesc` spans; main loop → input edge → reducers → plan → executor
+    edge → present. DoD: demo < 1.5k lines, reducer-driven hot-swap visible in
+    a debug overlay. One continuous surgery on the same file.
+  - **Run 2 — GPU-Free Everything** (P3 #5 + #7): hybrid/GPU-free demo mode
+    (backend-factory fallback, `SHS_HAS_VULKAN` gate, optional VMA, merged
+    `_sw`/`_vk` binaries); migrate/retire `hello_*_vulkan.cpp` probes. DoD:
+    configure+build+ctest+demo run with no GPU and no Vulkan SDK. Lands right
+    after Run 1 so all later runs verify GPU-free.
+  - **Run 3 — Open Everything** (P3 #6 + material Phases 2/3/3b; parallel
+    track): open `PassId` range + open light/light-volume registries; shader
+    templating & C++ assembler; material graph compiler; GLSL/Slang/C++
+    emission. DoD: demo-owned pass/technique registers with zero core edits;
+    one authored material emits to all three targets. Library-side only, joins
+    the main line at Run 4.
+  - **Run 4 — Conformance & Convergence Sweep** (P4 + P5): tetris/snake Core 4
+    debt; suffix completion; retire 141 facades + legacy seams; converge to
+    single `shs-renderer-lib`; linter ↔ docs sync + pluggability lint. DoD:
+    zero old-path includes, §7 proven mechanically, one library. Blocked by
+    Run 1 (facade retirement needs rewired consumers).
+  - **Run 5 — Integration Hardening** (P6 #17–20): `PATH_COMPILED`-driven
+    executor rebuilds; replay harness; rollback-ready snapshots; runtime parity
+    probe un-gated. Needs a device (or swiftshader) and Phase J.
+
+  Hard constraints: Run 1 → Run 4 (facade retirement), Run 2 → Run 5 (CI).
+  Run 3 free-floating.
+- Biggest risk: scope creep in P3 (monolith extraction). Mitigation: extraction order
+  in architecture doc §5 is dependency-safe; each step keeps the demo runnable.
 - Biggest risk: scope creep in P3 (monolith extraction). Mitigation: extraction order
   in architecture doc §5 is dependency-safe; each step keeps the demo runnable.
 - P0.5 is moves-only (no content edits) and one module per commit with facade shims,
