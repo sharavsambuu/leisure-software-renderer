@@ -10,11 +10,11 @@
 */
 
 
-#include "shs/scene/scene_types.hpp"
-#include "shs/frame/frame_params.hpp"
-#include "shs/gfx/rt_handle.hpp"
-#include "shs/gfx/rt_registry.hpp"
-#include "shs/job/parallel_for.hpp"
+#include "shs/domains/scene/scene_types.hpp"
+#include "shs/domains/frame/frame_params.hpp"
+#include "shs/domains/gfx/rt_handle.hpp"
+#include "shs/domains/gfx/rt_registry.hpp"
+#include "shs/execution/job/parallel_for.hpp"
 
 #include <algorithm>
 #include <cmath>

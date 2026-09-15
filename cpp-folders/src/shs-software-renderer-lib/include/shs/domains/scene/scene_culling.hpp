@@ -17,11 +17,11 @@
 
 #include <glm/glm.hpp>
 
-#include "shs/geometry/culling_runtime.hpp"
-#include "shs/geometry/culling_software.hpp"
-#include "shs/geometry/culling_visibility.hpp"
-#include "shs/geometry/frustum_culling.hpp"
-#include "shs/scene/scene_elements.hpp"
+#include "shs/domains/geometry/culling_runtime.hpp"
+#include "shs/domains/geometry/culling_software.hpp"
+#include "shs/domains/geometry/culling_visibility.hpp"
+#include "shs/domains/geometry/frustum_culling.hpp"
+#include "shs/domains/scene/scene_elements.hpp"
 
 namespace shs
 {

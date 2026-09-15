@@ -12,7 +12,7 @@
 
 #include <cstdint>
 
-#include "shs/gfx/rt_types.hpp"
+#include "shs/domains/gfx/rt_types.hpp"
 
 namespace shs
 {

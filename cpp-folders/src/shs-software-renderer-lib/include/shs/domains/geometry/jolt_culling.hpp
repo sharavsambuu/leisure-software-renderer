@@ -29,12 +29,12 @@
 #include <Jolt/Geometry/AABox.h>
 #include <Jolt/Physics/Collision/Shape/Shape.h>
 
-#include "shs/geometry/aabb.hpp"
-#include "shs/geometry/frustum_culling.hpp"
-#include "shs/geometry/volumes.hpp"
-#include "shs/geometry/jolt_adapter.hpp"
-#include "shs/geometry/jolt_shape_traits.hpp"
-#include "shs/geometry/scene_shape.hpp"
+#include "shs/domains/geometry/aabb.hpp"
+#include "shs/domains/geometry/frustum_culling.hpp"
+#include "shs/domains/geometry/volumes.hpp"
+#include "shs/domains/geometry/jolt_adapter.hpp"
+#include "shs/domains/geometry/jolt_shape_traits.hpp"
+#include "shs/domains/geometry/scene_shape.hpp"
 
 namespace shs
 {

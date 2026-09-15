@@ -21,13 +21,13 @@
 #include <sstream>
 #include <optional>
 
-#include "shs/pipeline/frame_graph.hpp"
-#include "shs/pipeline/pass_id.hpp"
-#include "shs/pipeline/pass_registry.hpp"
-#include "shs/pipeline/render_path_compiler.hpp"
-#include "shs/pipeline/render_pass.hpp"
-#include "shs/pipeline/technique_profile.hpp"
-#include "shs/rhi/sync/vk_runtime.hpp"
+#include "shs/execution/pipeline/frame_graph.hpp"
+#include "shs/execution/pipeline/pass_id.hpp"
+#include "shs/execution/pipeline/pass_registry.hpp"
+#include "shs/execution/pipeline/render_path_compiler.hpp"
+#include "shs/execution/pipeline/render_pass.hpp"
+#include "shs/execution/pipeline/technique_profile.hpp"
+#include "shs/execution/rhi/sync/vk_runtime.hpp"
 
 namespace shs
 {

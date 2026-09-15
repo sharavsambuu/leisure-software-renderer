@@ -12,9 +12,9 @@
 
 #include <functional>
 
-#include "shs/pipeline/pass_id.hpp"
-#include "shs/pipeline/render_path_compiler.hpp"
-#include "shs/pipeline/render_path_pass_dispatch.hpp"
+#include "shs/execution/pipeline/pass_id.hpp"
+#include "shs/execution/pipeline/render_path_compiler.hpp"
+#include "shs/execution/pipeline/render_path_pass_dispatch.hpp"
 
 namespace shs
 {

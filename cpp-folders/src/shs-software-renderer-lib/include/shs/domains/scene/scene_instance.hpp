@@ -12,8 +12,8 @@
 
 #include <cstdint>
 #include <glm/glm.hpp>
-#include "shs/geometry/scene_shape.hpp"
-#include "shs/geometry/jolt_adapter.hpp"
+#include "shs/domains/geometry/scene_shape.hpp"
+#include "shs/domains/geometry/jolt_adapter.hpp"
 
 namespace shs
 {

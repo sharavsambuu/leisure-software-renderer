@@ -13,9 +13,9 @@
 #include <cstdint>
 #include <string_view>
 
-#include "shs/pipeline/render_path_compiler.hpp"
-#include "shs/pipeline/render_path_recipe.hpp"
-#include "shs/pipeline/render_path_resource_plan.hpp"
+#include "shs/execution/pipeline/render_path_compiler.hpp"
+#include "shs/execution/pipeline/render_path_recipe.hpp"
+#include "shs/execution/pipeline/render_path_resource_plan.hpp"
 
 namespace shs
 {

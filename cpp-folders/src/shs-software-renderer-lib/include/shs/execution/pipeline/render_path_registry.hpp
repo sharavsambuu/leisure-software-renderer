@@ -15,7 +15,7 @@
 #include <utility>
 #include <vector>
 
-#include "shs/pipeline/render_path_recipe.hpp"
+#include "shs/execution/pipeline/render_path_recipe.hpp"
 
 namespace shs
 {

@@ -15,7 +15,7 @@
 #include <span>
 #include <vector>
 
-#include "shs/lighting/light_types.hpp"
+#include "shs/domains/lighting/light_types.hpp"
 
 namespace shs
 {

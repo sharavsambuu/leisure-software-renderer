@@ -14,12 +14,12 @@
 #include <string_view>
 #include <vector>
 
-#include "shs/frame/technique_mode.hpp"
-#include "shs/lighting/light_culling_mode.hpp"
-#include "shs/pipeline/render_path_recipe.hpp"
-#include "shs/pipeline/render_path_registry.hpp"
-#include "shs/pipeline/technique_profile.hpp"
-#include "shs/rhi/core/backend.hpp"
+#include "shs/domains/frame/technique_mode.hpp"
+#include "shs/domains/lighting/light_culling_mode.hpp"
+#include "shs/execution/pipeline/render_path_recipe.hpp"
+#include "shs/execution/pipeline/render_path_registry.hpp"
+#include "shs/execution/pipeline/technique_profile.hpp"
+#include "shs/execution/rhi/core/backend.hpp"
 
 namespace shs
 {

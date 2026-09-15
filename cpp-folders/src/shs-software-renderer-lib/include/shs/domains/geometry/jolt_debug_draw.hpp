@@ -22,10 +22,10 @@
 #include <Jolt/Physics/Collision/Shape/Shape.h>
 #include <Jolt/Physics/Collision/Shape/SubShapeID.h>
 
-#include "shs/geometry/aabb.hpp"
-#include "shs/geometry/volumes.hpp"
-#include "shs/geometry/jolt_adapter.hpp"
-#include "shs/geometry/jolt_culling.hpp"
+#include "shs/domains/geometry/aabb.hpp"
+#include "shs/domains/geometry/volumes.hpp"
+#include "shs/domains/geometry/jolt_adapter.hpp"
+#include "shs/domains/geometry/jolt_culling.hpp"
 
 namespace shs
 {

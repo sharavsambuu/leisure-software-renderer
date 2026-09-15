@@ -16,8 +16,8 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/constants.hpp>
 
-#include "shs/geometry/primitives.hpp"
-#include "shs/resources/mesh.hpp"
+#include "shs/domains/geometry/primitives.hpp"
+#include "shs/domains/resources/mesh.hpp"
 
 namespace shs
 {

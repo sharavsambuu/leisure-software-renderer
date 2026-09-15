@@ -14,7 +14,7 @@
 #include <algorithm>
 #include <glm/glm.hpp>
 
-#include "shs/camera/camera_rig.hpp"
+#include "shs/domains/camera/camera_rig.hpp"
 
 namespace shs
 {

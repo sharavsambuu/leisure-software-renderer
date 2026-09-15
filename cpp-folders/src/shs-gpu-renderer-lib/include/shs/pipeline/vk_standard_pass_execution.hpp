@@ -13,7 +13,7 @@
 
 #include <vulkan/vulkan.h>
 
-#include "shs/pipeline/render_path_compiler.hpp"
+#include "shs/execution/pipeline/render_path_compiler.hpp"
 
 namespace shs
 {

@@ -17,10 +17,10 @@
 #include <vector>
 #include <glm/glm.hpp>
 
-#include "shs/job/job_system.hpp"
-#include "shs/gfx/rt_shadow.hpp"
-#include "shs/gfx/rt_types.hpp"
-#include "shs/rhi/core/backend.hpp"
+#include "shs/execution/job/job_system.hpp"
+#include "shs/domains/gfx/rt_shadow.hpp"
+#include "shs/domains/gfx/rt_types.hpp"
+#include "shs/execution/rhi/core/backend.hpp"
 
 namespace shs
 {

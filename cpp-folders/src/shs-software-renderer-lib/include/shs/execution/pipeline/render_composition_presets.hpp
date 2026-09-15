@@ -15,8 +15,8 @@
 #include <utility>
 #include <vector>
 
-#include "shs/pipeline/render_path_presets.hpp"
-#include "shs/pipeline/render_technique_presets.hpp"
+#include "shs/execution/pipeline/render_path_presets.hpp"
+#include "shs/execution/pipeline/render_technique_presets.hpp"
 
 namespace shs
 {

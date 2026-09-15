@@ -15,10 +15,10 @@
 #include <vector>
 
 #include "shs/core/context.hpp"
-#include "shs/pipeline/pass_registry.hpp"
-#include "shs/pipeline/render_path_capabilities.hpp"
-#include "shs/pipeline/render_path_recipe.hpp"
-#include "shs/pipeline/technique_profile.hpp"
+#include "shs/execution/pipeline/pass_registry.hpp"
+#include "shs/execution/pipeline/render_path_capabilities.hpp"
+#include "shs/execution/pipeline/render_path_recipe.hpp"
+#include "shs/execution/pipeline/technique_profile.hpp"
 
 namespace shs
 {

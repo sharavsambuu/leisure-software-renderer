@@ -18,7 +18,7 @@
 #include <span>
 #include <vector>
 
-#include "shs/geometry/culling_runtime.hpp"
+#include "shs/domains/geometry/culling_runtime.hpp"
 
 namespace shs
 {

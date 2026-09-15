@@ -18,7 +18,7 @@
 
 #include <glm/glm.hpp>
 
-#include "shs/geometry/aabb.hpp"
+#include "shs/domains/geometry/aabb.hpp"
 
 namespace shs
 {

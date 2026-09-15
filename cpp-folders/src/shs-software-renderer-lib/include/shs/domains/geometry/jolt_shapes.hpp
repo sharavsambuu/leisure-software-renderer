@@ -32,8 +32,8 @@
 #include <Jolt/Physics/Collision/Shape/TaperedCapsuleShape.h>
 
 #include "shs/core/units.hpp"
-#include "shs/geometry/jolt_adapter.hpp"
-#include "shs/resources/mesh.hpp"
+#include "shs/domains/geometry/jolt_adapter.hpp"
+#include "shs/domains/resources/mesh.hpp"
 
 // Forward declare light types to avoid circular dependency.
 namespace shs { struct SpotLight; struct RectAreaLight; struct TubeAreaLight; }

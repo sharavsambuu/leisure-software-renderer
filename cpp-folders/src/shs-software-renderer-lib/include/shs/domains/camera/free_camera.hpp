@@ -14,9 +14,9 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/constants.hpp>
 
-#include "shs/camera/camera_math.hpp"
-#include "shs/camera/convention.hpp"
-#include "shs/platform/platform_input.hpp"
+#include "shs/domains/camera/camera_math.hpp"
+#include "shs/domains/camera/convention.hpp"
+#include "shs/execution/platform/platform_input.hpp"
 
 namespace shs
 {

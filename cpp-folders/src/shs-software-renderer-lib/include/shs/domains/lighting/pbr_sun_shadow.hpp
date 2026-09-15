@@ -12,8 +12,8 @@
 #include <glm/glm.hpp>
 #include <algorithm>
 
-#include <shs/lighting/shadow_sample.hpp>
-#include <shs/gfx/rt_shadow.hpp>
+#include <shs/domains/lighting/shadow_sample.hpp>
+#include <shs/domains/gfx/rt_shadow.hpp>
 
 namespace shs {
 

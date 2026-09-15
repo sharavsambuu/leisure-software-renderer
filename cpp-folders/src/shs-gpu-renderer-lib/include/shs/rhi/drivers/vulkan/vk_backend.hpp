@@ -24,7 +24,7 @@
 #include <thread>
 #include <unordered_map>
 
-#include "shs/rhi/core/backend.hpp"
+#include "shs/execution/rhi/core/backend.hpp"
 #include "shs/rhi/drivers/vulkan/vk_component_notes.hpp"
 
 struct SDL_Window;

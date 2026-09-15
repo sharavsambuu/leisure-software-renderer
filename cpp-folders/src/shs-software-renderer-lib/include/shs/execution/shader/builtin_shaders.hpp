@@ -16,9 +16,9 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/constants.hpp>
 
-#include "shs/frame/frame_params.hpp"
-#include "shs/lighting/shadow_sample.hpp"
-#include "shs/shader/program.hpp"
+#include "shs/domains/frame/frame_params.hpp"
+#include "shs/domains/lighting/shadow_sample.hpp"
+#include "shs/execution/shader/program.hpp"
 
 namespace shs
 {

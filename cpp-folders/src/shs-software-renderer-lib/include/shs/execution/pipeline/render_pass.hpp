@@ -20,12 +20,12 @@
 #include <algorithm>
 
 #include "shs/core/context.hpp"
-#include "shs/frame/frame_params.hpp"
-#include "shs/gfx/rt_handle.hpp"
-#include "shs/gfx/rt_registry.hpp"
-#include "shs/pipeline/pass_contract.hpp"
-#include "shs/rhi/command/command_desc.hpp"
-#include "shs/scene/scene_types.hpp"
+#include "shs/domains/frame/frame_params.hpp"
+#include "shs/domains/gfx/rt_handle.hpp"
+#include "shs/domains/gfx/rt_registry.hpp"
+#include "shs/execution/pipeline/pass_contract.hpp"
+#include "shs/execution/rhi/command/command_desc.hpp"
+#include "shs/domains/scene/scene_types.hpp"
 
 namespace shs
 {

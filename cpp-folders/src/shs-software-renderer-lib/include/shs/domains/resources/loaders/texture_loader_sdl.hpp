@@ -15,7 +15,7 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
 
-#include "shs/resources/texture.hpp"
+#include "shs/domains/resources/texture.hpp"
 
 namespace shs
 {

@@ -12,7 +12,7 @@
 
 #include <glm/glm.hpp>
 
-#include "shs/camera/convention.hpp"
+#include "shs/domains/camera/convention.hpp"
 
 namespace shs
 {

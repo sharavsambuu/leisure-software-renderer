@@ -16,8 +16,8 @@
 
 #include <glm/glm.hpp>
 
-#include "shs/camera/convention.hpp"
-#include "shs/geometry/aabb.hpp"
+#include "shs/domains/camera/convention.hpp"
+#include "shs/domains/geometry/aabb.hpp"
 
 namespace shs
 {

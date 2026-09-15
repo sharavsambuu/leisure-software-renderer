@@ -14,9 +14,9 @@
 
 #include <glm/glm.hpp>
 
-#include "shs/geometry/aabb.hpp"
-#include "shs/geometry/frustum_culling.hpp"
-#include "shs/geometry/volumes.hpp"
+#include "shs/domains/geometry/aabb.hpp"
+#include "shs/domains/geometry/frustum_culling.hpp"
+#include "shs/domains/geometry/volumes.hpp"
 
 namespace shs
 {

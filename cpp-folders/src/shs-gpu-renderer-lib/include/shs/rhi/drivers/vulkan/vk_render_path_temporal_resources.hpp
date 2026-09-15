@@ -12,8 +12,8 @@
 #include <algorithm>
 #include <cstdint>
 
-#include "shs/pipeline/pass_contract.hpp"
-#include "shs/pipeline/render_path_resource_plan.hpp"
+#include "shs/execution/pipeline/pass_contract.hpp"
+#include "shs/execution/pipeline/render_path_resource_plan.hpp"
 #include "shs/rhi/drivers/vulkan/vk_memory_utils.hpp"
 
 #ifdef SHS_HAS_VULKAN

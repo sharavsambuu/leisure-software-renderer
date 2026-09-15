@@ -14,7 +14,7 @@
 #include <vector>
 #include <cstdint>
 
-#include "shs/scene/scene_bindings.hpp"
+#include "shs/domains/scene/scene_bindings.hpp"
 
 namespace shs
 {

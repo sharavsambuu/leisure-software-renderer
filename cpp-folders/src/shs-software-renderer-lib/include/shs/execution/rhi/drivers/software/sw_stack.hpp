@@ -9,7 +9,7 @@
 */
 
 
-#include "shs/rhi/drivers/software/sw_backend.hpp"
-#include "shs/gfx/rt_types.hpp"
-#include "shs/sw_render/rasterizer.hpp"
+#include "shs/execution/rhi/drivers/software/sw_backend.hpp"
+#include "shs/domains/gfx/rt_types.hpp"
+#include "shs/execution/sw_render/rasterizer.hpp"
 

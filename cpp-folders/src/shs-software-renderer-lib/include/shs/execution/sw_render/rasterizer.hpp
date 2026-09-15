@@ -17,9 +17,9 @@
 
 #include <glm/glm.hpp>
 
-#include "shs/job/parallel_for.hpp"
-#include "shs/resources/mesh.hpp"
-#include "shs/shader/program.hpp"
+#include "shs/execution/job/parallel_for.hpp"
+#include "shs/domains/resources/mesh.hpp"
+#include "shs/execution/shader/program.hpp"
 
 namespace shs
 {

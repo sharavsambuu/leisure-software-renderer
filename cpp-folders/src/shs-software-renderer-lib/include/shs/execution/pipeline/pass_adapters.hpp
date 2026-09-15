@@ -16,22 +16,22 @@
 
 #include <glm/gtc/matrix_transform.hpp>
 
-#include "shs/geometry/jolt_culling.hpp"
-#include "shs/geometry/jolt_adapter.hpp"
-#include "shs/geometry/jolt_shapes.hpp"
-#include "shs/gfx/rt_handle.hpp"
-#include "shs/lighting/light_set.hpp"
-#include "shs/passes/pass_light_shafts.hpp"
-#include "shs/passes/pass_motion_blur.hpp"
-#include "shs/passes/pass_pbr_forward.hpp"
-#include "shs/passes/pass_shadow_map.hpp"
-#include "shs/passes/pass_tonemap.hpp"
-#include "shs/pipeline/pass_registry.hpp"
-#include "shs/pipeline/pass_contract_registry.hpp"
-#include "shs/pipeline/render_pass.hpp"
-#include "shs/sw_render/rasterizer.hpp"
-#include "shs/resources/resource_registry.hpp"
-#include "shs/shader/program.hpp"
+#include "shs/domains/geometry/jolt_culling.hpp"
+#include "shs/domains/geometry/jolt_adapter.hpp"
+#include "shs/domains/geometry/jolt_shapes.hpp"
+#include "shs/domains/gfx/rt_handle.hpp"
+#include "shs/domains/lighting/light_set.hpp"
+#include "shs/execution/passes/pass_light_shafts.hpp"
+#include "shs/execution/passes/pass_motion_blur.hpp"
+#include "shs/execution/passes/pass_pbr_forward.hpp"
+#include "shs/execution/passes/pass_shadow_map.hpp"
+#include "shs/execution/passes/pass_tonemap.hpp"
+#include "shs/execution/pipeline/pass_registry.hpp"
+#include "shs/execution/pipeline/pass_contract_registry.hpp"
+#include "shs/execution/pipeline/render_pass.hpp"
+#include "shs/execution/sw_render/rasterizer.hpp"
+#include "shs/domains/resources/resource_registry.hpp"
+#include "shs/execution/shader/program.hpp"
 
 namespace shs
 {

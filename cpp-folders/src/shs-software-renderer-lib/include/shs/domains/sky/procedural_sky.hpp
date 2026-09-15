@@ -12,7 +12,7 @@
 
 #include <glm/glm.hpp>
 
-#include "shs/sky/sky_model.hpp"
+#include "shs/domains/sky/sky_model.hpp"
 
 namespace shs
 {

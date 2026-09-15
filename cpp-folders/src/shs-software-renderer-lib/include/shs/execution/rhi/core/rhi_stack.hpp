@@ -9,10 +9,10 @@
 */
 
 
-#include "shs/rhi/core/backend.hpp"
-#include "shs/rhi/core/capabilities.hpp"
-#include "shs/rhi/resource/resource_desc.hpp"
-#include "shs/rhi/pipeline/pipeline_desc.hpp"
-#include "shs/rhi/sync/sync_desc.hpp"
-#include "shs/rhi/command/command_desc.hpp"
-#include "shs/rhi/sync/vk_runtime.hpp"
+#include "shs/execution/rhi/core/backend.hpp"
+#include "shs/execution/rhi/core/capabilities.hpp"
+#include "shs/execution/rhi/resource/resource_desc.hpp"
+#include "shs/execution/rhi/pipeline/pipeline_desc.hpp"
+#include "shs/execution/rhi/sync/sync_desc.hpp"
+#include "shs/execution/rhi/command/command_desc.hpp"
+#include "shs/execution/rhi/sync/vk_runtime.hpp"

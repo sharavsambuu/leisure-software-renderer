@@ -12,7 +12,7 @@
 
 #include <cstdint>
 #include <variant>
-#include "shs/rhi/sync/sync_desc.hpp"
+#include "shs/execution/rhi/sync/sync_desc.hpp"
 
 namespace shs
 {

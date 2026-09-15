@@ -17,9 +17,9 @@
 #include <type_traits>
 #include <unordered_map>
 
-#include "shs/gfx/rt_handle.hpp"
-#include "shs/gfx/rt_shadow.hpp"
-#include "shs/gfx/rt_types.hpp"
+#include "shs/domains/gfx/rt_handle.hpp"
+#include "shs/domains/gfx/rt_shadow.hpp"
+#include "shs/domains/gfx/rt_types.hpp"
 
 namespace shs
 {

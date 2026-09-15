@@ -39,8 +39,8 @@
 #include <Jolt/Physics/Collision/Shape/Shape.h>
 
 #include "shs/core/units.hpp"
-#include "shs/geometry/aabb.hpp"
-#include "shs/geometry/volumes.hpp"
+#include "shs/domains/geometry/aabb.hpp"
+#include "shs/domains/geometry/volumes.hpp"
 
 namespace shs::jolt
 {

@@ -9,5 +9,5 @@
 */
 
 
-#include "shs/logic/state_machine.hpp"
+#include "shs/domains/logic/state_machine.hpp"
 

@@ -12,8 +12,8 @@
 
 #include <string>
 
-#include "shs/resources/loaders/texture_loader_sdl.hpp"
-#include "shs/sky/cubemap_sky.hpp"
+#include "shs/domains/resources/loaders/texture_loader_sdl.hpp"
+#include "shs/domains/sky/cubemap_sky.hpp"
 
 namespace shs
 {

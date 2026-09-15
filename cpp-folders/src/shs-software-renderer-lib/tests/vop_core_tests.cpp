@@ -4,12 +4,12 @@
 #include <string>
 
 #include "shs/core/context.hpp"
-#include "shs/frame/frame_params.hpp"
-#include "shs/input/camera_commands.hpp"
-#include "shs/input/command_processor.hpp"
-#include "shs/input/value_actions.hpp"
-#include "shs/input/value_input_latch.hpp"
-#include "shs/pipeline/pluggable_pipeline.hpp"
+#include "shs/domains/frame/frame_params.hpp"
+#include "shs/domains/input/camera_commands.hpp"
+#include "shs/domains/input/command_processor.hpp"
+#include "shs/domains/input/value_actions.hpp"
+#include "shs/domains/input/value_input_latch.hpp"
+#include "shs/execution/pipeline/pluggable_pipeline.hpp"
 
 namespace
 {

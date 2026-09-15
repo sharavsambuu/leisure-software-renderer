@@ -17,12 +17,12 @@
 #include <string_view>
 #include <vector>
 
-#include "shs/rhi/drivers/opengl/gl_backend.hpp"
-#include "shs/rhi/drivers/software/sw_backend.hpp"
+#include "shs/execution/rhi/drivers/opengl/gl_backend.hpp"
+#include "shs/execution/rhi/drivers/software/sw_backend.hpp"
 #ifdef SHS_HAS_VULKAN
-#include "shs/rhi/drivers/vulkan/vk_backend.hpp"
+#include "shs/execution/rhi/drivers/vulkan/vk_backend.hpp"
 #endif
-#include "shs/rhi/core/backend.hpp"
+#include "shs/execution/rhi/core/backend.hpp"
 
 namespace shs
 {

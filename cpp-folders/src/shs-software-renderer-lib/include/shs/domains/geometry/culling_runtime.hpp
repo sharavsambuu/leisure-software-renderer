@@ -20,7 +20,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include "shs/geometry/jolt_culling.hpp"
+#include "shs/domains/geometry/jolt_culling.hpp"
 
 namespace shs
 {

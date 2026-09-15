@@ -13,7 +13,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/constants.hpp>
 
-#include "shs/camera/camera_math.hpp"
+#include "shs/domains/camera/camera_math.hpp"
 
 namespace shs
 {

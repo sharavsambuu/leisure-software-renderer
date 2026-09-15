@@ -15,14 +15,14 @@
 #include <vector>
 
 #include "shs/core/context.hpp"
-#include "shs/frame/technique_mode.hpp"
-#include "shs/pipeline/pass_registry.hpp"
-#include "shs/pipeline/render_path_compiler.hpp"
-#include "shs/pipeline/render_path_barrier_plan.hpp"
-#include "shs/pipeline/render_path_presets.hpp"
-#include "shs/pipeline/render_path_registry.hpp"
-#include "shs/pipeline/render_path_resource_plan.hpp"
-#include "shs/rhi/core/backend.hpp"
+#include "shs/domains/frame/technique_mode.hpp"
+#include "shs/execution/pipeline/pass_registry.hpp"
+#include "shs/execution/pipeline/render_path_compiler.hpp"
+#include "shs/execution/pipeline/render_path_barrier_plan.hpp"
+#include "shs/execution/pipeline/render_path_presets.hpp"
+#include "shs/execution/pipeline/render_path_registry.hpp"
+#include "shs/execution/pipeline/render_path_resource_plan.hpp"
+#include "shs/execution/rhi/core/backend.hpp"
 
 namespace shs
 {

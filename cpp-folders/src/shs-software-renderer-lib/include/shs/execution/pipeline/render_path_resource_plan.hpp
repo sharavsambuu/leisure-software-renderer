@@ -16,12 +16,12 @@
 #include <utility>
 #include <vector>
 
-#include "shs/pipeline/pass_contract.hpp"
-#include "shs/pipeline/pass_contract_registry.hpp"
-#include "shs/pipeline/pass_id.hpp"
-#include "shs/pipeline/pass_registry.hpp"
-#include "shs/pipeline/render_path_compiler.hpp"
-#include "shs/pipeline/render_path_recipe.hpp"
+#include "shs/execution/pipeline/pass_contract.hpp"
+#include "shs/execution/pipeline/pass_contract_registry.hpp"
+#include "shs/execution/pipeline/pass_id.hpp"
+#include "shs/execution/pipeline/pass_registry.hpp"
+#include "shs/execution/pipeline/render_path_compiler.hpp"
+#include "shs/execution/pipeline/render_path_recipe.hpp"
 
 namespace shs
 {

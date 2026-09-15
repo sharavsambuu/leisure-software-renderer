@@ -11,9 +11,9 @@
 
 #include <vulkan/vulkan.h>
 
-#include "shs/pipeline/pass_contract.hpp"
-#include "shs/pipeline/pass_id.hpp"
-#include "shs/pipeline/render_path_barrier_plan.hpp"
+#include "shs/execution/pipeline/pass_contract.hpp"
+#include "shs/execution/pipeline/pass_id.hpp"
+#include "shs/execution/pipeline/render_path_barrier_plan.hpp"
 
 namespace shs
 {

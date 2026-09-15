@@ -16,11 +16,11 @@
 #include <functional>
 
 #include "shs/core/context.hpp"
-#include "shs/frame/frame_params.hpp"
-#include "shs/gfx/rt_registry.hpp"
-#include "shs/pipeline/pluggable_pipeline.hpp"
-#include "shs/scene/scene_objects.hpp"
-#include "shs/scene/scene_types.hpp"
+#include "shs/domains/frame/frame_params.hpp"
+#include "shs/domains/gfx/rt_registry.hpp"
+#include "shs/execution/pipeline/pluggable_pipeline.hpp"
+#include "shs/domains/scene/scene_objects.hpp"
+#include "shs/domains/scene/scene_types.hpp"
 
 namespace shs
 {

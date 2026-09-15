@@ -15,10 +15,10 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_inverse.hpp>
 
-#include "shs/gfx/rt_types.hpp"
-#include "shs/job/parallel_for.hpp"
-#include "shs/scene/scene_types.hpp"
-#include "shs/sky/sky_model.hpp"
+#include "shs/domains/gfx/rt_types.hpp"
+#include "shs/execution/job/parallel_for.hpp"
+#include "shs/domains/scene/scene_types.hpp"
+#include "shs/domains/sky/sky_model.hpp"
 
 namespace shs
 {

@@ -12,8 +12,8 @@
 #include <string>
 #include <vector>
 
-#include "shs/frame/technique_mode.hpp"
-#include "shs/pipeline/pass_id.hpp"
+#include "shs/domains/frame/technique_mode.hpp"
+#include "shs/execution/pipeline/pass_id.hpp"
 
 namespace shs
 {

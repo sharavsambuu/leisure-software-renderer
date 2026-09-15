@@ -15,7 +15,7 @@
 
 #include <glm/glm.hpp>
 
-#include "shs/resources/texture.hpp"
+#include "shs/domains/resources/texture.hpp"
 
 namespace shs
 {

@@ -17,8 +17,8 @@
 #include <utility>
 #include <vector>
 
-#include "shs/pipeline/pass_id.hpp"
-#include "shs/pipeline/render_path_compiler.hpp"
+#include "shs/execution/pipeline/pass_id.hpp"
+#include "shs/execution/pipeline/render_path_compiler.hpp"
 
 namespace shs
 {

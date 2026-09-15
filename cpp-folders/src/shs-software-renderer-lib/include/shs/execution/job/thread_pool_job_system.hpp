@@ -19,7 +19,7 @@
 #include <thread>
 #include <vector>
 
-#include "shs/job/job_system.hpp"
+#include "shs/execution/job/job_system.hpp"
 
 namespace shs
 {

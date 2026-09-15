@@ -11,7 +11,7 @@
 
 
 #include <cstdint>
-#include "shs/rhi/core/capabilities.hpp"
+#include "shs/execution/rhi/core/capabilities.hpp"
 
 namespace shs
 {

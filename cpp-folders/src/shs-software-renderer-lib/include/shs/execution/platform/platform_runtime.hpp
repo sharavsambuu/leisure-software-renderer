@@ -13,7 +13,7 @@
 #include <cstdint>
 #include <string>
 
-#include "shs/platform/platform_input.hpp"
+#include "shs/execution/platform/platform_input.hpp"
 
 namespace shs
 {

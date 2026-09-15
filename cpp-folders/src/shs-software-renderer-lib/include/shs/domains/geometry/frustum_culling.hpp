@@ -15,7 +15,7 @@
 
 #include <glm/glm.hpp>
 
-#include "shs/geometry/volumes.hpp"
+#include "shs/domains/geometry/volumes.hpp"
 
 namespace shs
 {

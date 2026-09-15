@@ -20,9 +20,9 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
 
-#include "shs/geometry/jolt_adapter.hpp"
-#include "shs/geometry/scene_shape.hpp"
-#include "shs/scene/scene_types.hpp"
+#include "shs/domains/geometry/jolt_adapter.hpp"
+#include "shs/domains/geometry/scene_shape.hpp"
+#include "shs/domains/scene/scene_types.hpp"
 
 namespace shs
 {

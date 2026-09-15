@@ -20,9 +20,9 @@
 
 #include <glm/glm.hpp>
 
-#include "shs/lighting/jolt_light_culling.hpp"
-#include "shs/lighting/light_culling_mode.hpp"
-#include "shs/scene/scene_elements.hpp"
+#include "shs/domains/lighting/jolt_light_culling.hpp"
+#include "shs/domains/lighting/light_culling_mode.hpp"
+#include "shs/domains/scene/scene_elements.hpp"
 
 namespace shs
 {

@@ -17,7 +17,7 @@
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
 
-#include "shs/resources/mesh.hpp"
+#include "shs/domains/resources/mesh.hpp"
 
 namespace shs
 {

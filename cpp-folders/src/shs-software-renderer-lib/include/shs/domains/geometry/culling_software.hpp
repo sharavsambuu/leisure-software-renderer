@@ -21,9 +21,9 @@
 
 #include <glm/glm.hpp>
 
-#include "shs/geometry/aabb.hpp"
-#include "shs/geometry/culling_runtime.hpp"
-#include "shs/geometry/jolt_debug_draw.hpp"
+#include "shs/domains/geometry/aabb.hpp"
+#include "shs/domains/geometry/culling_runtime.hpp"
+#include "shs/domains/geometry/jolt_debug_draw.hpp"
 
 namespace shs::culling_sw
 {

@@ -9,8 +9,8 @@
             интерфэйс эсвэл хэрэгжүүлэлтийг тодорхойлно.
 */
 
-#include "shs/input/input_state.hpp"
-#include "shs/input/value_actions.hpp"
+#include "shs/domains/input/input_state.hpp"
+#include "shs/domains/input/value_actions.hpp"
 
 namespace shs
 {

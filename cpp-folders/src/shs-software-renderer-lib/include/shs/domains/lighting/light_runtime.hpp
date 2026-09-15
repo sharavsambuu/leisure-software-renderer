@@ -11,11 +11,11 @@
 #include <glm/gtc/constants.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-#include "shs/camera/camera_math.hpp"
-#include "shs/geometry/jolt_shapes.hpp"
-#include "shs/geometry/scene_shape.hpp"
-#include "shs/lighting/light_types.hpp"
-#include "shs/scene/scene_elements.hpp"
+#include "shs/domains/camera/camera_math.hpp"
+#include "shs/domains/geometry/jolt_shapes.hpp"
+#include "shs/domains/geometry/scene_shape.hpp"
+#include "shs/domains/lighting/light_types.hpp"
+#include "shs/domains/scene/scene_elements.hpp"
 
 namespace shs
 {

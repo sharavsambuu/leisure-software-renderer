@@ -21,10 +21,10 @@
 #include <utility>
 #include <vector>
 
-#include "shs/job/job_system.hpp"
-#include "shs/job/wait_group.hpp"
-#include "shs/rhi/command/command_desc.hpp"
-#include "shs/rhi/sync/sync_desc.hpp"
+#include "shs/execution/job/job_system.hpp"
+#include "shs/execution/job/wait_group.hpp"
+#include "shs/execution/rhi/command/command_desc.hpp"
+#include "shs/execution/rhi/sync/sync_desc.hpp"
 
 namespace shs
 {

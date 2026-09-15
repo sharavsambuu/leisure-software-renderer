@@ -11,7 +11,7 @@
 
 #include <glm/glm.hpp>
 #include <algorithm>
-#include <shs/gfx/rt_shadow.hpp>
+#include <shs/domains/gfx/rt_shadow.hpp>
 
 namespace shs {
 

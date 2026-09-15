@@ -14,9 +14,9 @@
 #include <unordered_map>
 #include <vector>
 
-#include "shs/resources/material.hpp"
-#include "shs/resources/mesh.hpp"
-#include "shs/resources/texture.hpp"
+#include "shs/domains/resources/material.hpp"
+#include "shs/domains/resources/mesh.hpp"
+#include "shs/domains/resources/texture.hpp"
 
 namespace shs
 {

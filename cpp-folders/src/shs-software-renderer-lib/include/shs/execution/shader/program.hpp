@@ -12,7 +12,7 @@
 
 #include <functional>
 
-#include "shs/shader/types.hpp"
+#include "shs/execution/shader/types.hpp"
 
 namespace shs
 {

@@ -10,9 +10,9 @@
 */
 
 
-#include "shs/camera/camera_rig.hpp"
-#include "shs/camera/view_camera.hpp"
-#include "shs/scene/scene_types.hpp"
+#include "shs/domains/camera/camera_rig.hpp"
+#include "shs/domains/camera/view_camera.hpp"
+#include "shs/domains/scene/scene_types.hpp"
 
 namespace shs
 {

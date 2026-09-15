@@ -12,7 +12,7 @@
 
 #include <glm/glm.hpp>
 
-#include "shs/scene/scene_types.hpp"
+#include "shs/domains/scene/scene_types.hpp"
 
 namespace shs
 {

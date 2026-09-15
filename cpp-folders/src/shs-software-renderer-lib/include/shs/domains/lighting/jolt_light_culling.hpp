@@ -25,10 +25,10 @@
 #include <glm/gtc/constants.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-#include "shs/geometry/volumes.hpp"
-#include "shs/geometry/frustum_culling.hpp"
-#include "shs/geometry/jolt_culling.hpp"
-#include "shs/geometry/scene_shape.hpp"
+#include "shs/domains/geometry/volumes.hpp"
+#include "shs/domains/geometry/frustum_culling.hpp"
+#include "shs/domains/geometry/jolt_culling.hpp"
+#include "shs/domains/geometry/scene_shape.hpp"
 
 namespace shs
 {

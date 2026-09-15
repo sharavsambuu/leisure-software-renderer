@@ -12,9 +12,9 @@
 
 #include <string>
 
-#include "shs/geometry/primitives.hpp"
-#include "shs/geometry/primitives_builders.hpp"
-#include "shs/resources/resource_registry.hpp"
+#include "shs/domains/geometry/primitives.hpp"
+#include "shs/domains/geometry/primitives_builders.hpp"
+#include "shs/domains/resources/resource_registry.hpp"
 
 namespace shs
 {

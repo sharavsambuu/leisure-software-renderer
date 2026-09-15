@@ -6,8 +6,8 @@
 
 #include <glm/glm.hpp>
 
-#include "shs/gfx/rt_types.hpp"
-#include "shs/geometry/jolt_debug_draw.hpp"
+#include "shs/domains/gfx/rt_types.hpp"
+#include "shs/domains/geometry/jolt_debug_draw.hpp"
 
 namespace shs
 {

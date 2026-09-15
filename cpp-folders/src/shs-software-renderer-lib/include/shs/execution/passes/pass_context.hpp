@@ -14,7 +14,7 @@
 #include <glm/mat4x4.hpp>
 #include <glm/vec3.hpp>
 #include "shs/core/context.hpp"
-#include "shs/gfx/rt_types.hpp"
+#include "shs/domains/gfx/rt_types.hpp"
 
 namespace shs
 {

@@ -14,8 +14,8 @@
 #include <variant>
 #include <vector>
 
-#include "shs/geometry/convex_cell.hpp"
-#include "shs/geometry/volumes.hpp"
+#include "shs/domains/geometry/convex_cell.hpp"
+#include "shs/domains/geometry/volumes.hpp"
 
 namespace shs
 {

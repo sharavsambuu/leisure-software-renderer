@@ -11,7 +11,7 @@
 
 
 #include <cstdint>
-#include "shs/rhi/resource/resource_desc.hpp"
+#include "shs/execution/rhi/resource/resource_desc.hpp"
 
 namespace shs
 {

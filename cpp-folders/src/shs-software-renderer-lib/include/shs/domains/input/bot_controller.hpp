@@ -12,7 +12,7 @@
 
 #include <cmath>
 
-#include "shs/input/value_actions.hpp"
+#include "shs/domains/input/value_actions.hpp"
 
 namespace shs
 {

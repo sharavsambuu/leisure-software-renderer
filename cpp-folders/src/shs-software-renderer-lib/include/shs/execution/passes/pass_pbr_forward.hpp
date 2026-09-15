@@ -9,16 +9,16 @@
 */
 
 
-#include "shs/sw_render/rasterizer.hpp"
-#include "shs/resources/resource_registry.hpp"
-#include "shs/scene/scene_types.hpp"
-#include "shs/frame/frame_params.hpp"
-#include "shs/gfx/rt_handle.hpp"
-#include "shs/gfx/rt_registry.hpp"
-#include "shs/gfx/rt_shadow.hpp"
-#include "shs/job/parallel_for.hpp"
-#include "shs/shader/builtin_shaders.hpp"
-#include "shs/sky/skybox_renderer.hpp"
+#include "shs/execution/sw_render/rasterizer.hpp"
+#include "shs/domains/resources/resource_registry.hpp"
+#include "shs/domains/scene/scene_types.hpp"
+#include "shs/domains/frame/frame_params.hpp"
+#include "shs/domains/gfx/rt_handle.hpp"
+#include "shs/domains/gfx/rt_registry.hpp"
+#include "shs/domains/gfx/rt_shadow.hpp"
+#include "shs/execution/job/parallel_for.hpp"
+#include "shs/execution/shader/builtin_shaders.hpp"
+#include "shs/domains/sky/skybox_renderer.hpp"
 
 #include <algorithm>
 #include <cmath>

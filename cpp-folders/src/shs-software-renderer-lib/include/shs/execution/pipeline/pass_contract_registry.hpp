@@ -13,9 +13,9 @@
 #include <string_view>
 #include <utility>
 
-#include "shs/pipeline/pass_contract.hpp"
-#include "shs/pipeline/pass_id.hpp"
-#include "shs/pipeline/pass_registry.hpp"
+#include "shs/execution/pipeline/pass_contract.hpp"
+#include "shs/execution/pipeline/pass_id.hpp"
+#include "shs/execution/pipeline/pass_registry.hpp"
 
 namespace shs
 {

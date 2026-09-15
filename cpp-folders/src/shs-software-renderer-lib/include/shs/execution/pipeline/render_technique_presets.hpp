@@ -14,7 +14,7 @@
 #include <string>
 #include <string_view>
 
-#include "shs/frame/frame_params.hpp"
+#include "shs/domains/frame/frame_params.hpp"
 
 namespace shs
 {

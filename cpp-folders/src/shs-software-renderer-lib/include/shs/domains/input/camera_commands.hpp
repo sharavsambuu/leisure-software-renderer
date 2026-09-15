@@ -13,7 +13,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/constants.hpp>
 
-#include "shs/input/command.hpp"
+#include "shs/domains/input/command.hpp"
 
 namespace shs
 {

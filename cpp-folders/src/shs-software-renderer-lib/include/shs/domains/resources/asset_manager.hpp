@@ -12,8 +12,8 @@
 
 #include <string>
 
-#include "shs/resources/loaders/resource_import.hpp"
-#include "shs/resources/resource_registry.hpp"
+#include "shs/domains/resources/loaders/resource_import.hpp"
+#include "shs/domains/resources/resource_registry.hpp"
 
 namespace shs
 {

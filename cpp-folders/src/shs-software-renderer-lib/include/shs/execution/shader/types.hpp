@@ -15,9 +15,9 @@
 
 #include <glm/glm.hpp>
 
-#include "shs/gfx/rt_shadow.hpp"
-#include "shs/gfx/rt_types.hpp"
-#include "shs/resources/texture.hpp"
+#include "shs/domains/gfx/rt_shadow.hpp"
+#include "shs/domains/gfx/rt_types.hpp"
+#include "shs/domains/resources/texture.hpp"
 
 namespace shs
 {

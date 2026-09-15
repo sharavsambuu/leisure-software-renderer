@@ -1,2 +1,0 @@
-#pragma message("shs/lighting/light_runtime.hpp is deprecated: include shs/domains/lighting/light_runtime.hpp (P0.5 pod-first migration)")
-#include "shs/domains/lighting/light_runtime.hpp"

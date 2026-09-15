@@ -18,7 +18,7 @@
 #include <utility>
 #include <vector>
 
-#include "shs/pipeline/render_pass.hpp"
+#include "shs/execution/pipeline/render_pass.hpp"
 
 namespace shs
 {

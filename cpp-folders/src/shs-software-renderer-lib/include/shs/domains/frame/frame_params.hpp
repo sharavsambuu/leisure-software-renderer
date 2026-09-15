@@ -12,7 +12,7 @@
 
 #include <cstdint>
 
-#include "shs/frame/technique_mode.hpp"
+#include "shs/domains/frame/technique_mode.hpp"
 
 namespace shs
 {

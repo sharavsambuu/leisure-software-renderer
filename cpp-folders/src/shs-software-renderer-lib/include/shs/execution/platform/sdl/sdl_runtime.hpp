@@ -17,7 +17,7 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
 
-#include "shs/platform/platform_runtime.hpp"
+#include "shs/execution/platform/platform_runtime.hpp"
 
 namespace shs
 {
