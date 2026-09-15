@@ -182,6 +182,7 @@ set_property(TARGET Hello3DTetris PROPERTY INCLUDE_DIRECTORIES
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/game/include
     ${HelloSHSRenderer_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../shs-software-renderer-lib/include
     ${ASSIMP_INCLUDE_DIR}
     ${SDL2_INCLUDE_DIRS}
     ${CMAKE_BINARY_DIR}

@@ -63,3 +63,12 @@ New vocabulary follows Constitution §6.5 (Vocabulary Law) — this catalog neve
 restates or re-numbers it (precedence: §2.2). When a pod's vocabulary changes,
 update the relevant table above and the Constitution's §6.5 remains the single
 source of truth for naming/factory/transform conventions.
+
+## 6. Contiguous Backing-Store Utilities (P1.5)
+
+> **Shared lib home (P1.5, §7.2 rule 6):** pod hot-state backing stores are
+> owned by the lib primitive zones — `include/shs/memory/frame_memory_resource.hpp`
+> (transient frame arena, §3 Rule 5.1) and `include/shs/containers/soa_table.hpp`
+> + `flat_map.hpp` (generational column table / node-free keyed lookup).
+> Demos and pods must not define private copies; keyed hot lookups use
+> `FlatMap`, and dense column walks target `SoaTable::column<I>()` spans.

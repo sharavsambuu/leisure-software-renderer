@@ -103,6 +103,37 @@ fi
 echo "[vop-boundary] OK: domain headers carry no direct execution-zone includes"
 echo "[vop-boundary] INFO: ${legacy_count} legacy-path includes in domains/ resolve via migration facades (canonicalized in P5)"
 
+# §7.2 rule 5 (roadmap P1.5 DoD): no node-based containers in hot-state zones.
+# Hot-state zones are the shared primitive utilities (memory/, containers/,
+# frame/) and the domain pods' state headers; cold string-keyed registries in
+# domains/resources + domains/gfx are flagged INFO until their P5 migration.
+node_container_pattern='std::(list|map|set|unordered_map|unordered_set)[[:space:]]*<'
+hot_state_dirs=(
+  "${lib_root}/include/shs/memory"
+  "${lib_root}/include/shs/containers"
+  "${lib_root}/include/shs/frame"
+)
+for d in "${hot_state_dirs[@]}"; do
+  [[ -d "${d}" ]] || continue
+  for h in $(find "${d}" -name '*.hpp' | sort); do
+    rel="${h#"${lib_root}/include/"}"
+    hits="$("${search_cmd[@]}" "${node_container_pattern}" "${h}" 2>/dev/null || true)"
+    if [[ -n "${hits}" ]]; then
+      echo "[vop-boundary] FAIL: node-based container in hot-state zone ${rel} (§7.2 rule 5)"
+      echo "${hits}"
+      failed=1
+    fi
+  done
+done
+if [[ "${failed}" -ne 0 ]]; then
+  exit 1
+fi
+echo "[vop-boundary] OK: zero node-based containers in hot-state zones (§7.2 rule 5)"
+
+cold_registry_hits="$(grep -rnE 'std::(list|map|set|unordered_map|unordered_set)[[:space:]]*<' \
+  "${lib_root}/include/shs/domains" 2>/dev/null | wc -l)"
+echo "[vop-boundary] INFO: ${cold_registry_hits} node-container uses in domains/ (cold registries; migrate to FlatMap in P5)"
+
 if [[ "${failed}" -ne 0 ]]; then
   exit 1
 fi

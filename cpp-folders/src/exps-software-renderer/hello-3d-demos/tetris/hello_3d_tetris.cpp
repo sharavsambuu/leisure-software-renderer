@@ -51,6 +51,7 @@
 #include <thread>
 
 #include "shs_renderer.hpp"
+#include "shs/memory/frame_memory_resource.hpp"   // P1.5: shared frame arena (was demo-private)
 
 #ifndef TETRIS_SOURCE_ROOT
 #define TETRIS_SOURCE_ROOT "."
@@ -188,32 +189,11 @@ namespace {
         return hw > 2 ? hw - 2 : std::max(2u, hw);
     }
 
-    // Per-frame linear PMR arena (O(1) reset).
-    class FrameMemoryResource final : public std::pmr::memory_resource {
-    public:
-        FrameMemoryResource() : buffer_(std::make_unique<std::byte[]>(kCapacity)) {}
-
-        void   reset() noexcept { offset_ = 0; }
-        std::pmr::memory_resource* get() noexcept { return this; }
-
-    protected:
-        void* do_allocate(size_t bytes, size_t alignment) override {
-            auto aligned = [](size_t v, size_t a) { return (v + a - 1) & ~(a - 1); };
-            const size_t base = aligned(offset_, alignment);
-            if (base + bytes > kCapacity) throw std::bad_alloc();
-            offset_ = base + bytes;
-            return buffer_.get() + base;
-        }
-        void do_deallocate(void*, size_t, size_t) noexcept override {}
-        bool do_is_equal(const memory_resource& other) const noexcept override {
-            return this == &other;
-        }
-
-    private:
-        static constexpr size_t kCapacity = 16ull * 1024ull * 1024ull;
-        std::unique_ptr<std::byte[]> buffer_;
-        size_t offset_ = 0;
-    };
+    // Per-frame linear PMR arena (O(1) reset). P1.5: promoted to the shared
+    // lib (shs/memory/frame_memory_resource.hpp) per §7.2 rule 6 — the
+    // demo-private copy is gone. Tetris keeps its historical 16 MB capacity
+    // (see frame_memory instantiation below); overflow is strict bad_alloc.
+    using FrameMemoryResource = shs::memory::FrameMemoryResource;
 
 #ifdef TETRIS_LUA_ENABLED
     // --- Lua bridges: pure value-in/value-out function pointers (no captures).
@@ -533,7 +513,7 @@ int main(int argc, char* argv[]) {
     shs::Job::ThreadedPriorityJobSystem job_system(job_threads);
     shs::Job::WaitGroup                 wg_render;
 
-    FrameMemoryResource frame_memory;
+    FrameMemoryResource frame_memory{16ull * 1024ull * 1024ull};   // historical 16 MB arena
 
     // --- Persistent pod states (P1a: GameWorld declared above) ----------------------
     // First piece spawns lazily in reduce_matrix (frame 1) so the RNG stream

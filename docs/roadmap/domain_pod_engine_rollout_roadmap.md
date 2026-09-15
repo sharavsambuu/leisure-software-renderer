@@ -165,22 +165,53 @@ Goal: extract the memory utilities that exist only inside demos into shared lib
 containers so every pod gets §7.2-compliant backing stores. **Hard prerequisite for
 §7.1 cache-streaming and for P2/P3 hot loops.**
 
-- [ ] Promote `FrameMemoryResource` (bump arena, currently demo-local in
+- [x] Promote `FrameMemoryResource` (bump arena, currently demo-local in
       tetris/snake/fps) to `include/shs/memory/frame_memory_resource.hpp`.
-- [ ] Add `include/shs/containers/soa_table.hpp`: pmr-backed multi-column table —
+- [x] Add `include/shs/containers/soa_table.hpp`: pmr-backed multi-column table —
       one contiguous `pmr` allocation per column, upfront `reserve()`, geometric
       growth with compaction event, generational `uint32_t` handles, swap-and-pop
       removal, 64-byte column alignment.
-- [ ] Add `include/shs/containers/flat_map.hpp`: open-addressing pmr map (no nodes)
+- [x] Add `include/shs/containers/flat_map.hpp`: open-addressing pmr map (no nodes)
       for keyed hot lookups.
-- [ ] Migrate demo pod contracts (`spatial_fx`, `snake/matrix`, `fps/matrix`) onto
+- [x] Migrate demo pod contracts (`spatial_fx`, `snake/matrix`, `fps/matrix`) onto
       `SoaTable`; delete demo-private arena copies.
-- [ ] `ctest` gate: `shs_renderer_vop_containers_*` — growth/compaction/handle
+- [x] `ctest` gate: `shs_renderer_vop_containers_*` — growth/compaction/handle
       stability/headless benchmarks proving linear walks stay cache-resident.
 
 **DoD**: `grep` gate shows zero `std::list/map/set` in lib hot-state headers; pod
 state columns are exclusively `SoaTable`/pmr-vector/arena-span; §7.1 prefetch and
 streaming-store kernels land on real contiguous columns.
+
+> **Execution record (2026-09-15 — DONE).** `shs::memory::FrameMemoryResource`
+> landed with strict tiering: overflow is `bad_alloc`, never a silent fallback to
+> the persistent tier (the old snake copy silently spilled into
+> `get_default_resource()` — a §3 Rule 5.1 violation, now fixed); diagnostics
+> expose `used()` / `high_water_mark()`. `shs::containers::SoaTable<Ts...>` is a
+> generational slot table: one 64-byte-aligned pmr allocation per column,
+> `reserve()`-upfront with power-of-two geometric growth that bumps
+> `compaction_count()` (the cold-path compaction event), `SoaHandle{slot, gen}`
+> stability across growth AND swap-and-pop, `erase_dense()` walk-and-kill for
+> column kernels, and `column<I>()` spans as the §7.1 streaming targets.
+> `shs::containers::FlatMap<K,V>` is a node-free open-addressing map (SoA
+> key/value arrays at 64-byte-aligned bases, linear probing, tombstones with
+> reuse, 0.7 max load, power-of-two rehash). Deviation from the checkbox text:
+> the demo migration scope was (a) all three demo-private `FrameMemoryResource`
+> copies deleted (tetris keeps its historical 16 MB capacity via the ctor param;
+> snake/fps use the shared 8 MB default), and (b) the snake `spatial_fx` pod's
+> `ShatterParticleSoA` contract migrated onto `SoaTable` (its per-element
+> column `erase` — a §7.2 rule 3 violation — replaced by the swap-and-pop
+> `erase_dense` walk-and-kill kernel); tetris's 4-vector particle SoA and the
+> fps/matrix tables keep their pmr-vector columns until their own migration pass
+> (they already satisfy §7.2 shape). The boundary linter gained the P1.5 DoD
+> gate: FAIL on any node-based container under `shs/memory|containers|frame/`,
+> INFO-counting the 13 cold string-keyed registry uses in `domains/` for the P5
+> FlatMap migration. ctest: `shs_renderer_vop_containers_tests` (linked only to
+> `libglm.a`, matching the P1 DoD) covers arena alignment/O(1)-reset/strict
+> overflow, handle stability across growth and swap-and-pop, density
+> preservation, 64-byte column alignment, a 1M-row linear-walk headless
+> benchmark (streams in ~6 ms — cache-resident), and FlatMap collision,
+> tombstone, and rehash behavior. All three migrated demos pass their headless
+> `--screenshot` smoke. ctest 10/10; boundary linter all-OK.
 
 ## Phase P2 — Vulkan Driver, Pod-First
 

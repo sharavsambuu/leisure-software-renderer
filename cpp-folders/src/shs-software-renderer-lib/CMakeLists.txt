@@ -190,11 +190,31 @@ if(SHS_RENDERER_BUILD_TESTS)
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     )
 
+    # P1.5 container/arena tests: header-only value tests, no platform links.
+    add_executable(shs_renderer_vop_containers_tests
+        tests/vop_containers_tests.cpp
+    )
+    target_link_libraries(shs_renderer_vop_containers_tests PRIVATE shs::renderer-values)
+    target_compile_features(shs_renderer_vop_containers_tests PRIVATE cxx_std_20)
+    if(MSVC)
+        target_compile_options(shs_renderer_vop_containers_tests PRIVATE /W4)
+    else()
+        target_compile_options(shs_renderer_vop_containers_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+
     add_test(
         NAME shs_renderer_vop_renderpath_tests
         COMMAND shs_renderer_vop_renderpath_tests
     )
     set_tests_properties(shs_renderer_vop_renderpath_tests PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    )
+
+    add_test(
+        NAME shs_renderer_vop_containers_tests
+        COMMAND shs_renderer_vop_containers_tests
+    )
+    set_tests_properties(shs_renderer_vop_containers_tests PROPERTIES
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     )
 endif()

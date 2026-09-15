@@ -2,10 +2,12 @@
 
 // spatial_fx pod — rendering geometry + particle FX vocabulary. Pure data; consumed by the plan at runtime.
 #include <cstdint>
+#include <cstddef>
 #include <array>
 #include <memory_resource>
 #include <glm/glm.hpp>
 #include "shs_renderer.hpp"   // shs::Color (shared renderer from hello-shs-renderer; dir is on the global include path via parent aggregator)
+#include "shs/containers/soa_table.hpp"   // P1.5: shared SoaTable backing store (§7.2)
 
 namespace snake::spatial_fx {
 
@@ -39,24 +41,25 @@ namespace snake::spatial_fx {
         glm::vec3 direction{ -1.0f, -1.0f, -1.0f };   // top-left lighting (world space)
     };
 
-    // ShatterParticleSoA: particle system for FX bursts (food-eat sparkle + game-over shatter). Mirrors tetris's 4-vector SoA.
-    struct ShatterParticleSoA {
-        std::pmr::vector<glm::vec3> position;   // world-space position
-        std::pmr::vector<glm::vec3> velocity;   // spread in the board plane (xy, z == 0)
-        std::pmr::vector<shs::Color> color;     // rgb01 base color
-        std::pmr::vector<float> life;           // remaining lifetime (seconds)
+    // ShatterParticleSoA: particle system for FX bursts (food-eat sparkle + game-over shatter).
+    // P1.5: backed by the shared lib SoaTable (shs/containers/soa_table.hpp) — one
+    // contiguous 64-byte-aligned pmr allocation per column, generational handles,
+    // swap-and-pop removal (§7.2). Column order: position, velocity, color, life.
+    // Mirrors tetris's 4-vector SoA (kept there until its own P1.5 migration).
+    using ShatterParticleSoA = shs::containers::SoaTable<glm::vec3, glm::vec3, shs::Color, float>;
 
-        explicit ShatterParticleSoA(std::pmr::memory_resource* mr)
-            : position(mr), velocity(mr), color(mr), life(mr) {}
+    // Named column indices for the particle table (readability at call sites).
+    inline constexpr std::size_t kParticlePosition = 0;
+    inline constexpr std::size_t kParticleVelocity = 1;
+    inline constexpr std::size_t kParticleColor    = 2;
+    inline constexpr std::size_t kParticleLife     = 3;
 
-        void add(glm::vec3 pos, glm::vec3 vel, shs::Color col, float duration = 0.8f);
-    };
-
-    inline void ShatterParticleSoA::add(glm::vec3 pos, glm::vec3 vel, shs::Color col, float duration) {
-        position.push_back(pos);
-        velocity.push_back(vel);
-        color.push_back(col);
-        life.push_back(duration);
+    // Burst helper: emits one particle row (was SoaTable-free struct's add()).
+    inline shs::containers::SoaHandle add_particle(ShatterParticleSoA& particles,
+                                                   glm::vec3 pos, glm::vec3 vel,
+                                                   shs::Color col, float duration = 0.8f)
+    {
+        return particles.insert(pos, vel, col, duration);
     }
 
 } // namespace snake::spatial_fx

@@ -20,6 +20,8 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include "shs_renderer.hpp"
+#include "shs/memory/frame_memory_resource.hpp"   // P1.5: shared frame arena (was demo-private)
+
 #include "domains/spatial_fx/snake.plan.hpp"   // plan_snake_scene, ShatterParticleSoA
 #include "domains/matrix/snake.contract.hpp"    // SnakeSnapshot, SnakeCommandType, etc.
 #include "domains/matrix/snake.reducer.hpp"     // reduce_snake, cell_to_world (pure state machine)
@@ -33,32 +35,12 @@ static const int TILE_SIZE_X   = 80;
 static const int TILE_SIZE_Y   = 80;
 
 namespace vop {
-    class FrameMemoryResource : public std::pmr::memory_resource {
-    public:
-        static constexpr size_t CAPACITY = 8 * 1024 * 1024;   // 8 MB
-        FrameMemoryResource() : buffer_(std::make_unique<uint8_t[]>(CAPACITY)), offset_(0) {}
-        inline void reset() noexcept { offset_ = 0; }
-        inline std::pmr::memory_resource* get() noexcept { return this; }
-    protected:
-        void* do_allocate(size_t bytes, size_t alignment) override {
-            uintptr_t base = reinterpret_cast<uintptr_t>(buffer_.get());
-            uintptr_t current_addr = base + offset_;
-            uintptr_t aligned_addr = (current_addr + (alignment - 1)) & ~(alignment - 1);
-            size_t new_offset = (aligned_addr - base) + bytes;
-            if (new_offset > CAPACITY) return std::pmr::get_default_resource()->allocate(bytes, alignment);
-            offset_ = new_offset;
-            return reinterpret_cast<void*>(aligned_addr);
-        }
-        void do_deallocate(void* p, size_t bytes, size_t alignment) noexcept override {
-            uintptr_t base = reinterpret_cast<uintptr_t>(buffer_.get());
-            uintptr_t ptr  = reinterpret_cast<uintptr_t>(p);
-            if (ptr < base || ptr >= base + CAPACITY) std::pmr::get_default_resource()->deallocate(p, bytes, alignment);
-        }
-        bool do_is_equal(const std::pmr::memory_resource& other) const noexcept { return this == &other; }
-    private:
-        std::unique_ptr<uint8_t[]> buffer_;
-        size_t offset_ = 0;
-    };
+    // Per-frame linear PMR arena (O(1) reset). P1.5: promoted to the shared
+    // lib (shs/memory/frame_memory_resource.hpp) per §7.2 rule 6 — the
+    // demo-private copy is gone. The shared default (8 MB) matches the old
+    // capacity; overflow is strict bad_alloc (the old copy silently spilled
+    // into get_default_resource() — a §3 Rule 5.1 tiering violation).
+    using FrameMemoryResource = shs::memory::FrameMemoryResource;
 }
 
 // ============================================================================
@@ -247,23 +229,25 @@ int main(int argc, char* argv[]) {
                 glm::vec2 dir(std::cos(ang), std::sin(ang));
                 float speed = static_cast<float>(rng % 120u) / 30.0f + 1.0f;
                 float up_pop = 2.0f + static_cast<float>(rng % 80u) / 40.0f;
-                particles.add(glm::vec3(float(snap.head_pos.x), 0.4f, -float(snap.head_pos.y)),
-                              glm::vec3(dir.x * speed, up_pop, -dir.y * speed),
-                              shs::Color{ 255, 90, 60, 255 }, 0.8f);
+                snake::spatial_fx::add_particle(
+                    particles,
+                    glm::vec3(float(snap.head_pos.x), 0.4f, -float(snap.head_pos.y)),
+                    glm::vec3(dir.x * speed, up_pop, -dir.y * speed),
+                    shs::Color{ 255, 90, 60, 255 }, 0.8f);
             }
         }
 
-        // 3. UPDATE PARTICLES (gravity + life decay)
-        for (size_t i = 0; i < particles.position.size();) {
-            particles.position[i] += particles.velocity[i] * dt;
-            particles.velocity[i].y -= 18.0f * dt;   // gravity
-            particles.life[i] -= dt;
-            if (particles.life[i] <= 0.0f) {
-                const auto idx = static_cast<std::ptrdiff_t>(i);
-                particles.position.erase(particles.position.begin() + idx);
-                particles.velocity.erase(particles.velocity.begin() + idx);
-                particles.color.erase(particles.color.begin() + idx);
-                particles.life.erase(particles.life.begin() + idx);
+        // 3. UPDATE PARTICLES (gravity + life decay) — dense walk-and-kill
+        // kernel over the shared SoaTable; swap-and-pop keeps live rows dense
+        // (§7.2 rule 3) — replaces the old per-element column erase.
+        namespace sfx = snake::spatial_fx;
+        for (std::size_t i = 0; i < particles.size();) {
+            particles.column<sfx::kParticlePosition>()[i] +=
+                particles.column<sfx::kParticleVelocity>()[i] * dt;
+            particles.column<sfx::kParticleVelocity>()[i].y -= 18.0f * dt;   // gravity
+            particles.column<sfx::kParticleLife>()[i] -= dt;
+            if (particles.column<sfx::kParticleLife>()[i] <= 0.0f) {
+                particles.erase_dense(i);   // swap-and-pop: re-examine slot i
             } else {
                 ++i;
             }

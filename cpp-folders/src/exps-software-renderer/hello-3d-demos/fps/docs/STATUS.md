@@ -44,8 +44,6 @@ hello_fps_demo.cpp                                          (main edge wiring on
 
 ## Remaining work / known limitations
 
-- `FrameMemoryResource` is still per-demo; hoist into the shared renderer
-  library alongside the other demos' copies.
 - Bot meshes are static poses (no walk animation); bob is a vertical hover.
 - Projectiles are unlit emissive boxes; no point-light contribution.
 - Audio device open failure is silently tolerated (game runs mute).

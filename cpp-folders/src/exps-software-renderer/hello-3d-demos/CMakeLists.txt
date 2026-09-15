@@ -65,6 +65,10 @@ include_directories(${CMAKE_CURRENT_LIST_DIR}/plane)
 include_directories(${CMAKE_CURRENT_LIST_DIR}/tetris)
 include_directories(${CMAKE_CURRENT_LIST_DIR}/snake)
 
+# --- P1.5: shared lib value utilities (shs/memory, shs/containers) reach the
+# demos through the header-only include tree of shs-software-renderer-lib.
+include_directories(${CMAKE_CURRENT_LIST_DIR}/../../shs-software-renderer-lib/include)
+
 # --- Include all demo subdirectories (each is self-contained with its own CMakeLists.txt) ---
 # --- Shared engine skeleton (P5): header-only fixed-step loop etc -------
 # NOTE (2026-09 reorg): demos moved one level deeper (exps-software-renderer/),
