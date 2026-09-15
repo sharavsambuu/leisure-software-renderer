@@ -51,6 +51,64 @@ Value-Oriented Programming (VOP) combined with Data-Oriented Design (DOD) is ado
 └──────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
+### 2.1 The Domain Pod Constitution (Supreme Law, 2026-09-15)
+
+> **"Everything is a Domain Pod. Every stateful subsystem — engine module or demo
+> domain alike — is expressed as a pure reducer over four components:
+> Types (contract), Command (action), Reducer, Event. Nothing else mutates state."**
+
+This constitution binds **all code in this repository**: every module of
+`shs-software-renderer-lib` and every demo domain (tetris, snake, fps, …) alike.
+Concretely:
+
+1. **Core 4, always** — each stateful subsystem declares the four components in
+   their own files: `*.contract.hpp` (types), `*.action.hpp` (closed command
+   vocabulary), `*.reducer.hpp` (pure transition), `*.event.hpp` (closed event
+   vocabulary). Components are never omitted; an empty vocabulary is an explicit
+   closed type (Constitution II §6.1/6.2).
+2. **Reducers are the only state transitions** — pure functions of
+   `(State, std::span<const Command>, Δt) → (NewState, EventLog)`; deterministic
+   (Rule 4.1); side effects exist only at execution edges.
+3. **Cross-domain interaction is events only** (Rule 8.1) — no domain calls into
+   another domain; downstream reducers or edges consume immutable event values.
+4. **Physical layout mirrors the law** — domain logic lives in `shs/domains/<pod>/`
+   (library) or `domains/<pod>/` (demos); execution edges live in the edge zone
+   (`shs/execution/…`); primitives in `shs/core|memory|containers`. The structure
+   linter enforces this mechanically (roadmap P0.5/P5).
+
+No subsystem is exempt: the renderer's render path, the scene, input, camera,
+lighting, and every game domain are Domain Pods. "Pod-shaped by analogy" modules
+(pure-transform planners) are pods whose command/event vocabularies are explicitly
+empty, per §6.1 — they still carry all four files.
+
+### 2.2 Law Precedence & Single-Source Rule
+
+The laws above are restated in several places (principle, rules, tables, demos).
+To keep one authority per provision:
+
+1. **Precedence order**: §2.1 states *intent*; **§3 numbered rules are the
+   enforceable minimum**; §6.2 is the **authoritative Core 4 suffix table**;
+   §7.1/§7.2 are the **authoritative memory/layout laws**; the roadmap is
+   *schedule*, never law. Where a restatement and a numbered rule disagree, the
+   numbered rule wins; where two rules conflict, **the stricter applies**.
+2. **Naming**: "Constitution II", "§2.1", and the historical name "Glimmer/Ember
+   Pod Standard" denote the same body of law; citations should prefer
+   "Constitution §2.1" or "Rule N (§3)".
+3. **Restatements must reference, not re-number**: downstream docs (demo
+   ARCHITECTURE files, glossary, arch addenda) cite "Rule N (§3)" or "§6.2"
+   instead of producing parallel numbering — parallel numbering creates dangling
+   citations (this rule exists because one already did: a "Rule 3.2" reference in
+   §7.1 was corrected to Rule 2).
+4. **Latent-tension reconciliation**: Rule 1's "immutable inputs" governs *intent
+   inputs and views passed into* a reducer/plan (`std::span<const Action>`); it
+   does not forbid a reducer updating **its own owned state** in place (§7.1).
+   Purity means deterministic, side-effect-free *decisions* — no hidden reads, no
+   globals, no external mutation — not that owned state buffers are copied.
+
+
+---
+
+
 ---
 
 ## 3. Mandatory Rules
@@ -67,6 +125,14 @@ Value-Oriented Programming (VOP) combined with Data-Oriented Design (DOD) is ado
 7. **Wait-Free Span Contract (Rule 7.1)**: Multi-threaded jobs must be pure functions that take an immutable `std::span<const T>` and write exclusively to a non-overlapping `std::span<U>`. No mutexes, atomics, or spinlocks are allowed inside worker threads.
 8. **Discrete Event Sourcing (Rule 8.1)**: Gameplay domains must never directly invoke methods or mutate state in other domains. Cross-domain interaction must occur exclusively through immutable **Discrete Event Values** (`CombatEvent`, `QuestEvent`, `InventoryEvent`) emitted by pure reducers and consumed by downstream domain reducers or execution edges.
 9. **C++20 Value Abstractions**: Core APIs must leverage standard value types (`std::span`, `std::string_view` with `constexpr` hashing, `std::variant`, `std::pmr`, `std::expected`) to enforce safety and zero allocation overhead.
+10. **Universal Domain Pod Law (Constitution §2.1)**: Every stateful subsystem — in
+    `shs-software-renderer-lib` **and** in every demo — is a Domain Pod with the
+    mandatory Core 4 (`*.contract.hpp`, `*.action.hpp`, `*.reducer.hpp`,
+    `*.event.hpp`, each in its own file) and all state transitions through its pure
+    reducer. Domain logic lives under `shs/domains/<pod>/` (library) or
+    `domains/<pod>/` (demos); edges live in the edge zone. Compliance is
+    mechanically verified: the structure linter checks Core 4 completeness and zone
+    include-direction in CI (roadmap P0.5/P5).
 
 ---
 
@@ -91,32 +157,50 @@ Value-Oriented Programming (VOP) combined with Data-Oriented Design (DOD) is ado
 
 ## 6. Domain Pod Architecture & Module Directives
 
-To maintain modularity, cognitive clarity, and zero-leak encapsulation across complex projects, all gameplay features and engine modules must follow the **Glimmer/Ember Pod Standard**.
+To maintain modularity, cognitive clarity, and zero-leak encapsulation across complex projects, all gameplay features and engine modules must follow the **Glimmer/Ember Pod Standard**. Per the Domain Pod Constitution (§2.1, Rule 10), this is **supreme law for the entire repository**: engine library modules and demo domains (tetris, snake, fps, …) are held to the identical Core 4 standard — the library is not exempt, and neither are the demos.
 
 ### 6.1 Canonical Domain Pod Structure
-Gameplay features are organized as self-contained vertical slices in `domains/<domain_name>/` using standardized file suffixes:
+Gameplay features are organized as self-contained vertical slices in `domains/<domain_name>/` using standardized file suffixes. Every Domain Pod **must explicitly define the four core components** — **Types (contract), Command/Action, Reducer, Event** — each in its own file. A pod never omits a core component: if a vocabulary is trivially small, it is still declared as an explicit closed type (e.g., `using FooAction = std::variant<std::monostate>;`) so the pod's full state-transition surface remains greppable, auditable, and mechanically checkable.
 
 ```text
 domains/combat/
-├── combat.contract.hpp   # 1. Plain data structs (ProjectileTableSoA, DamagePacket)
-├── combat.action.hpp     # 2. Command intents (FireIntent, ReloadIntent)
-├── combat.event.hpp      # 3. Emitted event values (EventPlayerFired, EventBotHit)
-├── combat.reducer.hpp    # 4. Pure simulation rules (reduce_combat, resolve_hitscan)
-├── combat.plan.hpp       # 5. Pure batch compiler (plan_projectile_mesh, plan_tracers)
+├── combat.contract.hpp   # CORE 1. TYPES: plain data structs (ProjectileTableSoA, DamagePacket)
+├── combat.action.hpp     # CORE 2. COMMAND: intent tokens (FireIntent, ReloadIntent)
+├── combat.event.hpp      # CORE 3. EVENT: emitted event values (EventPlayerFired, EventBotHit)
+├── combat.reducer.hpp    # CORE 4. REDUCER: pure simulation rules (reduce_combat, resolve_hitscan)
+├── combat.plan.hpp       # EXT 5.  Pure batch compiler (plan_projectile_mesh, plan_tracers)
 └── scripts/
-    └── blaster_rules.lua # 6. Mirrored stateless Lua decision rules
+    └── blaster_rules.lua # EXT 6.  Mirrored stateless Lua decision rules
 ```
+
+The four core components are bound together by the mandatory pure reducer signature:
+
+```text
+(State, std::span<const Action>, dt) -> (NewState, EventLog)
+```
+
+**Extension suffixes** (`*.plan.hpp`, `scripts/*.lua`) are conditional: add them only when a Domain Litmus Test (see demo-level pod theory, e.g. tetris `ARCHITECTURE.md` Part I) demands them. The core 4 are not conditional.
 
 ### 6.2 The Pod Suffix Laws
 
+**Core 4 — mandatory for every Domain Pod:**
+
+| File Suffix | Component | Required Contents | Strict Restrictions |
+| :--- | :--- | :--- | :--- |
+| `*.contract.hpp` | **Types** | Value Schemas & Snapshots | Plain data structs only. **No methods, no mutation, no logic.** |
+| `*.action.hpp` | **Command / Action** | Intent Tokens / Commands | `std::variant` and enums representing caller intent. Closed vocabulary; `std::monostate` expresses "no intents accepted". |
+| `*.reducer.hpp` | **Reducer** | Pure Simulation Reducers | Pure static functions: `(State, Actions, dt) -> (NewState, Events)`. **No globals, no side effects.** |
+| `*.event.hpp` | **Event** | Discrete Event Log | Immutable records of occurrences emitted by reducers. Closed vocabulary; an event-free pod still declares an explicit (possibly empty) event type. |
+
+**Extension suffixes — added only when a litmus test demands them:**
+
 | File Suffix | Required Contents | Strict Restrictions |
 | :--- | :--- | :--- |
-| `*.contract.hpp` | Value Schemas & Snapshots | Plain data structs only. **No methods, no mutation, no logic.** |
-| `*.action.hpp` | Intent Tokens / Commands | `std::variant` and enums representing caller intent. |
-| `*.event.hpp` | Discrete Event Log | Immutable records of occurrences emitted by reducers. |
-| `*.reducer.hpp` | Pure Simulation Reducers | Pure static functions: `(State, Actions, dt) -> (NewState, Events)`. **No globals, no side effects.** |
 | `*.plan.hpp` | Batch & Scene Compilers | Pure functions: `(WorldSnapshot, Assets) -> RenderPlan`. **No GPU/driver calls.** |
 | `*.edge.hpp` | Impure Execution Edges | Hardware drivers, SDL windows, audio DAC submission, and disk I/O. |
+| `scripts/*.lua` | Mirrored Decision Rules | Stateless Lua mirrors of reducer decision rules; never authoritative over C++ reducers. |
+
+**Conformance note (2026-09-15):** Pods created before this canon (e.g. `mission`, which lacks `*.action.hpp` / `*.event.hpp`) are nonconforming and must be brought up to the Core 4 by adding explicit closed vocabularies. New pods must conform from day one.
 
 ### 6.3 Inter-Pod Encapsulation Rules
 1. **Public API Restriction**: A domain pod may only expose its `*.contract.hpp` and `*.event.hpp` to outside systems.
@@ -127,11 +211,60 @@ domains/combat/
    - `AudioEdge` consumes `CombatEvent::BOT_KILLED` and triggers the explosion sound on the SPSC ring buffer.
 
 ### 6.4 Core Engine Module Directives
+- **Render Path Orchestration**: The dynamic render path system is the engine's first
+  formal Domain Pod (`domains/renderpath/`, Core 4). Recipe/plan types are the contract;
+  `RenderPathCommand` intents (`SelectPathPresetIntent`, `SetRenderingTechniqueIntent`, …)
+  are the command vocabulary; `reduce_render_path()` compiles and hot-swaps plans as a
+  pure transition (invalid compile ⇒ keep previous plan + `PATH_SWAP_REJECTED` event);
+  `PATH_COMPILED` / `PATH_SWAP_REJECTED` are the only triggers for executor/GPU (re)builds.
+  See `docs/arch/render_path_domain_pod_architecture.md` and
+  `docs/roadmap/domain_pod_engine_rollout_roadmap.md`.
+- **RHI Drivers**: Execution edges only. Drivers translate value descriptors
+  (`resource_desc`, `command_desc`, `pipeline_desc`, `sync_desc`) into backend objects;
+  no driver handle (`Vk*`, `GL*`) crosses upward, and the renderpath pod compiles with
+  zero driver includes.
 - **Scene**: Canonical transform: `SceneObjectSet::to_render_items(view, proj, &arena) -> RenderItemSpan`.
 - **Lighting**: Canonical transform: `LightSet::to_cullable_gpu(...)` producing flat GPU-ready tile buffers.
-- **Pipeline Orchestration**: Uses `PipelineExecutionPlan` built in a pure planning stage and executed in a disjoint effect stage.
 - **Input / Controls**: OS events are tokenized into `UserCommand` streams and reduced via `reduce_user_commands()`.
+- **Module classification**: each engine module is either a formal Domain Pod or
+  "pod-shaped by analogy" (pure transforms named per the VOP pipeline above); the
+  per-module mapping is maintained in `docs/roadmap/domain_pod_engine_rollout_roadmap.md` (P5).
 ---
+
+### 6.5 Vocabulary Law — Semantic Surface for Renderer Authors
+
+"Cosmetics are the API." In a value-oriented design, state lives in plain structs, so
+the *names* carry all the meaning. Renderer authors must be able to compose new render
+paths by selecting well-defined vocabulary, not by reading implementation files. The
+following naming law is mandatory for all new public vocabulary (recipe/plan/contract
+types, enums, factories):
+
+1. **Closed menus as `enum class : uint8_t`** — every decision axis (technique, light
+   volume provider, culling mode, post stack) is a closed enumeration with a companion
+   `*_name()` reflection function. No `bool` pairs, no magic ints.
+2. **`make_*` factories, never out-of-range literals** — construction of non-trivial
+   values goes through `inline` `make_*` functions with defaulted safe fields.
+3. **Pure `with_*` transforms for customization** — free functions of the form
+   `Recipe with_technique(Recipe, Technique)` returning a modified copy. Recipe tuning
+   reads as a sentence and never mutates a shared instance:
+   `auto r = with_light_tile_size(with_technique(preset::DeferredPlusVk, Clustered), 8);`
+4. **Named constants over raw knobs** — resource knobs get strong semantic aliases
+   (`LightTileSize`, `ClusterZSlices`) and named `inline constexpr` values
+   (`k_light_tile_small = 8u`) instead of bare `uint32_t` literals at call sites.
+5. **Capability predicates, not comments** — questions the compiler/reducer asks are
+   `inline` predicates with readable names: `render_path_preset_supports_taa(preset)`,
+   `render_path_culling_allows_occlusion(mode)`.
+6. **A named catalog of complete recipes** — every "well-defined renderer" is exposed
+   once as a named value (preset header), so building a known renderer is picking one
+   identifier, and a novel renderer is a preset + `with_*` deltas.
+7. **The Domain Glossary** — `docs/pods/DOMAIN_GLOSSARY.md` maps each concept →
+   type → header → owning pod, and is the single entry point for "which struct do I
+   select when building a renderer".
+
+Rationale: these rules make the renderer author's experience a *menu* (closed enums +
+named presets + capability predicates) rather than an archaeology of demo code, which
+is exactly the "select well-defined structs and definitions" requirement, and they cost
+nothing at runtime (all `inline constexpr`/`inline` free functions on value types).
 
 ## 7. Dual-Tier Memory Specification
 
@@ -151,7 +284,88 @@ domains/combat/
 +-----------------------+-----------------------------+-----------------------------+
 
 
+
+### 7.1 Hot-Path Performance Law — ECS Speed Under Domain Pods
+
+**Orthogonality principle.** The Domain Pod pattern governs *state transitions*
+(vocabulary, reducer, events); ECS-grade performance comes from *data layout and
+iteration* (SoA, contiguity, handles, chunked spans). The two axes are independent:
+a pod's contract type may be — and for hot domains must be — a chunked SoA table
+(see `combat.contract.hpp` → `ProjectileTableSoA`). A reducer's purity means
+deterministic, side-effect-free *decisions*, not full-buffer copying on every
+transition:
+
+- **Hot pods reduce in place**: `reduce_*` mutates the persistent-tier SoA table
+  inside the call (no hidden reads/writes, no globals — still pure by Rule 2, §3;
+  in-place mutation of the pod's *owned* state is legitimate per §2.2(4)), or
+  emits discrete change events that an edge applies to the table. Snapshotting a
+  whole SoA table is reserved for rollback/save points, not per-tick.
+- **Reducers are configuration-time, not per-frame**: path/recipe reducers run on
+  change only; per-frame hot loops are pure batch transforms over
+  `std::span` chunks (Rule 7.1 wait-free contract) — pods never sit in the hot loop.
+- **Cache-streaming techniques are mandatory where measurable** on hot loops
+  operating over SoA chunks:
+  1. **Software prefetch** of the next chunk's arrays (`__builtin_prefetch` /
+     `std::experimental::prefetch`) while processing the current chunk;
+  2. **Non-temporal (streaming) stores** for write-once outputs that will not be
+     re-read soon (tile-buffer clears, final-blit writes, streaming GPU upload
+     staging), avoiding cache pollution;
+  3. **Chunk sizing to cache hierarchy** — job chunks sized so the chunk's active
+     SoA arrays fit L2, enabling hardware-stride-friendly linear walks;
+  4. **SIMD gather/scatter over SoA columns** where the compiler's auto-vectorizer
+     stalls (light binning, particle integration);
+  5. **Arena-backed command/event logs** — pod event logs are flat PMR vectors or
+     SPSC rings (never node-based), so even the *decision* tier stays
+     cache-resident.
+- **Verification**: hot-path kernels must be benchmarkable headlessly
+  (chunked span jobs are GPU/OS-free), and any pod whose reducer executes per frame
+  is a design smell to be flagged in review — per-frame work belongs to batch
+  planners (plan-extension) or execution edges.
+
+Rationale: this law makes explicit that adopting pods *never* trades away
+mechanical sympathy (Constitution Principle: Hardware Mechanical Sympathy). ECS
+architectures get their speed from layout, not from their API shape; pods keep the
+layout laws (Rule 6.1, Rule 7.1) and add determinism and dynamism on top.
+
 ```
+
+
+### 7.2 Contiguous Backing-Store Law — Dynamically Allocated Continuous Arrays
+
+§7.1's cache-streaming techniques only pay off if the streamed columns are physically
+contiguous at whatever size the workload demands. Pod hot-state therefore uses
+**dynamically allocated, contiguous column arrays** under the following mandatory rules:
+
+1. **Two tiers, one law of shape** — every hot column is a contiguous array in either
+   tier:
+   - *Persistent tier*: `std::pmr::vector<T>` (or a dedicated `SoaTable<Ts...>` owning
+     one `pmr` allocation per column), **`reserve()`d up front** from a capacity
+     estimate; growth is geometric and is a cold-path event that emits a compaction
+     event — never a per-frame occurrence.
+   - *Frame tier*: arena-backed spans carved from `FrameMemoryResource` (bump
+     allocator); no reallocation exists by construction.
+2. **Stability by handle, not pointer** — because columns can grow, all cross-frame
+   references into pod state are generational `uint32_t` handles (Rule 6.1); raw
+   pointers/references into a growable column are never stored.
+3. **Density preservation** — order-independent columns use swap-and-pop removal so
+   live elements stay dense and contiguous; ordering-sensitive columns use explicit
+   compaction passes (streaming copies) instead of per-element `erase`.
+4. **Cache-line discipline** — column bases are 64-byte aligned; columns of
+   hot/cold fields are separated into distinct arrays (no AoS smuggling); a table's
+   per-iteration working set (the columns a single pass touches) must be inspectable
+   in review.
+5. **No node-based containers in hot state** — `std::list`/`std::map`/`std::set` are
+   forbidden in pod hot state and frame-tier structures; keyed lookup uses flat
+   open-addressing maps over contiguous storage (pmr-backed).
+6. **Library ownership** — the containers above are *shared lib utilities*
+   (`shs/memory/`, `shs/containers/`), promoted from the demo implementations, so
+   every pod gets identical streaming-friendly semantics; demos must not define
+   private copies of them.
+
+Rationale: "dynamically allocated" and "cache-friendly" are not in tension if
+allocation is batched, reserved, handle-stabilized, and aligned. This law turns
+Rule 6.1 (SoA) and §7.1 (cache streaming) into concrete, enforceable container
+requirements instead of aspirations.
 
 ---
 

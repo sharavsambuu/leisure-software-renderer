@@ -24,23 +24,29 @@ Here is a practical guide on how to define, name, split, and boundary-check doma
 
 ### 1. The Mental Model: What is a Domain Pod?
 
-A Domain Pod owns:
-1. **Plain Data Schema (`*.contract.hpp`)**: The flat state tables (SoA arrays, tables).
-2. **Pure State Reducer (`*.reducer.hpp`)**: The pure mathematical transition function:
+A Domain Pod owns the **mandatory Core 4 components** (Constitution II §6.1/6.2), plus optional extensions. **As of 2026-09-15 this is the project's supreme law (Constitution §2.1, Rule 10): every stateful subsystem — engine library modules and demo domains alike — must be a pure reducer based Domain Pod with all four components.** The tetris pods below are the reference implementation of that law.
+
+1. **Types — Plain Data Schema (`*.contract.hpp`)**: The flat state tables (SoA arrays, tables).
+2. **Command / Action (`*.action.hpp`)**: The closed intent-token vocabulary (`std::variant`); an explicit `std::monostate`-style variant expresses "no intents accepted".
+3. **Reducer (`*.reducer.hpp`)**: The pure mathematical transition function:
    $$\text{State}_{t+1}, \text{Events} = f(\text{State}_t, \text{Commands}, \Delta t)$$
-3. **Pure Visual Planner (`*.plan.hpp`)**: The batch generator that converts snapshots to draw tokens.
+4. **Event (`*.event.hpp`)**: The closed discrete-occurrence vocabulary emitted by the reducer; an event-free pod still declares an explicit (possibly empty) event type.
+5. *(Optional)* **Pure Visual Planner (`*.plan.hpp`)**: The batch generator that converts snapshots to draw tokens — added only when a litmus test demands it.
 
 ```
        ┌────────────────────────────────────────────────────────┐
        │                      DOMAIN POD                        │
-       │                                                        │
+       │                ── CORE 4 (mandatory) ──                │
        │  [*.contract.hpp] ◄── Plain Data Schema                │
        │  [*.action.hpp]   ◄── Intent Tokens                    │
        │  [*.event.hpp]    ◄── Discrete Occurrences             │
        │  [*.reducer.hpp]  ◄── Pure Transition: (State)->(State)│
+       │                ── EXTENSIONS (conditional) ──          │
        │  [*.plan.hpp]     ◄── Batch Mesh Planner               │
        └────────────────────────────────────────────────────────┘
 ```
+
+Core 4 files are never omitted: a trivially small vocabulary is declared as an explicit closed type instead. (Constitution II §6.2 carries the authoritative table and the conformance note for pre-canon pods.)
 
 ### 2. The 4 Litmus Tests: When to Create a New Domain
 
