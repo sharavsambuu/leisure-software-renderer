@@ -378,6 +378,60 @@ requirements instead of aspirations.
 - `std::string_view` & `constexpr` hashing: For zero-allocation ID lookups and asset tag resolution.
 - `std::expected` (C++23 / `tl::expected`): For fallible planning and resource loading; planners must return explicit error types instead of crashing or throwing exceptions.
 
+### Monadic Targeted Adoption (decision, 2026-09-15)
+
+C++23 monadic vocabulary types (`std::expected`, monadic `std::optional`,
+`std::print`/enum `std::format`ters) are adopted **at leaf seams only, not as a
+structural migration**. Readability and pod/reducer architecture come first;
+monads are a refinement, not a redesign.
+
+**Adopt where a value rides next to an error channel:**
+- `try_swap_plan` / render-path compile → resolve chain: replace the
+  `(plan, valid, errors[])`-then-classify pipeline with
+  `expected<RenderPathExecutionPlan, PathSwapRejectionReason>` chained via
+  `and_then`/`transform`/`or_else` (removes the stringly-typed
+  `classify_plan_rejection` intermediate).
+- `RenderPathResolvedState` and similar `(payload, bool valid)` pods: prefer
+  `expected<Payload, ClosedEnumError>` so "did anyone check `valid`" bugs cannot
+  exist.
+- The demo input bridge (`map_action_to_renderpath_command` returning
+  `std::optional<RenderPathCommand>`): compose with `and_then` at edge call
+  sites instead of get-if/early-return noise.
+- Diagnostics/logging: `std::format` formatters for the closed enums so logs
+  stop hand-casting (`static_cast<unsigned>(ev.reason)`).
+
+**Never adopt in the reducer/command core:** `reduce_render_path` is
+intentionally a *free-monad-over-commands* shape already — a closed
+`RenderPathCommand`/`RenderPathEvent` variant stream processing a command
+**span** and emitting **multiple** observability events per command into a
+caller-owned pmr arena. `expected` is single-value/single-error and cannot
+express "three events plus state mutation per command"; wrapping the reducer
+would reduce fidelity, not improve it. The variant vocabulary stays.
+
+**Why this matters (benefits):**
+1. **Honest failure types** — `expected<T, ClosedEnumError>` makes accept/reject
+   explicit in the signature; the compiler enforces that callers handle
+   rejection, replacing boolean `valid` flags and assert/crash paths.
+2. **Error-channel composition** — compile → classify → accept/reject pipelines
+   become linear `and_then`/`or_else` chains instead of early-return ladders,
+   keeping the pure-planning layers pure and assertion-free.
+3. **Constitution-compatible** — closed-enum error payloads (no `std::string`
+   diagnostics inside intents), vocabulary types only, no exceptions/RTTI
+   required on the value path.
+4. **Replay-friendly** — monadic transforms are pure functions of their inputs,
+   matching the determinism requirement (§9.4).
+
+**Prerequisites & constraints:**
+- Toolchain: requires C++23 library support (GCC 12+ / 13+ realistically);
+  tree is currently `cxx_std_20` across all demo + 13 test targets — bump is a
+  separate toolchain decision, not bundled with feature refactors.
+- Error types must stay closed enums (no `std::string` in `expected` payloads
+  inside pod/intent vocabulary).
+- Introduce incrementally in Run 2 (GPU-free demo mode) and the Task 3 pure
+  planner extraction — both are leaf-level plumbing where it pays; prototype as
+  a small reversible spike (e.g. `try_swap_plan`) before committing.
+- `std::expected` (C++23 / `tl::expected`): For fallible planning and resource loading; planners must return explicit error types instead of crashing or throwing exceptions.
+
 ### Forbidden in Planning and Reducer Layers
 - `std::shared_ptr` / `std::make_shared` (Hidden atomic reference-counting contention).
 - `dynamic_cast` / Runtime Type Information (RTTI) branching.
@@ -432,3 +486,4 @@ The automated CI boundary checker (`tools/check_vop_boundaries.sh`) enforces the
 - Codified Dual-Tier Memory Lifecycle Separation (`FrameMemoryResource` vs persistent state storage).
 - Codified Glimmer/Ember Domain Pod standard (`domains/<domain>/`) with strict suffix naming contracts.
 - Codified Lock-Free SPSC Audio Edge for glitch-free procedural sound synthesis.
+- Decided C++23 monadic **targeted adoption** (2026-09-15): `std::expected` at compile/resolve error seams, monadic `std::optional` in input bridges, enum formatters for diagnostics; reducer/command variant + event-stream core explicitly out of scope (see §8).

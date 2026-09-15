@@ -121,6 +121,7 @@ Apply C++20 features aggressively where they increase value-semantics clarity:
 8. Remove planner-side `dynamic_cast` and mutable `static` caches.
    - In progress: removed backend policy `dynamic_cast` from render-path capability resolution; continue auditing for remaining planner-side dynamic type branches.
 9. Adopt `std::expected` (or `tl::expected`) to formalize error states in planner diagnostics instead of asserting or crashing.
+   - Scope (decision 2026-09-15): **targeted adoption at leaf seams only** — compile/resolve error channels, `(payload, valid)` pods, input-bridge optionals, enum formatters. The reducer/command core keeps its closed variant + event-stream shape; see `../spec/value_oriented_programming.md` §8 "Monadic Targeted Adoption". Toolchain bump to C++23 is a separate prerequisite decision.
 
 Review rule:
 
