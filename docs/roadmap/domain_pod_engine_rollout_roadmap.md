@@ -319,13 +319,16 @@ extension role, and the classification is machine-checked.
 - [ ] **Retire legacy seams** — audit `frame_graph.hpp` / `pluggable_pipeline.hpp`
       for removal once the renderpath pod covers their use cases.
 - [ ] **Converge to a single renderer library** — once `shs-gpu-lib`
-      retires (P3) and the facade shims are gone, rename the surviving
+      retires (P3) and the facade shims are gone (done early, 2026-09-15
+      convergence addendum), rename the surviving
       `shs-core-lib` to **`shs-renderer-lib`**. "Software vs GPU" is
-      then a driver-pod selection (`drivers/software`, `drivers/opengl`,
-      `drivers/vulkan`) behind the one `IRenderBackend` contract + capability
-      gates — not a library split. Update CMake target names
-      (`shs::renderer-values` keeps working), the §6.4 classification table, and
-      the Domain Glossary in the same commit.
+      then a driver-pod selection (`drivers/software`, `drivers/vulkan`,
+      `drivers/opengl`) behind the one `IRenderBackend` contract + capability
+      gates — not a library split. Update CMake target names in the same
+      commit to the converged scheme (`shs_core` → `shs_renderer`,
+      `shs::core` → `shs::renderer`, `shs_core_values`/`shs::core-values` →
+      `shs_renderer_values`/`shs::renderer-values` — no legacy aliases kept),
+      plus the §6.4 classification table and the Domain Glossary.
 - [ ] **Linter ↔ docs sync** — the structure linter (landed in P0.5) now also
       checks §6.4 classification table ↔ physical zone agreement, the Domain
       Glossary rows point at final homes, and — per Constitution §2.2(3) — law
