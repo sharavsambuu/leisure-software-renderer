@@ -5918,6 +5918,12 @@ private:
                                 std::move(pending_resolved_render_paths_.front());
                             pending_resolved_render_paths_.pop_front();
                             const bool plan_valid = render_path_executor_.apply_resolved(resolved);
+                            if (plan_valid)
+                            {
+                                // Reducer-driven hot-swap: a new plan is live
+                                // mid-run (debug overlay shows the count).
+                                ++renderpath_hot_swaps_;
+                            }
                             (void)consume_active_render_path_apply_result(plan_valid);
                         }
                     }
@@ -8839,14 +8845,21 @@ private:
         const char* framebuffer_debug_state = framebuffer_debug_enabled
             ? (framebuffer_debug_supported ? "on" : "missing")
             : "off";
+        // Reducer-driven plan provenance: an executor-approved plan means the
+        // path pod reducer hot-swapped it; otherwise the pure planner fell
+        // back to the technique-profile chain.
+        const char* plan_source =
+            render_path_executor_.active_plan_valid() ? "reducer" : "fallback";
 
         char title[320];
         std::snprintf(
             title,
             sizeof(title),
-            "%s | path:%s | tech:%s | dbg:%s(%s) | lights:%u/%u | draws:%u/%u | cull:%s/%s | %.2f ms",
+            "%s | path:%s | plan:%s | swaps:%u | tech:%s | dbg:%s(%s) | lights:%u/%u | draws:%u/%u | cull:%s/%s | %.2f ms",
             kAppName,
             recipe_name,
+            render_path_executor_.active_plan_valid() ? plan_source : "fallback",
+            renderpath_hot_swaps_,
             light_tech_name,
             framebuffer_debug_name,
             framebuffer_debug_state,
@@ -9385,6 +9398,9 @@ private:
     shs::RenderPathCapabilitySet render_path_caps_{};
     shs::renderpath::RenderPathPodState render_path_pod_{};
     std::vector<shs::renderpath::RenderPathCommand> pending_renderpath_commands_{};
+    // Reducer-driven hot-swap count (debug overlay): successful
+    // reducer-approved plan applies after startup (Run 1 / P3 task 4).
+    uint32_t renderpath_hot_swaps_ = 0u;
     std::deque<shs::RenderPathResolvedState> pending_resolved_render_paths_{};
     std::pmr::vector<shs::renderpath::RenderPathEvent> renderpath_events_{};
     shs::PassFactoryRegistry pass_contract_registry_{};
