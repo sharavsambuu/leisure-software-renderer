@@ -50,7 +50,7 @@ Interleaving policy (2026-09-16): pods harden WITH their curriculum rung, not ah
 - [x] **P3.7 resources** — DONE 2026-09-16: resources.contract/action/event/reducer.hpp (asset DATA spine; registries flagged edge-candidates for R5b); vop_resources_tests 4/4 (data basics, registry round-trip spec, kit). Finds: AssetRegistry is a stale fork referencing nonexistent handle types (zero consumers, never compiled) — excluded from contract, R5b converges or deletes it.
 - [ ] **P3.8 gfx** (R5b: 269-line rt_registry is a stateful store like resources registries — handle types = contract; registry = edge subfolder with the resources registries)
 - [x] **P3.9 sky** — DONE 2026-09-16: sky.contract/action/event/reducer.hpp (monostate vocabs + identity); ISkyModel virtual dispatch flagged R5b debt (hot-path law); vop_sky_tests 5/5 (horizon exact, zenith near, sun disk exact, determinism, kit).
-- [ ] **P3.10 logic** (R5b: 231-line state_machine is a genuine state engine — reducer or edge-classify needs design, not a shell)
+- [x] **P3.10 logic** — DONE 2026-09-16: table-driven value FSM (FsmDesc states+table as DATA, zero std::function; Signal/Time/Force/Start commands in span order; priority strictly-greater mirror; rejections observable; legacy callback class untouched beside it, zero consumers). vop_logic_tests 5/5 (signal cycle, time gate, priority+rejection, kit replay/empty). (R5b: 231-line state_machine is a genuine state engine — reducer or edge-classify needs design, not a shell)
 - [ ] DoD: every domains/<pod>/ passes Core 4 completeness; grep gate: zero pods missing contract/action/reducer/event.
 
 ## P4 — Semantic hardening (lands with P3, Run 4)
