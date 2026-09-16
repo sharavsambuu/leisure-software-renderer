@@ -40,7 +40,7 @@ Even in a world of abundant cores, the physical constraint remains the **Memory 
 ---
 
 ## The Execution Unit: Virtual SPUs (`std::jthread`)
-The Virtual SPU is the heart of the execution. We model these units using C++20 `std::jthread` combined with wide SIMD execution abstractions. Unlike traditional threads, these units are:
+The Virtual SPU is the heart of the execution. We model these units using C++23 `std::jthread` combined with wide SIMD execution abstractions. Unlike traditional threads, these units are:
 
 * **Singular & Unified:** **Exactly one persistent thread pool exists** (1 `std::jthread` per hardware core). There are no competing secondary pools for coroutines or background tasks, eliminating CPU oversubscription and OS context switches.
 * **Persistent:** A Virtual SPU "lives" for the entire duration of the engine instance, completely eliminating thread-creation overhead and maintaining warm cache residency for owned scratchpad arenas.
@@ -97,7 +97,7 @@ Every new feature (e.g., clustered shading, soft shadows, visibility passes) mus
 - [ ] Implement Non-Temporal Streaming Store resolve routines (`_mm512_stream_*` / `STNP`) to bypass cache pollution.
 
 ### Phase 2: Coroutine Bridge, DOD Ingestion & Meshlets
-- [ ] Implement the C++20 Coroutine Awaiter Bridge (`ParallelForBatch` / atomic completion latches that submit `coroutine_handle::resume` as a standard `Job`).
+- [ ] Implement the Coroutine Awaiter Bridge (C++23; coroutines stay on execution edges per Constitution I §10) (`ParallelForBatch` / atomic completion latches that submit `coroutine_handle::resume` as a standard `Job`).
 - [ ] Implement zero-copy SoA / AoSoA data streamers bridging ECS components directly to Virtual SPUs.
 - [ ] Implement geometry pre-clustering into uniform **Meshlets** (64v / 128p).
 - [ ] Build SIMD cluster-level frustum, normal-cone, and Hierarchical-Z (HZB) occlusion culling.

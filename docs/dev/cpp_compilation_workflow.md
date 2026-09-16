@@ -28,7 +28,7 @@ pitfalls list below, fix, rebuild. Never guess-fix more than one thing between b
 ## Project layout (validated)
 
 - Root build dir: `cpp-folders/`
-  - Top-level `CMakeLists.txt`: C++20, `include(CTest)`, fetches stb / xsimd / JoltPhysics via FetchContent, finds VulkanMemoryAllocator + Lua 5.5 via vcpkg.
+  - Top-level `CMakeLists.txt`: C++23 for `shs-renderer-lib` (demos C++20 until restart, backlog L2), `include(CTest)`, fetches stb / xsimd / JoltPhysics via FetchContent, finds VulkanMemoryAllocator + Lua 5.5 via vcpkg.
   - Per-target dirs under `cpp-folders/src/` (each has its own `CMakeLists.txt`):
     - `hello-shs-renderer`, `hello-pixel-primitives`, `hello-shaders`, `hello-parallelization`, `hello-3d-primitives`, `hello-3d-demos`, `hello-render-target`, `hello-other-exps` (demos)
     - `shs-renderer-lib` (the library + the VOP tests), `exp-plumbing`, `exp-rendering-techniques`

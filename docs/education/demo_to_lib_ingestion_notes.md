@@ -55,8 +55,8 @@ rendering-adventures tree:
 - **Synergy with parity:** record the event stream once, reduce once, feed the
   reduced state to both backends, diff. Replayability and determinism fall out
   for free — the same auditable-transition property the canon cites.
-- **Purity is structurally enforced, not compiler-enforced.** C++17 has no
-  effect system; the rules are: reducers take PODs by value/`const&` and return
+- **Purity is structurally enforced, not compiler-enforced.** C++ has no effect system (even at the C++23 lib baseline) —
+  the rules are: reducers take PODs by value/`const&` and return
   new PODs (or out-params), no globals, no RNG, no I/O below the edge layer,
   events as plain enums — then purity is *tested* via determinism/replay gates
   (same inputs → byte-identical outputs), as tetris already does.
