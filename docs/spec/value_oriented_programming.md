@@ -75,6 +75,10 @@ Concretely:
    (library) or `domains/<pod>/` (demos); execution edges live in the edge zone
    (`shs/execution/…`); primitives in `shs/core|memory|containers`. The structure
    linter enforces this mechanically (roadmap P0.5/P5).
+5. **Orchestrators are pods** — a multi-domain workflow (saga) is coordinated by
+   an orchestrator that is itself a Domain Pod with its own contract, actions,
+   reducer, and events, listening to sub-domain events as incoming actions. No
+   non-pod controller may own cross-domain state (god-object ban).
 
 No subsystem is exempt: the renderer's render path, the scene, input, camera,
 lighting, and every game domain are Domain Pods. "Pod-shaped by analogy" modules
@@ -174,6 +178,12 @@ To maintain modularity, cognitive clarity, and zero-leak encapsulation across co
 
 ### 6.1 Canonical Domain Pod Structure
 Gameplay features are organized as self-contained vertical slices in `domains/<domain_name>/` using standardized file suffixes. Every Domain Pod **must explicitly define the four core components** — **Types (contract), Command/Action, Reducer, Event** — each in its own file. A pod never omits a core component: if a vocabulary is trivially small, it is still declared as an explicit closed type (e.g., `using FooAction = std::variant<std::monostate>;`) so the pod's full state-transition surface remains greppable, auditable, and mechanically checkable.
+
+Multi-domain workflows add a constrained fifth element — the orchestrator/saga
+recipe — required only where a workflow spans bounded contexts (Rule 11). The
+orchestrator must itself be a Domain Pod (own contract/action/reducer/event);
+it coordinates by consuming sub-domain events as actions and emitting its own
+facts. A workflow controller that is not a pod is forbidden.
 
 ```text
 domains/combat/
