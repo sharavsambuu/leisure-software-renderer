@@ -323,6 +323,44 @@ if(SHS_RENDERER_BUILD_TESTS)
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     )
 
+    add_executable(shs_renderer_vop_camera_tests
+        tests/vop_camera_tests.cpp
+    )
+    target_link_libraries(shs_renderer_vop_camera_tests PRIVATE shs::renderer-values)
+    target_compile_features(shs_renderer_vop_camera_tests PRIVATE cxx_std_23)
+    if(MSVC)
+        target_compile_options(shs_renderer_vop_camera_tests PRIVATE /W4)
+    else()
+        target_compile_options(shs_renderer_vop_camera_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+
+    add_executable(shs_renderer_vop_resources_tests
+        tests/vop_resources_tests.cpp
+    )
+    target_link_libraries(shs_renderer_vop_resources_tests PRIVATE shs::renderer-values)
+    target_compile_features(shs_renderer_vop_resources_tests PRIVATE cxx_std_23)
+    if(MSVC)
+        target_compile_options(shs_renderer_vop_resources_tests PRIVATE /W4)
+    else()
+        target_compile_options(shs_renderer_vop_resources_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+
+    add_test(
+        NAME shs_renderer_vop_camera_tests
+        COMMAND shs_renderer_vop_camera_tests
+    )
+    set_tests_properties(shs_renderer_vop_camera_tests PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    )
+
+    add_test(
+        NAME shs_renderer_vop_resources_tests
+        COMMAND shs_renderer_vop_resources_tests
+    )
+    set_tests_properties(shs_renderer_vop_resources_tests PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    )
+
     add_test(
         NAME shs_renderer_vop_lighting_tests
         COMMAND shs_renderer_vop_lighting_tests

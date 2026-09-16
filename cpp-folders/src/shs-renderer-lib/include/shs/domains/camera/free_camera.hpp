@@ -47,6 +47,8 @@ namespace shs
          * @brief Оролтын төлөвөөр камерын байрлал болон өнцгийг шинэчилнэ.
          */
         void update(const FreeCameraInput& input, float dt)
+        {
+            const glm::vec3 fwd   = forward_from_yaw_pitch(yaw, pitch);
             const glm::vec3 right = right_from_forward(fwd);
             const glm::vec3 up{0.0f, 1.0f, 0.0f};
 
