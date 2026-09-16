@@ -201,8 +201,10 @@ between is a menu, not a checklist.
 ## Related docs
 - Slang utilization plan: `docs/roadmap/slang_utilization_plan.md` (braided track)
 - Render path recipe/pass machinery: `docs/arch/render_path_architecture.md`
-- GI deep dives: `docs/arch/global_illumination_strategies.md`,
-  `docs/roadmap/global_illumination_roadmap.md`
-- Modern rendering strategies: `docs/arch/modern_rendering_strategies.md`
+- GI deep dives: `docs/roadmap/global_illumination_roadmap.md` (live track;
+  superseded essay preserved at `docs/outdated/global_illumination_strategies.md`)
+- Modern rendering strategies: superseded — preserved at
+  `docs/outdated/modern_rendering_strategies.md`
+  (+ `docs/outdated/compact_rendering_strategies.md`)
 - GPU-driven rendering: `docs/arch/pc_gpu_driven_rendering_guide.md`
 - Maturity tracking: `docs/roadmap/modern-rendering-maturity-roadmap.md`
