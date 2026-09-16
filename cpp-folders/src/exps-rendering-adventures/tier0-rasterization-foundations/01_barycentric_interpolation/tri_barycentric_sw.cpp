@@ -76,7 +76,7 @@ int main(int argc, char* argv[])
     const std::string out_path = argc > 1 ? argv[1] : "t0_01_barycentric_sw.png";
 
     Frame frame(640, 480);
-    frame.clear(16, 16, 24);
+    frame.clear(12, 12, 16);  // must match the shared _vk harness clear (adventures_vk.cpp)
 
     const std::vector<T0Vertex> tri = scene_tri_barycentric();
     rasterize_triangle_barycentric(frame, tri[0], tri[1], tri[2]);
