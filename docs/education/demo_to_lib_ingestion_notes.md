@@ -2,7 +2,7 @@
 
 > Status: methodology notes (2026-09-15), distilled from the Tier 0 milestone
 > review. Records three policy decisions for the rendering-adventures curriculum:
-> (1) the demo-first → lib-ingestion workflow, (2) when/why pure reducer-based
+> (1) the demo-first → lib-ingestion workflow, (2) when/why pure gateway-based
 > Domain PODs apply to demo code, (3) how fixed-function operator semantics
 > (depth/stencil/blend/scissor/sampling) graduate into `shs-renderer-lib`.
 > Companion docs: `docs/education/tier0_rasterization_lessons.md` (Tier 0
@@ -37,26 +37,26 @@ code that survives several demos gets promoted.
 - Do **not** ingest early: unsettled structure resists generalization, and
   premature abstraction taxes every subsequent demo.
 
-## 2. Pure reducer-based Domain PODs in demos
+## 2. Pure gateway-based Domain PODs in demos
 
 The snake, tetris, and fps demos already enforce the pattern
-(`domains/<name>/{contract,action,event,reducer}.hpp`), and the Domain Pod
+(`domains/<name>/{contract,action,event,gateway}.hpp`), and the Domain Pod
 canon docs declare it applicable to all demos alike. Policy for the
 rendering-adventures tree:
 
 - **Tier0-style static demos stay procedural.** One-shot render-to-PNG programs
   have no state timeline to reduce; forcing
-  `contract/action/event/reducer` boilerplate onto them is ceremony without
+  `contract/command/event/gateway` boilerplate onto them is ceremony without
   payoff and fights the demo-as-proving-ground philosophy.
 - **Trigger point:** introduce Domain PODs at the first tier that has *time or
   input* (animation, camera, interaction). That is when state transitions exist
-  worth auditing: `(SceneState, events, dt) -> SceneState'` as a pure reducer,
+  worth auditing: `(SceneState, events, dt) -> SceneState'` as a pure gateway,
   then a pure `render(state) -> framebuffer`.
 - **Synergy with parity:** record the event stream once, reduce once, feed the
-  reduced state to both backends, diff. Replayability and determinism fall out
+  applied state to both backends, diff. Replayability and determinism fall out
   for free — the same auditable-transition property the canon cites.
 - **Purity is structurally enforced, not compiler-enforced.** C++ has no effect system (even at the C++23 lib baseline) —
-  the rules are: reducers take PODs by value/`const&` and return
+  the rules are: gateways take PODs by value/`const&` and return
   new PODs (or out-params), no globals, no RNG, no I/O below the edge layer,
   events as plain enums — then purity is *tested* via determinism/replay gates
   (same inputs → byte-identical outputs), as tetris already does.

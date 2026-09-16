@@ -125,7 +125,7 @@
 59. ⬜ Irradiance volumes (grid probe interpolation)
 60. 🔶 Light propagation volumes *(GLSL ref: `light_math` groundwork)*
 61. ⬜ Dynamic Diffuse GI (DDGI) — **recommended SOTA deep bet**; probe update +
-    sample passes map cleanly onto the pod/reducer pass model
+    sample passes map cleanly onto the pod/gateway pass model
 62. ⬜ Voxel GI (VXGI / cone tracing)
 63. ⬜ Screen-space GI (SSGI/SSDO)
 64. ⬜ Radiance cascades (modern probe-free GI frontier)
@@ -161,7 +161,7 @@
 81. 🔶 GPU compute light culling *(GLSL ref: `fp_stress_light_cull.comp` — the
     CullingLightGPU single-source milestone, Slang plan P2)*
 82. ⬜ Software rasterization on GPU (compute rasterizer) — the library's
-    signature domain: the same pure reducers run on CPU SIMD and GPU
+    signature domain: the same pure gateways run on CPU SIMD and GPU
 83. ⬜ Visibility-buffer + meshlet hybrid (endgame composition)
 
 ## How the ladder maps onto the Slang plan
@@ -180,7 +180,7 @@ part of landing, so nothing is ported twice.
 
 **Definition of feature-complete for this curriculum:** solid Tiers 0–6 plus the two
 SOTA deep bets — **DDGI** (Tier 7) and **GPU-driven culling** (Tier 10) — the two
-techniques that best exploit the pure-reducer Domain POD architecture. Everything
+techniques that best exploit the pure-gateway Domain POD architecture. Everything
 between is a menu, not a checklist.
 
 ## Ordering rules (learned constraints, not preferences)

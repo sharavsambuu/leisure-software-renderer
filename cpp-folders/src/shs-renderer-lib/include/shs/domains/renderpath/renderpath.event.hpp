@@ -5,7 +5,7 @@
 
     FILE: renderpath.event.hpp
     MODULE: domains/renderpath
-    PURPOSE: RAW FACTS emitted by the renderpath reducer — closed
+    PURPOSE: RAW FACTS emitted by the renderpath gateway — closed
              RenderPathEvent variant (Constitution §6.1). Plain values only
              (no std::string payloads); recipe identity stays in pod state,
              events carry counts/enums so they can live on the frame arena.

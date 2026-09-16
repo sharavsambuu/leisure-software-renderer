@@ -13,7 +13,7 @@ has no explicit command vocabulary, no event log, and its Vulkan reality is a 9,
 monolith (`exp-rendering-techniques/demo_forward_classic_renderpath.cpp`) with hard-coded
 path logic. Adopting the Core 4 Domain Pod canon gives the renderer the same properties
 the game demos already have: auditable state transitions, replayable configuration
-history, GPU-free testing of path logic, and hot-swappable paths as pure reducer
+history, GPU-free testing of path logic, and hot-swappable paths as pure gateway
 transitions.
 
 ## 2. Ground Truth (as of 2026-09-15)
@@ -24,7 +24,7 @@ transitions.
 | Value-desc RHI vocabulary exists: `rhi/resource/resource_desc.hpp`, `rhi/command/command_desc.hpp`, `rhi/pipeline/pipeline_desc.hpp`, `rhi/sync/sync_desc.hpp` | The "everything is a value description" layer is ready; only the driver and orchestration are missing |
 | Vulkan work lives in `exps-gpu-renderer/exp-rendering-techniques/demo_forward_classic_renderpath.cpp` (9,373 lines) and `exp-plumbing/hello_*_vulkan.cpp` probes | Monolith must be decomposed into pods, not grown further |
 | `shs/pipeline/` holds 25 headers (recipe, compiler, executor, barrier/resource plans, presets, registries) | Already pod-shaped; needs reorganization under Core 4 suffixes, not rewriting |
-| Demos (tetris/snake) have the working reducer/event pattern; tetris pods are the reference | Reuse the demo pattern vocabulary in the lib, not the reverse |
+| Demos (tetris/snake) have the working gateway/event pattern; tetris pods are the reference | Reuse the demo pattern vocabulary in the lib, not the reverse |
 
 ## 3. The `renderpath` Domain Pod (Core 4 mapping)
 
@@ -36,7 +36,7 @@ shs-renderer-lib/include/shs/domains/renderpath/
 │       all recipe enums (technique, culling mode, light-volume provider)
 │       → moved (re-exported) from pipeline/render_path_recipe.hpp,
 │         render_path_capabilities.hpp, render_path_runtime_state.hpp
-├── renderpath.action.hpp     # CORE 2. COMMAND  (NEW)
+├── renderpath.command.hpp     # CORE 2. COMMAND  (NEW)
 │       closed variant RenderPathCommand:
 │         SelectPathPresetIntent{PresetId}
 │         SetRenderingTechniqueIntent{RenderPathRenderingTechnique}
@@ -50,16 +50,16 @@ shs-renderer-lib/include/shs/domains/renderpath/
 ├── renderpath.event.hpp      # CORE 3. EVENT  (NEW)
 │       closed variant RenderPathEvent:
 │         PATH_COMPILED{plan_hash, pass_count}
-│         PATH_SWAP_REJECTED{errors}            // reducer kept previous plan
+│         PATH_SWAP_REJECTED{errors}            // gateway kept previous plan
 │         PATH_WARNING_RAISED{warnings}
 │         RUNTIME_STATE_CHANGED{flag_id, value}
-├── renderpath.reducer.hpp    # CORE 4. REDUCER  (NEW)
-│       pure: reduce_render_path(RenderPathDomainState, span<const RenderPathCommand>,
+├── renderpath.gateway.hpp    # CORE 4. GATEWAY  (NEW)
+│       pure: renderpath_gateway(RenderPathDomainState, span<const RenderPathCommand>,
 │                               const RenderPathCapabilitySet&, arena)
 │                            → RenderPathStep{next, events}
 │       Transition rule: apply intents → recompile via (value-ified) compiler rules
 │       → on valid plan: swap + emit PATH_COMPILED; on invalid: KEEP previous plan
-│         + emit PATH_SWAP_REJECTED. Hot-swap safety becomes a reducer invariant.
+│         + emit PATH_SWAP_REJECTED. Hot-swap safety becomes a gateway invariant.
 ├── renderpath.plan.hpp       # EXT. Batch compilers
 │       existing render_path_resource_plan / barrier_plan / runtime_layout /
 │       pass_dispatch builders + build_execution_request(...)
@@ -67,8 +67,8 @@ shs-renderer-lib/include/shs/domains/renderpath/
         RenderPathExecutor, pass adapters, RHI drivers stay in pipeline/ + rhi/.
 ```
 
-**Reducer contract details.** `RenderPathCompiler` is currently a mutable class holding
-`RenderPathCompatibilityRules`. The reducer wraps it as pure value-in/value-out: rules
+**Gateway contract details.** `RenderPathCompiler` is currently a mutable class holding
+`RenderPathCompatibilityRules`. The gateway wraps it as pure value-in/value-out: rules
 become a parameter (threaded from the pod state), and `compile()` is called without
 side effects. The compiler itself remains in `pipeline/` as a shared utility — the pod
 owns the *decision*, not the validation helper.
@@ -107,7 +107,7 @@ The 9,373-line demo becomes a thin composition of pods. Extraction order (depend
    This is what makes paths *hot-swappable in the demo*, proving the L4 claim.
 4. **Per-frame planner calls** → `spatial_fx`-style plan function emitting
    `CommandDesc` spans for the driver.
-5. **Main loop** reduced to: input edge → reducers → plan → executor edge → present,
+5. **Main loop** applied to: input edge → gateways → plan → executor edge → present,
    matching the tetris `hello_3d_tetris.cpp` shape.
 
 `hello_modern_vulkan.cpp` and the other probes are migrated incrementally or retired
@@ -118,7 +118,7 @@ once the decomposed demo covers them.
 - No changes to the software rasterizer's hot paths (Constitution III's SoA/ECS
   tenets and this Constitution's §7.1/§7.2 memory laws are already satisfied there).
 - No GPU payloads through pods: cull/light GPU structs remain flat SHS-space value data.
-- No dynamic allocation per frame in reducers: command/event vectors use the frame arena.
+- No dynamic allocation per frame in gateways: command/event vectors use the frame arena.
 - No loss of the Jolt culling bridge: `RenderPathLightVolumeProvider::JoltShapeVolumes`
   remains a recipe value; shapes stay behind the geometry adapter (see Jolt assessment).
 
@@ -136,6 +136,6 @@ once the decomposed demo covers them.
    caches — caches are explicit tables keyed by desc hashes (DOD: open addressing,
    generation counters, no per-node allocation).
 4. **Backend-agnostic pods**: the `renderpath` pod must compile and test with zero
-   Vulkan includes. Capability gating happens in the reducer via
+   Vulkan includes. Capability gating happens in the gateway via
    `RenderPathCapabilitySet`; the driver only ever receives already-validated plans.
 

@@ -65,10 +65,10 @@ cd /home/sharavsambuu/src/dev/leisure-software-renderer/cpp-folders/build && mak
 ### 3. Test (VOP boundary + deterministic core)
 
 ```bash
-cd /home/sharavsambuu/src/dev/leisure-software-renderer/cpp-folders/build && ctest -R "shs_renderer_vop_(boundary_check|tests)" --output-on-failure
+cd /home/sharavsambuu/src/dev/leisure-software-renderer/cpp-folders/build && ctest -R "shs_renderer_(boundary_check|tests)" --output-on-failure
 ```
 
-- Registered tests live in `src/shs-renderer-lib/CMakeLists.txt`: `shs_renderer_vop_boundary_check` (a custom target) and `shs_renderer_vop_tests` (an executable). The `-R "..."` regex selects exactly those.
+- Registered tests live in `src/shs-renderer-lib/CMakeLists.txt`: `shs_renderer_boundary_check` (a custom target) and `shs_renderer_tests` (an executable). The `-R "..."` regex selects exactly those.
 - `--output-on-failure` prints failing test output; without it ctest is quiet on success.
 
 ### 4. Run a demo binary (optional, after build)

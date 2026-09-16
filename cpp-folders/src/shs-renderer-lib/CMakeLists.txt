@@ -163,7 +163,7 @@ set(SHS_SDL2_HAS_VULKAN "${SHS_SDL2_HAS_VULKAN}" PARENT_SCOPE)
 
 # Header-only value-layer target: include dirs + header-only deps ONLY.
 # Pure value code (pods, reducers, planners) must build and test against this
-# with zero SDL/assimp/Vulkan links (VOP Constitution §7 headless-test law).
+# with zero SDL/assimp/Vulkan links (KDBA Constitution II §7 headless-test law).
 add_library(shs_renderer_values INTERFACE)
 add_library(shs::renderer-values ALIAS shs_renderer_values)
 target_include_directories(shs_renderer_values INTERFACE
@@ -187,288 +187,288 @@ option(SHS_RENDERER_BUILD_TESTS "Build shs_renderer core tests" ON)
 if(SHS_RENDERER_BUILD_TESTS)
     enable_testing()
 
-    add_executable(shs_renderer_vop_tests
-        tests/vop_core_tests.cpp
+    add_executable(shs_renderer_tests
+        tests/core_tests.cpp
     )
-    target_link_libraries(shs_renderer_vop_tests PRIVATE shs::renderer)
-    target_compile_features(shs_renderer_vop_tests PRIVATE cxx_std_23)
+    target_link_libraries(shs_renderer_tests PRIVATE shs::renderer)
+    target_compile_features(shs_renderer_tests PRIVATE cxx_std_23)
     if(MSVC)
-        target_compile_options(shs_renderer_vop_tests PRIVATE /W4)
+        target_compile_options(shs_renderer_tests PRIVATE /W4)
     else()
-        target_compile_options(shs_renderer_vop_tests PRIVATE -Wall -Wextra -Wpedantic)
+        target_compile_options(shs_renderer_tests PRIVATE -Wall -Wextra -Wpedantic)
     endif()
 
     # P1 renderpath pod tests: pure value tests, frame-arena events, no
     # platform links (only shs::renderer-values + glm headers).
-    add_executable(shs_renderer_vop_renderpath_tests
-        tests/vop_renderpath_tests.cpp
+    add_executable(shs_renderer_renderpath_tests
+        tests/renderpath_tests.cpp
     )
-    target_link_libraries(shs_renderer_vop_renderpath_tests PRIVATE shs::renderer-values)
-    target_compile_features(shs_renderer_vop_renderpath_tests PRIVATE cxx_std_23)
+    target_link_libraries(shs_renderer_renderpath_tests PRIVATE shs::renderer-values)
+    target_compile_features(shs_renderer_renderpath_tests PRIVATE cxx_std_23)
     if(MSVC)
-        target_compile_options(shs_renderer_vop_renderpath_tests PRIVATE /W4)
+        target_compile_options(shs_renderer_renderpath_tests PRIVATE /W4)
     else()
-        target_compile_options(shs_renderer_vop_renderpath_tests PRIVATE -Wall -Wextra -Wpedantic)
+        target_compile_options(shs_renderer_renderpath_tests PRIVATE -Wall -Wextra -Wpedantic)
     endif()
 
-    add_custom_target(shs_renderer_vop_boundary_check
-        COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_vop_boundaries.sh"
+    add_custom_target(shs_renderer_boundary_check
+        COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_kdba_boundaries.sh"
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-        COMMENT "Running VOP boundary checks for planner layer"
+        COMMENT "Running KDBA boundary checks for planner layer"
         VERBATIM
     )
 
     add_test(
-        NAME shs_renderer_vop_boundary_check
-        COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_vop_boundaries.sh"
+        NAME shs_renderer_boundary_check
+        COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_kdba_boundaries.sh"
     )
-    set_tests_properties(shs_renderer_vop_boundary_check PROPERTIES
+    set_tests_properties(shs_renderer_boundary_check PROPERTIES
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
     )
 
     add_test(
-        NAME shs_renderer_vop_tests
-        COMMAND shs_renderer_vop_tests
+        NAME shs_renderer_tests
+        COMMAND shs_renderer_tests
     )
-    set_tests_properties(shs_renderer_vop_tests PROPERTIES
+    set_tests_properties(shs_renderer_tests PROPERTIES
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     )
 
     # P1.5 container/arena tests: header-only value tests, no platform links.
-    add_executable(shs_renderer_vop_containers_tests
-        tests/vop_containers_tests.cpp
+    add_executable(shs_renderer_containers_tests
+        tests/containers_tests.cpp
     )
-    target_link_libraries(shs_renderer_vop_containers_tests PRIVATE shs::renderer-values)
-    target_compile_features(shs_renderer_vop_containers_tests PRIVATE cxx_std_23)
+    target_link_libraries(shs_renderer_containers_tests PRIVATE shs::renderer-values)
+    target_compile_features(shs_renderer_containers_tests PRIVATE cxx_std_23)
     if(MSVC)
-        target_compile_options(shs_renderer_vop_containers_tests PRIVATE /W4)
+        target_compile_options(shs_renderer_containers_tests PRIVATE /W4)
     else()
-        target_compile_options(shs_renderer_vop_containers_tests PRIVATE -Wall -Wextra -Wpedantic)
+        target_compile_options(shs_renderer_containers_tests PRIVATE -Wall -Wextra -Wpedantic)
     endif()
 
     add_test(
-        NAME shs_renderer_vop_renderpath_tests
-        COMMAND shs_renderer_vop_renderpath_tests
+        NAME shs_renderer_renderpath_tests
+        COMMAND shs_renderer_renderpath_tests
     )
-    set_tests_properties(shs_renderer_vop_renderpath_tests PROPERTIES
+    set_tests_properties(shs_renderer_renderpath_tests PROPERTIES
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     )
 
     add_test(
-        NAME shs_renderer_vop_containers_tests
-        COMMAND shs_renderer_vop_containers_tests
+        NAME shs_renderer_containers_tests
+        COMMAND shs_renderer_containers_tests
     )
-    set_tests_properties(shs_renderer_vop_containers_tests PROPERTIES
+    set_tests_properties(shs_renderer_containers_tests PROPERTIES
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     )
 
     # R3 pod tests: input + frame Core 4, header-only value tests, no platform links.
-    add_executable(shs_renderer_vop_input_tests
-        tests/vop_input_tests.cpp
+    add_executable(shs_renderer_input_tests
+        tests/input_tests.cpp
     )
-    target_link_libraries(shs_renderer_vop_input_tests PRIVATE shs::renderer-values)
-    target_compile_features(shs_renderer_vop_input_tests PRIVATE cxx_std_23)
+    target_link_libraries(shs_renderer_input_tests PRIVATE shs::renderer-values)
+    target_compile_features(shs_renderer_input_tests PRIVATE cxx_std_23)
     if(MSVC)
-        target_compile_options(shs_renderer_vop_input_tests PRIVATE /W4)
+        target_compile_options(shs_renderer_input_tests PRIVATE /W4)
     else()
-        target_compile_options(shs_renderer_vop_input_tests PRIVATE -Wall -Wextra -Wpedantic)
+        target_compile_options(shs_renderer_input_tests PRIVATE -Wall -Wextra -Wpedantic)
     endif()
 
-    add_executable(shs_renderer_vop_frame_tests
-        tests/vop_frame_tests.cpp
+    add_executable(shs_renderer_frame_tests
+        tests/frame_tests.cpp
     )
-    target_link_libraries(shs_renderer_vop_frame_tests PRIVATE shs::renderer-values)
-    target_compile_features(shs_renderer_vop_frame_tests PRIVATE cxx_std_23)
+    target_link_libraries(shs_renderer_frame_tests PRIVATE shs::renderer-values)
+    target_compile_features(shs_renderer_frame_tests PRIVATE cxx_std_23)
     if(MSVC)
-        target_compile_options(shs_renderer_vop_frame_tests PRIVATE /W4)
+        target_compile_options(shs_renderer_frame_tests PRIVATE /W4)
     else()
-        target_compile_options(shs_renderer_vop_frame_tests PRIVATE -Wall -Wextra -Wpedantic)
+        target_compile_options(shs_renderer_frame_tests PRIVATE -Wall -Wextra -Wpedantic)
     endif()
 
     add_test(
-        NAME shs_renderer_vop_input_tests
-        COMMAND shs_renderer_vop_input_tests
+        NAME shs_renderer_input_tests
+        COMMAND shs_renderer_input_tests
     )
-    set_tests_properties(shs_renderer_vop_input_tests PROPERTIES
+    set_tests_properties(shs_renderer_input_tests PROPERTIES
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     )
 
-    add_executable(shs_renderer_vop_geometry_tests
-        tests/vop_geometry_tests.cpp
+    add_executable(shs_renderer_geometry_tests
+        tests/geometry_tests.cpp
     )
-    target_link_libraries(shs_renderer_vop_geometry_tests PRIVATE shs::renderer-values)
-    target_compile_features(shs_renderer_vop_geometry_tests PRIVATE cxx_std_23)
+    target_link_libraries(shs_renderer_geometry_tests PRIVATE shs::renderer-values)
+    target_compile_features(shs_renderer_geometry_tests PRIVATE cxx_std_23)
     if(MSVC)
-        target_compile_options(shs_renderer_vop_geometry_tests PRIVATE /W4)
+        target_compile_options(shs_renderer_geometry_tests PRIVATE /W4)
     else()
-        target_compile_options(shs_renderer_vop_geometry_tests PRIVATE -Wall -Wextra -Wpedantic)
+        target_compile_options(shs_renderer_geometry_tests PRIVATE -Wall -Wextra -Wpedantic)
     endif()
 
-    add_executable(shs_renderer_vop_lighting_tests
-        tests/vop_lighting_tests.cpp
+    add_executable(shs_renderer_lighting_tests
+        tests/lighting_tests.cpp
     )
-    target_link_libraries(shs_renderer_vop_lighting_tests PRIVATE shs::renderer-values)
-    target_compile_features(shs_renderer_vop_lighting_tests PRIVATE cxx_std_23)
+    target_link_libraries(shs_renderer_lighting_tests PRIVATE shs::renderer-values)
+    target_compile_features(shs_renderer_lighting_tests PRIVATE cxx_std_23)
     if(MSVC)
-        target_compile_options(shs_renderer_vop_lighting_tests PRIVATE /W4)
+        target_compile_options(shs_renderer_lighting_tests PRIVATE /W4)
     else()
-        target_compile_options(shs_renderer_vop_lighting_tests PRIVATE -Wall -Wextra -Wpedantic)
+        target_compile_options(shs_renderer_lighting_tests PRIVATE -Wall -Wextra -Wpedantic)
     endif()
 
     add_test(
-        NAME shs_renderer_vop_geometry_tests
-        COMMAND shs_renderer_vop_geometry_tests
+        NAME shs_renderer_geometry_tests
+        COMMAND shs_renderer_geometry_tests
     )
-    set_tests_properties(shs_renderer_vop_geometry_tests PROPERTIES
+    set_tests_properties(shs_renderer_geometry_tests PROPERTIES
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     )
 
-    add_executable(shs_renderer_vop_camera_tests
-        tests/vop_camera_tests.cpp
+    add_executable(shs_renderer_camera_tests
+        tests/camera_tests.cpp
     )
-    target_link_libraries(shs_renderer_vop_camera_tests PRIVATE shs::renderer-values)
-    target_compile_features(shs_renderer_vop_camera_tests PRIVATE cxx_std_23)
+    target_link_libraries(shs_renderer_camera_tests PRIVATE shs::renderer-values)
+    target_compile_features(shs_renderer_camera_tests PRIVATE cxx_std_23)
     if(MSVC)
-        target_compile_options(shs_renderer_vop_camera_tests PRIVATE /W4)
+        target_compile_options(shs_renderer_camera_tests PRIVATE /W4)
     else()
-        target_compile_options(shs_renderer_vop_camera_tests PRIVATE -Wall -Wextra -Wpedantic)
+        target_compile_options(shs_renderer_camera_tests PRIVATE -Wall -Wextra -Wpedantic)
     endif()
 
-    add_executable(shs_renderer_vop_resources_tests
-        tests/vop_resources_tests.cpp
+    add_executable(shs_renderer_resources_tests
+        tests/resources_tests.cpp
     )
-    target_link_libraries(shs_renderer_vop_resources_tests PRIVATE shs::renderer-values)
-    target_compile_features(shs_renderer_vop_resources_tests PRIVATE cxx_std_23)
+    target_link_libraries(shs_renderer_resources_tests PRIVATE shs::renderer-values)
+    target_compile_features(shs_renderer_resources_tests PRIVATE cxx_std_23)
     if(MSVC)
-        target_compile_options(shs_renderer_vop_resources_tests PRIVATE /W4)
+        target_compile_options(shs_renderer_resources_tests PRIVATE /W4)
     else()
-        target_compile_options(shs_renderer_vop_resources_tests PRIVATE -Wall -Wextra -Wpedantic)
+        target_compile_options(shs_renderer_resources_tests PRIVATE -Wall -Wextra -Wpedantic)
     endif()
 
     add_test(
-        NAME shs_renderer_vop_camera_tests
-        COMMAND shs_renderer_vop_camera_tests
+        NAME shs_renderer_camera_tests
+        COMMAND shs_renderer_camera_tests
     )
-    set_tests_properties(shs_renderer_vop_camera_tests PROPERTIES
+    set_tests_properties(shs_renderer_camera_tests PROPERTIES
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     )
 
-    add_executable(shs_renderer_vop_sky_tests
-        tests/vop_sky_tests.cpp
+    add_executable(shs_renderer_sky_tests
+        tests/sky_tests.cpp
     )
-    target_link_libraries(shs_renderer_vop_sky_tests PRIVATE shs::renderer-values)
-    target_compile_features(shs_renderer_vop_sky_tests PRIVATE cxx_std_23)
+    target_link_libraries(shs_renderer_sky_tests PRIVATE shs::renderer-values)
+    target_compile_features(shs_renderer_sky_tests PRIVATE cxx_std_23)
     if(MSVC)
-        target_compile_options(shs_renderer_vop_sky_tests PRIVATE /W4)
+        target_compile_options(shs_renderer_sky_tests PRIVATE /W4)
     else()
-        target_compile_options(shs_renderer_vop_sky_tests PRIVATE -Wall -Wextra -Wpedantic)
+        target_compile_options(shs_renderer_sky_tests PRIVATE -Wall -Wextra -Wpedantic)
     endif()
 
-    add_executable(shs_renderer_vop_logic_tests
-        tests/vop_logic_tests.cpp
+    add_executable(shs_renderer_logic_tests
+        tests/logic_tests.cpp
     )
-    target_link_libraries(shs_renderer_vop_logic_tests PRIVATE shs::renderer-values)
-    target_compile_features(shs_renderer_vop_logic_tests PRIVATE cxx_std_23)
+    target_link_libraries(shs_renderer_logic_tests PRIVATE shs::renderer-values)
+    target_compile_features(shs_renderer_logic_tests PRIVATE cxx_std_23)
     if(MSVC)
-        target_compile_options(shs_renderer_vop_logic_tests PRIVATE /W4)
+        target_compile_options(shs_renderer_logic_tests PRIVATE /W4)
     else()
-        target_compile_options(shs_renderer_vop_logic_tests PRIVATE -Wall -Wextra -Wpedantic)
+        target_compile_options(shs_renderer_logic_tests PRIVATE -Wall -Wextra -Wpedantic)
     endif()
 
-    add_executable(shs_renderer_vop_scene_tests
-        tests/vop_scene_tests.cpp
+    add_executable(shs_renderer_scene_tests
+        tests/scene_tests.cpp
     )
-    target_link_libraries(shs_renderer_vop_scene_tests PRIVATE shs::renderer-values)
-    target_compile_features(shs_renderer_vop_scene_tests PRIVATE cxx_std_23)
+    target_link_libraries(shs_renderer_scene_tests PRIVATE shs::renderer-values)
+    target_compile_features(shs_renderer_scene_tests PRIVATE cxx_std_23)
     if(MSVC)
-        target_compile_options(shs_renderer_vop_scene_tests PRIVATE /W4)
+        target_compile_options(shs_renderer_scene_tests PRIVATE /W4)
     else()
-        target_compile_options(shs_renderer_vop_scene_tests PRIVATE -Wall -Wextra -Wpedantic)
+        target_compile_options(shs_renderer_scene_tests PRIVATE -Wall -Wextra -Wpedantic)
     endif()
 
-    add_executable(shs_renderer_vop_gfx_tests
-        tests/vop_gfx_tests.cpp
+    add_executable(shs_renderer_gfx_tests
+        tests/gfx_tests.cpp
     )
 
-    add_executable(shs_renderer_vop_saga_tests
-        tests/vop_saga_tests.cpp
+    add_executable(shs_renderer_saga_tests
+        tests/saga_tests.cpp
     )
-    target_link_libraries(shs_renderer_vop_saga_tests PRIVATE shs::renderer-values)
-    target_compile_features(shs_renderer_vop_saga_tests PRIVATE cxx_std_23)
+    target_link_libraries(shs_renderer_saga_tests PRIVATE shs::renderer-values)
+    target_compile_features(shs_renderer_saga_tests PRIVATE cxx_std_23)
     if(MSVC)
-        target_compile_options(shs_renderer_vop_saga_tests PRIVATE /W4)
+        target_compile_options(shs_renderer_saga_tests PRIVATE /W4)
     else()
-        target_compile_options(shs_renderer_vop_saga_tests PRIVATE -Wall -Wextra -Wpedantic)
+        target_compile_options(shs_renderer_saga_tests PRIVATE -Wall -Wextra -Wpedantic)
     endif()
-    target_link_libraries(shs_renderer_vop_gfx_tests PRIVATE shs::renderer-values)
-    target_compile_features(shs_renderer_vop_gfx_tests PRIVATE cxx_std_23)
+    target_link_libraries(shs_renderer_gfx_tests PRIVATE shs::renderer-values)
+    target_compile_features(shs_renderer_gfx_tests PRIVATE cxx_std_23)
     if(MSVC)
-        target_compile_options(shs_renderer_vop_gfx_tests PRIVATE /W4)
+        target_compile_options(shs_renderer_gfx_tests PRIVATE /W4)
     else()
-        target_compile_options(shs_renderer_vop_gfx_tests PRIVATE -Wall -Wextra -Wpedantic)
+        target_compile_options(shs_renderer_gfx_tests PRIVATE -Wall -Wextra -Wpedantic)
     endif()
 
     add_test(
-        NAME shs_renderer_vop_gfx_tests
-        COMMAND shs_renderer_vop_gfx_tests
+        NAME shs_renderer_gfx_tests
+        COMMAND shs_renderer_gfx_tests
     )
 
     add_test(
-        NAME shs_renderer_vop_saga_tests
-        COMMAND shs_renderer_vop_saga_tests
+        NAME shs_renderer_saga_tests
+        COMMAND shs_renderer_saga_tests
     )
-    set_tests_properties(shs_renderer_vop_saga_tests PROPERTIES
+    set_tests_properties(shs_renderer_saga_tests PROPERTIES
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     )
-    set_tests_properties(shs_renderer_vop_gfx_tests PROPERTIES
-        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
-    )
-
-    add_test(
-        NAME shs_renderer_vop_scene_tests
-        COMMAND shs_renderer_vop_scene_tests
-    )
-    set_tests_properties(shs_renderer_vop_scene_tests PROPERTIES
+    set_tests_properties(shs_renderer_gfx_tests PROPERTIES
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     )
 
     add_test(
-        NAME shs_renderer_vop_logic_tests
-        COMMAND shs_renderer_vop_logic_tests
+        NAME shs_renderer_scene_tests
+        COMMAND shs_renderer_scene_tests
     )
-    set_tests_properties(shs_renderer_vop_logic_tests PROPERTIES
+    set_tests_properties(shs_renderer_scene_tests PROPERTIES
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     )
 
     add_test(
-        NAME shs_renderer_vop_sky_tests
-        COMMAND shs_renderer_vop_sky_tests
+        NAME shs_renderer_logic_tests
+        COMMAND shs_renderer_logic_tests
     )
-    set_tests_properties(shs_renderer_vop_sky_tests PROPERTIES
+    set_tests_properties(shs_renderer_logic_tests PROPERTIES
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     )
 
     add_test(
-        NAME shs_renderer_vop_resources_tests
-        COMMAND shs_renderer_vop_resources_tests
+        NAME shs_renderer_sky_tests
+        COMMAND shs_renderer_sky_tests
     )
-    set_tests_properties(shs_renderer_vop_resources_tests PROPERTIES
+    set_tests_properties(shs_renderer_sky_tests PROPERTIES
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     )
 
     add_test(
-        NAME shs_renderer_vop_lighting_tests
-        COMMAND shs_renderer_vop_lighting_tests
+        NAME shs_renderer_resources_tests
+        COMMAND shs_renderer_resources_tests
     )
-    set_tests_properties(shs_renderer_vop_lighting_tests PROPERTIES
+    set_tests_properties(shs_renderer_resources_tests PROPERTIES
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     )
 
     add_test(
-        NAME shs_renderer_vop_frame_tests
-        COMMAND shs_renderer_vop_frame_tests
+        NAME shs_renderer_lighting_tests
+        COMMAND shs_renderer_lighting_tests
     )
-    set_tests_properties(shs_renderer_vop_frame_tests PROPERTIES
+    set_tests_properties(shs_renderer_lighting_tests PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    )
+
+    add_test(
+        NAME shs_renderer_frame_tests
+        COMMAND shs_renderer_frame_tests
+    )
+    set_tests_properties(shs_renderer_frame_tests PROPERTIES
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     )
 
@@ -478,29 +478,29 @@ if(SHS_RENDERER_BUILD_TESTS)
     # Skipped cleanly when Vulkan is absent (lib stays Vulkan-free by default).
     find_package(Vulkan QUIET)
     if(Vulkan_FOUND)
-        add_executable(shs_renderer_vop_vk_driver_tests
-            tests/vop_vk_driver_tests.cpp
+        add_executable(shs_renderer_vk_driver_tests
+            tests/vk_driver_tests.cpp
         )
-        target_link_libraries(shs_renderer_vop_vk_driver_tests PRIVATE
+        target_link_libraries(shs_renderer_vk_driver_tests PRIVATE
             shs::renderer-values
             Vulkan::Vulkan
         )
-        target_compile_features(shs_renderer_vop_vk_driver_tests PRIVATE cxx_std_23)
+        target_compile_features(shs_renderer_vk_driver_tests PRIVATE cxx_std_23)
         if(MSVC)
-            target_compile_options(shs_renderer_vop_vk_driver_tests PRIVATE /W4)
+            target_compile_options(shs_renderer_vk_driver_tests PRIVATE /W4)
         else()
-            target_compile_options(shs_renderer_vop_vk_driver_tests PRIVATE -Wall -Wextra -Wpedantic)
+            target_compile_options(shs_renderer_vk_driver_tests PRIVATE -Wall -Wextra -Wpedantic)
         endif()
 
         add_test(
-            NAME shs_renderer_vop_vk_driver_tests
-            COMMAND shs_renderer_vop_vk_driver_tests
+            NAME shs_renderer_vk_driver_tests
+            COMMAND shs_renderer_vk_driver_tests
         )
-        set_tests_properties(shs_renderer_vop_vk_driver_tests PROPERTIES
+        set_tests_properties(shs_renderer_vk_driver_tests PROPERTIES
             WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
         )
     else()
-        message(STATUS "Vulkan headers not found — skipping shs_renderer_vop_vk_driver_tests")
+        message(STATUS "Vulkan headers not found — skipping shs_renderer_vk_driver_tests")
     endif()
 endif()
 

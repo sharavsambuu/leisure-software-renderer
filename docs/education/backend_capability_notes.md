@@ -17,7 +17,7 @@ The tetris demo is the best-case candidate for proving the backend-agnostic
 thesis on a real application, because of its existing seams:
 
 - `domains/` (matrix, progression, mission, powerups, spatial_fx) is
-  presentation-free pure reducer code — ports to any backend for free.
+  presentation-free pure gateway code — ports to any backend for free.
 - `edges/rasterizer/` is the only pixel-touching code; all rendering policy
   (z-tested transparency overlay: depth-test on, depth-write off, blend on;
   canvas y-flip) lives there.
@@ -41,7 +41,7 @@ Known work items (not blockers): HUD/text and canvas pixel ops need draw-list
 representation (SDF text or a dedicated pass); the custom overlay semantics
 must be pinned by a parity test, not assumed.
 
-End state: same game, same reducers, one flag flips the backend, harness proves
+End state: same game, same gateways, one flag flips the backend, harness proves
 the pixels agree — the public demonstration of the backend-agnostic thesis.
 
 ## 2. What the software backend can offer vs Vulkan

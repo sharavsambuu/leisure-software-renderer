@@ -12,7 +12,7 @@
              selector instead (log spam is not observability).
 */
 
-#include "shs/domains/logic/logic.action.hpp"
+#include "shs/domains/logic/logic.command.hpp"
 
 namespace shs
 {

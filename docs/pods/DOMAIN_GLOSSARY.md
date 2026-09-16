@@ -21,10 +21,10 @@
 
 > **Pod home (P1):** the recipe → compiler → plan spine is owned by the
 > `renderpath` Domain Pod — `include/shs/domains/renderpath/` (Core 4:
-> `renderpath.contract.hpp` re-exports everything below, `renderpath.action.hpp`
+> `renderpath.contract.hpp` re-exports everything below, `renderpath.command.hpp`
 > carries the closed `RenderPathCommand` variant, `renderpath.event.hpp` the
-> closed `RenderPathEvent` variant, `renderpath.reducer.hpp` the pure
-> `reduce_render_path`). The `shs/execution/pipeline/` paths below remain the
+> closed `RenderPathEvent` variant, `renderpath.gateway.hpp` the pure
+> `renderpath_gateway`). The `shs/execution/pipeline/` paths below remain the
 > canonical definition sites; the pod is the sanctioned seam (P1).
 
 | Concept | Type | Notes |
@@ -33,7 +33,7 @@
 | Per-frame toggles (debug, shadows, lit mode) | `RenderPathRuntimeState` (`recipe.runtime_defaults`) | runtime-mutable via pod commands, not recipe edits |
 | Post-stack feature flags | `RenderCompositionPostStackState` (ssao/taa/motion blur/dof) | composed from the post-stack preset |
 | Compiled, validated path | `RenderPathExecutionPlan` | produced by `RenderPathCompiler` — never hand-written |
-| What the reducer may ask | `RenderPathCompatibilityRules` | value rules threaded through `reduce_render_path` |
+| What the gateway may ask | `RenderPathCompatibilityRules` | value rules threaded through `renderpath_gateway` |
 | What the device allows | `RenderPathCapabilitySet` | capability gating happens *before* any backend touch |
 | Scene draw list | `RenderItemSpan` from `SceneObjectSet::to_render_items(view, proj, &arena)` | backend-neutral |
 | Cullable light payload | flat GPU buffers from `LightSet::to_cullable_gpu(...)` | backend-neutral |
@@ -57,12 +57,31 @@
 - `render_path_culling_requires_occlusion(mode)` / `render_path_culling_allows_occlusion(mode)`
 - Reflection: `render_path_*_name(...)` for every menu (logging, HUD, replay).
 
-## 5. Vocabulary Law Pointer
+## 5. Vocabulary Law Pointers
 
 New vocabulary follows Constitution §6.5 (Vocabulary Law) — this catalog never
 restates or re-numbers it (precedence: §2.2). When a pod's vocabulary changes,
 update the relevant table above and the Constitution's §6.5 remains the single
 source of truth for naming/factory/transform conventions.
+
+**Identifiers** follow Constitution §6.6 (Pod Identifier Law) and its normative annex
+[`docs/spec/pod_identifier_law.md`](../spec/pod_identifier_law.md) — which carries the
+old reducer/Action post-mortem, the full migration ledger, the gate evidence and the
+decision procedure for naming anything new. Quick form — *the container gets the law noun,
+the alternatives get verb phrases*:
+
+| Layer | Container (law noun) | Alternative (verb / fact phrase) | Example |
+| :--- | :--- | :--- | :--- |
+| Command | `<Pod>Command` | `<VerbPhrase>Intent` | `RenderPathCommand = std::variant<SelectPathPresetIntent, SetRuntimeToggleIntent, ...>` |
+| Event | `<Pod>Event` | `<FactPhrase>Event` | `InputEvent = std::variant<CameraTranslatedEvent, RuntimeFlagToggledEvent, ...>` |
+| Failure rail | `<Pod>RejectionReason` | `<WhyPhrase>` | `PathSwapRejectionReason::EmptyPassChain` |
+| Environment | `<Pod>Context` | (fields only) | `LogicContext<TStateId>`, `FrameContext` |
+| Entry point | `<pod>_gateway(...)` | — | `renderpath_gateway`, `input_gateway`, `gfx_gateway` |
+
+Banned in pod code (`check_kdba_boundaries.sh` hard FAIL): `reduce_*`, `reducer`,
+`*Action`, `*.reducer.hpp`, `*.action.hpp`. Inside `edge/`, `Command` means *executable
+edge object* (`ICommand` subclasses such as `LookCommand`) — a deliberate carve-out, not a
+second vocabulary.
 
 ## 6. Contiguous Backing-Store Utilities (P1.5)
 
@@ -75,15 +94,15 @@ source of truth for naming/factory/transform conventions.
 
 ## 7. Pod homes (Core 4 complete 11/11 — hardening campaign R1–R5b)
 
-Each pod: `<pod>.contract/action/event/reducer.hpp` (+ `plan.hpp` where the
+Each pod: `<pod>.contract/command/event/gateway.hpp` (+ `plan.hpp` where the
 litmus demands; edge code under `<pod>/edge/`). Event catalog:
-`docs/pods/EVENT_FLOW.md` (drift-gated by `check_vop_boundaries.sh`).
+`docs/pods/EVENT_FLOW.md` (drift-gated by `check_kdba_boundaries.sh`).
 
 | Pod | Home | Notes |
 | :--- | :--- | :--- |
-| `renderpath` | `shs/domains/renderpath/` | First formal pod; reducer wraps the compiler; invalid ⇒ keep + reject. |
-| `input` | `shs/domains/input/` (+ `edge/` queue) | `reduce_input` canonical; legacy `reduce_runtime_state` delegates. |
-| `frame` | `shs/domains/frame/` | Empty vocabs (monostate); identity reducer, pinned. |
+| `renderpath` | `shs/domains/renderpath/` | First formal pod; gateway wraps the compiler; invalid ⇒ keep + reject. |
+| `input` | `shs/domains/input/` (+ `edge/` queue) | `input_gateway` canonical; legacy `runtime_state_gateway` delegates. |
+| `frame` | `shs/domains/frame/` | Empty vocabs (monostate); identity gateway, pinned. |
 | `geometry` | `shs/domains/geometry/` | TBN operator ingested (rung 08); culling runtimes migrate later. |
 | `lighting` | `shs/domains/lighting/` | Lambert terms ingested (rung 08); culling runtimes migrate later. |
 | `camera` | `shs/domains/camera/` | Pure builders; bridge in `execution/platform/`. |

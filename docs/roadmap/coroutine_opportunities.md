@@ -8,22 +8,22 @@ VOP alignment note:
 
 ## 0. VOP Boundary Rules for Coroutines
 1. Do use coroutines for runtime scheduling, Virtual SPU task dispatch, GPU waits, and async I/O orchestration.
-2. Do not use coroutines to mutate planning/reducer state machines in hidden or non-deterministic ways.
-3. Keep planner/reducer layers as explicit value transforms; coroutine handles/promises should not leak into planning contracts.
+2. Do not use coroutines to mutate planning/gateway state machines in hidden or non-deterministic ways.
+3. Keep planner/gateway layers as explicit value transforms; coroutine handles/promises should not leak into planning contracts.
 
 ## 0.5 Virtual SPU Job System
 Coroutines are the primary scheduling primitive for the **Angstrom Era** Virtual SPU model. 
 - **Stackless Tasks**: Each render tile or compute job is a stackless coroutine submitted to a persistent `jthread` worker.
 - **Always-Busy / Non-Blocking**: Replaces traditional mutex/semaphore synchronization with `co_await` on job completion. If a job is blocked by a dependency, the worker doesn't wait; it suspends the job and immediately moves to the next one in its mailbox.
 
-## 1. Gameplay logic stays value reducers (ruled, 2026-09-16)
+## 1. Gameplay logic stays value gateways (ruled, 2026-09-16)
 
 Superseded recommendation preserved verbatim at
 `../outdated/coroutine-logic-scripts-2026-09-16.md`. Gameplay state machines
 (Patrol → Chase → Attack) are table-driven value FSMs (`logic` pod
 precedent, Constitution II Rule 12), not coroutine scripts: coroutines live
 on execution edges only (Constitution I §10). Coroutine-driven gameplay
-logic would hide state transitions outside reducers and break replay.
+logic would hide state transitions outside gateways and break replay.
 Revisit only if a demo proves otherwise with a replay-pinned spike.
 
 ## 2. Asset Loading

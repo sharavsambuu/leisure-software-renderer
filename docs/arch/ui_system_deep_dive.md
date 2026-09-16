@@ -1,5 +1,8 @@
 # Deep-Dive: UI System Implementation
 
+> **Status: historical design background (2026-09-17), not normative.** ECS framing describes an earlier proposal. [KDBA law](../spec/value_oriented_programming.md) and the [governing clarification](../spec/dod_ecs_architecture.md) take precedence.
+
+
 A game UI system is a specialized 2D renderer that overlays the 3D world. For your renderer, we need to handle rendering, layout, and text with high performance.
 
 ## 1. The Rendering Pipeline

@@ -5,7 +5,7 @@
 
     FILE: value_input_latch.hpp
     MODULE: input
-    PURPOSE: Value-oriented reducer for runtime input latch state.
+    PURPOSE: Value-oriented gateway for runtime input latch state.
 */
 
 
@@ -79,7 +79,7 @@ namespace shs
         return out;
     }
 
-    inline RuntimeInputLatch reduce_runtime_input_latch(
+    inline RuntimeInputLatch input_latch_gateway(
         RuntimeInputLatch state,
         std::span<const RuntimeInputEvent> events)
     {

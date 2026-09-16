@@ -10,7 +10,7 @@ Laws live in Constitution II §2.1/§3/§6/§8/§10/A.7, I §10, `DOMAIN_GLOSSAR
 
 ## 2. Axioms / laws / dimensions (one line each, full text in §2.1/§3/§8)
 
-Arrows sole unit; PODs passive (contracts method-free, arrows in `reducer.hpp`); transient `SagaContext` vs persistent invariants (zero phantom flags); sealed single-writer boundaries (Commands in, Events out). Five bans: monoliths, phantoms, exceptions, cross-domain writes, in-arrow side effects. Seven dims: state/logic/flow/writes/consistency/layout/time — never mixed.
+Arrows sole unit; PODs passive (contracts method-free, arrows in `gateway.hpp`); transient `SagaContext` vs persistent invariants (zero phantom flags); sealed single-writer boundaries (Commands in, Events out). Five bans: monoliths, phantoms, exceptions, cross-domain writes, in-arrow side effects. Seven dims: state/logic/flow/writes/consistency/layout/time — never mixed.
 
 ## 3. C++23 notes
 

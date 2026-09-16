@@ -15,7 +15,7 @@
 
 | Term | One-line meaning | Legislated in |
 | :--- | :--- | :--- |
-| State monad | Reducer as pure transition `(S_old, A) -> (S_new, Events)` | §2.1, A.7 |
+| State monad | Gateway as pure transition `(S_old, A) -> (S_new, Events)` | §2.1, A.7 |
 | Writer monad | Event/fact accumulation on the caller arena, both rails | §2, A.7 |
 | Either / Result monad | `std::expected<T, E>`: value rail vs error rail | §8, A.7 |
 | Kleisli arrow | One pipeline stage `Ctx -> expected<Ctx, Err>`, chained | §8, A.7 |
@@ -40,7 +40,7 @@
 
 ## 2. The monad mappings (the aha core)
 
-- **Reducer ≅ State monad.** Old state + action span in, new state + events
+- **Gateway ≅ State monad.** Old state + action span in, new state + events
   out. Deterministic, side-effect-free *decisions*; owned buffers may update
   in place under linear ownership (§2.2(4)) — purity is about decisions, not
   copying.
@@ -61,13 +61,13 @@
 
 ```
 expected<Plan, ClosedEnum>          → value/error channel: compose monadically
-void f(State&, span<const Action>,
-       Inputs, pmr::vector<Event>&) → command/event stream: variant vocabulary
+void f(State&, span<const Command>,
+       Context, pmr::vector<Event>&) → command/event stream: variant vocabulary
 ```
 
 Two channels, side by side, never merged. The bundled signature
 `expected<(State, Events), Error>` was considered and rejected (A.7):
-per-command reducers emit a *data-dependent event count* (N facts per
+per-command gateways emit a *data-dependent event count* (N facts per
 command, conditional 0–2 emissions, silent pods) that a single-value channel
 cannot express. Merging forces failure to eat the log or smuggle it through
 the error rail — the exact leak §4 warns about.
@@ -95,8 +95,8 @@ shared PODs speaking one language:
 | `std::format` + enum formatters | diagnostics/logging | no more `static_cast<unsigned>` casts |
 | `std::ranges` | planners only, PMR-backed | allocation must stay explicit |
 | `std::mdspan` | tile kernels (future) | the vocabulary for Morton-swizzled tiles |
-| Coroutines | edges only | never inside a reducer body |
-| Concepts | API rims | never constraining reducer bodies |
+| Coroutines | edges only | never inside a gateway body |
+| Concepts | API rims | never constraining gateway bodies |
 
 Baseline: every tree is `cxx_std_23` since 2026-09-16 (Constitution I §10, L2 closed). `tl::expected` is the documented fallback where the toolchain
 lags — same shape, same laws.
@@ -140,7 +140,7 @@ lags — same shape, same laws.
 - **Multi-entity transactions:** saga + `.or_else()` rolls back in-frame —
   *provided* the compensator consumes facts (gotcha 1 is the price of
   forgetting).
-- **Rollback netcode / save-load:** pure reducers + value snapshots + command
+- **Rollback netcode / save-load:** pure gateways + value snapshots + command
   logs make re-simulation a function call, not archetype-pool surgery.
 - **Smeared logic:** one pipeline tells the whole story
   (`check → deduct → apply → emit`), readable in seconds.
@@ -151,7 +151,7 @@ lags — same shape, same laws.
 ## 8. Where to go next
 
 - Write a fallible planner? Read §8 tiers + the `try_compile` precedent
-  (`renderpath.reducer.hpp` detail namespace).
+  (`renderpath.gateway.hpp` detail namespace).
 - Cross two contexts? Read Rules 11–12, then the saga spike test.
 - Touch a hot loop? Read §7.1 granularity + the chunk-sizing rules.
 - Name something new? Read §6.5 vocabulary law, then the glossary.

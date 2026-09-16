@@ -1,8 +1,8 @@
 # Domain Pod Event Flow — shs-renderer-lib
 
 > Status: living catalog (2026-09-16, R5b P4.5). Every discrete event value
-> emitted by a pod reducer is listed here, per pod, with its meaning and
-> producer. **Drift law:** `check_vop_boundaries.sh` FAILs if any `*Event`
+> emitted by a pod gateway is listed here, per pod, with its meaning and
+> producer. **Drift law:** `check_kdba_boundaries.sh` FAILs if any `*Event`
 > struct in `domains/*/*.event.hpp` is missing from this file — the catalog
 > and the code cannot diverge. Name tables in code (`renderpath_event_name`,
 > `input_event_name`, `fsm_event_name_traffic`) are the P6 overlay's label
@@ -11,9 +11,9 @@
 ## How to read this
 
 - **Producer** = the Kleisli pipeline that emits the event (house signature:
-  `(State, span<const Action>, dt) -> expected<Step{NextState, Events}, DomainError>`; failure keeps state + materializes a rejection fact).
+  `(State, span<const Command>, Context) -> expected<Step{NextState, Events}, DomainError>`; failure keeps state + materializes a rejection fact).
 - **Fact, not command** (Constitution Rule 8.1): each entry is a raw
-  state-transition fact. Downstream reducers/edges interpret; the event
+  state-transition fact. Downstream gateways/edges interpret; the event
   itself never carries downstream instructions.
 - Pods with `std::monostate` vocabularies (frame, geometry, lighting,
   camera, resources, sky, scene, gfx) emit nothing by construction and are
@@ -53,7 +53,7 @@
 `frame` (`FrameEvent`), `geometry` (`GeometryEvent`), `lighting`
 (`LightingEvent`), `camera` (`CameraEvent`), `resources`
 (`ResourcesEvent`), `sky` (`SkyEvent`), `scene` (`SceneEvent`), `gfx`
-(`GfxEvent`). Their reducers are identity transitions; the first real
+(`GfxEvent`). Their gateways are identity transitions; the first real
 transition in any of them adds a row to a table above in the same commit.
 ## Saga fact requirements (Rule 12)
 

@@ -43,7 +43,7 @@ namespace shs
 
     // Native rejection vocabulary (R4 P4.6): each push_error site records its
     // reason at emission. Members mirror renderpath::PathSwapRejectionReason 1:1
-    // (mapped in the pod reducer); strings in plan.errors are diagnostics only.
+    // (mapped in the pod gateway); strings in plan.errors are diagnostics only.
     enum class RenderPathCompileRejection : uint8_t
     {
         CompileInvalid     = 0,
@@ -327,7 +327,7 @@ namespace shs
         }
 
         // Fallible compile (R4 P4.6): valid plan or native rejection reason.
-        // Prefer this over scraping plan.errors text (see reducer history).
+        // Prefer this over scraping plan.errors text (see gateway history).
         std::expected<RenderPathExecutionPlan, RenderPathCompileRejection> try_compile(
             const RenderPathRecipe& recipe,
             const RenderPathCapabilitySet& caps,

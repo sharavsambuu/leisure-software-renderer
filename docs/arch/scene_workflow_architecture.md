@@ -1,5 +1,8 @@
 # Scene Pipeline: Blender to ECS
 
+> **Status: historical design background (2026-09-17), not normative.** ECS framing describes an earlier proposal. [KDBA law](../spec/value_oriented_programming.md) and the [governing clarification](../spec/dod_ecs_architecture.md) take precedence.
+
+
 Building a level editor is a waste of time. We use Blender as our primary "World Authoring" tool and treat it as the single authority for world data.
 
 ## The Data Flow: Blender → JSON → ECS

@@ -4,14 +4,14 @@
 This document is the second constitutional specification of the SHS Engine & Renderer.
 
 - **Constitution I**: `docs/spec/conventions.md` (Units, Coordinate Systems, Physics Bridge, Lighting Semantics, Backend NDC Laws)
-- **Constitution II (This Document)**: Value-Oriented Programming (VOP) & Data-Oriented Design (DOD) Architecture
-- **Constitution III**: `docs/spec/dod_ecs_architecture.md` (Entity Component System & Memory Chunking)
+- **Constitution II (This Document)**: KDBA in C++23
+- **Constitution III**: `docs/spec/dod_ecs_architecture.md` (Domain-Owned Data Layout & Execution; governing clarification in its preamble)
 
 ---
 
 ## 1. Purpose
 
-Value-Oriented Programming (VOP) combined with Data-Oriented Design (DOD) is adopted to make the engine's behavior explicit, deterministic, mechanically sympathetic to modern hardware, and trivially scalable across multi-threaded CPU and GPU compute pipelines.
+SHS adopts KDBA in C++23: domain-owned, composable value transitions with explicit failure handling and efficient execution. This is the chosen programming paradigm, not an assembly of older programming models. Data-layout techniques support domain ownership rather than replace it. The [2026-09-17 governing clarification](dod_ecs_architecture.md) applies throughout this constitution; historical comparisons are explanatory, not normative.
 
 ### Expected Outcomes
 - **Zero Lock Contention**: Elimination of mutexes, spinlocks, and read/write locks in hot simulation and rendering loops.
@@ -29,15 +29,15 @@ Value-Oriented Programming (VOP) combined with Data-Oriented Design (DOD) is ado
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────────────┐
 │                                 1. INPUT / OS EDGE                                       │
-│    [Hardware Poller] ────────► [Action Tokenizer] ────────► std::span<const Action>      │
+│    [Hardware Poller] ────────► [Command Tokenizer] ────────► std::span<const Command>    │
 └────────────────────────────────────────────┬─────────────────────────────────────────────┘
                                              │
 ┌────────────────────────────────────────────▼─────────────────────────────────────────────┐
 │                                2. PURE VALUE CENTER                                      │
-│    Current State Snapshot + Actions + Delta Time                                         │
+│    Current State Snapshot + Commands + Delta Time                                        │
 │         │                                                                                │
 │         ▼                                                                                │
-│    [Pure Reducers: reduce_domain()] ────────────────► New Snapshot + Discrete Event Log  │
+│    [Pure Gateways: <pod>_gateway()] ────────────────► New Snapshot + Discrete Event Log  │
 │         │                                                                                │
 │         ▼                                                                                │
 │    [Pure Batch Planners: to_render_items()] ────────► PipelineExecutionPlan (Tokens)     │
@@ -54,19 +54,19 @@ Value-Oriented Programming (VOP) combined with Data-Oriented Design (DOD) is ado
 ### 2.1 The KDBA Domain Pod Constitution (Supreme Law, 2026-09-16 — supersedes 2026-09-15 Redux form)
 
 > **"Everything is a Domain Pod. Every stateful subsystem — engine module or demo
-> domain alike — is expressed as a pure reducer over four components:
-> Types (contract), Command (action), Reducer, Event. Nothing else mutates state."**
+> domain alike — is expressed as a pure gateway over four components:
+> Types (contract), Command (action), Gateway, Event. Nothing else mutates state."**
 
 This constitution binds **all code in this repository**: every module of
 `shs-renderer-lib` and every demo domain (tetris, snake, fps, …) alike.
 Concretely:
 
 1. **Core 4, always** — each stateful subsystem declares the four components in
-   their own files: `*.contract.hpp` (types), `*.action.hpp` (closed command
-   vocabulary), `*.reducer.hpp` (pure transition), `*.event.hpp` (closed event
+   their own files: `*.contract.hpp` (types), `*.command.hpp` (closed command
+   vocabulary), `*.gateway.hpp` (pure transition), `*.event.hpp` (closed event
    vocabulary). Components are never omitted; an empty vocabulary is an explicit
    closed type (Constitution II §6.1/6.2).
-2. **Kleisli arrows are the only state transitions (KDBA, 2026-09-16)** — every transition is a composition of atomic arrows `A -> expected<B, DomainError>` via `.and_then()` / `.transform()` / `.or_else()`; switch-case reducer monoliths are forbidden. Deterministic (Rule 4.1); side effects exist only at execution edges. Terminology (2026-09-16): a pod's **reducer** is its *public Kleisli gateway* — the single assembly point of the arrow chain returning `expected<Step{NextState, Events}, ClosedEnumError>` (§6.2 `*.reducer.hpp`); the word never denotes a `switch(action.type)` function, which is precisely the forbidden monolith.
+2. **Kleisli arrows are the only state transitions (KDBA, 2026-09-16)** — every transition is a composition of atomic arrows `A -> expected<B, DomainError>` via `.and_then()` / `.transform()` / `.or_else()`; switch-case gateway monoliths are forbidden. Deterministic (Rule 4.1); side effects exist only at execution edges. Terminology (2026-09-16): a pod's **gateway** is its *public Kleisli gateway* — the single assembly point of the arrow chain returning `expected<Step{NextState, Events}, ClosedEnumError>` (§6.2 `*.gateway.hpp`); the word never denotes a `switch(action.type)` function, which is precisely the forbidden monolith.
 3. **Cross-domain interaction is Commands in, Events out (KDBA gateway)** (Rule 8.1, Rule 11) — no direct POD writes across boundaries; sagas compose sub-domain Kleisli gateways synchronously inside an orchestrator pod, with immutable Domain Events as egress.
 4. **Physical layout mirrors the law** — domain logic lives in `shs/domains/<pod>/`
    (library) or `domains/<pod>/` (demos); execution edges live in the edge zone
@@ -74,7 +74,7 @@ Concretely:
    linter enforces this mechanically (roadmap P0.5/P5).
 5. **Orchestrators are pods (KDBA saga)** — a multi-domain workflow is coordinated by
    an orchestrator that is itself a Domain Pod with its own contract, actions,
-   reducer, and events, composing sub-domain Kleisli gateways (`reserve:and_then(charge)`)
+   gateway, and events, composing sub-domain Kleisli gateways (`reserve:and_then(charge)`)
    speculatively in-memory with `.or_else()` compensation. No
    non-pod controller may own cross-domain state (god-object ban).
 
@@ -88,7 +88,7 @@ empty, per §6.1 — they still carry all four files.
 The laws above are restated in several places (principle, rules, tables, demos).
 To keep one authority per provision:
 
-1. **Precedence order**: §2.1 states *intent*; **§3 numbered rules are the
+1. **Precedence order**: apply Constitution III's 2026-09-17 governing clarification first (no ECS programming-model or uniform-signature mandate). §2.1 states *intent*; **§3 numbered rules are the
    enforceable minimum**; §6.2 is the **authoritative Core 4 suffix table**;
    §7.1/§7.2 are the **authoritative memory/layout laws**; the roadmap is
    *schedule*, never law. Where a restatement and a numbered rule disagree, the
@@ -101,7 +101,7 @@ To keep one authority per provision:
    instead of producing parallel numbering — parallel numbering creates dangling
    citations (this rule exists because one already did: a "Rule 3.2" reference in
    §7.1 was corrected to Rule 2).
-4. **KDBA commit rule (replaces the in-place reconciliation)**: Rule 1's "immutable inputs" governs *intent inputs and views* (`std::span<const Action>`); arrows never mutate persistent state in place — purity means deterministic, side-effect-free *decisions* with atomic boundary commit, not owned-buffer copying.
+4. **KDBA commit rule (replaces the in-place reconciliation)**: Rule 1's "immutable inputs" governs *intent inputs and views* (`std::span<const Command>`); arrows never mutate persistent state in place — purity means deterministic, side-effect-free *decisions* with atomic boundary commit, not owned-buffer copying.
 
 
 ---
@@ -112,7 +112,7 @@ To keep one authority per provision:
 ## 3. Mandatory Rules
 
 1. **Explicit Structs by Value**: All planning, simulation, and query APIs must accept immutable inputs and return explicit value structs by value.
-2. **Side-Effect Free Center**: Simulation reducers, AI evaluators, and batch planners must be pure functions with zero hidden globals, zero singleton reads, and zero dynamic heap allocations.
+2. **Side-Effect Free Center**: Simulation gateways, AI evaluators, and batch planners must be pure functions with zero hidden globals, zero singleton reads, and zero dynamic heap allocations.
 3. **Pre-Resolved Edge Inputs**: Side-effect execution edges (GPU submission, Audio DAC, Disk I/O) must consume pre-resolved, complete execution plans; they must not recalculate planning decisions or query simulation state internally.
 4. **Deterministic Reduction (Rule 4.1)**: Kleisli stages/arrows (`verify_*`, `apply_*`, composed pipelines) must be strictly deterministic. Identical initial state snapshots and identical action spans must produce identical resulting snapshots across all target platforms. Non-deterministic factors (RNG seeds, system clocks, hardware inputs) must be tokenized at input edges and passed in explicitly. The frame loop's pod drain order (orchestrator mailbox order, Appendix A.6) is itself part of the determinism contract: fixed, named per bounded context, and versioned like any other replay-relevant input.
 5. **Dual-Tier Memory Separation (Rule 5.1)**:
@@ -121,13 +121,13 @@ To keep one authority per provision:
    *Violation*: Assigning persistent state objects from the transient frame arena is strictly forbidden.
 6. **Data-Oriented Memory Layout (SoA) (Rule 6.1)**: Hot-path data (physics bodies, bot tables, particles, light grids) must use Structure of Arrays (SoA) and generational index handles (`uint32_t`), avoiding pointer-chasing and Array of Structures (AoS).
 7. **Wait-Free Span Contract (Rule 7.1)**: Multi-threaded jobs must be pure functions that take an immutable `std::span<const T>` and write exclusively to a non-overlapping `std::span<U>`. No mutexes, atomics, or spinlocks are allowed inside worker threads.
-8. **KDBA Gateway (Rule 8.1)**: Domains never write another domain's PODs. Interaction is Commands in, Events out; sagas compose typed Kleisli gateways synchronously inside orchestrator pods, with immutable **Discrete Event Values** (`CombatEvent`, `QuestEvent`, `InventoryEvent`) as egress to downstream reducers/edges.
+8. **KDBA Gateway (Rule 8.1)**: Domains never write another domain's PODs. Interaction is Commands in, Events out; sagas compose typed Kleisli gateways synchronously inside orchestrator pods, with immutable **Discrete Event Values** (`CombatEvent`, `QuestEvent`, `InventoryEvent`) as egress to downstream gateways/edges.
 9. **C++23 Value Abstractions**: Core APIs must leverage standard value types (`std::span`, `std::string_view` with `constexpr` hashing, `std::variant`, `std::pmr`, `std::expected`) to enforce safety and zero allocation overhead. The library baselines C++23 (Constitution I §10); the pod-idiomatic subset is defined in §8.
 10. **Universal Domain Pod Law (Constitution §2.1)**: Every stateful subsystem — in
     `shs-renderer-lib` **and** in every demo — is a Domain Pod with the
-    mandatory Core 4 (`*.contract.hpp`, `*.action.hpp`, `*.reducer.hpp`,
+    mandatory Core 4 (`*.contract.hpp`, `*.command.hpp`, `*.gateway.hpp`,
     `*.event.hpp`, each in its own file) and all state transitions through its pure
-    reducer. Domain logic lives under `shs/domains/<pod>/` (library) or
+    gateway. Domain logic lives under `shs/domains/<pod>/` (library) or
     `domains/<pod>/` (demos); edges live in the edge zone. Compliance is
     mechanically verified: the structure linter checks Core 4 completeness and zone
     include-direction in CI (roadmap P0.5/P5).
@@ -141,8 +141,8 @@ To keep one authority per provision:
 
 ## 4. Forbidden Patterns
 
-1. **Mixing Planning and Backend Submission**: Invoking GPU/driver calls (`vkCmd...`, `glDraw...`, `SDL_Render...`) or audio DAC writes inside a planning pass or reducer.
-2. **Hidden Singleton Mutation**: Reading or writing global state (`Context::Get()`, `AudioEngine::Instance()`, static local caches) inside reducers, AI evaluators, or planners.
+1. **Mixing Planning and Backend Submission**: Invoking GPU/driver calls (`vkCmd...`, `glDraw...`, `SDL_Render...`) or audio DAC writes inside a planning pass or gateway.
+2. **Hidden Singleton Mutation**: Reading or writing global state (`Context::Get()`, `AudioEngine::Instance()`, static local caches) inside gateways, AI evaluators, or planners.
 3. **Per-Frame Heap Allocation**: Calling standard `malloc`, `new`, `std::vector::push_back` (without a PMR arena), or dynamic memory allocators inside the per-frame update/render loop.
 4. **Dynamic Polymorphism in Hot Paths**: Using virtual method dispatch (`vtable`), `dynamic_cast`, or pointer-to-base switching inside simulation entities or rasterizer loops.
 5. **Side-Effect Out-Parameters**: Passing mutable references (`&out_projectiles`) to functions that secretly mutate caller state instead of returning explicit value bundles (KDBA: event/fact out-params retired — return `Step` by value; exclusive span out-buffers for hardware kernels per §5(1) remain).
@@ -163,20 +163,20 @@ To keep one authority per provision:
 To maintain modularity, cognitive clarity, and zero-leak encapsulation across complex projects, all gameplay features and engine modules must follow the **Glimmer/Ember Pod Standard**. Per the Domain Pod Constitution (§2.1, Rule 10), this is **supreme law for the entire repository**: engine library modules and demo domains (tetris, snake, fps, …) are held to the identical Core 4 standard — the library is not exempt, and neither are the demos.
 
 ### 6.1 Canonical Domain Pod Structure
-Gameplay features are organized as self-contained vertical slices in `domains/<domain_name>/` using standardized file suffixes. Every Domain Pod **must explicitly define the four core components** — **Types (contract), Command/Action, Reducer, Event** — each in its own file. A pod never omits a core component: if a vocabulary is trivially small, it is still declared as an explicit closed type (e.g., `using FooAction = std::variant<std::monostate>;`) so the pod's full state-transition surface remains greppable, auditable, and mechanically checkable.
+Gameplay features are organized as self-contained vertical slices in `domains/<domain_name>/` using standardized file suffixes. Every Domain Pod **must explicitly define the four core components** — **Types (contract), Command, Gateway, Event** — each in its own file. A pod never omits a core component: if a vocabulary is trivially small, it is still declared as an explicit closed type (e.g., `using FooCommand = std::variant<std::monostate>;`) so the pod's full state-transition surface remains greppable, auditable, and mechanically checkable.
 
 Multi-domain workflows add a constrained fifth element — the orchestrator/saga
 recipe — required only where a workflow spans bounded contexts (Rule 11). The
-orchestrator must itself be a Domain Pod (own contract/action/reducer/event);
+orchestrator must itself be a Domain Pod (own contract/command/gateway/event);
 it composes sub-domain Kleisli gateways synchronously and emits its own
 facts as egress. A workflow controller that is not a pod is forbidden.
 
 ```text
 domains/combat/
 ├── combat.contract.hpp   # CORE 1. TYPES: plain data structs (ProjectileTableSoA, DamagePacket)
-├── combat.action.hpp     # CORE 2. COMMAND: intent tokens (FireIntent, ReloadIntent)
+├── combat.command.hpp     # CORE 2. COMMAND: intent tokens (FireIntent, ReloadIntent)
 ├── combat.event.hpp      # CORE 3. EVENT: emitted event values (EventPlayerFired, EventBotHit)
-├── combat.reducer.hpp    # CORE 4. REDUCER: atomic Kleisli arrows (verify_* / apply_* chained via and_then)
+├── combat.gateway.hpp    # CORE 4. GATEWAY: atomic Kleisli arrows (verify_* / apply_* chained via and_then)
 ├── combat.plan.hpp       # EXT 5.  Pure batch compiler (plan_projectile_mesh, plan_tracers)
 └── scripts/
     └── blaster_rules.lua # EXT 6.  Mirrored stateless Lua decision rules
@@ -187,7 +187,7 @@ The four core components are bound together by the mandatory KDBA Kleisli pipeli
 ```text
 validate_cmd(cmd)
   .and_then(verify_state) .and_then(compute_diff) .transform(apply_commit)
-  : (State, span<const Action>, dt) -> expected<Step{NextState, Events}, DomainError>
+  : (State, span<const <Pod>Command>, <Pod>Context) -> expected<Step{NextState, Events}, <Pod>Error>
 ```
 
 **Extension suffixes** (`*.plan.hpp`, `scripts/*.lua`) are conditional: add them only when a Domain Litmus Test (see demo-level pod theory, e.g. tetris `ARCHITECTURE.md` Part I) demands them. The core 4 are not conditional.
@@ -199,9 +199,9 @@ validate_cmd(cmd)
 | File Suffix | Component | Required Contents | Strict Restrictions |
 | :--- | :--- | :--- | :--- |
 | `*.contract.hpp` | **Types** | Value Schemas & Snapshots | Plain data structs only. **No methods, no mutation, no logic.** |
-| `*.action.hpp` | **Command / Action** | Intent Tokens / Commands | `std::variant` and enums representing caller intent. Closed vocabulary; `std::monostate` expresses "no intents accepted". |
-| `*.reducer.hpp` | **Reducer** | Atomic Kleisli Arrows | `Ctx -> expected<Ctx, DomainError>` arrows via `.and_then()` / `.transform()` / `.or_else()`; no switch-case monoliths. **No globals, no side effects, no in-place persistent mutation.** |
-| `*.event.hpp` | **Event** | Discrete Event Log | Immutable records of occurrences emitted by reducers. Closed vocabulary; an event-free pod still declares an explicit (possibly empty) event type. |
+| `*.command.hpp` | **Command vocabulary** | One `<Pod>Command = std::variant<…Intent>` plus its `*Intent` payloads | Closed vocabulary; `std::monostate` expresses "no intents accepted". No parallel discriminator enum and no `.type` field — the variant index is the discriminator. |
+| `*.gateway.hpp` | **Gateway** | Exactly one public `<pod>_gateway(State, span<const Command>, Context, events)` entry, assembled from Atomic Kleisli Arrows | `Ctx -> expected<Ctx, DomainError>` arrows via `.and_then()` / `.transform()` / `.or_else()`; no switch-case monoliths. **No globals, no side effects, no in-place persistent mutation.** |
+| `*.event.hpp` | **Event** | Discrete Event Log | Immutable records of occurrences emitted by gateways. Closed vocabulary; an event-free pod still declares an explicit (possibly empty) event type. |
 
 **Extension suffixes — added only when a litmus test demands them:**
 
@@ -209,9 +209,9 @@ validate_cmd(cmd)
 | :--- | :--- | :--- |
 | `*.plan.hpp` | Batch & Scene Compilers | Pure functions: `(WorldSnapshot, Assets) -> RenderPlan`. **No GPU/driver calls.** |
 | `*.edge.hpp` | Impure Execution Edges | Hardware drivers, SDL windows, audio DAC submission, and disk I/O. |
-| `scripts/*.lua` | Mirrored Decision Rules | Stateless Lua mirrors of reducer decision rules; never authoritative over C++ reducers. |
+| `scripts/*.lua` | Mirrored Decision Rules | Stateless Lua mirrors of gateway decision rules; never authoritative over C++ gateways. |
 
-**Conformance note (2026-09-15):** Pods created before this canon (e.g. `mission`, which lacks `*.action.hpp` / `*.event.hpp`) are nonconforming and must be brought up to the Core 4 by adding explicit closed vocabularies. New pods must conform from day one.
+**Conformance note (2026-09-15):** Pods created before this canon (e.g. `mission`, which lacks `*.command.hpp` / `*.event.hpp`) are nonconforming and must be brought up to the Core 4 by adding explicit closed vocabularies. New pods must conform from day one.
 
 ### 6.3 Inter-Pod Encapsulation Rules
 1. **Public API Restriction**: A domain pod may only expose its `*.contract.hpp` and `*.event.hpp` to outside systems.
@@ -236,7 +236,10 @@ validate_cmd(cmd)
   zero driver includes.
 - **Scene**: Canonical transform: `SceneObjectSet::to_render_items(view, proj, &arena) -> RenderItemSpan`.
 - **Lighting**: Canonical transform: `LightSet::to_cullable_gpu(...)` producing flat GPU-ready tile buffers.
-- **Input / Controls**: OS events are tokenized into `UserCommand` streams and reduced via `reduce_user_commands()`.
+- **Input / Controls**: OS events are tokenized into a closed `RuntimeCommand` stream of
+  `*Intent` tokens (`input.command.hpp`) and applied through `input_gateway()` — the pod's
+  single public gateway (`input.gateway.hpp`). The `ICommand` emitter hierarchy under
+  `edge/` is cold edge-side queueing that *emits* pod vocabulary; it is not pod vocabulary.
 - **Module classification**: each engine module is either a formal Domain Pod or
   "pod-shaped by analogy" (pure transforms named per the VOP pipeline above); the
   per-module mapping is maintained in `docs/roadmap/domain_pod_engine_rollout_roadmap.md` (P5).
@@ -262,7 +265,7 @@ types, enums, factories):
 4. **Named constants over raw knobs** — resource knobs get strong semantic aliases
    (`LightTileSize`, `ClusterZSlices`) and named `inline constexpr` values
    (`k_light_tile_small = 8u`) instead of bare `uint32_t` literals at call sites.
-5. **Capability predicates, not comments** — questions the compiler/reducer asks are
+5. **Capability predicates, not comments** — questions the compiler/gateway asks are
    `inline` predicates with readable names: `render_path_preset_supports_taa(preset)`,
    `render_path_culling_allows_occlusion(mode)`.
 6. **A named catalog of complete recipes** — every "well-defined renderer" is exposed
@@ -276,6 +279,71 @@ Rationale: these rules make the renderer author's experience a *menu* (closed en
 named presets + capability predicates) rather than an archaeology of demo code, which
 is exactly the "select well-defined structs and definitions" requirement, and they cost
 nothing at runtime (all `inline constexpr`/`inline` free functions on value types).
+
+### 6.6 Pod Identifier Law — Vocabulary ⇄ Code Findability (2026-09-17)
+
+> **Annex (normative companion):** the *model, the old-paradigm post-mortem, the migration
+> ledger, the gate evidence and the naming decision procedure* live in
+> [`pod_identifier_law.md`](pod_identifier_law.md). This section states the rules; the annex
+> explains and operationalizes them.
+
+§6.2 fixes *filenames*; this section fixes *identifiers*, because in a value-oriented
+design the names are the only navigation surface. An engineer who reads this constitution
+must be able to grep its nouns and land on real code — and must never be able to mistake
+a pod for a Redux-style reducer container.
+
+**Rule N1 — One word per layer, uniform across every pod.** A layer has exactly one name;
+pods may not each pick their own synonym.
+
+| Layer | Law noun | Canonical identifier |
+| :--- | :--- | :--- |
+| Core 1 state | Snapshot / State | `<Pod>State`, `<Pod>Snapshot` |
+| Core 2 vocabulary | Command | `<Pod>Command = std::variant<…Intent>`; payloads are `<VerbPhrase>Intent` |
+| Kleisli environment | Context (`Ctx`) | `<Pod>Context` (carries `dt`; never a bare `float dt` parameter) |
+| Core 3 facts | Event | `<Pod>Event` + `<Pod>EventType` in `<pod>.event.hpp` |
+| Core 4 entry point | Gateway | `<pod>_gateway(State, span<const Command>, Context, events)` — exactly one per pod |
+| Internal arrows | Arrow | verb phrases (`compile_plan`, `select_rule`, `apply_transition`) under `shs::<pod>::detail` |
+| Failure rail | Error / Rejection | `<Pod>Error`, `<Pod>RejectionReason` (closed enums) |
+
+**Rule N2 — Law nouns must exist as identifiers.** Every noun this document uses for a
+pod-facing concept must appear verbatim in code, and every public identifier must map to a
+law noun. Prose that names a symbol is checked against `grep` before merge (`gateway` and
+`Step` previously appeared zero times in code).
+
+**Rule N3 — A rename lands atomically with its gate.** `check_kdba_boundaries.sh` locates
+pods by filename glob. A rename that lands without the matching glob update makes the gate
+resolve an empty file set, and `grep -r` then re-scopes to the working directory and
+enforces against the *wrong tree*. File rename + glob update + doc update are one commit;
+the checker asserts non-vacuity so this cannot recur silently.
+
+**Rule N4 — Namespace states ownership.** A pod's vocabulary lives in `shs::<pod>`.
+Namespace `shs` (root) is reserved for named orchestrators — types that genuinely span
+pods (`RuntimeState`, which holds camera state, is such an aggregate). `input.contract.hpp`
+re-exports pod vocabulary into `shs::input` for discoverability; root-level pod vocabulary
+is a known migration item, not a pattern to copy.
+
+**Rule N5 — Stable paths, loud headers.** Historical paths keep their names; instead, the
+first lines of an artifact state its KDBA role. Rename a path only when the name itself
+names an abandoned paradigm.
+
+**Rule N6 — The verb declares the axiomatic role.** Returns `expected<…>` ⇒ arrow or
+gateway (fallible rail). Returns a plain value ⇒ transform. Touches hardware, OS, disk or
+wall-clock ⇒ edge. No mutation-implying verb on a pure function.
+
+**Banned identifiers** (hard FAIL in `tools/check_kdba_boundaries.sh`): `reduce_*`,
+`reducer`, `*.reducer.hpp`, `*.action.hpp`, and pod-level `*Action` vocabulary types. They
+name the monolithic-reducer paradigm KDBA replaced, and they make a pod read as a
+"reducer-based domain POD" rather than a Kleisli gateway.
+
+**Deliberate carve-outs (decisions, not debt):**
+- `docs/outdated/` and `docs/education/kdba_history/` are archives; they are never rewritten.
+- `VOP` (value-oriented programming) survives as the *technique* layer name (memory tiering,
+  SoA, handles); it is not a substitute for KDBA as the *architecture* name.
+- `*.contract.hpp` / `*.event.hpp` keep their suffixes — they match §6.2's Core 1 / Core 3
+  nouns and are pinned by three drift gates.
+- `ICommand` and the `edge/` emitters keep their names: `Command` there means "executable
+  edge object", not pod vocabulary. Collisions between the two (`LookCommand`) are why the
+  pod vocabulary uses `*Intent` for alternatives and `Command` only for the variant type.
 
 ## 7. Dual-Tier Memory Specification
 
@@ -296,18 +364,18 @@ nothing at runtime (all `inline constexpr`/`inline` free functions on value type
 
 
 
-### 7.1 Hot-Path Performance Law — ECS Speed Under Domain Pods
+### 7.1 Hot-Path Performance Law — Layout Speed Under Domain Pods
 
 **Orthogonality principle.** The Domain Pod pattern governs *state transitions*
-(vocabulary, reducer, events); ECS-grade performance comes from *data layout and
+(vocabulary, gateway, events); data-oriented performance comes from *data layout and
 iteration* (SoA, contiguity, handles, chunked spans). The two axes are independent:
 a pod's contract type may be — and for hot domains must be — a chunked SoA table
-(see `combat.contract.hpp` → `ProjectileTableSoA`). A reducer's purity means
+(see `combat.contract.hpp` → `ProjectileTableSoA`). A gateway's purity means
 deterministic, side-effect-free *decisions*, not full-buffer copying on every
 transition:
 
 - **Hot pods stream, then commit (KDBA)**: arrows never mutate persistent SoA tables mid-chain; hot loops run branchless transforms over chunk spans and the boundary commits `Step` atomically. Edges apply committed change events. Snapshotting a whole SoA table is reserved for rollback/save points, not per-tick.
-- **Reducers are configuration-time, not per-frame**: path/recipe reducers run on
+- **Gateways are configuration-time, not per-frame**: path/recipe gateways run on
   change only; per-frame hot loops are pure batch transforms over
   `std::span` chunks (Rule 7.1 wait-free contract) — pods never sit in the hot loop.
 - **Cache-streaming techniques are mandatory where measurable** on hot loops
@@ -330,12 +398,12 @@ transition:
   `std::expected` (e.g. `std::vector<std::expected<...>>`): discriminant
   padding breaks cache alignment and disables auto-vectorization.
 - **Verification**: hot-path kernels must be benchmarkable headlessly
-  (chunked span jobs are GPU/OS-free), and any pod whose reducer executes per frame
+  (chunked span jobs are GPU/OS-free), and any pod whose gateway executes per frame
   is a design smell to be flagged in review — per-frame work belongs to batch
   planners (plan-extension) or execution edges.
 
 Rationale: this law makes explicit that adopting pods *never* trades away
-mechanical sympathy (Constitution Principle: Hardware Mechanical Sympathy). ECS
+mechanical sympathy (Constitution Principle: Hardware Mechanical Sympathy). Data-oriented
 architectures get their speed from layout, not from their API shape; pods keep the
 layout laws (Rule 6.1, Rule 7.1) and add determinism and dynamism on top.
 
@@ -384,7 +452,7 @@ requirements instead of aspirations.
 ## 8. KDBA Kleisli Pipeline Doctrine (Supreme Law, 2026-09-16)
 
 ### Mandatory Standards
-- `std::span<const T>`: For immutable non-owning views across reducers, AI evaluators, and tile jobs.
+- `std::span<const T>`: For immutable non-owning views across gateways, AI evaluators, and tile jobs.
 - `std::pmr::vector`: For all transient vectors backed by `FrameMemoryResource`.
 - `std::variant` & `std::visit`: For typed, closed sets of user commands and game events.
 - `std::string_view` & `constexpr` hashing: For zero-allocation ID lookups and asset tag resolution.
@@ -392,7 +460,7 @@ requirements instead of aspirations.
 
 ### KDBA Universal Primitive (amendment, 2026-09-16 — supersedes tier doctrine)
 
-The atomic Kleisli arrow `A -> expected<B, DomainError>` is the sole unit of logic (2–5 lines, pure, isolated). State transitions are flat railway compositions via `.and_then()` / `.transform()` / `.or_else()` — switch-case reducer monoliths are forbidden. KDBA is adopted **universally, including the reducer core**, via the bundled house signature `(S_old, A) -> expected<Step{NextState, Events}, ClosedEnumError>`: success carries state + facts, failure keeps state and materializes a rejection fact; the Writer-on-both-rails arena out-param is retired. R3/R5b event-count evidence is preserved as HISTORY (§12) — new sagas prove fact preservation via the KDBA spike.
+The atomic Kleisli arrow `A -> expected<B, DomainError>` is the sole unit of logic (2–5 lines, pure, isolated). State transitions are flat railway compositions via `.and_then()` / `.transform()` / `.or_else()` — switch-case gateway monoliths are forbidden. Composition is mandatory wherever a state transition exists, including the gateway core: a pod's public gateway uses the bundled house signature `(S_old, A) -> expected<Step{NextState, Events}, ClosedEnumError>`, while infallible stages stay plain values composed with `.transform()` — the house signature is the pod gateway's shape, not a mandate to wrap every function (clarified 2026-09-17, Constitution III preamble). Success carries state + facts, failure keeps state and materializes a rejection fact; the Writer-on-both-rails arena out-param is retired. R3/R5b event-count evidence is preserved as HISTORY (§12) — new sagas prove fact preservation via the KDBA spike.
 
 **Adopt everywhere a fallible transition exists (KDBA):**
 - `try_swap_plan` / render-path compile → resolve chain: replace the
@@ -409,7 +477,7 @@ The atomic Kleisli arrow `A -> expected<B, DomainError>` is the sole unit of log
 - Diagnostics/logging: `std::format` formatters for the closed enums so logs
   stop hand-casting (`static_cast<unsigned>(ev.reason)`).
 
-**Reducer core (KDBA):** `reduce_render_path` is a Kleisli composition over a command span emitting N facts per command into `Step.events`; the closed `RenderPathCommand` / `RenderPathEvent` variant vocabularies stay, but ride inside `expected<Step, PathSwapRejectionReason>` (keep-previous-plan + `PATH_SWAP_REJECTED` invariant). Single-value/single-error is expressed per-step, multi-event fidelity is preserved in `Step.events`.
+**Gateway core (KDBA):** `renderpath_gateway` is a Kleisli composition over a command span emitting N facts per command into `Step.events`; the closed `RenderPathCommand` / `RenderPathEvent` variant vocabularies stay, but ride inside `expected<Step, PathSwapRejectionReason>` (keep-previous-plan + `PATH_SWAP_REJECTED` invariant). Single-value/single-error is expressed per-step, multi-event fidelity is preserved in `Step.events`.
 
 **Why this matters (benefits):**
 1. **Honest failure types** — `expected<T, ClosedEnumError>` makes accept/reject
@@ -437,9 +505,9 @@ The atomic Kleisli arrow `A -> expected<B, DomainError>` is the sole unit of log
 
 Saga stages are Kleisli arrows over a transient `SagaContext`; the compensator is an
 `.or_else()` continuation consuming the emitted receipt/fact, never ad hoc
-done-flags or phantom POD flags. Persistent PODs stay pristine until atomic commit; on failure the transient evaporates. Validate-before-mutate is preferred; where mutation precedes a fallible step, every mutated stage must have emitted a fact. The wallet leak (restoring flagged stages while a prior debit leaks) is non-conforming (Rule 12). The 7 KDBA dimensions apply: PODs own state, arrows own logic, monads own flow, boundaries own writes, sagas own consistency, ECS owns layout, structured concurrency owns time — never mix abstractions.
+done-flags or phantom POD flags. Persistent PODs stay pristine until atomic commit; on failure the transient evaporates. Validate-before-mutate is preferred; where mutation precedes a fallible step, every mutated stage must have emitted a fact. The wallet leak (restoring flagged stages while a prior debit leaks) is non-conforming (Rule 12). The 7 KDBA dimensions apply: PODs own state, arrows own logic, monads own flow, boundaries own writes, sagas own consistency, domain-owned tables own layout, structured concurrency owns time — never mix abstractions.
 
-### Forbidden in Planning and Reducer Layers
+### Forbidden in Planning and Gateway Layers
 - `std::shared_ptr` / `std::make_shared` (Hidden atomic reference-counting contention).
 - `dynamic_cast` / Runtime Type Information (RTTI) branching.
 - Raw pointer switching with ambiguous ownership semantics.
@@ -455,9 +523,9 @@ Before submitting new features or major refactors, verify the following:
 3. **Memory Isolation**: Are persistent state snapshots strictly allocated using persistent memory, and transients on the arena?
 4. **Deterministic Behavior**: Do identical state snapshots and action spans produce bit-for-bit identical outputs?
 5. **Wait-Free Span Contracts**: Do multi-threaded jobs take immutable spans and write exclusively to non-overlapping target buffers?
-6. **Encapsulation & Suffixes**: Does the domain follow the canonical file suffixes (`*.contract.hpp`, `*.action.hpp`, `*.reducer.hpp`, `*.plan.hpp`, `*.event.hpp`)?
+6. **Encapsulation & Suffixes**: Does the domain follow the canonical file suffixes (`*.contract.hpp`, `*.command.hpp`, `*.gateway.hpp`, `*.plan.hpp`, `*.event.hpp`)?
 7. **No Mutexes in Hot Paths**: Are audio, simulation, and rasterization completely free of mutex locks and spinlocks?
-8. **No Reducer Monoliths**: Is every transition a flat `.and_then()` / `.transform()` / `.or_else()` chain of named arrows (no switch-case monoliths)?
+8. **No Gateway Monoliths**: Is every transition a flat `.and_then()` / `.transform()` / `.or_else()` chain of named arrows (no switch-case monoliths)?
 9. **No Phantom Flags**: Do persistent PODs carry zero transitional flags (no `is_pending` / `is_locked` / `retry_count` — transient lives in `SagaContext`)?
 10. **Gateway-Only Cross-Domain**: Do cross-domain sagas compose public gateways inside orchestrator pods (no direct POD writes, no event ping-pong)?
 
@@ -465,18 +533,18 @@ Before submitting new features or major refactors, verify the following:
 
 ## 10. Automated Boundary Verification
 
-The automated CI boundary checker (`cpp-folders/src/shs-renderer-lib/tools/check_vop_boundaries.sh`) enforces these rules on every commit:
-- [x] Scan all `*.contract.hpp` and `*.reducer.hpp` files for banned includes (`#include <vulkan/...>`, `#include <SDL2/...>`, `#include <GL/...>`).
-- [x] Reject any `*.reducer.hpp` containing `mutable`, `static` local variables, or `std::mutex`.
+The automated CI boundary checker (`cpp-folders/src/shs-renderer-lib/tools/check_kdba_boundaries.sh`) enforces these rules on every commit:
+- [x] Scan all `*.contract.hpp` and `*.gateway.hpp` files for banned includes (`#include <vulkan/...>`, `#include <SDL2/...>`, `#include <GL/...>`).
+- [x] Reject any `*.gateway.hpp` containing `mutable`, `static` local variables, or `std::mutex`.
 - [x] Validate that all planning passes require registered descriptor hints and return explicit execution plans by value.
-- [x] KDBA Kleisli doctrine (§8): atomic `A -> expected<B, DomainError>` arrows via `.and_then()` / `.transform()` / `.or_else()`; phantom flags in `*.contract.hpp` FAIL; per-element `expected` in hot loops FAIL (§7.1 granularity); `std::string` members in `*.event.hpp` facts FAIL (closed payloads only, Rule 12); switch-case sites in `*.reducer.hpp` are INFO-tracked on the monolith-decomposition backlog (lib: renderpath ×3 closed-enum dispatches, input ×1 `action.type` — next breaking-parts phase).
+- [x] KDBA Kleisli doctrine (§8): atomic `A -> expected<B, DomainError>` arrows via `.and_then()` / `.transform()` / `.or_else()`; phantom flags in `*.contract.hpp` FAIL; per-element `expected` in hot loops FAIL (§7.1 granularity); `std::string` members in `*.event.hpp` facts FAIL (closed payloads only, Rule 12); switch-case sites in `*.gateway.hpp` are INFO-tracked on the monolith-decomposition backlog (lib: renderpath ×3 closed-enum dispatches, input ×1 `action.type` — next breaking-parts phase).
 - [x] KDBA error-rail catalog (2026-09-16 hardening): every closed error enum (`*Error` / `*Rejection` / `*Reason`) declared in `domains/*/*.event.hpp` or `*.contract.hpp` must appear in `docs/pods/ERROR_FLOW.md` — drift FAILs exactly like the `EVENT_FLOW.md` event gate (Rule 11: one error family per bounded context; Rule 12: compensators consume cataloged rejection facts).
 
 ---
 
 ## 11. Scalability & Architectural Benefits
 
-1. **Multiplayer & Rollback Ready**: Pure reducers allow client-side prediction, instant snapshot rollback ($< 0.2\,\text{ms}$), and delta-compressed networking out of the box.
+1. **Multiplayer & Rollback Ready**: Pure gateways allow client-side prediction, instant snapshot rollback ($< 0.2\,\text{ms}$), and delta-compressed networking out of the box.
 2. **Multi-Threaded Lua Scalability**: Lua scripts act as pure stateless functions evaluated across isolated thread-local `lua_State*` pools over chunked SoA entity spans.
 3. **Zero-Glitch Real-Time Audio**: Lock-free SPSC event rings isolate audio synthesis from CPU rendering spikes.
 4. **Hardware Portability**: The simulation center is 100% decoupled from graphics backends, allowing seamless swapping between the multi-threaded software rasterizer and modern GPU-driven Vulkan compute pipelines.
@@ -489,21 +557,21 @@ The automated CI boundary checker (`cpp-folders/src/shs-renderer-lib/tools/check
 - Added value transform for light culling GPU payload generation (`LightSet::to_cullable_gpu`).
 - Added value-style render path resolution object (`RenderPathResolvedState`).
 - Added value-style pipeline execution planning object (`PipelineExecutionPlan`) and plan builder in `PluggablePipeline`.
-- Migrated human/bot controller helpers to pure value-action emission helpers (`UserCommand` / `RuntimeAction`).
-- Standardized command processing on pure collection and reduction (`collect_runtime_actions`, `reduce_all`).
+- Migrated human/bot controller helpers to pure value-command emission helpers (`UserCommand` / `RuntimeCommand`, the latter renamed from `RuntimeAction` on 2026-09-17 — see [Pod Identifier Law Annex](pod_identifier_law.md)).
+- Standardized command processing on pure collection and reduction (`collect_runtime_commands`, `apply_commands`).
 - Hardened `IRenderPass` to explicit pass execution requests (`build_execution_request` + `execute_resolved`).
 - Removed mutable validity flags from shared context (`Context::forward_plus`) and promoted depth/light readiness into request-scoped capabilities.
 - Removed dynamic polymorphism (`dynamic_cast`) from depth-attachment and pass policy planning.
-- Added automated boundary check script (`tools/check_vop_boundaries.sh`) and CMake target `shs_renderer_vop_boundary_check`.
+- Added automated boundary check script (`tools/check_kdba_boundaries.sh`) and CMake target `shs_renderer_boundary_check`.
 - Codified Dual-Tier Memory Lifecycle Separation (`FrameMemoryResource` vs persistent state storage).
 - Codified Glimmer/Ember Domain Pod standard (`domains/<domain>/`) with strict suffix naming contracts.
 - Codified Lock-Free SPSC Audio Edge for glitch-free procedural sound synthesis.
-- Decided C++23 monadic **targeted adoption** (2026-09-15): `std::expected` at compile/resolve error seams, monadic `std::optional` in input bridges, enum formatters for diagnostics; reducer/command variant + event-stream core explicitly out of scope (see §8).
+- Decided C++23 monadic **targeted adoption** (2026-09-15): `std::expected` at compile/resolve error seams, monadic `std::optional` in input bridges, enum formatters for diagnostics; gateway/command variant + event-stream core explicitly out of scope (see §8).
 - Adopted the C++23 monadic pipeline doctrine (2026-09-16): channel-based
   monadic law (§8 tier doctrine, Rules 11–12, Core 4+1 orchestrator, A.7
-  F-DOD-DDD correspondence); bundled `expected<(State,Events)>` reducer
+  F-DOD-DDD correspondence); bundled `expected<(State,Events)>` gateway
   signature explicitly not adopted, campaign evidence preserved.
-- Adopted KDBA Kleisli Domain Boundary Architecture (2026-09-16): atomic `A -> expected<B, DomainError>` as universal primitive; bundled `expected<Step{NextState, Events}, ClosedEnum>` reducer ADOPTED (supersedes S8 tier doctrine + A.7 divergence); cross-context Kleisli gateways via orchestrator pods; transient SagaContext vs persistent PODs; phantom-flag ban; S8/S10/A.7 normative sections updated, S12 history above preserved as provenance.
+- Adopted KDBA Kleisli Domain Boundary Architecture (2026-09-16): atomic `A -> expected<B, DomainError>` as universal primitive; bundled `expected<Step{NextState, Events}, ClosedEnum>` gateway ADOPTED (supersedes S8 tier doctrine + A.7 divergence); cross-context Kleisli gateways via orchestrator pods; transient SagaContext vs persistent PODs; phantom-flag ban; S8/S10/A.7 normative sections updated, S12 history above preserved as provenance.
 - Recorded the functional-programming parallel (**Appendix A**, 2026-09-15): the Domain Pod architecture as The Elm Architecture in C++ — structural enforcement standing in for a type-system effect boundary; documents which guarantees are inherited from purity and which the backlog linters must hand-build. Lineage anchored in **"functional core, imperative shell"** (A.5) and the **actor model** (A.6: pods as deterministic actors, concurrency relocated to the edges): *a synchronous, deterministic actor system with event sourcing, running a functional core that speaks to imperative shells through effect-describing values.*
 
 ---
@@ -533,7 +601,7 @@ The automated CI boundary checker (`cpp-folders/src/shs-renderer-lib/tools/check
 Haskell enforces the pure/impure boundary with the type system. C++ has no (even at the C++23 baseline)
 effect system, so VOP enforces the same boundary *structurally*: directory law
 (`domains/` vs `execution/`), include-direction linters, banned-token and
-banned-pattern checks (`cpp-folders/src/shs-renderer-lib/tools/check_vop_boundaries.sh` §10), and the
+banned-pattern checks (`cpp-folders/src/shs-renderer-lib/tools/check_kdba_boundaries.sh` §10), and the
 Constitution itself. This is machine-checked in CI — a stronger artifact for
 this project than compiler-only enforcement, and the only honest option in a
 language without effects.
@@ -541,7 +609,7 @@ language without effects.
 ### A.3 Guarantees that fall out of purity (not bolted on)
 
 Replayability and determinism gates, cross-backend pixel-parity proofs,
-GPU-free reducer `ctest`s, time-travel debugging, seeded/replayable stochastic
+GPU-free gateway `ctest`s, time-travel debugging, seeded/replayable stochastic
 sampling, rollback-ready networking (§11.1) — these are the standard benefits
 of referential transparency. The architecture earns them by construction; no
 per-feature test harness is required to believe them.
@@ -554,7 +622,7 @@ per-feature test harness is required to believe them.
 - **Still hand-built** (see Domain Pod roadmap backlog): variant exhaustiveness
   checking (GHC does this for free), immutability-by-default, semantic purity
   linters (no ambient entropy/time, no unordered-container iteration in
-  reducers), and the pod replay test kit. The backlog is, in effect,
+  gateways), and the pod replay test kit. The backlog is, in effect,
   compiling Haskell's compiler guarantees into this project's toolchain.
 
 ### A.5 Lineage: functional core, imperative shell
@@ -564,7 +632,7 @@ imperative shell"** (Gary Bernhardt, ~2012): pure functions transform data in
 the center; the imperative shell performs effects at the boundary. §2's
 diagram is that pattern drawn. The FCIS testability claim — *test the core
 without mocks, because it never touches the shell* — is realized here as the
-GPU-free reducer `ctest`s (zero Vulkan/SDL links).
+GPU-free gateway `ctest`s (zero Vulkan/SDL links).
 
 This architecture extends classic FCIS in three directions it does not go:
 
@@ -598,7 +666,7 @@ Each Domain Pod is semantically an **actor**: private state reachable only
 through its own gateway, commands in via typed Kleisli gateways, events out as egress facts,
 one batch processed at a time (HISTORY: mailbox + frame-arena log). `Rule 8.1`'s "consume only raw-fact events;
 never touch the grid" is tell-don't-ask / no-shared-state. The boundary
-linter's ban on `std::mutex` in reducers is the actor invariant made
+linter's ban on `std::mutex` in gateways is the actor invariant made
 structural: an actor's state is only ever touched by its own message handler.
 `PATH_SWAP_REJECTED` is actor supervision in miniature — a bad message does
 not crash the pod; state survives and the failure is observable as an event.
@@ -629,11 +697,11 @@ gates require.
 
 | F-DOD-DDD construct | VOP equivalent |
 | :--- | :--- |
-| State monad (KDBA pipeline) | `(State, span<Action>, dt) -> expected<Step{Next, Events}, Err>` (§8; HISTORY: bare tuple) |
+| State monad (KDBA pipeline) | `(State, span<Command>, Context) -> expected<Step{Next, Events}, Err>` (§8; HISTORY: bare tuple) |
 | Writer monad (facts in Step) | facts ride `Step.events` on success, rejection reasons on failure (HISTORY: caller-arena both rails) |
-| Either monad (railway) | `expected<T, ClosedEnum>` everywhere including the reducer core (§8) |
+| Either monad (railway) | `expected<T, ClosedEnum>` everywhere including the gateway core (§8) |
 | Kleisli arrow (pipeline stage) | atomic `Ctx -> expected<Ctx, Err>`; `.and_then()` chains (§8, Rule 11 gateway) |
 | Saga orchestrator | orchestrator-is-a-pod, compensator consumes the fact log (Rule 12) |
 | Bounded context | cohesive pipelines over shared PODs + one error/event language (Rule 11) |
 
-**KDBA adoption (2026-09-16, supersedes the divergence):** the bundled reducer `(S_old, A) -> expected<(S_new, Events), Error>` is ADOPTED as the KDBA house signature (`expected<Step{NextState, Events}, ClosedEnum>`; failure keeps state + materializes a rejection fact). Facts ride inside `Step` on success, rejection reasons on failure; the Writer-on-both-rails arena out-param is retired. R3/R5b evidence is HISTORY — new sagas prove fact preservation via the KDBA spike.
+**KDBA adoption (2026-09-16, supersedes the divergence; scope clarified 2026-09-17):** the bundled gateway `(S_old, A) -> expected<(S_new, Events), Error>` is ADOPTED as the house signature for **pod gateways** (`expected<Step{NextState, Events}, ClosedEnum>`; failure keeps state + materializes a rejection fact; infallible stages remain plain values composed via `.transform()`). Facts ride inside `Step` on success, rejection reasons on failure; the Writer-on-both-rails arena out-param is retired. R3/R5b evidence is HISTORY — new sagas prove fact preservation via the KDBA spike.

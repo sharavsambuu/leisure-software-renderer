@@ -51,7 +51,7 @@
     Constitution II (KDBA Kleisli Domain Boundary Architecture, Supreme Law 2026-09-16)
       docs/spec/value_oriented_programming.md
 
-    Constitution III (Data-Oriented Design & ECS)
+    Constitution III (Domain-Owned Data Layout & Execution; legacy filename retained)
       docs/spec/dod_ecs_architecture.md
 
     KDBA primer + history shelf (education)

@@ -1,6 +1,6 @@
 # Education — Reading Index
 
-> Constitutions legislate (Const. II §2.2 wins all ties). HISTORY files stay byte-identical; teaching lands in new files only.
+> **Explanatory, not normative.** Current constitutions legislate; apply Constitution II §2.2 together with the [2026-09-17 governing clarification](../spec/dod_ecs_architecture.md). Comparisons to ECS, Redux, actors, or FP explain properties, not adoption of those programming models. HISTORY files and the hashed founding documents stay byte-identical; teaching lands in new files only.
 
 ## Frames (HISTORY — contrast, never edit)
 

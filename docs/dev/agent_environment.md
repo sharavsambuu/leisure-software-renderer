@@ -72,7 +72,7 @@ wsl.exe -d Ubuntu-24.04 --cd /home/sharavsambuu/src/dev/leisure-software-rendere
 wsl.exe -d Ubuntu-24.04 --cd /home/sharavsambuu/src/dev/leisure-software-renderer/cpp-folders/build_vcpkg -- bash -c "cmake --build . -j$(nproc) > /tmp/full.log 2>&1; echo EXIT=$?; grep -cE 'error:' /tmp/full.log; tail -3 /tmp/full.log"
 
 # VOP validation tests:
-wsl.exe -d Ubuntu-24.04 --cd /home/sharavsambuu/src/dev/leisure-software-renderer/cpp-folders/build_vcpkg -- bash -c "ctest -R 'shs_renderer_vop_(boundary_check|tests)' --output-on-failure"
+wsl.exe -d Ubuntu-24.04 --cd /home/sharavsambuu/src/dev/leisure-software-renderer/cpp-folders/build_vcpkg -- bash -c "ctest -R 'shs_renderer_(boundary_check|tests)' --output-on-failure"
 
 # git state (read-only inspection is fine via shell when wrapped):
 wsl.exe -d Ubuntu-24.04 --cd /home/sharavsambuu/src/dev/leisure-software-renderer -- bash -c "git status --short | head -20"

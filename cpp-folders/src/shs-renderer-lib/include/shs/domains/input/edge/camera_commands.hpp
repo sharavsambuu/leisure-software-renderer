@@ -24,9 +24,9 @@ namespace shs
             : local_dir_(local_dir), speed_mps_(meters_per_sec)
         {}
 
-        RuntimeAction to_runtime_action() const override
+        RuntimeCommand to_runtime_action() const override
         {
-            return make_move_local_action(local_dir_, speed_mps_);
+            return make_move_local_intent(local_dir_, speed_mps_);
         }
 
     private:
@@ -41,9 +41,9 @@ namespace shs
             : dx_(dx), dy_(dy), sensitivity_(sensitivity)
         {}
 
-        RuntimeAction to_runtime_action() const override
+        RuntimeCommand to_runtime_action() const override
         {
-            return make_look_action(dx_, dy_, sensitivity_);
+            return make_look_intent(dx_, dy_, sensitivity_);
         }
 
     private:
@@ -55,27 +55,27 @@ namespace shs
     class ToggleLightShaftsCommand final : public ICommand
     {
     public:
-        RuntimeAction to_runtime_action() const override
+        RuntimeCommand to_runtime_action() const override
         {
-            return make_toggle_light_shafts_action();
+            return make_toggle_light_shafts_intent();
         }
     };
 
     class ToggleBotCommand final : public ICommand
     {
     public:
-        RuntimeAction to_runtime_action() const override
+        RuntimeCommand to_runtime_action() const override
         {
-            return make_toggle_bot_action();
+            return make_toggle_bot_intent();
         }
     };
 
     class QuitCommand final : public ICommand
     {
     public:
-        RuntimeAction to_runtime_action() const override
+        RuntimeCommand to_runtime_action() const override
         {
-            return make_quit_action();
+            return make_quit_intent();
         }
     };
 }

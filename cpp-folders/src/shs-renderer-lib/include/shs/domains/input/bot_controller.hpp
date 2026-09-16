@@ -12,12 +12,12 @@
 
 #include <cmath>
 
-#include "shs/domains/input/value_actions.hpp"
+#include "shs/domains/input/value_commands.hpp"
 
 namespace shs
 {
-    inline void emit_orbit_bot_runtime_actions(float time_s, std::vector<RuntimeAction>& out)
+    inline void emit_orbit_bot_runtime_commands(float time_s, std::vector<RuntimeCommand>& out)
     {
-        emit_orbit_bot_actions(time_s, out);
+        emit_orbit_bot_commands(time_s, out);
     }
 }

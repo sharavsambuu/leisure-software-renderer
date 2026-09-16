@@ -317,7 +317,7 @@ private:
         shs::RuntimeInputLatch input_latch{};
         std::vector<shs::RuntimeInputEvent> pending_input_events{};
         shs::RuntimeState runtime_state{};
-        std::vector<shs::RuntimeAction> runtime_actions{};
+        std::vector<shs::RuntimeCommand> runtime_actions{};
         while (running)
         {
             SDL_Event e;
@@ -341,7 +341,7 @@ private:
             shs::InputState runtime_input{};
             runtime_input.quit = input_latch.quit_requested;
             shs::emit_human_actions(runtime_input, runtime_actions, 0.0f, 1.0f, 0.0f);
-            runtime_state = shs::reduce_runtime_state(runtime_state, runtime_actions, 0.0f);
+            runtime_state = shs::runtime_state_gateway(runtime_state, runtime_actions, 0.0f);
             if (runtime_state.quit_requested) break;
 
             draw_frame();

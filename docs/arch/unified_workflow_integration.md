@@ -1,4 +1,7 @@
 # Unified Workflow: Blender → JSON → ECS → Lua
+
+> **Status: historical design background (2026-09-17), not normative.** ECS framing describes an earlier proposal. [KDBA law](../spec/value_oriented_programming.md) and the [governing clarification](../spec/dod_ecs_architecture.md) take precedence.
+
 ## The Common Language of Gameplay
 
 The combination of a professional DCC tool, a flexible manifest format, and a component-first engine is the **"Golden Standard"** for custom engine development. 

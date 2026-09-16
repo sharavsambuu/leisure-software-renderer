@@ -1,5 +1,8 @@
 # Architecture: Game Lifecycle & UI Systems
 
+> **Status: historical design background (2026-09-17), not normative.** ECS framing describes an earlier proposal. [KDBA law](../spec/value_oriented_programming.md) and the [governing clarification](../spec/dod_ecs_architecture.md) take precedence.
+
+
 While the ECS handles the "Simulation," these Meta-Systems handle the "Frame" of the game—the transitions between menus, world loading, and the player's interaction with the HUD.
 
 ## 1. Game State (The Life Cycle)

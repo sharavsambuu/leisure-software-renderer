@@ -12,15 +12,15 @@
 
 #include <memory>
 
-#include "shs/domains/input/value_actions.hpp"
+#include "shs/domains/input/value_commands.hpp"
 
 namespace shs
 {
     struct ICommand
     {
         virtual ~ICommand() = default;
-        // VOP-first command contract: commands must emit an equivalent value action.
-        virtual RuntimeAction to_runtime_action() const = 0;
+        // VOP-first command contract: commands must emit an equivalent value command.
+        virtual RuntimeCommand to_runtime_action() const = 0;
     };
 
     using CommandPtr = std::unique_ptr<ICommand>;

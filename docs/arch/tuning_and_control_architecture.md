@@ -1,5 +1,8 @@
 # Tuning & Control: The "Director" Layer
 
+> **Status: historical design background (2026-09-17), not normative.** ECS framing and direct data writes describe an earlier proposal, not implementation guidance. [KDBA law](../spec/value_oriented_programming.md) and the [governing clarification](../spec/dod_ecs_architecture.md) take precedence.
+
+
 A game engine is useless if you have to recompile it every time you want to change a light's intensity or a player's run speed. We handle this through a two-tier "Director" system.
 
 ## 1. CVars (Console Variables)

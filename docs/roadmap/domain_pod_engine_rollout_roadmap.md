@@ -2,7 +2,7 @@
 
 > Status: **Active plan (2026-09-15)**. Ratifies and rolls out the Domain Pod
 > Constitution (§2.1 + Rule 10, precedence §2.2; canon tables §6.1–6.2): the
-> "everything is a pure reducer based Domain Pod" law binding the engine library
+> "everything is a pure gateway based Domain Pod" law binding the engine library
 > and all demos alike, rolled into the library tree, the dynamic render path
 > system, and the Vulkan backend.
 > Architecture details: `docs/arch/render_path_domain_pod_architecture.md`.
@@ -10,11 +10,11 @@
 ## Vision
 
 "Everything is a Domain Pod in mind" (Constitution §2.1): every stateful subsystem is expressed as
-**Types (contract) + Command (action) + Reducer + Event**, with batch planners as an
+**Types (contract) + Command (action) + Gateway + Event**, with batch planners as an
 optional extension and all side effects confined to edges. State transitions become
 pure, replayable, GPU-free-testable, and auditable — data-oriented design with dynamic
 freedom (any path, any technique, any combination, hot-swapped at runtime as a pure
-reducer transition).
+gateway transition).
 
 ## Phase P0 — Canon (DONE 2026-09-15)
 
@@ -22,7 +22,7 @@ reducer transition).
       conformance note for pre-canon pods.
 - [x] Tetris `ARCHITECTURE.md` Part I synced with the canon.
 - [x] **Domain Pod Constitution ratified (§2.1 + §2.2 + Mandatory Rule 10)**: "everything
-      is a pure reducer based Domain Pod" with the Core 4 {types, action, reducer,
+      is a pure gateway based Domain Pod" with the Core 4 {types, action, gateway,
       event} is now supreme law binding the engine library *and* all demos;
       physical layout (`domains/` + edge zone) and CI linter enforcement referenced.
       §2.2 adds the Law Precedence & Single-Source Rule (numbered rules win;
@@ -44,12 +44,12 @@ include/shs/
 ├── memory/                # PRIMITIVES: frame_memory_resource, dual-tier laws
 ├── containers/            # PRIMITIVES: soa_table, flat_map (P1.5)
 ├── domains/               # ★ EVERY domain logic lives here, uniform skeleton:
-│   │                      #   <pod>.contract.hpp / .action.hpp / .reducer.hpp /
+│   │                      #   <pod>.contract.hpp / .command.hpp / .gateway.hpp /
 │   │                      #   .event.hpp (+ .plan.hpp / edge subfolder if needed)
 │   ├── renderpath/        # recipe, compiler wrap, plans, presets catalog (P1)
 │   ├── scene/             # objects/culling/instance → contract+plan; world/system → edge
-│   ├── lighting/          # light_set/types → contract; culling → plan; runtime → reducer
-│   ├── input/             # command/value_actions → action; processor → reducer
+│   ├── lighting/          # light_set/types → contract; culling → plan; runtime → gateway
+│   ├── input/             # command/value_commands → action; processor → gateway
 │   ├── camera/            # 7 headers → contract + plan
 │   ├── geometry/          # shapes + jolt adapters → contract + plan (empty action/event
 │   │                      #   vocabularies are LEGAL per Constitution §6.1)
@@ -78,7 +78,7 @@ include/shs/
 | `pipeline/` (25) | `domains/renderpath/` + `execution/pipeline/` | value spine vs. executor/registries — the P1 seam |
 | `scene/` (10) | `domains/scene/` (+ edge parts stay in pod edge subfolder) | transforms are pod-shaped; `world`/`system` are stateful edges |
 | `lighting/` (9) | `domains/lighting/` | same split: sets/types vs. runtime culling |
-| `input/` (8) | `domains/input/` | already action/reducer shaped, just unsuffixed |
+| `input/` (8) | `domains/input/` | already action/gateway shaped, just unsuffixed |
 | `camera/` (7) | `domains/camera/` | contract + plan transforms |
 | `geometry/` (19) | `domains/geometry/` | shapes/jolt = contract + plan, empty command vocab |
 | `sky/` (5) | `domains/sky/` | contract + plan |
@@ -148,9 +148,9 @@ existing recipe → compiler → plans spine.
 - [x] Create `include/shs/domains/renderpath/` with `contract` (re-export of recipe /
       plan / capabilities / runtime-state types), `action` (closed
       `RenderPathCommand` variant), `event` (closed `RenderPathEvent` variant),
-      `reducer` (`reduce_render_path` wrapping `RenderPathCompiler` value-fully).
-- [x] Reducer invariant: invalid compile ⇒ keep previous plan + `PATH_SWAP_REJECTED`.
-- [x] `ctest` gate: `shs_renderer_vop_renderpath_*` — reducer tests compile and pass
+      `gateway` (`renderpath_gateway` wrapping `RenderPathCompiler` value-fully).
+- [x] Gateway invariant: invalid compile ⇒ keep previous plan + `PATH_SWAP_REJECTED`.
+- [x] `ctest` gate: `shs_renderer_renderpath_*` — gateway tests compile and pass
       with zero Vulkan/SDL links (pure value tests, frame-arena events).
 
 **DoD**: path selection, technique switching, culling-mode changes, and rejection
@@ -158,8 +158,8 @@ behavior all provable via pure unit tests; `pipeline/` headers unchanged for exi
 consumers (pod re-exports, no breakage).
 
 > **Execution record (2026-09-15 — DONE).** Core 4 landed as
-> `renderpath.contract.hpp` / `renderpath.action.hpp` / `renderpath.event.hpp` /
-> `renderpath.reducer.hpp` in `include/shs/domains/renderpath/`. The contract
+> `renderpath.contract.hpp` / `renderpath.command.hpp` / `renderpath.event.hpp` /
+> `renderpath.gateway.hpp` in `include/shs/domains/renderpath/`. The contract
 > re-exports the spine via using-declarations under `shs::renderpath` (canonical
 > `shs::` names preserved). Commands: `SelectPathPresetIntent`,
 > `SetRenderingTechniqueIntent`, `SetViewCullingModeIntent`,
@@ -173,7 +173,7 @@ consumers (pod re-exports, no breakage).
 > domain pod allowed to include execution zones (it IS the contract seam). The
 > `shs::renderer-values` INTERFACE target (header-only: include dirs + glm only,
 > no SDL/assimp/Vulkan) landed with this phase — the renderpath test binary's
-> link line is `libglm.a` and nothing else. ctest: `shs_renderer_vop_renderpath_tests`
+> link line is `libglm.a` and nothing else. ctest: `shs_renderer_renderpath_tests`
 > covers path selection, technique switching, culling accept/reject, the
 > previous-plan-kept rejection invariant, and pre-plan runtime toggles; events
 > allocate on a `std::pmr::monotonic_buffer_resource` frame arena.
@@ -196,7 +196,7 @@ containers so every pod gets §7.2-compliant backing stores. **Hard prerequisite
       for keyed hot lookups.
 - [x] Migrate demo pod contracts (`spatial_fx`, `snake/matrix`, `fps/matrix`) onto
       `SoaTable`; delete demo-private arena copies.
-- [x] `ctest` gate: `shs_renderer_vop_containers_*` — growth/compaction/handle
+- [x] `ctest` gate: `shs_renderer_containers_*` — growth/compaction/handle
       stability/headless benchmarks proving linear walks stay cache-resident.
 
 **DoD**: `grep` gate shows zero `std::list/map/set` in lib hot-state headers; pod
@@ -226,7 +226,7 @@ streaming-store kernels land on real contiguous columns.
 > (they already satisfy §7.2 shape). The boundary linter gained the P1.5 DoD
 > gate: FAIL on any node-based container under `shs/memory|containers|frame/`,
 > INFO-counting the 13 cold string-keyed registry uses in `domains/` for the P5
-> FlatMap migration. ctest: `shs_renderer_vop_containers_tests` (linked only to
+> FlatMap migration. ctest: `shs_renderer_containers_tests` (linked only to
 > `libglm.a`, matching the P1 DoD) covers arena alignment/O(1)-reset/strict
 > overflow, handle stability across growth and swap-and-pop, density
 > preservation, 64-byte column alignment, a 1M-row linear-walk headless
@@ -253,11 +253,11 @@ vocabulary (`resource_desc`, `command_desc`, `pipeline_desc`, `sync_desc`).
 - [x] `vop_vk_driver_tests.cpp` — 15 GPU-free cases (mappers, hashes, registry dedupe /
       failure semantics, pipeline cache, spy-sink stream ordering, frame-sync slots,
       headless backend contract, create-info purity); registered as
-      `shs_renderer_vop_vk_driver_tests` behind optional `find_package(Vulkan)`
+      `shs_renderer_vk_driver_tests` behind optional `find_package(Vulkan)`
       (links the loader only so never-executed GPU paths resolve; binary stays
       GPU-free at runtime).
 - [x] Grep gate: no `Vk*` token outside `include/shs/execution/rhi/drivers/vulkan/`
-      in the lib (facade shims carry no Vk tokens); `check_vop_boundaries.sh` green.
+      in the lib (facade shims carry no Vk tokens); `check_kdba_boundaries.sh` green.
 
 **DoD status**: translation/cache/record layers complete and GPU-free testable; the
 `hello_vulkan_triangle` parity probe stays compile-gated — its runtime path needs a
@@ -272,7 +272,7 @@ Goal: `demo_forward_classic_renderpath.cpp` (9,373 lines) → thin pod compositi
       emits `SelectPathPresetIntent`, `SetRenderingTechniqueIntent`, …).
 - [ ] Extract per-frame planner into a `plan`-style pure function emitting
       `CommandDesc` spans.
-- [ ] Main loop becomes: input edge → reducers → plan → executor edge → present
+- [ ] Main loop becomes: input edge → gateways → plan → executor edge → present
       (tetris shape).
 - [ ] Hybrid / GPU-free demo mode — demos must honor the backend factory's
       fallback instead of hard-failing on the concrete Vulkan type: branch on
@@ -292,17 +292,17 @@ Goal: `demo_forward_classic_renderpath.cpp` (9,373 lines) → thin pod compositi
 - [ ] Migrate or retire `hello_*_vulkan.cpp` probes.
 
 **DoD**: demo under ~1.5k lines; all 5 path presets × techniques hot-swappable at
-runtime *through the reducer* (event log visible in an on-screen debug overlay).
+runtime *through the gateway* (event log visible in an on-screen debug overlay).
 
 
 ## Phase P4 — Demo Conformance (Core 4 debt)
 
 Goal: bring tetris/snake pods to the canon flagged in Constitution §6.2.
 
-- [ ] tetris: `session` → extract `session.event.hpp`; `mission` → `mission.action.hpp`
+- [ ] tetris: `session` → extract `session.event.hpp`; `mission` → `mission.command.hpp`
       + `mission.event.hpp` (move `MissionEventType`/`MissionEventOut`), drop
       `std::string` from event payloads (fixed tag / string_view), take frame arena
-      as parameter; `progression` → explicit empty `progression.action.hpp`;
+      as parameter; `progression` → explicit empty `progression.command.hpp`;
       `environment` / `spatial_fx` → explicit closed action+event vocabularies.
 - [ ] snake: same audit pass on `matrix` / `progression` / `spatial_fx`.
 - [ ] Regenerate `docs/pods/EVENT_FLOW.md` after event moves.
@@ -374,14 +374,14 @@ outside arenas; event log overlay ships in the demo.
   library migration (P0.5 → P1 → P1.5 → P2) proceeds independently; demos stay on
   facade compatibility headers — compilable throughout, their Core 4 debt tracked
   as P4 (per the §6.2 pre-canon conformance note). Every pod lands with its
-  headless reducer `ctest` in the same commit (the existing
+  headless gateway `ctest` in the same commit (the existing
   `tests/vop_core_tests.cpp` DummyBackend harness is the template; P1's
-  `shs_renderer_vop_renderpath_*` gate generalizes it). Ordering constraints:
+  `shs_renderer_renderpath_*` gate generalizes it). Ordering constraints:
   P3 (monolith decomposition) is demo-side work consuming the P1 renderpath pod,
   so it interleaves with the library track rather than following it; P5 facade
   retirement happens only after P4 has moved the demos onto the new paths.
   P1 hardening: add a header-only `shs::renderer-values` INTERFACE target
-  (pod/value headers only) so reducer tests link without SDL2/assimp —
+  (pod/value headers only) so gateway tests link without SDL2/assimp —
   mechanically proving pods never leak edge dependencies.
 - **P0.5 first** (while zero code has changed): the tree move is cheapest now and
   means P1 lands the renderpath pod directly in `domains/renderpath/` with no later
@@ -394,8 +394,8 @@ outside arenas; event log overlay ships in the demo.
 
   - **Run 1 — Monolith Decomposition** (P3 #1–4): input/camera edges →
     `shs/input`; path config via `renderpath` intents; pure planner emitting
-    `CommandDesc` spans; main loop → input edge → reducers → plan → executor
-    edge → present. DoD: demo < 1.5k lines, reducer-driven hot-swap visible in
+    `CommandDesc` spans; main loop → input edge → gateways → plan → executor
+    edge → present. DoD: demo < 1.5k lines, gateway-driven hot-swap visible in
     a debug overlay. One continuous surgery on the same file.
   - **Run 2 — GPU-Free Everything** (P3 #5 + #7): hybrid/GPU-free demo mode
     (backend-factory fallback, `SHS_HAS_VULKAN` gate, optional VMA, merged
@@ -428,18 +428,21 @@ outside arenas; event log overlay ships in the demo.
 
 ## Backlog — POD Semantics Hardening (parked 2026-09-15; work later)
 
-> Suggestions from the post-Tier0 lib review on strengthening pure reducer
+> Suggestions from the post-Tier0 lib review on strengthening pure gateway
 > Domain POD semantics in `shs-renderer-lib`. Not scheduled — recorded so the
 > Runs 1–5 plan above can absorb them at the right moment. `renderpath` (P1)
 > proved the pattern; this backlog is about making the pattern cheap to follow
 > correctly and hard to follow incorrectly.
 
-- [ ] **Uniform reducer signature** — pin the house signature
-      `reduce(PodState&, span<const Action>, const Inputs&, pmr::vector<Event>&)`
+- [ ] **Composable pod gateways (clarified 2026-09-17)** — keep the house gateway
+      shape `<pod>_gateway(PodState&, span<const Command>, const <Pod>Context&, pmr::vector<Event>&)`
       (time/caps/compiler inputs always explicit parameters; events on the
-      caller's frame arena) across all future pods, so one generic edge loop
-      drives every pod and the P6 replay harness is a lib facility, not
-      per-pod work. *Slot: Run 1 (main-loop rewrite is where per-pod glue
+      caller's frame arena) as the *convention for pod gateways*, so one generic
+      edge loop drives every pod and the P6 replay harness is a lib facility, not
+      per-pod work. This is not a signature-uniformity mandate: infallible stages
+      stay plain value transforms composed via `.and_then()`/`.transform()`, and
+      wrapping them in `expected` to match a shape is non-conforming churn.
+      *Slot: Run 1 (main-loop rewrite is where per-pod glue
       gets deleted).*
 - [ ] **Header-only pod test kit** (`domains/pod_test_kit.hpp`) — replay
       assert (command log × 2 → identical event log), snapshot value-equality
@@ -450,12 +453,12 @@ outside arenas; event log overlay ships in the demo.
 - [ ] **Semantic purity linters** (extend the P0.5 boundary linter beyond
       include-direction): forbid ambient entropy/time in `domains/`
       (`rand(`, `std::chrono`, `std::time`, `getenv` — dt arrives as input);
-      forbid `std::unordered_*` iteration in reducer paths (hash order breaks
+      forbid `std::unordered_*` iteration in gateway paths (hash order breaks
       replay); extend the `Vk*` token gate pattern to `canvas`, `SDL_`,
       `fopen` in `domains/` (would have caught `skybox_renderer.hpp` /
       `jolt_debug_draw.hpp` at birth). *Slot: Run 4.*
 - [x] **Promote the `std::expected` fallible-transition idiom** from
-      `renderpath.reducer.hpp` `detail` (VOP spec §8) to the canonical
+      `renderpath.gateway.hpp` `detail` (VOP spec §8) to the canonical
       Constitution recipe for rejected transitions — closed-enum error
       payload, events only in `transform/or_else` continuations, previous
       state untouched on rejection; new compilers return `expected` directly

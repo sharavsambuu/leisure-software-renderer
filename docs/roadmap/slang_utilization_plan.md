@@ -23,7 +23,7 @@
 
 ## 1. Why Slang is the right substrate for this architecture
 
-The renderer is pure-reducer Domain PODs: passes consume/produce identical value
+The renderer is pure-gateway Domain PODs: passes consume/produce identical value
 state on every backend. Slang's structural features map onto that directly:
 
 | Slang feature | Renderer leverage |
@@ -137,7 +137,7 @@ discipline.
   compare outputs with RMSE tolerance (GPU interpolation ≠ exact software
   sampling — tolerance, not equality; per-pass threshold table).
 - Start with `tonemap` (pure per-pixel → near-exact) and `default_sky`, then
-  `PBRForward`. Light-culling compute results compare as sets (CPU reducer vs
+  `PBRForward`. Light-culling compute results compare as sets (CPU gateway vs
   GPU dispatch must produce the same culling PODs — order-insensitive compare).
 - This test is what makes "pluggable, backend-blind" an invariant instead of
   an aspiration.

@@ -1,6 +1,6 @@
 # Multi-Threaded Coding Best Practices (Wait-Free Concurrency)
 
-Guidelines for writing performant, thread-safe, and cache-friendly code using the `shs::ThreadPoolJobSystem`. Adherence to [Constitution III (DOD & ECS)](dod_ecs_architecture.md) is required.
+Guidelines for writing performant, thread-safe, and cache-friendly code using the `shs::ThreadPoolJobSystem`. Adherence to [Constitution III (Domain-Owned Data Layout & Execution)](dod_ecs_architecture.md) is required.
 
 ## 1. The Wait-Free Two-Phase Model
 Every frame must strictly separate mutation from recording, guaranteeing **100% lock-free and wait-free execution** during simulation:

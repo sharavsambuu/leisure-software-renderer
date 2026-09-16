@@ -130,6 +130,6 @@ The system is currently at **L4 Maturity**, meaning:
 - **Vulkan Bindings**: `shs/rhi/drivers/vulkan/vk_render_path_descriptors.hpp` *(planned — driver does not exist yet; see below)*
 - **Domain Pod rearchitecture**: `docs/arch/render_path_domain_pod_architecture.md` —
   wraps this pipeline in the Core 4 Domain Pod canon (`domains/renderpath/`: contract =
-  recipe/plan types, action = `RenderPathCommand` intents, reducer = `reduce_render_path`
+  recipe/plan types, action = `RenderPathCommand` intents, gateway = `renderpath_gateway`
   with keep-on-reject hot-swap invariant, event = `PATH_COMPILED` / `PATH_SWAP_REJECTED`
   log). Rollout phases in `docs/roadmap/domain_pod_engine_rollout_roadmap.md`.

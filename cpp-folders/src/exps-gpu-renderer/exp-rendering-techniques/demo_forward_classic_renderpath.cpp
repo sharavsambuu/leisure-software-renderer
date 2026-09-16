@@ -6489,7 +6489,7 @@ private:
         pending_quit_action_ = false;
         runtime_actions_.clear();
         shs::emit_human_actions(input, runtime_actions_, camera_.move_speed, 2.0f, camera_.look_speed);
-        runtime_state_ = shs::reduce_runtime_state(runtime_state_, runtime_actions_, dt);
+        runtime_state_ = shs::runtime_state_gateway(runtime_state_, runtime_actions_, dt);
         if (runtime_state_.quit_requested) running_ = false;
         camera_.pos = runtime_state_.camera.pos;
         camera_.yaw = runtime_state_.camera.yaw;
@@ -9779,7 +9779,7 @@ private:
     bool pending_quit_action_ = false;
     std::vector<shs::demo::DemoInputAction> pending_keydown_actions_{};
     shs::RuntimeState runtime_state_{};
-    std::vector<shs::RuntimeAction> runtime_actions_{};
+    std::vector<shs::RuntimeCommand> runtime_actions_{};
     float time_sec_ = 0.0f;
 };
 }

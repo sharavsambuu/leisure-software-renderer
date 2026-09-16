@@ -240,11 +240,11 @@ const size_t vcount = quads.size();
 ## 9. Constitutional Links
 
  
- This document is Constitution I. SHS renderer also defines Constitution II for Value-Oriented Programming (VOP) and Constitution III for Data-Oriented Design (DOD).
+ This document is Constitution I. SHS renderer also defines Constitution II for KDBA in C++23 and Constitution III for Domain-Owned Data Layout & Execution.
 
- - **Constitution II (VOP & DOD)**: `docs/spec/value_oriented_programming.md` (Formal Specification)
- - **Constitution III (DOD & ECS)**: `docs/spec/dod_ecs_architecture.md`
- - **Constitutional rule of thumb**: keep pure value transforms in the center, keep backend side effects at execution boundaries, and prioritize cache-friendly Data-Oriented Design (SoA, ECS) for logic.
+ - **Constitution II (KDBA in C++23)**: `docs/spec/value_oriented_programming.md` (Formal Specification)
+ - **Constitution III (Domain-Owned Data Layout & Execution)**: `docs/spec/dod_ecs_architecture.md`
+ - **Constitutional rule of thumb**: keep pure value transforms in the center, keep backend side effects at execution boundaries, and prioritize cache-friendly data layout (SoA, chunked spans) with domain-owned types for logic. Domain ownership and composition are law; data layout is how it performs.
  - **Pluggability law (§7)**: no user lock-in — every part pluggable through extension points; see §7 and the §3–4 extension contract in `docs/arch/render_path_architecture.md`.
 
 ---
@@ -262,4 +262,4 @@ Pod-idiomatic C++23 subset (supplements Constitution II §8):
 - Allowed at defined tiers: `std::ranges` in planners (allocation-explicit,
   PMR-backed), `std::mdspan` at tile kernels.
 - Restricted: coroutines live in execution edges only; concepts constrain API
-  rims, never reducer bodies.
+  rims, never gateway bodies.

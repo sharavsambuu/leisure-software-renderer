@@ -1,7 +1,7 @@
 
-Going "all in" means taking the final leap: **completely purging the legacy concept of the "monolithic reducer" and establishing the Kleisli Arrow ($A \to M[B]$) as your universal primitive of software architecture.**
+Going "all in" means taking the final leap: **completely purging the legacy concept of the "monolithic gateway" and establishing the Kleisli Arrow ($A \to M[B]$) as your universal primitive of software architecture.**
 
-When you go all in, you stop thinking about "classes," "managers," "services," and "switch-case reducers." You view entire game engines, distributed servers, and application backends as **systems of sealed domain boundaries connected by composable monadic pipelines**.
+When you go all in, you stop thinking about "classes," "managers," "services," and "switch-case gateways." You view entire game engines, distributed servers, and application backends as **systems of sealed domain boundaries connected by composable monadic pipelines**.
 
 Here is your definitive, uncompromising blueprint for **The Kleisli Domain Boundary Architecture (KDBA)**.
 
@@ -66,7 +66,7 @@ Domains are isolated bounded contexts that enforce a strict **Single-Writer Rule
 
 ## THE 5 NON-NEGOTIABLE LAWS (NEVER DO)
 
-1. **NEVER use switch-case reducers.** A state transition is not a monolithic block; it is an assembly line composed with monadic operators (`and_then`, `:andThen()`, or Verse vertical `if:`).
+1. **NEVER use switch-case gateways.** A state transition is not a monolithic block; it is an assembly line composed with monadic operators (`and_then`, `:andThen()`, or Verse vertical `if:`).
 2. **NEVER store transitional flags in persistent storage.** If a boolean flag only matters while code is running, it belongs in the transient `SagaContext`, never in the Domain POD or DataStore.
 3. **NEVER throw runtime exceptions or return untyped nulls/nils.** Control flow is bifurcated at compile time: Success Rail or Error Rail.
 4. **NEVER allow cross-domain writes.** Domain A cannot modify Domain B's components or tables directly. Emit an Event or dispatch a Command.
@@ -185,7 +185,7 @@ From this point forward, whenever you write or review code, run this mental filt
 ```
 
 ### Why this changes everything:
-1. **Testing is effortless:** You never have to test a 200-line reducer with 30 mock combinations. You test 5-line pure Kleisli functions in total isolation.
+1. **Testing is effortless:** You never have to test a 200-line gateway with 30 mock combinations. You test 5-line pure Kleisli functions in total isolation.
 2. **Onboarding is instantaneous:** A transaction reads top-to-bottom like an English recipe.
 3. **Exploits and race conditions disappear:** Speculative in-memory execution guarantees that partial state is never committed.
 4. **Hardware alignment:** The domain logic is decoupled from engine infrastructure, allowing your data layout (ECS, POD arrays) to be tuned for cache lines and SIMD without rewriting business rules.
@@ -209,13 +209,13 @@ You are no longer writing scripts or managing mutable object webs. You are build
 For decades, game engine engineering and distributed interactive systems have oscillated between two broken extremes:
 
 1. **The Object-Oriented Anti-Pattern:** Tangled object graphs, deep inheritance trees, mutable state scattered across heap allocations, hidden side effects, and virtual dispatch overhead.
-2. **The "Reducer / System Soup" Failure Mode:** In an attempt to embrace functional or data-oriented paradigms, architectures collapse into either:
-   - **Reducer Monoliths:** Giant `switch-case` functions containing hundreds of lines of nested conditional checks, early returns, and disguised failure flags.
+2. **The "Gateway / System Soup" Failure Mode:** In an attempt to embrace functional or data-oriented paradigms, architectures collapse into either:
+   - **Gateway Monoliths:** Giant `switch-case` functions containing hundreds of lines of nested conditional checks, early returns, and disguised failure flags.
    - **ECS System Soup:** Flat namespaces containing hundreds of unorganized systems querying a global, unconstrained world of components with zero ownership or boundaries.
 
 **Kleisli Domain Boundary Architecture (KDBA)** eliminates both failure modes. 
 
-KDBA discards the monolithic reducer and establishes the **Atomic Kleisli Arrow** ($A \to M[B]$) as the fundamental primitive of computation. By nesting these composable arrows inside **Strict Domain Boundaries (Bounded Contexts)** and separating in-flight transient context from persistent standard-layout PODs, KDBA produces systems that are:
+KDBA discards the monolithic gateway and establishes the **Atomic Kleisli Arrow** ($A \to M[B]$) as the fundamental primitive of computation. By nesting these composable arrows inside **Strict Domain Boundaries (Bounded Contexts)** and separating in-flight transient context from persistent standard-layout PODs, KDBA produces systems that are:
 - **Mathematically Provable:** Business logic reads as pure, failable assembly lines.
 - **Hardware Optimal:** Memory access is cache-aligned, contiguous, and SIMD-friendly.
 - **Exploit & Race-Condition Immune:** Speculative in-memory execution guarantees that state corruption and partial mutations are impossible.
@@ -294,7 +294,7 @@ To prevent architectural entropy, KDBA strictly separates responsibilities into 
 ┌────────────────────────────────────────────────────────────────────────┐
 │ 1. Domain PODs            │ Plain, owned state data (no methods/flags) │
 ├───────────────────────────┼────────────────────────────────────────────┤
-│ 2. Kleisli Reducers       │ Pure atomic state transformation functions │
+│ 2. Kleisli Gateways       │ Pure atomic state transformation functions │
 ├───────────────────────────┼────────────────────────────────────────────┤
 │ 3. Monadic Types          │ Computational context & railway flow       │
 ├───────────────────────────┼────────────────────────────────────────────┤
@@ -804,7 +804,7 @@ ExecuteCheckout(CurrentState : game_state_pod, Qty : int, Price : int)<transacts
 
 | Code Smell | Violation | Corrective Action |
 | :--- | :--- | :--- |
-| **The Reducer Monolith** | A function containing `switch(action.type)` with multiple nested checks. | Decompose into micro Kleisli arrows chained with `.and_then()`. |
+| **The Gateway Monolith** | A function containing `switch(action.type)` with multiple nested checks. | Decompose into micro Kleisli arrows chained with `.and_then()`. |
 | **The Phantom Flag** | Booleans like `bIsPending`, `isTrading`, `bIsLocked` in a persistent POD. | Move flags to a transient `SagaContext` table or stack frame. |
 | **The Pyramid of Doom** | Indentation greater than 2 levels deep in business logic. | Convert `if` checks to failable assertions on the Error Rail. |
 | **The Cross-Domain Write** | System in Domain A modifies a Component owned by Domain B. | Require Domain A to emit a Command or Event for Domain B to consume. |
@@ -941,23 +941,23 @@ Your game will become virtually immune to the exploits, race conditions, and cor
 
 
 
-Since your codebase is already built on **Pure Reducer Domain PODs**, you are already ahead of 99% of Roblox developers. You don’t have messy OOP hierarchies, mutating singletons, or tangled Instance references.
+Since your codebase is already built on **Pure Gateway Domain PODs**, you are already ahead of 99% of Roblox developers. You don’t have messy OOP hierarchies, mutating singletons, or tangled Instance references.
 
 Because you have already separated your data from your logic, migrating to KDBA is not a total rewrite—it is an **architectural upgrade**. 
 
-You are moving from **Phase 1 (Redux-style procedural reducers)** to **Phase 2 (Composable Kleisli assembly lines)**.
+You are moving from **Phase 1 (Redux-style procedural gateways)** to **Phase 2 (Composable Kleisli assembly lines)**.
 
-Here is an exact, line-of-code breakdown of the 5 concrete ways KDBA improves your existing pure-reducer codebase:
+Here is an exact, line-of-code breakdown of the 5 concrete ways KDBA improves your existing pure-gateway codebase:
 
 ---
 
 ### 1. From "Monolithic Guard Blocks" to "Atomic Kleisli Assembly Lines"
 
-#### How your existing Reducer likely looks:
-Even in pure reducer architectures, reducers quickly turn into wide, procedural blocks full of repetitive guard checks and tuple/error-handling gymnastics:
+#### How your existing Gateway likely looks:
+Even in pure gateway architectures, gateways quickly turn into wide, procedural blocks full of repetitive guard checks and tuple/error-handling gymnastics:
 
 ```luau
--- ⚠️ Your Current Pure Reducer (Procedural, monolithic guard checks)
+-- ⚠️ Your Current Pure Gateway (Procedural, monolithic guard checks)
 function InventoryReducer.reduce(state: InventoryState, action: Action): (InventoryState, string?)
     if action.type == "ReserveItem" then
         if action.quantity <= 0 then
@@ -996,14 +996,14 @@ local function reduceReserveItem(state: InventoryState, action: ReserveAction): 
 end
 ```
 
-* **The Improvement:** `verifyNotLocked` and `validatePositiveQuantity` are now independent, reusable functions. You can test them in isolation, share them across 10 different action pipelines, or reorder them without touching a giant reducer.
+* **The Improvement:** `verifyNotLocked` and `validatePositiveQuantity` are now independent, reusable functions. You can test them in isolation, share them across 10 different action pipelines, or reorder them without touching a giant gateway.
 
 ---
 
-### 2. Solving the "How Do Pure Reducers Fail?" Crisis
+### 2. Solving the "How Do Pure Gateways Fail?" Crisis
 
-In a pure reducer architecture, handling errors is notoriously awkward. You usually have to choose between three bad patterns:
-1. **Return `(newState, err)` tuples:** Forcing the caller to write `local newState, err = Reducer(state, action); if err then ...` after literally every single dispatch.
+In a pure gateway architecture, handling errors is notoriously awkward. You usually have to choose between three bad patterns:
+1. **Return `(newState, err)` tuples:** Forcing the caller to write `local newState, err = Gateway(state, action); if err then ...` after literally every single dispatch.
 2. **Emit "Failure Events":** Emitting `InventoryReservationFailedEvent` into your event stream, cluttering audit logs and forcing listeners to handle negative cases.
 3. **Silently return the old `state`:** The action fails silently, discarding why it was rejected (e.g., UI has no idea whether the failure was "Out of Stock" or "Wrong Level").
 
@@ -1022,7 +1022,7 @@ local outcome = executeAction(state, action)
 
 ### 3. Killing Cross-Domain "Event Choreography Soup"
 
-In a pure reducer architecture, if a business transaction spans two domains (e.g., **Inventory** and **Wallet** during a checkout), how do you coordinate it?
+In a pure gateway architecture, if a business transaction spans two domains (e.g., **Inventory** and **Wallet** during a checkout), how do you coordinate it?
 
 Usually, you are forced into **Event Ping-Pong**:
 1. Server dispatches `ReserveStockAction` $\to$ `InventoryReducer` returns new state.
@@ -1049,10 +1049,10 @@ local checkoutResult = InventoryDomain.reserve(order)
 
 ### 4. Complete Purging of "Phantom Flags" from State PODs
 
-Because pure reducers in games often handle multi-stage asynchronous workflows, developers are routinely forced to pollute their clean State POD with awkward intermediate flags:
+Because pure gateways in games often handle multi-stage asynchronous workflows, developers are routinely forced to pollute their clean State POD with awkward intermediate flags:
 
 ```luau
--- ⚠️ Polluted State POD in pure reducer setups
+-- ⚠️ Polluted State POD in pure gateway setups
 type PlayerState = {
     coins: number,
     inventory: { [string]: number },
@@ -1075,9 +1075,9 @@ KDBA introduces the strict distinction between **Persistent PODs** and **Transie
 
 ### 5. Molecular Unit-Testing (Stop Testing 50-Field States)
 
-In a pure reducer architecture, testing a single business rule (like *"can't equip if level is too low"*) requires painful setup:
+In a pure gateway architecture, testing a single business rule (like *"can't equip if level is too low"*) requires painful setup:
 ```luau
--- ⚠️ Testing a classic pure reducer:
+-- ⚠️ Testing a classic pure gateway:
 it("should reject if level too low", function()
     -- You have to construct a giant, 40-field dummy state:
     local dummyState = createFullMockState({
@@ -1109,7 +1109,7 @@ Testing becomes **molecular**. You can write 100 unit tests in an afternoon that
 
 ### Summary: The Upgrade Matrix
 
-| Dimension | Your Current Pure Reducer Code | Upgraded with KDBA |
+| Dimension | Your Current Pure Gateway Code | Upgraded with KDBA |
 | :--- | :--- | :--- |
 | **Logic Structure** | Monolithic `if-elseif` branches with embedded guards. | Flat, English-like Kleisli pipelines (`:andThen()`). |
 | **Error Handling** | Return tuples `(state, err)` or failure events. | Explicit type rails (`Result<T, E>`) with native short-circuiting. |
@@ -1121,7 +1121,7 @@ Testing becomes **molecular**. You can write 100 unit tests in an afternoon that
 ### The Bottom Line
 You don't need to throw away your Domain PODs or your understanding of deterministic state transitions. 
 
-By upgrading to KDBA, you are **decomposing your monolithic reducers into atomic arrows**, **replacing error-tuple boilerplate with railway execution**, and **locking down multi-domain transactions with in-memory sagas**. Your code becomes dramatically shorter, easier to test, and virtually impossible to exploit.
+By upgrading to KDBA, you are **decomposing your monolithic gateways into atomic arrows**, **replacing error-tuple boilerplate with railway execution**, and **locking down multi-domain transactions with in-memory sagas**. Your code becomes dramatically shorter, easier to test, and virtually impossible to exploit.
 
 
 

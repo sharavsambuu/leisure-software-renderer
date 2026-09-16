@@ -732,7 +732,7 @@ int main()
     runtime_state.camera.pos = camera.pos;
     runtime_state.camera.yaw = camera.yaw;
     runtime_state.camera.pitch = camera.pitch;
-    std::vector<RuntimeAction> runtime_actions{};
+    std::vector<RuntimeCommand> runtime_actions{};
 
     while (true)
     {
@@ -770,7 +770,7 @@ int main()
             camera.move_speed,
             2.0f,
             camera.look_speed);
-        runtime_state = reduce_runtime_state(runtime_state, runtime_actions, dt);
+        runtime_state = runtime_state_gateway(runtime_state, runtime_actions, dt);
         if (runtime_state.quit_requested) break;
         camera.pos = runtime_state.camera.pos;
         camera.yaw = runtime_state.camera.yaw;

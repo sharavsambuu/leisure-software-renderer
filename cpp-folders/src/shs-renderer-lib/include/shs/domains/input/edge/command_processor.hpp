@@ -31,26 +31,26 @@ namespace shs
             queue_.push_back(std::make_unique<TCmd>(std::forward<Args>(args)...));
         }
 
-        std::vector<RuntimeAction> collect_runtime_actions()
+        std::vector<RuntimeCommand> collect_runtime_commands()
         {
-            std::vector<RuntimeAction> actions{};
-            actions.reserve(queue_.size());
+            std::vector<RuntimeCommand> commands{};
+            commands.reserve(queue_.size());
 
             for (auto& c : queue_)
             {
                 if (!c) continue;
-                actions.push_back(c->to_runtime_action());
+                commands.push_back(c->to_runtime_action());
             }
             queue_.clear();
-            return actions;
+            return commands;
         }
 
-        RuntimeState reduce_all(RuntimeState state, float dt)
+        RuntimeState apply_commands(RuntimeState state, float dt)
         {
-            const std::vector<RuntimeAction> actions = collect_runtime_actions();
-            if (!actions.empty())
+            const std::vector<RuntimeCommand> commands = collect_runtime_commands();
+            if (!commands.empty())
             {
-                state = reduce_runtime_state(state, actions, dt);
+                state = runtime_state_gateway(state, commands, dt);
             }
             return state;
         }

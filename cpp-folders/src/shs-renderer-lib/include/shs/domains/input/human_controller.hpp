@@ -10,18 +10,18 @@
 */
 
 #include "shs/domains/input/input_state.hpp"
-#include "shs/domains/input/value_actions.hpp"
+#include "shs/domains/input/value_commands.hpp"
 
 namespace shs
 {
-    inline void emit_human_runtime_actions(
+    inline void emit_human_runtime_commands(
         const InputState& in,
-        std::vector<RuntimeAction>& out,
+        std::vector<RuntimeCommand>& out,
         float base_speed,
         float boost_multiplier,
         float look_sensitivity
     )
     {
-        emit_human_actions(in, out, base_speed, boost_multiplier, look_sensitivity);
+        emit_human_commands(in, out, base_speed, boost_multiplier, look_sensitivity);
     }
 }

@@ -5,7 +5,7 @@
 
     FILE: input.event.hpp
     MODULE: domains/input
-    PURPOSE: CORE 3. EVENT — raw facts emitted by reduce_input (R3).
+    PURPOSE: CORE 3. EVENT — raw facts emitted by input_gateway (R3).
              One fact per applied command: what moved, what toggled, whether
              quit was requested. No downstream interpretation lives here.
 */
@@ -66,5 +66,5 @@ namespace shs::input
     }
 
     static_assert(std::variant_size_v<InputEvent> == 4,
-        "input event vocabulary changed: update name table + reducer pins");
+        "input event vocabulary changed: update name table + gateway pins");
 } // namespace shs::input

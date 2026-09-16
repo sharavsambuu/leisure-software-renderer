@@ -1,10 +1,10 @@
-# Constitution III: Data-Oriented Design & ECS
+# Constitution III: Domain-Owned Data Layout & Execution
 
-This document defines **Constitution III**, the core tenets for structuring high-level logic and high-volume data processing within the SHS engine. It mandates the transition from OOP-based systems towards a strict Data-Oriented Design (DOD) and Entity Component System (ECS) architecture.
+This document defines **Constitution III**, the storage and execution laws supporting **Kleisli Domain Boundary Architecture (KDBA) in C++23**. **Domain separation and ownership are foundational; KDBA is the chosen programming paradigm, not a combination of legacy programming models.** ECS is explicitly rejected as the programming model. SoA, contiguous arrays, handles, arenas, and chunked jobs are implementation techniques under domain ownership, not an ECS mandate. Composition quality, explicit failure handling, deterministic transitions, and efficient execution govern review; a uniform gateway signature is not a goal in itself, and infallible transforms must not acquire invented error channels merely for visual conformity. Historical analogies do not define the architecture. **This governing clarification (2026-09-17) supersedes older ECS-programming-model and universal-signature mandates wherever restated in the constitutions or backlogs**, without relaxing Core 4, domain-write isolation, purity, fact preservation, atomic commit for fallible workflows, or memory lifetime laws. The legacy filename is retained for stable links.
 
 - **Constitution I**: `docs/spec/conventions.md` (Units, Coordinate Systems, Physics Bridge, Lighting Semantics)
-- **Constitution II**: `docs/spec/value_oriented_programming.md` (Value-Oriented Programming & Reducer Architecture)
-- **Constitution III (This Document)**: Data-Oriented Design & Entity Component System
+- **Constitution II**: `docs/spec/value_oriented_programming.md` (Value-Oriented Programming & Gateway Architecture)
+- **Constitution III (This Document)**: Domain-Owned Data Layout & Execution
 
 ---
 
@@ -28,14 +28,14 @@ All high-volume simulation code must default to SoA or Archetype Chunked SoA lay
 
 ---
 
-## 3. ECS as the High-Level Backbone
+## 3. Domain Pods Own Behavior; Tables Support Execution
 
-The high-level engine loop utilizes a strict Entity Component System (ECS) that completely replaces virtual inheritance trees (`class Monster : public Actor`).
+The high-level engine is organized by domain ownership and typed KDBA composition, not a global entity/component world or inheritance hierarchy.
 
-1. **Entities**: Are just lightweight integer IDs (`uint32_t`). They have no logic and no data.
-2. **Components**: Pure Plain Old Data (POD) structs. They are stored in dense, contiguous Archetype SoA chunks ($16\,\text{KB}$ cache-aligned chunks).
-3. **Stages (Kleisli arrows)**: Pure, stateless functions (`Ctx -> expected<Ctx, DomainError>`) that stream over component-array chunks. They contain **no internal mutable state** and emit discrete events. Arrows never mutate persistent buffers mid-chain (Constitution II §2.2(4) KDBA commit rule); the boundary commits `Step` atomically.
-4. **World / Scheduler (Saga Orchestrator)**: Coordinates execution order, dependencies, and inter-system events. The orchestrator is itself a Domain Pod with its own contract, actions, Kleisli pipeline, and events (Constitution II Rules 11–12 KDBA gateway); no non-pod controller owns cross-domain state.
+1. **Domain identity**: Use domain-owned IDs and generational handles for stable relationships. Integer handles do not imply an ECS entity model.
+2. **Domain storage**: Plain value contracts own contiguous SoA tables for high-volume data. Chunking follows the memory laws, not a mandatory ECS archetype model.
+3. **Stages and kernels**: Pure stages compose decisions; fallible stages use `std::expected`, while infallible transforms return values. Batch kernels stream over immutable inputs and exclusive outputs. Persistent buffers are not mutated speculatively mid-chain; the boundary commits accepted transitions atomically (Constitution II §2.2(4)).
+4. **Orchestration and scheduling**: Cross-domain workflows belong to orchestrator pods with their own contracts, actions, transitions, and events (Constitution II Rules 11–12). Execution-edge schedulers dispatch jobs; they do not own domain policy or cross-domain state.
 
 ### Example: Wait-Free Physics System
 ```cpp
@@ -115,7 +115,7 @@ To maintain wait-free concurrency, the simulation loop must never trigger OS-lev
 
 ## 8. The Endgame: GPU-Driven Rendering
 
-The final state of the CPU ECS loop involves doing as little rendering work as possible:
+For GPU-driven backends, domain-owned CPU planning aims to minimize rendering work:
 
 * **Broad-Phase Only**: The CPU processes high-level logic, game rules, and coarse bounding volume updates.
 * **GPU Hand-off**: The CPU hands flat, contiguous buffers (SoA components) directly to GPU Storage Buffers (SSBOs).
@@ -124,4 +124,4 @@ The final state of the CPU ECS loop involves doing as little rendering work as p
 ---
 
 ## Summary
-By enforcing DOD, SoA, ECS, Generational Handles, Flat Hierarchies, and Zero-Allocation Loops, the engine achieves deterministic, high-performance, and infinitely scalable simulation capabilities, perfectly complementing the Value-Oriented Programming (Constitution II) rendering backend.
+Domain-owned SoA tables, generational handles, flat hierarchies, and zero-allocation loops support efficient KDBA execution. These implementation techniques do not introduce an ECS programming model or replace Constitution II's domain ownership and composition laws.

@@ -2954,7 +2954,7 @@ private:
                 camera_.move_speed,
                 2.0f,
                 camera_.look_speed);
-            runtime_state_ = reduce_runtime_state(runtime_state_, runtime_actions_, dt);
+            runtime_state_ = runtime_state_gateway(runtime_state_, runtime_actions_, dt);
             if (runtime_state_.quit_requested) break;
             camera_.pos = runtime_state_.camera.pos;
             camera_.yaw = runtime_state_.camera.yaw;
@@ -3161,7 +3161,7 @@ private:
     RenderPathExecutionPlan render_path_plan_{};
     bool render_path_plan_valid_ = false;
     RuntimeState runtime_state_{};
-    std::vector<RuntimeAction> runtime_actions_{};
+    std::vector<RuntimeCommand> runtime_actions_{};
 };
 
 } // namespace

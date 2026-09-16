@@ -1401,7 +1401,7 @@ private:
                 camera_.move_speed,
                 2.0f,
                 camera_.look_speed);
-            runtime_state_ = reduce_runtime_state(runtime_state_, runtime_actions_, dt);
+            runtime_state_ = runtime_state_gateway(runtime_state_, runtime_actions_, dt);
             if (runtime_state_.quit_requested) break;
             camera_.pos = runtime_state_.camera.pos;
             camera_.yaw = runtime_state_.camera.yaw;
@@ -1542,7 +1542,7 @@ private:
     bool mouse_right_held_ = false;
     bool mouse_left_held_ = false;
     RuntimeState runtime_state_{};
-    std::vector<RuntimeAction> runtime_actions_{};
+    std::vector<RuntimeCommand> runtime_actions_{};
     bool apply_occlusion_this_frame_ = false;
     uint32_t occlusion_warmup_frames_ = 0;
     bool camera_prev_valid_ = false;

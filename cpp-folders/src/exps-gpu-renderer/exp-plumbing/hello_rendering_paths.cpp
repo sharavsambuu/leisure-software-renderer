@@ -6143,7 +6143,7 @@ private:
             camera_.move_speed,
             2.0f,
             camera_.look_speed);
-        runtime_state_ = shs::reduce_runtime_state(runtime_state_, runtime_actions_, dt);
+        runtime_state_ = shs::runtime_state_gateway(runtime_state_, runtime_actions_, dt);
         if (runtime_state_.quit_requested) running_ = false;
         camera_ = from_camera_rig(runtime_state_.camera, camera_);
         input_latch_ = shs::clear_runtime_input_frame_deltas(input_latch_);
@@ -9363,7 +9363,7 @@ private:
     bool relative_mouse_mode_ = false;
     bool skip_next_mouse_delta_ = false;
     shs::RuntimeState runtime_state_{};
-    std::vector<shs::RuntimeAction> runtime_actions_{};
+    std::vector<shs::RuntimeCommand> runtime_actions_{};
     bool runtime_state_initialized_ = false;
     float time_sec_ = 0.0f;
 };

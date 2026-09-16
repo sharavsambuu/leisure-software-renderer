@@ -1,5 +1,8 @@
 # Architecture: Animation System
 
+> **Status: historical design background (2026-09-17), not normative.** ECS framing describes an earlier proposal. [KDBA law](../spec/value_oriented_programming.md) and the [governing clarification](../spec/dod_ecs_architecture.md) take precedence; useful animation techniques remain subject to domain ownership.
+
+
 An animation system is a specialized pipeline that handles the deformation of geometry over time. In a modern engine, this involves skeletal hierarchies, skinning, blend trees, and procedural adjustments like IK.
 
 ## 1. Skeletal Hierarchy & Skinning

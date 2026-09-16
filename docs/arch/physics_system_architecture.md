@@ -1,5 +1,8 @@
 # Architecture: Physics System (Jolt & ECS)
 
+> **Status: historical design background (2026-09-17), not normative.** ECS framing describes an earlier proposal. [KDBA law](../spec/value_oriented_programming.md) and the [governing clarification](../spec/dod_ecs_architecture.md) take precedence.
+
+
 Integrating a physics engine like **Jolt** into an ECS-driven architecture requires a strict separation of "Simulation Data" (Physics) and "Gameplay State" (ECS Components).
 
 ## 1. Physics as a First-Class Component
