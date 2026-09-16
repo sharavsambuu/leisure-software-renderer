@@ -190,4 +190,23 @@ else
   echo "[vop-boundary] OK: no platform IO tokens in domains/"
 fi
 
+# Event-flow catalog sync (R5b P4.5): every *Event struct in a pod
+# event.hpp must appear in docs/pods/EVENT_FLOW.md (tables mirror the
+# in-code name tables, which feed the P6 overlay labels).
+event_names="$(grep -rhE 'struct (Fsm[A-Za-z0-9_]+|[A-Za-z0-9_]+Event)\b' \
+  $(find "${domains_dir}" -name '*.event.hpp' | sort) 2>/dev/null \
+  | grep -oE '(Fsm[A-Za-z0-9_]+|[A-Za-z0-9_]+Event)\b' | sort -u)"
+flow_doc="${lib_root}/../../../docs/pods/EVENT_FLOW.md"
+drift=0
+for ev in ${event_names}; do
+  if ! grep -q "${ev}" "${flow_doc}" 2>/dev/null; then
+    echo "[vop-boundary] FAIL: event ${ev} missing from docs/pods/EVENT_FLOW.md"
+    drift=1
+    failed=1
+  fi
+done
+if [[ "${drift}" -eq 0 ]]; then
+  echo "[vop-boundary] OK: EVENT_FLOW.md covers all pod events"
+fi
+
 echo "[vop-boundary] all checks passed"

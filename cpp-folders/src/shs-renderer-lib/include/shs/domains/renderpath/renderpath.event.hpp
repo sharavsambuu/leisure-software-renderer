@@ -72,4 +72,16 @@ namespace shs::renderpath
         CullingModeChangedEvent,
         RuntimeToggledEvent
     >;
+
+    inline const char* renderpath_event_name(const RenderPathEvent& ev)
+    {
+        if (std::holds_alternative<PathCompiledEvent>(ev))     return "path_compiled";
+        if (std::holds_alternative<PathSwapRejectedEvent>(ev)) return "path_swap_rejected";
+        if (std::holds_alternative<TechniqueSwitchedEvent>(ev)) return "technique_switched";
+        if (std::holds_alternative<CullingModeChangedEvent>(ev)) return "culling_mode_changed";
+        return "runtime_toggled";
+    }
+
+    static_assert(std::variant_size_v<RenderPathEvent> == 5,
+        "renderpath event vocabulary changed: update name table + EVENT_FLOW.md");
 } // namespace shs::renderpath
