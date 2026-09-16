@@ -32,3 +32,4 @@ else()
 endif()
 
 add_subdirectory(tier0-rasterization-foundations)
+add_subdirectory(tier1-classic-shading)

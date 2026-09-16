@@ -29,15 +29,23 @@ BUILD = Path("/home/sharavsambuu/src/dev/leisure-software-renderer/"
              "tier0-rasterization-foundations")
 TOOL = HERE / "t0_parity.py"
 
+TIER1_BUILD = Path("/home/sharavsambuu/src/dev/leisure-software-renderer/"
+             "cpp-folders/build/src/exps-rendering-adventures/"
+             "tier1-classic-shading")
 PAIRS = ["01_barycentric", "02_projection", "03_depth_blend",
          "04_texture_sampling", "05_stencil"]
+T1_PAIRS = ["08_normal_mapping"]
 BIN = {"01_barycentric": "tri_barycentric", "02_projection": "projection",
        "03_depth_blend": "depth_blend", "04_texture_sampling": "texture_sampling",
        "05_stencil": "stencil"}
+T1_BIN = {"08_normal_mapping": "normal_mapping"}
+T1_PREFIX = "t1_"
+T1_BUILD_OF = {"08_normal_mapping": TIER1_BUILD}
 
 ENVELOPE = {"01_barycentric": "exact", "02_projection": "tol12",
             "03_depth_blend": "tol1", "04_texture_sampling": "tol1",
             "05_stencil": "exact"}
+T1_ENVELOPE = {"08_normal_mapping": "tol27"}  # sampler-precision drift, see rung-08 notes
 
 
 def run(cmd, cwd):
@@ -58,7 +66,10 @@ def parse_parity(out):
 
 
 def check(name, differ, pct, within, maxd):
-    env = ENVELOPE[name]
+    return check_env(ENVELOPE[name], differ, pct, within, maxd)
+
+
+def check_env(env, differ, pct, within, maxd):
     if env == "exact":
         return (differ == 0, f"exact={'PASS' if differ == 0 else 'BREACH'}")
     if env == "tol1":
@@ -68,29 +79,38 @@ def check(name, differ, pct, within, maxd):
         ok = (differ is not None and pct is not None and within is not None
               and pct <= 12.0 and (within / max(differ, 1)) >= 0.70 and maxd <= 217)
         return (ok, f"tol12 pct={pct}% within1={within}/{differ} max={maxd}")
+    if env == "tol27":
+        ok = (differ is not None and pct is not None and within is not None
+              and pct <= 27.0 and (within / max(differ, 1)) >= 0.95 and maxd <= 2)
+        return (ok, f"tol27 pct={pct}% within1={within}/{differ} max={maxd}")
     return (False, "unknown envelope")
+
+
+def check_pair(name, binname, prefix, builddir):
+    b = binname
+    rc1, _ = run([f"./t1_{b}_sw" if prefix.startswith("t1") else f"./t0_{b}_sw"], cwd=builddir)
+    rc2, _ = run([f"./t1_{b}_vk" if prefix.startswith("t1") else f"./t0_{b}_vk"], cwd=builddir)
+    if rc1 != 0 or rc2 != 0:
+        print(f"{name}: BINARY FAILED sw={rc1} vk={rc2}")
+        return False
+    _, out = run([sys.executable, str(TOOL),
+                  f"{prefix}{name}_sw.png", f"{prefix}{name}_vk.png"], cwd=builddir)
+    differ, pct, within, maxd = parse_parity(out)
+    if differ is None:
+        print(f"{name}: PARITY TOOL FAILED")
+        return False
+    env = T1_ENVELOPE.get(name, ENVELOPE.get(name))
+    ok, note = check_env(env, differ, pct, within, maxd)
+    print(f"{name}: differ={differ} ({pct:.2f}%) within1={within} max={maxd} [{note}]")
+    return ok
 
 
 def main():
     ok_all = True
     for name in PAIRS:
-        b = BIN[name]
-        rc1, _ = run([f"./t0_{b}_sw"], cwd=BUILD)
-        rc2, _ = run([f"./t0_{b}_vk"], cwd=BUILD)
-        if rc1 != 0 or rc2 != 0:
-            print(f"{name}: BINARY FAILED sw={rc1} vk={rc2}")
-            ok_all = False
-            continue
-        _, out = run([sys.executable, str(TOOL),
-                      f"t0_{name}_sw.png", f"t0_{name}_vk.png"], cwd=BUILD)
-        differ, pct, within, maxd = parse_parity(out)
-        if differ is None:
-            print(f"{name}: PARITY TOOL FAILED")
-            ok_all = False
-            continue
-        ok, note = check(name, differ, pct, within, maxd)
-        print(f"{name}: differ={differ} ({pct:.2f}%) within1={within} max={maxd} [{note}]")
-        ok_all = ok_all and ok
+        ok_all = check_pair(name, BIN[name], "t0_", BUILD) and ok_all
+    for name in T1_PAIRS:
+        ok_all = check_pair(name, T1_BIN[name], T1_PREFIX, T1_BUILD_OF[name]) and ok_all
     print("SUITE: PASS (all envelopes hold)" if ok_all else "SUITE: BREACH")
     return 0 if ok_all else 1
 
