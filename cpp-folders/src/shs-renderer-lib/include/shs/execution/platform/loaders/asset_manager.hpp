@@ -4,7 +4,7 @@
     SHS РЕНДЕРЕР САН
 
     ФАЙЛ: asset_manager.hpp
-    МОДУЛЬ: resources
+    МОДУЛЬ: execution/platform (edge orchestration; moved from domains/resources P0.2)
     ЗОРИЛГО: Энэ файл нь shs-renderer-lib-ийн resources модульд хамаарах төрөл/функцийн
             интерфэйс эсвэл хэрэгжүүлэлтийг тодорхойлно.
 */
@@ -13,6 +13,7 @@
 #include <string>
 
 #include "shs/domains/resources/loaders/resource_import.hpp"
+#include "shs/execution/platform/loaders/texture_loader_sdl.hpp"
 #include "shs/domains/resources/resource_registry.hpp"
 
 namespace shs

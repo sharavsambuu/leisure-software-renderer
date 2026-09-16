@@ -13,7 +13,6 @@
 #include <string>
 
 #include "shs/domains/resources/loaders/mesh_loader_assimp.hpp"
-#include "shs/domains/resources/loaders/texture_loader_sdl.hpp"
 #include "shs/domains/resources/resource_registry.hpp"
 
 namespace shs
@@ -30,15 +29,4 @@ namespace shs
         return reg.add_mesh(std::move(mesh), key.empty() ? path : key);
     }
 
-    inline TextureAssetHandle import_texture_sdl(
-        ResourceRegistry& reg,
-        const std::string& path,
-        const std::string& key = {},
-        bool flip_y = true
-    )
-    {
-        Texture2DData tex = load_texture2d_sdl_image(path, flip_y);
-        if (!tex.valid()) return 0;
-        return reg.add_texture(std::move(tex), key.empty() ? path : key);
-    }
 }

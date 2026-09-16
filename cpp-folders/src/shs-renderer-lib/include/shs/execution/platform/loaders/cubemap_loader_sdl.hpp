@@ -4,7 +4,7 @@
     SHS РЕНДЕРЕР САН
 
     ФАЙЛ: cubemap_loader_sdl.hpp
-    МОДУЛЬ: sky
+    МОДУЛЬ: execution/platform (edge: SDL cubemap IO; moved from domains/sky P0.2)
     ЗОРИЛГО: Энэ файл нь shs-renderer-lib-ийн sky модульд хамаарах төрөл/функцийн
             интерфэйс эсвэл хэрэгжүүлэлтийг тодорхойлно.
 */
@@ -12,7 +12,7 @@
 
 #include <string>
 
-#include "shs/domains/resources/loaders/texture_loader_sdl.hpp"
+#include "shs/execution/platform/loaders/texture_loader_sdl.hpp"
 #include "shs/domains/sky/cubemap_sky.hpp"
 
 namespace shs

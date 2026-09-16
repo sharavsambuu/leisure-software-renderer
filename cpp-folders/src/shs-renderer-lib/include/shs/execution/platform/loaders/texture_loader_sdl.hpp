@@ -4,7 +4,7 @@
     SHS РЕНДЕРЕР САН
 
     ФАЙЛ: texture_loader_sdl.hpp
-    МОДУЛЬ: resources
+    МОДУЛЬ: execution/platform (edge: SDL image IO; moved from domains/resources P0.2)
     ЗОРИЛГО: Энэ файл нь shs-renderer-lib-ийн resources модульд хамаарах төрөл/функцийн
             интерфэйс эсвэл хэрэгжүүлэлтийг тодорхойлно.
 */
@@ -16,6 +16,7 @@
 #include <SDL2/SDL_image.h>
 
 #include "shs/domains/resources/texture.hpp"
+#include "shs/domains/resources/resource_registry.hpp"
 
 namespace shs
 {
@@ -47,5 +48,17 @@ namespace shs
 
         SDL_FreeSurface(rgba);
         return out;
+    }
+
+    inline TextureAssetHandle import_texture_sdl(
+        ResourceRegistry& reg,
+        const std::string& path,
+        const std::string& key = {},
+        bool flip_y = true
+    )
+    {
+        Texture2DData tex = load_texture2d_sdl_image(path, flip_y);
+        if (!tex.valid()) return 0;
+        return reg.add_texture(std::move(tex), key.empty() ? path : key);
     }
 }
