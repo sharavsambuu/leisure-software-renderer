@@ -121,7 +121,7 @@ Apply C++23 features aggressively where they increase value-semantics clarity:
 8. Remove planner-side `dynamic_cast` and mutable `static` caches.
    - In progress: removed backend policy `dynamic_cast` from render-path capability resolution; continue auditing for remaining planner-side dynamic type branches.
 9. Adopt `std::expected` (or `tl::expected`) to formalize error states in planner diagnostics instead of asserting or crashing.
-   - Scope (amendment 2026-09-16): **channel-based tier doctrine** — `expected` on value/error channels (compile/resolve, `(payload, valid)` pods, input-bridge optionals, enum formatters); the reducer/command core keeps its closed variant + event-stream shape; orchestrator/saga pipelines compose monadically; see `../spec/value_oriented_programming.md` §8 "C++23 Monadic Pipeline Doctrine". The lib baselines C++23 (Constitution I §10). The superseded leaf-seams paragraph is preserved verbatim at `../outdated/vop-track-leaf-seams-scope-2026-09-16.md`.
+   - Scope (KDBA amendment 2026-09-16, supersedes tier doctrine): **KDBA Kleisli doctrine** — atomic `A -> expected<B, DomainError>` arrows via `.and_then()` / `.transform()` / `.or_else()` everywhere including the reducer core (`expected<Step{NextState, Events}, ClosedEnum>`; no switch-case monoliths; no phantom flags); see `../spec/value_oriented_programming.md` §8 "KDBA Kleisli Pipeline Doctrine". The lib baselines C++23 (Constitution I §10). The superseded leaf-seams paragraph is preserved verbatim at `../outdated/vop-track-leaf-seams-scope-2026-09-16.md`.
 
 Review rule:
 

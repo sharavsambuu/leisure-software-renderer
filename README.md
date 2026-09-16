@@ -48,18 +48,24 @@
     Constitution I (math + backend conventions)
       docs/spec/conventions.md
 
-    Constitution II (Value-Oriented Programming)
+    Constitution II (KDBA Kleisli Domain Boundary Architecture, Supreme Law 2026-09-16)
       docs/spec/value_oriented_programming.md
+
+    Constitution III (Data-Oriented Design & ECS)
+      docs/spec/dod_ecs_architecture.md
+
+    KDBA primer + history shelf (education)
+      docs/education/kdba_kleisli_composition.md + docs/education/kdba_history/
 
     VOP roadmap
       docs/roadmap/value_oriented_programming_first_class_roadmap.md
 
-    C++20 modernization policy for VOP migration
-      See "C++20 Guidance" in docs/spec/value_oriented_programming.md
-      and "C++20 Modernization Track" in docs/roadmap/value_oriented_programming_first_class_roadmap.md
+    C++23 baseline (all trees since 2026-09-16, L2 closed; GCC 13.3+)
+      See Constitution I \u00a710 + Constitution II \u00a78 KDBA doctrine
 
     VOP validation command (boundary + deterministic core tests)
-      cd cpp-folders/build && ctest -R "shs_renderer_vop_(boundary_check|tests)" --output-on-failure
+      cd cpp-folders/build_vcpkg && ctest -R "shs_renderer_vop_(boundary_check|tests)" --output-on-failure
+      (two configured trees: build/ + build_vcpkg/ preferred for demo work)
     
 
 # About
@@ -203,7 +209,7 @@
     glslangValidator --version
 
     CMake Vulkan detection behavior in this repo
-      - Global and automatic: shs-gpu-renderer-lib detects Vulkan + SDL2 Vulkan capability once (software lib stays Vulkan-free), demos consume the shared result
+      - Global and automatic: shs-renderer-lib (single converged library; shs-gpu-lib retired/absorbed) detects Vulkan + SDL2 Vulkan capability once, demos consume the shared result
       - Linux/Windows: uses normal find_package(Vulkan) + find_program(glslangValidator)
       - macOS: tries normal detection first, then falls back to VULKAN_SDK path if needed
 

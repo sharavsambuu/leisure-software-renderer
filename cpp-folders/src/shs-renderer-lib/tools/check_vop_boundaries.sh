@@ -190,7 +190,7 @@ else
   echo "[vop-boundary] OK: no platform IO tokens in domains/"
 fi
 
-# Monadic tier doctrine (amendment 2026-09-16, Constitution II §8): the monad
+# KDBA Kleisli doctrine (amendment 2026-09-16, Constitution II §8): the monad
 # rides at chunk/batch level. A container of per-element expected values
 # breaks cache alignment and auto-vectorization — FAIL on sight.
 expected_vec_hits="$(grep -rnE 'vector<[[:space:]]*std::expected' \
@@ -213,6 +213,30 @@ if [[ -n "${stringy_hits}" ]]; then
   failed=1
 else
   echo "[vop-boundary] OK: event facts carry no std::string members"
+fi
+
+# KDBA phantom-flag ban (Rule 12, Constitution II §8): persistent PODs carry
+# zero transitional flags. Any hit below is a hard FAIL.
+phantom_hits="$(grep -rniE 'is_pending|is_trading|is_locked|retry_count|is_validating|is_payment_pending|is_rolling_back' \
+  $(find "${domains_dir}" -name '*.contract.hpp' | sort) 2>/dev/null || true)"
+if [[ -n "${phantom_hits}" ]]; then
+  echo "[vop-boundary] FAIL: phantom flag in persistent POD contract (transient belongs in SagaContext, Rule 12)"
+  echo "${phantom_hits}"
+  failed=1
+else
+  echo "[vop-boundary] OK: no phantom flags in pod contracts"
+fi
+
+# KDBA monolith-decomposition tracker (Constitution II §8): switch-case sites
+# in reducer.hpp are INFO-tracked, not FAIL — decomposition is the next
+# breaking-parts phase. New switch sites should justify themselves.
+mono_hits="$(grep -rnE 'switch[[:space:]]*\(' \
+  $(find "${domains_dir}" -name '*.reducer.hpp' | sort) 2>/dev/null || true)"
+if [[ -n "${mono_hits}" ]]; then
+  echo "[vop-boundary] INFO: switch-case sites in reducers (monolith-decomposition backlog — decompose into Kleisli arrows)"
+  echo "${mono_hits}"
+else
+  echo "[vop-boundary] OK: no switch-case sites in reducers"
 fi
 
 # Event-flow catalog sync (R5b P4.5): every *Event struct in a pod

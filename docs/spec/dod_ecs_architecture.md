@@ -34,8 +34,8 @@ The high-level engine loop utilizes a strict Entity Component System (ECS) that 
 
 1. **Entities**: Are just lightweight integer IDs (`uint32_t`). They have no logic and no data.
 2. **Components**: Pure Plain Old Data (POD) structs. They are stored in dense, contiguous Archetype SoA chunks ($16\,\text{KB}$ cache-aligned chunks).
-3. **Systems (VOP Reducers)**: Pure, stateless free functions that iterate over specific combinations of component arrays. They contain **no internal mutable state** and emit discrete events. In-place mutation of a contiguous buffer is the same pure transition iff the buffer has single, exclusive linear ownership (Constitution II §2.2(4)).
-4. **World / Scheduler (Saga Orchestrator)**: Coordinates execution order, dependencies, and inter-system events. The orchestrator is itself a Domain Pod with its own state machine, reducer, and events (Constitution II Rules 11–12); no non-pod controller owns cross-domain state.
+3. **Stages (Kleisli arrows)**: Pure, stateless functions (`Ctx -> expected<Ctx, DomainError>`) that stream over component-array chunks. They contain **no internal mutable state** and emit discrete events. Arrows never mutate persistent buffers mid-chain (Constitution II §2.2(4) KDBA commit rule); the boundary commits `Step` atomically.
+4. **World / Scheduler (Saga Orchestrator)**: Coordinates execution order, dependencies, and inter-system events. The orchestrator is itself a Domain Pod with its own contract, actions, Kleisli pipeline, and events (Constitution II Rules 11–12 KDBA gateway); no non-pod controller owns cross-domain state.
 
 ### Example: Wait-Free Physics System
 ```cpp

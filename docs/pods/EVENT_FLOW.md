@@ -10,8 +10,8 @@
 
 ## How to read this
 
-- **Producer** = the reducer that emits the event (house signature:
-  `reduce(State&, span<const Action>, Inputs, arena Events&)`).
+- **Producer** = the Kleisli pipeline that emits the event (house signature:
+  `(State, span<const Action>, dt) -> expected<Step{NextState, Events}, DomainError>`; failure keeps state + materializes a rejection fact).
 - **Fact, not command** (Constitution Rule 8.1): each entry is a raw
   state-transition fact. Downstream reducers/edges interpret; the event
   itself never carries downstream instructions.
