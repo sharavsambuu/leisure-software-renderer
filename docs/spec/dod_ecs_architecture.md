@@ -34,7 +34,8 @@ The high-level engine loop utilizes a strict Entity Component System (ECS) that 
 
 1. **Entities**: Are just lightweight integer IDs (`uint32_t`). They have no logic and no data.
 2. **Components**: Pure Plain Old Data (POD) structs. They are stored in dense, contiguous Archetype SoA chunks ($16\,\text{KB}$ cache-aligned chunks).
-3. **Systems (VOP Reducers)**: Pure, stateless free functions that iterate over specific combinations of component arrays. They contain **no internal mutable state** and emit discrete events.
+3. **Systems (VOP Reducers)**: Pure, stateless free functions that iterate over specific combinations of component arrays. They contain **no internal mutable state** and emit discrete events. In-place mutation of a contiguous buffer is the same pure transition iff the buffer has single, exclusive linear ownership (Constitution II §2.2(4)).
+4. **World / Scheduler (Saga Orchestrator)**: Coordinates execution order, dependencies, and inter-system events. The orchestrator is itself a Domain Pod with its own state machine, reducer, and events (Constitution II Rules 11–12); no non-pod controller owns cross-domain state.
 
 ### Example: Wait-Free Physics System
 ```cpp
@@ -99,6 +100,7 @@ Systems must be designed for **lock-free, wait-free parallel execution**:
 * **No Mutexes/Atomics**: Systems must not use `std::mutex` or `std::atomic` during simulation updates.
 * **Exclusive Output**: A parallel job must be guaranteed exclusive write access to its slice of the output span.
 * **Read-Only Input**: Jobs read from immutable spans (`std::span<const T>`) populated in the previous frame or by a previous, fully completed pipeline stage.
+* **Explicit Schedulers**: Standard parallel algorithms (`std::execution::par_unseq`) surrender scheduling, core pinning, and arena awareness to the implementation. Hot paths use explicit chunked workers with exclusive output spans; implementation-scheduled parallelism is allowed only where scheduler and arena behavior are explicit and pinned by test (Virtual SPU trajectory).
 
 ---
 
