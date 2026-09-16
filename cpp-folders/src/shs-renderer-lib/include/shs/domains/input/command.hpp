@@ -12,7 +12,6 @@
 
 #include <memory>
 
-#include "shs/execution/app/runtime_state.hpp"
 #include "shs/domains/input/value_actions.hpp"
 
 namespace shs

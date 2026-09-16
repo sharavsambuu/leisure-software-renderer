@@ -5,7 +5,7 @@
     MODULE: shs-core-lib (Vulkan runtime edge, SHS_HAS_VULKAN-gated)
     PURPOSE: Compiled VMA implementation anchor. The SDL/windowed Vulkan
              backend (monolith) lives in include/shs/rhi/drivers/vulkan/ +
-             include/shs/pipeline/vk_*; its P3 pod decomposition is future work.
+             include/shs/execution/pipeline/vk_* (moved P1.1; shs/rhi monolith P3-pending); its P3 pod decomposition is future work.
 */
 
 namespace shs

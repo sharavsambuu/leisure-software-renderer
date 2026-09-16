@@ -49,7 +49,7 @@ facade_count=0
 for facade in $(find "${lib_root}/include/shs" -name '*.hpp' | sort); do
   rel="${facade#"${lib_root}/include/"}"
   case "${rel}" in
-    shs/domains/*|shs/execution/*|shs/core/*|shs/memory/*|shs/containers/*|shs/pipeline/*|shs/rhi/*) continue ;;
+    shs/domains/*|shs/execution/*|shs/core/*|shs/memory/*|shs/containers/*|shs/rhi/*) continue ;;
   esac
   facade_count=$((facade_count + 1))
   target="$(grep -oE '#include[[:space:]]*"[^"]+"' "${facade}" | grep -oE '"[^"]+"' | tr -d '"' | head -1)"
@@ -84,13 +84,9 @@ echo "[vop-boundary] OK: ${facade_count} migration facades forward to existing c
 # execution zones directly. New headers must never join this list — the check
 # below FAILs on any file not grandfathered here.
 forbidden_domains_include='shs/(execution|pipeline|passes|rhi|sw_render|platform|shader|app|job)/'
-grandfathered_execution_includes=(
-  "shs/domains/camera/free_camera.hpp"            # platform edge; P5 Core 4
-  "shs/domains/scene/system_processors.hpp"       # pluggable_pipeline seam; P5 legacy-seam audit
-  "shs/domains/input/value_actions.hpp"           # app runtime_state; P5 Core 4
-  "shs/domains/input/command.hpp"                 # app runtime_state; P5 Core 4
-  "shs/domains/sky/skybox_renderer.hpp"           # job/parallel_for edge; P5 Core 4
-)
+# Grandfather list evicted R2 (P2.1-P2.4 resolved; any hit below is a hard FAIL).
+# shs/rhi/* remains a canonical-continue ONLY as the P3-pending monolith marker.
+grandfathered_execution_includes=()
 legacy_count=0
 for h in $(find "${domains_dir}" -name '*.hpp' | sort); do
   rel="${h#"${lib_root}/include/"}"

@@ -18,7 +18,7 @@
 #include "shs/domains/gfx/rt_shadow.hpp"
 #include "shs/execution/job/parallel_for.hpp"
 #include "shs/execution/shader/builtin_shaders.hpp"
-#include "shs/domains/sky/skybox_renderer.hpp"
+#include "shs/execution/passes/pass_skybox.hpp"
 
 #include <algorithm>
 #include <cmath>

@@ -10,15 +10,10 @@
 */
 
 
-#include "shs/domains/camera/camera_rig.hpp"
+// Edge-zone re-export: RuntimeState is input-domain state (P2.3).
+#include "shs/domains/input/input_state.hpp"
 
 namespace shs
 {
-    struct RuntimeState
-    {
-        CameraRig camera{};
-        bool enable_light_shafts = true;
-        bool quit_requested = false;
-        bool bot_enabled = false;
-    };
+    using shs::RuntimeState;
 }

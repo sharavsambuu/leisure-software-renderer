@@ -23,17 +23,17 @@ Constraints: R1 -> everything; R2 -> R5; R4 proves the interleave loop before R5
 
 ## P1 — Kill the shadow tree (days, Run 1+2)
 
-- [ ] **P1.1 Retire `shs/pipeline/` (2 files) + `shs/rhi/` (13 files)** — absorbed monolith lives beside `shs/execution/`, outside linter coverage; all Vk-outside-drivers hits come from here. Move to `execution/` + delete old dirs, or mark legacy/ with sunset + extend linter to cover them. DoD: single tree (core/ domains/ execution/ memory/ containers/); no Vk outside execution/rhi/drivers/vulkan/.
+- [x] **P1.1 Retire `shs/pipeline/` + mark `shs/rhi/`** — DONE 2026-09-16 as amended: 2 pipeline headers merged into execution/pipeline/ (only live consumer was a comment; parked demos keep stale paths, documented), empty shs/pipeline/ deleted, linter facade-case dropped. shs/rhi/ (13-file Vulkan monolith, live behind SHS_HAS_VULKAN + tier0 vk harness) is NOT a move — it needs P3 decomposition, carried by R5. Linter now treats any new shs/pipeline file as FAIL. — absorbed monolith lives beside `shs/execution/`, outside linter coverage; all Vk-outside-drivers hits come from here. Move to `execution/` + delete old dirs, or mark legacy/ with sunset + extend linter to cover them. DoD: single tree (core/ domains/ execution/ memory/ containers/); no Vk outside execution/rhi/drivers/vulkan/.
 - [x] **P1.2 GPU-free proof** — SHS_HAS_VULKAN gate + backend-factory fallback verified in CI (configure -DCMAKE_DISABLE_FIND_PACKAGE_Vulkan=TRUE -> build + ctest green). DoD: GPU-free build documented + green. DONE 2026-09-16: /tmp/swr-novk-r1 configure EXIT=0 (vk_driver_tests correctly skipped), lib 4/4 green, t0 _sw pair builds. Prerequisite: pinned slangc v2026.17.1 in WSL (currently missing — _vk targets unbuildable here); GPU-free proof covers the _sw half regardless.
 - [x] **P1.3 Tier0 parity harness promotion (harness landed, GATE RED)** — DONE 2026-09-16: tools/t0_parity.py (stdlib-only PNG decode, exact% + 1-LSB tolerance + ASCII diffmap) runs over fresh-vs-fresh PNGs: 01 FAIL 70.94% (max 8), 02 FAIL 11.36% (max 217), 03/04 TOLERANCE-ONLY (max 1), 05 PASS exact. Docs 0.00%-everywhere does NOT reproduce (_vk runs headless here, so this is genuine drift, not stale artifacts). Follow-up filed: Tier0 parity regression (R4 track) — diagnose 01/02 before any Tier1 rung. — promote /tmp/t0final tooling (t0_parity + diffmap) into the repo as the cross-backend equivalence gate (tier0 lessons prescription). DoD: ctest parity target renders both halves (or _sw-only where toolchain absent) and diffs with a per-pass tolerance table. Blocks Tier1.
 
 ## P2 — Direction-law debt (per pod, Run 4 pre-req)
 
 Grandfathered domains/ -> execution/ includes (linter INFO today, must reach 0):
-- [ ] **P2.1 camera/free_camera.hpp -> platform_input** — split pure math (contract+plan) from platform edge.
-- [ ] **P2.2 scene/system_processors.hpp -> pluggable_pipeline** — legacy-seam audit; plan vs executor split.
-- [ ] **P2.3 input/value_actions.hpp + input/command.hpp -> app/runtime_state** — vocab stays in domains/input, latch lives in execution/app.
-- [ ] **P2.4 sky/skybox_renderer.hpp -> job/parallel_for** — plan function + edge dispatch split.
+- [x] **P2.1 camera/free_camera.hpp -> platform_input** — DONE 2026-09-16: FreeCameraInput domain struct + update() retargeted; new execution/platform/free_camera_bridge.hpp owns the PlatformInputState mapping (CRLF preserved). — split pure math (contract+plan) from platform edge.
+- [x] **P2.2 scene/system_processors.hpp -> pluggable_pipeline** — DONE 2026-09-16: include was unused (zero symbol refs) — deleted, no split needed. — legacy-seam audit; plan vs executor split.
+- [x] **P2.3 input/value_actions.hpp + input/command.hpp -> app/runtime_state** — DONE 2026-09-16: RuntimeState definition moved to domains/input/input_state.hpp; execution/app/runtime_state.hpp is a using re-export; redundant includes dropped. Pre-stages R3 P3.1 input pod. — vocab stays in domains/input, latch lives in execution/app.
+- [x] **P2.4 sky/skybox_renderer.hpp -> job/parallel_for** — DONE 2026-09-16: pure shade_skybox_rows() stays in domains; dispatch wrapper render_skybox_to_hdr() (identical signature) lives in new execution/passes/pass_skybox.hpp; pass_pbr_forward re-pointed. Grandfather list evicted; linter fails on any new domains->execution include. — plan function + edge dispatch split.
 - [ ] DoD: grandfather list empty; linter grandfather block deleted.
 
 ## P3 — Core 4 per pod (weeks, Run 4 main track)

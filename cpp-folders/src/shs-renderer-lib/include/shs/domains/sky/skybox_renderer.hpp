@@ -16,13 +16,12 @@
 #include <glm/gtc/matrix_inverse.hpp>
 
 #include "shs/domains/gfx/rt_types.hpp"
-#include "shs/execution/job/parallel_for.hpp"
 #include "shs/domains/scene/scene_types.hpp"
 #include "shs/domains/sky/sky_model.hpp"
 
 namespace shs
 {
-    inline void render_skybox_to_hdr(RT_ColorHDR& out_hdr, const Scene& scene, const ISkyModel& sky, IJobSystem* jobs = nullptr)
+    inline void shade_skybox_rows(RT_ColorHDR& out_hdr, const Scene& scene, const ISkyModel& sky, int yb, int ye)
     {
         if (out_hdr.w <= 0 || out_hdr.h <= 0) return;
 
@@ -31,7 +30,6 @@ namespace shs
 
         const int w = out_hdr.w;
         const int h = out_hdr.h;
-        parallel_for_1d(jobs, 0, h, 8, [&](int yb, int ye)
         {
             for (int y = yb; y < ye; ++y)
             {
@@ -53,6 +51,6 @@ namespace shs
                     out_hdr.color.at(x, y) = ColorF{c.r, c.g, c.b, 1.0f};
                 }
             }
-        });
+        }
     }
 }

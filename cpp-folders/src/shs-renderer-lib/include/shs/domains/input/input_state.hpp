@@ -10,8 +10,19 @@
 */
 
 
+#include "shs/domains/camera/camera_rig.hpp"
+
 namespace shs
 {
+    /** @brief Input-domain runtime state (moved from execution/app P2.3). */
+    struct RuntimeState
+    {
+        CameraRig camera{};
+        bool enable_light_shafts = true;
+        bool quit_requested = false;
+        bool bot_enabled = false;
+    };
+
     struct InputState
     {
         bool forward = false;

@@ -18,7 +18,6 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/constants.hpp>
 
-#include "shs/execution/app/runtime_state.hpp"
 #include "shs/domains/input/input_state.hpp"
 
 namespace shs

@@ -16,13 +16,20 @@
 
 #include "shs/domains/camera/camera_math.hpp"
 #include "shs/domains/camera/convention.hpp"
-#include "shs/execution/platform/platform_input.hpp"
 
 namespace shs
 {
-    /**
-     * @brief PlatformInputState-ээр удирдагддаг чөлөөт камер.
-     */
+    /** @brief Domain-owned camera move intent (platform bridge maps into this). */
+    struct FreeCameraInput
+    {
+        bool forward  = false;
+        bool backward = false;
+        bool left     = false;
+        bool right    = false;
+        bool ascend   = false;
+        bool descend  = false;
+        bool boost    = false;
+    };
     struct FreeCamera
     {
         glm::vec3 pos{0.0f, 14.0f, -28.0f};
@@ -39,7 +46,7 @@ namespace shs
         /**
          * @brief Оролтын төлөвөөр камерын байрлал болон өнцгийг шинэчилнэ.
          */
-        void update(const PlatformInputState& input, float dt)
+        void update(const FreeCameraInput& input, float dt)
             const glm::vec3 right = right_from_forward(fwd);
             const glm::vec3 up{0.0f, 1.0f, 0.0f};
 
