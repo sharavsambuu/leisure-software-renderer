@@ -262,6 +262,45 @@ if(SHS_RENDERER_BUILD_TESTS)
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     )
 
+    # R3 pod tests: input + frame Core 4, header-only value tests, no platform links.
+    add_executable(shs_renderer_vop_input_tests
+        tests/vop_input_tests.cpp
+    )
+    target_link_libraries(shs_renderer_vop_input_tests PRIVATE shs::renderer-values)
+    target_compile_features(shs_renderer_vop_input_tests PRIVATE cxx_std_23)
+    if(MSVC)
+        target_compile_options(shs_renderer_vop_input_tests PRIVATE /W4)
+    else()
+        target_compile_options(shs_renderer_vop_input_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+
+    add_executable(shs_renderer_vop_frame_tests
+        tests/vop_frame_tests.cpp
+    )
+    target_link_libraries(shs_renderer_vop_frame_tests PRIVATE shs::renderer-values)
+    target_compile_features(shs_renderer_vop_frame_tests PRIVATE cxx_std_23)
+    if(MSVC)
+        target_compile_options(shs_renderer_vop_frame_tests PRIVATE /W4)
+    else()
+        target_compile_options(shs_renderer_vop_frame_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+
+    add_test(
+        NAME shs_renderer_vop_input_tests
+        COMMAND shs_renderer_vop_input_tests
+    )
+    set_tests_properties(shs_renderer_vop_input_tests PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    )
+
+    add_test(
+        NAME shs_renderer_vop_frame_tests
+        COMMAND shs_renderer_vop_frame_tests
+    )
+    set_tests_properties(shs_renderer_vop_frame_tests PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    )
+
     # P2 Vulkan driver pod tests: pure translation/bookkeeping tests. The
     # binary never EXECUTES vk* entry points at runtime (headless, no ICD
     # needed) but links the loader so the never-taken GPU code paths resolve.

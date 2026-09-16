@@ -15,139 +15,32 @@
 #include <variant>
 #include <vector>
 
-#include <glm/glm.hpp>
-#include <glm/gtc/constants.hpp>
+#include <array>
+#include <cmath>
+#include <cstddef>
+#include <memory_resource>
+#include <span>
+#include <vector>
 
+#include <glm/glm.hpp>
+
+#include "shs/domains/input/input.action.hpp"
+#include "shs/domains/input/input.reducer.hpp"
 #include "shs/domains/input/input_state.hpp"
 
 namespace shs
 {
-    struct MoveLocalAction
-    {
-        glm::vec3 local_dir{0.0f};
-        float meters_per_sec = 0.0f;
-    };
-
-    struct LookAction
-    {
-        float dx = 0.0f;
-        float dy = 0.0f;
-        float sensitivity = 0.0f;
-    };
-
-    struct ToggleFlagAction
-    {
-        bool value = false;
-    };
-
-    enum class RuntimeActionType : uint8_t
-    {
-        MoveLocal = 0,
-        Look = 1,
-        ToggleLightShafts = 2,
-        ToggleBot = 3,
-        Quit = 4
-    };
-
-    using RuntimeActionPayload = std::variant<std::monostate, MoveLocalAction, LookAction, ToggleFlagAction>;
-
-    struct RuntimeAction
-    {
-        RuntimeActionType type = RuntimeActionType::MoveLocal;
-        RuntimeActionPayload payload{};
-    };
-
-    inline RuntimeAction make_move_local_action(glm::vec3 local_dir, float meters_per_sec)
-    {
-        RuntimeAction out{};
-        out.type = RuntimeActionType::MoveLocal;
-        out.payload = MoveLocalAction{local_dir, meters_per_sec};
-        return out;
-    }
-
-    inline RuntimeAction make_look_action(float dx, float dy, float sensitivity)
-    {
-        RuntimeAction out{};
-        out.type = RuntimeActionType::Look;
-        out.payload = LookAction{dx, dy, sensitivity};
-        return out;
-    }
-
-    inline RuntimeAction make_toggle_light_shafts_action()
-    {
-        RuntimeAction out{};
-        out.type = RuntimeActionType::ToggleLightShafts;
-        out.payload = ToggleFlagAction{};
-        return out;
-    }
-
-    inline RuntimeAction make_toggle_bot_action()
-    {
-        RuntimeAction out{};
-        out.type = RuntimeActionType::ToggleBot;
-        out.payload = ToggleFlagAction{};
-        return out;
-    }
-
-    inline RuntimeAction make_quit_action()
-    {
-        RuntimeAction out{};
-        out.type = RuntimeActionType::Quit;
-        out.payload = ToggleFlagAction{};
-        return out;
-    }
-
+    // Legacy signature, canonical logic: delegates to shs::input::reduce_input
+    // so one logic home serves both paths (conformance pinned in tests).
     inline RuntimeState reduce_runtime_state(
         RuntimeState state,
         std::span<const RuntimeAction> actions,
         float dt)
     {
-        for (const RuntimeAction& action : actions)
-        {
-            switch (action.type)
-            {
-                case RuntimeActionType::MoveLocal:
-                {
-                    const MoveLocalAction* mv = std::get_if<MoveLocalAction>(&action.payload);
-                    if (!mv) break;
-
-                    const glm::vec3 fwd = state.camera.forward();
-                    const glm::vec3 right = state.camera.right();
-                    const glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
-                    const glm::vec3 world_delta = right * mv->local_dir.x + up * mv->local_dir.y + fwd * mv->local_dir.z;
-                    state.camera.pos += world_delta * (mv->meters_per_sec * dt);
-                    break;
-                }
-                case RuntimeActionType::Look:
-                {
-                    const LookAction* look = std::get_if<LookAction>(&action.payload);
-                    if (!look) break;
-
-                    state.camera.yaw += look->dx * look->sensitivity;
-                    state.camera.pitch -= look->dy * look->sensitivity;
-                    state.camera.pitch = glm::clamp(
-                        state.camera.pitch,
-                        glm::radians(-85.0f),
-                        glm::radians(85.0f));
-                    break;
-                }
-                case RuntimeActionType::ToggleLightShafts:
-                {
-                    state.enable_light_shafts = !state.enable_light_shafts;
-                    break;
-                }
-                case RuntimeActionType::ToggleBot:
-                {
-                    state.bot_enabled = !state.bot_enabled;
-                    break;
-                }
-                case RuntimeActionType::Quit:
-                {
-                    state.quit_requested = true;
-                    break;
-                }
-            }
-        }
+        std::array<std::byte, 1024> buf{};
+        std::pmr::monotonic_buffer_resource arena{buf.data(), buf.size()};
+        std::pmr::vector<shs::input::InputEvent> sink{&arena};
+        shs::input::reduce_input(state, actions, shs::input::InputReduceInputs{dt}, sink);
         return state;
     }
 

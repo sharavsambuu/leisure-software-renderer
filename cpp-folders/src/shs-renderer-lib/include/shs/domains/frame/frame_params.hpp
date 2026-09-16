@@ -18,12 +18,16 @@ namespace shs
 {
     struct TonemapParams
     {
+        bool operator==(const TonemapParams&) const = default;
+
         float exposure = 1.0f;
         float gamma = 2.2f;
     };
 
     struct ShadowPassParams
     {
+        bool operator==(const ShadowPassParams&) const = default;
+
         bool enable = true;
         float bias_const = 0.0008f;
         float bias_slope = 0.0015f;
@@ -34,6 +38,8 @@ namespace shs
 
     struct LightShaftsPassParams
     {
+        bool operator==(const LightShaftsPassParams&) const = default;
+
         bool enable = true;
         int steps = 48;
         float density = 0.8f;
@@ -43,11 +49,15 @@ namespace shs
 
     struct MotionVectorParams
     {
+        bool operator==(const MotionVectorParams&) const = default;
+
         bool enable = true;
     };
 
     struct MotionBlurPassParams
     {
+        bool operator==(const MotionBlurPassParams&) const = default;
+
         bool enable = false;
         int samples = 10;
         float strength = 1.0f;
@@ -58,6 +68,8 @@ namespace shs
 
     struct HybridPipelineParams
     {
+        bool operator==(const HybridPipelineParams&) const = default;
+
         // true үед pass бүр өөр backend дээр ажиллахыг зөвшөөрнө.
         bool allow_cross_backend_passes = true;
         // true үед backend олдохгүй pass таарвал кадрын алдаа болгоно.
@@ -72,6 +84,8 @@ namespace shs
 
     struct TechniqueParams
     {
+        bool operator==(const TechniqueParams&) const = default;
+
         // Аль техникийг pipeline сонгохыг заана.
         TechniqueMode mode = TechniqueMode::Forward;
         // Pass contract дээрх mode mask шалгах үед ашиглах active mask.
@@ -86,6 +100,8 @@ namespace shs
 
     struct PassParamBlocks
     {
+        bool operator==(const PassParamBlocks&) const = default;
+
         TonemapParams tonemap{};
         ShadowPassParams shadow{};
         LightShaftsPassParams light_shafts{};
@@ -116,6 +132,8 @@ namespace shs
 
     struct FrameParams
     {
+        bool operator==(const FrameParams&) const = default;
+
         int w = 0;
         int h = 0;
 

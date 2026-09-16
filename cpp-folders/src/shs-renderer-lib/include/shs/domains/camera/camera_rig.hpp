@@ -23,6 +23,8 @@ namespace shs
         float yaw = glm::half_pi<float>();
         float pitch = 0.0f;
 
+        bool operator==(const CameraRig&) const = default;
+
         glm::vec3 forward() const
         {
             return forward_from_yaw_pitch(yaw, pitch);

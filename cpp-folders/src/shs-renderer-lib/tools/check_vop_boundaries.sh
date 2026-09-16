@@ -157,4 +157,37 @@ if [[ "${failed}" -ne 0 ]]; then
   exit 1
 fi
 
+# Semantic purity (R3 P4.3): no ambient entropy/time, no platform IO in domains/.
+# NOTE: bare 'canvas' deliberately NOT gated (too generic; zero hits today but
+# future math comments would false-positive). SDL/fopen are the enforced IO set.
+entropy_hits="$(grep -rnE 'rand\(|srand\(|std::chrono|std::time\(|getenv\(|random_' \
+  "${lib_root}/include/shs/domains" 2>/dev/null || true)"
+if [[ -n "${entropy_hits}" ]]; then
+  echo "[vop-boundary] FAIL: ambient entropy/time in domains/ (dt arrives as input)"
+  echo "${entropy_hits}"
+  failed=1
+else
+  echo "[vop-boundary] OK: no ambient entropy/time in domains/"
+fi
+
+unordered_hits="$(grep -rnE 'unordered_(map|set)' \
+  $(find "${domains_dir}" -name '*.reducer.hpp' | sort) 2>/dev/null || true)"
+if [[ -n "${unordered_hits}" ]]; then
+  echo "[vop-boundary] FAIL: unordered container in reducer path (hash order breaks replay)"
+  echo "${unordered_hits}"
+  failed=1
+else
+  echo "[vop-boundary] OK: no unordered containers in reducer paths"
+fi
+
+pio_hits="$(grep -rnE 'SDL_[A-Z]|<SDL2/|fopen\(' \
+  "${lib_root}/include/shs/domains" 2>/dev/null || true)"
+if [[ -n "${pio_hits}" ]]; then
+  echo "[vop-boundary] FAIL: platform IO token in domains/ (edges only)"
+  echo "${pio_hits}"
+  failed=1
+else
+  echo "[vop-boundary] OK: no platform IO tokens in domains/"
+fi
+
 echo "[vop-boundary] all checks passed"

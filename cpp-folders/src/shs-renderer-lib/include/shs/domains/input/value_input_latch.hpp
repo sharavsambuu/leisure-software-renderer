@@ -28,6 +28,8 @@ namespace shs
         float mouse_dx_accum = 0.0f;
         float mouse_dy_accum = 0.0f;
         bool quit_requested = false;
+
+        bool operator==(const RuntimeInputLatch&) const = default;
     };
 
     enum class RuntimeInputEventType : unsigned char

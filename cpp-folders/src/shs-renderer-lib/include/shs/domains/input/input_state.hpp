@@ -21,6 +21,8 @@ namespace shs
         bool enable_light_shafts = true;
         bool quit_requested = false;
         bool bot_enabled = false;
+
+        bool operator==(const RuntimeState&) const = default;
     };
 
     struct InputState
