@@ -246,3 +246,21 @@ const size_t vcount = quads.size();
  - **Constitution III (DOD & ECS)**: `docs/spec/dod_ecs_architecture.md`
  - **Constitutional rule of thumb**: keep pure value transforms in the center, keep backend side effects at execution boundaries, and prioritize cache-friendly Data-Oriented Design (SoA, ECS) for logic.
  - **Pluggability law (§7)**: no user lock-in — every part pluggable through extension points; see §7 and the §3–4 extension contract in `docs/arch/render_path_architecture.md`.
+
+---
+
+## 10. Language Baseline — C++23 (amendment, 2026-09-16)
+
+The library (`shs-renderer-lib`) baselines **C++23** (`cxx_std_23`, GCC 13.3+).
+Parked demo trees still pin C++20; they move to C++23 on restart (hardening
+backlog L2). The toolchain bump is therefore baseline, not a separate
+prerequisite.
+
+Pod-idiomatic C++23 subset (supplements Constitution II §8):
+
+- Allowed broadly: `std::expected`, monadic `std::optional`, `std::span`,
+  `std::format` + closed-enum formatters.
+- Allowed at defined tiers: `std::ranges` in planners (allocation-explicit,
+  PMR-backed), `std::mdspan` at tile kernels.
+- Restricted: coroutines live in execution edges only; concepts constrain API
+  rims, never reducer bodies.
