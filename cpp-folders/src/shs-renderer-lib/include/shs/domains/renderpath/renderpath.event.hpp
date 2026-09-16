@@ -19,8 +19,8 @@
 
 namespace shs::renderpath
 {
-    // Why a candidate recipe failed to compile. Classified from the compiler
-    // plan's error text; the plan itself stays the source of truth.
+    // Why a candidate recipe failed to compile. Produced natively by the
+    // compiler (R4 P4.6); plan.errors strings are diagnostics only.
     enum class PathSwapRejectionReason : uint8_t
     {
         CompileInvalid = 0,

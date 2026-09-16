@@ -9,6 +9,7 @@
 */
 
 
+#include <expected>
 #include <string>
 #include <optional>
 #include <unordered_set>
@@ -40,6 +41,19 @@ namespace shs
         bool required = true;
     };
 
+    // Native rejection vocabulary (R4 P4.6): each push_error site records its
+    // reason at emission. Members mirror renderpath::PathSwapRejectionReason 1:1
+    // (mapped in the pod reducer); strings in plan.errors are diagnostics only.
+    enum class RenderPathCompileRejection : uint8_t
+    {
+        CompileInvalid     = 0,
+        EmptyPassChain     = 1,
+        BackendUnavailable = 2,
+        MissingRequiredPass = 3,
+        DepthUnsupported   = 4,
+        OcclusionUnsupported = 5
+    };
+
     struct RenderPathExecutionPlan
     {
         std::string recipe_name{};
@@ -50,6 +64,7 @@ namespace shs
         std::vector<RenderPathCompiledPass> pass_chain{};
         std::vector<std::string> warnings{};
         std::vector<std::string> errors{};
+        RenderPathCompileRejection rejection = RenderPathCompileRejection::CompileInvalid;
         bool valid = false;
     };
 
@@ -97,7 +112,10 @@ namespace shs
             auto push_warning = [&plan](const std::string& msg) {
                 plan.warnings.push_back(msg);
             };
-            auto push_error = [&plan](const std::string& msg) {
+            auto push_error = [&plan](const std::string& msg,
+                RenderPathCompileRejection reason = RenderPathCompileRejection::CompileInvalid)
+            {
+                if (plan.errors.empty()) plan.rejection = reason; // first error wins
                 plan.errors.push_back(msg);
             };
 
@@ -107,12 +125,12 @@ namespace shs
             }
             if (recipe.pass_chain.empty() && rules_.reject_empty_pass_chain)
             {
-                push_error("Recipe pass chain is empty.");
+                push_error("Recipe pass chain is empty.", RenderPathCompileRejection::EmptyPassChain);
             }
 
             if (!caps.has_backend)
             {
-                push_error("Requested backend is not registered in context.");
+                push_error("Requested backend is not registered in context.", RenderPathCompileRejection::BackendUnavailable);
             }
             else if (caps.backend != recipe.backend)
             {
@@ -124,7 +142,7 @@ namespace shs
                 caps.depth_attachment_known &&
                 !caps.supports_depth_attachment)
             {
-                push_error("Recipe requires shadows, but backend reports no depth attachment support.");
+                push_error("Recipe requires shadows, but backend reports no depth attachment support.", RenderPathCompileRejection::DepthUnsupported);
             }
 
             const bool view_requires_occlusion = render_path_culling_requires_occlusion(recipe.view_culling);
@@ -144,7 +162,7 @@ namespace shs
             {
                 if (requires_occlusion && !caps.supports_occlusion_query)
                 {
-                    push_error("Recipe requires occlusion culling, but backend does not support occlusion queries.");
+                    push_error("Recipe requires occlusion culling, but backend does not support occlusion queries.", RenderPathCompileRejection::OcclusionUnsupported);
                 }
                 else if (allows_occlusion && !caps.supports_occlusion_query)
                 {
@@ -168,14 +186,14 @@ namespace shs
                 recipe.wants_shadows &&
                 !recipe_has_pass(PassId::ShadowMap))
             {
-                push_error("Recipe enables shadows but pass chain has no 'shadow_map' pass.");
+                push_error("Recipe enables shadows but pass chain has no 'shadow_map' pass.", RenderPathCompileRejection::MissingRequiredPass);
             }
 
             if (rules_.require_depth_prepass_for_occlusion &&
                 requires_occlusion &&
                 !recipe_has_pass(PassId::DepthPrepass))
             {
-                push_error("Recipe requires occlusion culling but pass chain has no 'depth_prepass' pass.");
+                push_error("Recipe requires occlusion culling but pass chain has no 'depth_prepass' pass.", RenderPathCompileRejection::MissingRequiredPass);
             }
 
             std::unordered_set<std::string> seen_pass_ids{};
@@ -185,7 +203,7 @@ namespace shs
                 {
                     if (!pass_id_is_standard(entry.pass_id))
                     {
-                        if (entry.required) push_error("Pass entry has empty id and is marked required.");
+                        if (entry.required) push_error("Pass entry has empty id and is marked required.", RenderPathCompileRejection::CompileInvalid);
                         else push_warning("Skipping optional pass entry with empty id.");
                         continue;
                     }
@@ -210,7 +228,7 @@ namespace shs
                 if (!insert_result.second)
                 {
                     const std::string msg = "Duplicate pass id in recipe: '" + canonical_id + "'.";
-                    if (rules_.reject_duplicate_pass_ids) push_error(msg);
+                    if (rules_.reject_duplicate_pass_ids) push_error(msg, RenderPathCompileRejection::CompileInvalid);
                     else push_warning(msg);
                     continue;
                 }
@@ -228,7 +246,7 @@ namespace shs
                 if (!has_registered_pass)
                 {
                     const std::string msg = "Pass id '" + canonical_id + "' is not registered in PassFactoryRegistry.";
-                    if (entry.required && rules_.reject_unknown_required_passes) push_error(msg);
+                    if (entry.required && rules_.reject_unknown_required_passes) push_error(msg, RenderPathCompileRejection::BackendUnavailable);
                     else push_warning(msg);
                     continue;
                 }
@@ -242,7 +260,7 @@ namespace shs
                     const std::string msg =
                         "Pass id '" + canonical_id + "' does not support backend '" +
                         std::string(render_backend_type_name(recipe.backend)) + "'.";
-                    if (entry.required) push_error(msg);
+                    if (entry.required) push_error(msg, RenderPathCompileRejection::BackendUnavailable);
                     else push_warning(msg);
                     continue;
                 }
@@ -256,7 +274,7 @@ namespace shs
                     const std::string msg =
                         "Pass id '" + canonical_id + "' does not support technique mode '" +
                         std::string(technique_mode_name(recipe.technique_mode)) + "'.";
-                    if (entry.required) push_error(msg);
+                    if (entry.required) push_error(msg, RenderPathCompileRejection::CompileInvalid);
                     else push_warning(msg);
                     continue;
                 }
@@ -271,13 +289,13 @@ namespace shs
                     "Pass id '" + canonical_id +
                     "' has no planner capability hints (backend/mode). "
                     "Register descriptor hints in PassFactoryRegistry for VOP-first planning.";
-                if (entry.required) push_error(msg);
+                if (entry.required) push_error(msg, RenderPathCompileRejection::CompileInvalid);
                 else push_warning(msg);
             }
 
             if (plan.pass_chain.empty() && rules_.reject_empty_pass_chain)
             {
-                push_error("No executable passes remain after recipe compilation.");
+                push_error("No executable passes remain after recipe compilation.", RenderPathCompileRejection::EmptyPassChain);
             }
 
             if (!recipe.strict_validation && !plan.errors.empty())
@@ -287,11 +305,12 @@ namespace shs
                     push_warning(std::string("Permissive mode downgrade: ") + err);
                 }
                 plan.errors.clear();
+                plan.rejection = RenderPathCompileRejection::CompileInvalid;
             }
 
             if (rules_.reject_empty_pass_chain && plan.pass_chain.empty())
             {
-                push_error("Compiled plan has no executable passes.");
+                push_error("Compiled plan has no executable passes.", RenderPathCompileRejection::EmptyPassChain);
             }
 
             plan.valid = plan.errors.empty();
@@ -305,6 +324,21 @@ namespace shs
         {
             const RenderPathCapabilitySet caps = make_render_path_capability_set(ctx, recipe.backend);
             return compile(recipe, caps, pass_registry);
+        }
+
+        // Fallible compile (R4 P4.6): valid plan or native rejection reason.
+        // Prefer this over scraping plan.errors text (see reducer history).
+        std::expected<RenderPathExecutionPlan, RenderPathCompileRejection> try_compile(
+            const RenderPathRecipe& recipe,
+            const RenderPathCapabilitySet& caps,
+            const PassFactoryRegistry* pass_registry = nullptr) const
+        {
+            RenderPathExecutionPlan plan = compile(recipe, caps, pass_registry);
+            if (!plan.valid)
+            {
+                return std::unexpected(plan.rejection);
+            }
+            return plan;
         }
 
     private:

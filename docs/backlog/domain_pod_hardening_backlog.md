@@ -40,12 +40,12 @@ Grandfathered domains/ -> execution/ includes (linter INFO today, must reach 0):
 
 Rule: one pod per commit; each lands with headless ctest (replay assert + snapshot round-trip + invariant), linked only to shs::renderer-values. Empty vocabs explicit (variant<monostate>), events carry no std::string.
 Interleaving policy (2026-09-16): pods harden WITH their curriculum rung, not ahead of it — demo pair -> parity -> ingest one operator (rule of three) -> harden the touched pod in the same commit. Do not complete all of P3 before Tier1. Order by dependency:
-- [ ] **P3.0 Tier1 pilot (rung 8 normal mapping)** — full loop: pair -> parity -> TBN/compare-op ingestion -> harden geometry+lighting pods. DoD: loop proven before committing to all of Tier1-6.
+- [x] **P3.0 Tier1 pilot (rung 8 normal mapping)** — DONE 2026-09-16: tier1-classic-shading/08 pair (full-viewport quad, flat vs bump, vertex normals in COLOR0, TBN mirrored in Slang, UNORM-rounding fix 89%->26%, sampler-precision envelope tol27). Suite 6/6 green. Tier1 CMake reuses tier0 harness sources (promotion-to-shared/ candidate, noted). slangc v2026.17.1 installed (actual path ~/slang/bin, not ~/slang/slang/bin as docs said). — full loop: pair -> parity -> TBN/compare-op ingestion -> harden geometry+lighting pods. DoD: loop proven before committing to all of Tier1-6.
 - [x] **P3.1 input** — DONE 2026-09-16: input.contract/action/event/reducer.hpp; RuntimeAction vocabulary moved to its Core 4 home (value_actions re-exports, zero breakage); reduce_input canonical with 4 raw-fact events; legacy reduce_runtime_state delegates (conformance pinned); vop_input_tests 6/6 (replay, empty-log, event contents, look clamp, legacy conformance, latch determinism).
 - [x] **P3.2 frame** — DONE 2026-09-16: frame.contract/action/event/reducer.hpp with explicit monostate vocabs + identity reducer; vop_frame_tests 3/3 (identity, replay, closed-vocab). First consumer of the kit.
 - [ ] **P3.3 camera** (contract + plan transforms; absorbs P2.1)
-- [ ] **P3.4 geometry** (shapes/jolt adapters = contract + plan; empty command vocab)
-- [ ] **P3.5 lighting** (sets/types = contract; culling = plan; runtime = reducer)
+- [x] **P3.4 geometry** — DONE 2026-09-16: geometry.contract/action/event/reducer.hpp (monostate vocabs + identity, culling runtimes explicitly out until R5); ingested tangent_frame.hpp (frame-from-normal, decode, perturb); vop_geometry_tests 6/6 (orthonormality, perturb identity, decode corners, kit replay/identity).
+- [x] **P3.5 lighting** — DONE 2026-09-16: lighting.contract/action/event/reducer.hpp (monostate vocabs + identity, culling runtimes explicitly out until R5); ingested shading_terms.hpp (lambert_diffuse + shade_lambert, the pair formula); vop_lighting_tests 4/4 (known answers, composition, kit).
 - [ ] **P3.6 scene** (objects/culling/instance -> contract+plan; world/system -> edge subfolder)
 - [ ] **P3.7 resources** (value types + load planners; absorbs P0.2)
 - [ ] **P3.8 gfx** (handle types = contract; registry = edge subfolder)
@@ -61,7 +61,7 @@ Parked 2026-09-15 backlog, absorbed here at the right slot:
 - [x] **P4.3 Semantic purity linters** — DONE 2026-09-16: three hard FAIL gates (ambient entropy/time, unordered_* in *.reducer.hpp, SDL/fopen tokens in domains/) — all zero-hit on landing, enforced going forward. Bare 'canvas' deliberately ungated (too generic; documented in linter comment). — forbid rand(/chrono/time/getenv in domains/; forbid unordered_* iteration in reducer paths; extend Vk gate to canvas|SDL_|fopen in domains/. Slot: second pod.
 - [ ] **P4.4 Seeded determinism contract** — stochastic pods carry RNG state in pod state (seedable via action, xorshift precedent); never globals. Slot: constitution doc edit, any time.
 - [ ] **P4.5 Generated event-flow docs** — constexpr name tables in each event.hpp; EVENT_FLOW.md + debug overlay generate from them. Slot: with P5 linter-docs sync.
-- [ ] **P4.6 std::expected promotion** — classify_plan_rejection string-matching dies; new compilers return expected<Plan, ClosedEnum> natively; events only in transform/or_else continuations. Slot: next compiler touch.
+- [x] **P4.6 std::expected promotion** — DONE 2026-09-16: RenderPathCompileRejection native enum in the compiler (14 sites reasoned, first-error-wins, permissive-downgrade resets); try_compile() returns expected (transform_error in the pod, VOP S8 monadic); classify_plan_rejection DELETED; renderpath tests pin the native path (EmptyPassChain preserved). Backend-hint now maps BackendUnavailable (was CompileInvalid — deliberate precision, no test pinned it). — classify_plan_rejection string-matching dies; new compilers return expected<Plan, ClosedEnum> natively; events only in transform/or_else continuations. Slot: next compiler touch.
 
 ## P5 — Convergence sweep (Run 4 close-out)
 

@@ -48,34 +48,20 @@ namespace shs::renderpath
         return TechniqueMode::Forward;
     }
 
-    // --- rejection classification -----------------------------------------
-
-    inline PathSwapRejectionReason classify_plan_rejection(const RenderPathExecutionPlan& plan)
+    // --- rejection mapping -------------------------------------------------
+    // Compiler-native enum -> pod event enum, 1:1 (R4 P4.6). The string ladder
+    // this replaces (classify_plan_rejection over plan.errors text) is deleted;
+    // error strings remain as diagnostics, never as decision inputs.
+    inline PathSwapRejectionReason map_rejection(RenderPathCompileRejection reason)
     {
-        for (const auto& error : plan.errors)
+        switch (reason)
         {
-            if (error.find("pass chain is empty") != std::string::npos ||
-                error.find("no executable passes") != std::string::npos)
-            {
-                return PathSwapRejectionReason::EmptyPassChain;
-            }
-            if (error.find("not registered in context") != std::string::npos)
-            {
-                return PathSwapRejectionReason::BackendUnavailable;
-            }
-            if (error.find("no 'shadow_map' pass") != std::string::npos ||
-                error.find("no 'depth_prepass' pass") != std::string::npos)
-            {
-                return PathSwapRejectionReason::MissingRequiredPass;
-            }
-            if (error.find("no depth attachment support") != std::string::npos)
-            {
-                return PathSwapRejectionReason::DepthUnsupported;
-            }
-            if (error.find("requires occlusion culling, but backend does not support") != std::string::npos)
-            {
-                return PathSwapRejectionReason::OcclusionUnsupported;
-            }
+            case RenderPathCompileRejection::EmptyPassChain:     return PathSwapRejectionReason::EmptyPassChain;
+            case RenderPathCompileRejection::BackendUnavailable: return PathSwapRejectionReason::BackendUnavailable;
+            case RenderPathCompileRejection::MissingRequiredPass: return PathSwapRejectionReason::MissingRequiredPass;
+            case RenderPathCompileRejection::DepthUnsupported:   return PathSwapRejectionReason::DepthUnsupported;
+            case RenderPathCompileRejection::OcclusionUnsupported: return PathSwapRejectionReason::OcclusionUnsupported;
+            case RenderPathCompileRejection::CompileInvalid:     return PathSwapRejectionReason::CompileInvalid;
         }
         return PathSwapRejectionReason::CompileInvalid;
     }
@@ -97,22 +83,20 @@ namespace shs::renderpath
 
     namespace detail
     {
-        // First std::expected adoption slot (VOP spec §8): compile → classify
-        // as an honest expected value instead of a (plan, valid, errors[])
-        // pod followed by a stringly-typed classification ladder. The closed
-        // enum error payload keeps the channel constitution-compatible.
+        // Honest fallible channel (VOP spec §8, R4 P4.6): the compiler returns
+        // expected natively; the pod maps the native reason to its event enum.
+        // No string classification exists anywhere on this path anymore.
         inline std::expected<RenderPathExecutionPlan, PathSwapRejectionReason>
         compile_render_path_plan(
             const RenderPathRecipe& candidate,
             const RenderPathCompiler& compiler,
             const RenderPathCapabilitySet& caps)
         {
-            RenderPathExecutionPlan plan = compiler.compile(candidate, caps);
-            if (!plan.valid)
-            {
-                return std::unexpected(classify_plan_rejection(plan));
-            }
-            return plan;
+            return compiler.try_compile(candidate, caps)
+                .transform_error([](RenderPathCompileRejection reason)
+                {
+                    return map_rejection(reason);
+                });
         }
 
         // Compile a candidate recipe against capabilities; on success the pod
