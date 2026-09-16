@@ -77,6 +77,21 @@ Parked 2026-09-15 backlog, absorbed here at the right slot:
 - [ ] **P6.3 Rollback-ready snapshots + time-travel overlay** reading the event log.
 - [ ] DoD: hot-swap of all presets, zero frame allocation outside arenas, overlay ships.
 
+## Leftovers (deferred past R5 — tracked, not dropped)
+
+Explicitly NOT scheduled in R1–R5. Each carries its unlock condition;
+review this section at the R5 close-out, no earlier.
+
+- [ ] **L1 Renderpath uniform-sig migration** — reduce_render_path predates the
+  P4.1 house signature and works; do not churn it. Unlock: the next
+  renderpath feature touch migrates it as drive-by.
+- [ ] **L2 Demo cxx_std_20 pins** — parked demo trees still pin C++20 while
+  the lib is C++23. Unlock: per-pod migration when demos restart (R5+).
+- [ ] **L3 Tier0 01/02 drift file** — NOT deferred (R4 entry ticket): filed
+  under P1.3. Listed here only so close-out verifies it is gone, not parked.
+
+Rule: a leftover without an unlock condition is rot — never add one.
+
 ## Non-goals
 
 - No Tier1+ demo rungs until spine (P0-P2) green; pod hardening (P3+) then rides each rung per the P3 interleaving policy (not before it).
