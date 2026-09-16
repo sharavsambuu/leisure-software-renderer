@@ -190,6 +190,31 @@ else
   echo "[vop-boundary] OK: no platform IO tokens in domains/"
 fi
 
+# Monadic tier doctrine (amendment 2026-09-16, Constitution II §8): the monad
+# rides at chunk/batch level. A container of per-element expected values
+# breaks cache alignment and auto-vectorization — FAIL on sight.
+expected_vec_hits="$(grep -rnE 'vector<[[:space:]]*std::expected' \
+  "${lib_root}/include/shs/domains" 2>/dev/null || true)"
+if [[ -n "${expected_vec_hits}" ]]; then
+  echo "[vop-boundary] FAIL: per-element expected container in domains/ (monad rides at chunk level, §8)"
+  echo "${expected_vec_hits}"
+  failed=1
+else
+  echo "[vop-boundary] OK: no per-element expected containers in domains/"
+fi
+
+# Closed event facts (Rule 12): events carry enums/ids/quantities, never
+# std::string members. Comment mentions are fine; member declarations fail.
+stringy_hits="$(grep -rnE 'std::string[[:space:]]+[A-Za-z_][A-Za-z0-9_]*;' \
+  $(find "${domains_dir}" -name '*.event.hpp' | sort) 2>/dev/null || true)"
+if [[ -n "${stringy_hits}" ]]; then
+  echo "[vop-boundary] FAIL: std::string member in event fact (closed payloads only, Rule 12)"
+  echo "${stringy_hits}"
+  failed=1
+else
+  echo "[vop-boundary] OK: event facts carry no std::string members"
+fi
+
 # Event-flow catalog sync (R5b P4.5): every *Event struct in a pod
 # event.hpp must appear in docs/pods/EVENT_FLOW.md (tables mirror the
 # in-code name tables, which feed the P6 overlay labels).
