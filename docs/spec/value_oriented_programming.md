@@ -340,6 +340,11 @@ transition:
   5. **Arena-backed command/event logs** — pod event logs are flat PMR vectors or
      SPSC rings (never node-based), so even the *decision* tier stays
      cache-resident.
+- **Monad granularity law**: the monad rides at chunk/batch/span level —
+  the inner loop streams flat arrays branchlessly and the pipeline monad
+  evaluates the chunk outcome. Never wrap hot-loop scalar elements in
+  `std::expected` (e.g. `std::vector<std::expected<...>>`): discriminant
+  padding breaks cache alignment and disables auto-vectorization.
 - **Verification**: hot-path kernels must be benchmarkable headlessly
   (chunked span jobs are GPU/OS-free), and any pod whose reducer executes per frame
   is a design smell to be flagged in review — per-frame work belongs to batch
@@ -392,7 +397,7 @@ requirements instead of aspirations.
 
 ---
 
-## 8. C++20 / C++23 Guidance (VOP-Aligned)
+## 8. C++23 Monadic Pipeline Doctrine (VOP-Aligned)
 
 ### Mandatory Standards
 - `std::span<const T>`: For immutable non-owning views across reducers, AI evaluators, and tile jobs.
@@ -404,9 +409,24 @@ requirements instead of aspirations.
 ### Monadic Targeted Adoption (decision, 2026-09-15)
 
 C++23 monadic vocabulary types (`std::expected`, monadic `std::optional`,
-`std::print`/enum `std::format`ters) are adopted **at leaf seams only, not as a
-structural migration**. Readability and pod/reducer architecture come first;
-monads are a refinement, not a redesign.
+enum `std::format`ters) are adopted as a **tier doctrine, not a migration**.
+The signature tells you which channel: `expected<T, E>` returns ride the
+value/error channel and compose with `.and_then()` / `.transform()` /
+`.or_else()`; `pmr::vector<Event>&` out-params ride the command/event stream
+and stay variant-based. Readability and pod/reducer architecture come first;
+monads assist pods, they do not replace them.
+
+**Adopted tiers:** fallible planners/compilers/loaders/bridges, batch stages,
+and orchestrator/saga pipelines (Kleisli chains: verifier `.and_then()`
+transformer, infallible `.transform()` finalize, `.or_else()` compensator).
+
+**Explicitly not adopted (evidence preserved):** the bundled reducer signature
+`(S_old, A) -> expected<(S_new, Events), Error>`. Per-command reducers emit a
+data-dependent event count (N facts per command, conditional 0–2 emissions,
+silent pods) that a single-value/single-error channel cannot express; the
+campaign's R3/R5b evidence (variant streams + caller-arena event logs on both
+rails) stands. Any future migration requires a replay/event-count spike
+proving no loss.
 
 **Adopt where a value rides next to an error channel:**
 - `try_swap_plan` / render-path compile → resolve chain: replace the
@@ -445,15 +465,24 @@ would reduce fidelity, not improve it. The variant vocabulary stays.
    matching the determinism requirement (§9.4).
 
 **Prerequisites & constraints:**
-- Toolchain: requires C++23 library support (GCC 12+ / 13+ realistically);
-  tree is currently `cxx_std_20` across all demo + 13 test targets — bump is a
-  separate toolchain decision, not bundled with feature refactors.
+- Toolchain: C++23 is baseline for `shs-renderer-lib` (Constitution I §10,
+  GCC 13.3+); parked demo trees follow on restart (hardening backlog L2).
 - Error types must stay closed enums (no `std::string` in `expected` payloads
   inside pod/intent vocabulary).
 - Introduce incrementally in Run 2 (GPU-free demo mode) and the Task 3 pure
   planner extraction — both are leaf-level plumbing where it pays; prototype as
   a small reversible spike (e.g. `try_swap_plan`) before committing.
 - `std::expected` (C++23 / `tl::expected`): For fallible planning and resource loading; planners must return explicit error types instead of crashing or throwing exceptions.
+
+### Saga compensation (amendment, 2026-09-16)
+
+Saga stages are Kleisli arrows over a batch context; the compensator is an
+`.or_else()` continuation that **consumes the emitted fact log**, not ad hoc
+done-flags. Validate-before-mutate is preferred; where mutation precedes a
+fallible step, every mutated stage must have emitted a fact the compensator
+can undo. The reference failure shape is the wallet leak: a compensator that
+restores only flagged stages while a prior debit leaks is non-conforming
+(Rule 12), even when the error rail carries the context.
 
 ### Forbidden in Planning and Reducer Layers
 - `std::shared_ptr` / `std::make_shared` (Hidden atomic reference-counting contention).
@@ -482,6 +511,10 @@ The automated CI boundary checker (`tools/check_vop_boundaries.sh`) enforces the
 - [x] Scan all `*.contract.hpp` and `*.reducer.hpp` files for banned includes (`#include <vulkan/...>`, `#include <SDL2/...>`, `#include <GL/...>`).
 - [x] Reject any `*.reducer.hpp` containing `mutable`, `static` local variables, or `std::mutex`.
 - [x] Validate that all planning passes require registered descriptor hints and return explicit execution plans by value.
+- [x] Monadic tier doctrine (§8): `std::expected` in value/error channels and
+  orchestrator pipelines; variant command/event streams in reducers; no
+  per-element `expected` containers in `domains/`; no `std::string` members in
+  `*.event.hpp` facts (closed payloads only, Rule 12 saga facts included).
 
 ---
 
@@ -510,6 +543,10 @@ The automated CI boundary checker (`tools/check_vop_boundaries.sh`) enforces the
 - Codified Glimmer/Ember Domain Pod standard (`domains/<domain>/`) with strict suffix naming contracts.
 - Codified Lock-Free SPSC Audio Edge for glitch-free procedural sound synthesis.
 - Decided C++23 monadic **targeted adoption** (2026-09-15): `std::expected` at compile/resolve error seams, monadic `std::optional` in input bridges, enum formatters for diagnostics; reducer/command variant + event-stream core explicitly out of scope (see §8).
+- Adopted the C++23 monadic pipeline doctrine (2026-09-16): channel-based
+  monadic law (§8 tier doctrine, Rules 11–12, Core 4+1 orchestrator, A.7
+  F-DOD-DDD correspondence); bundled `expected<(State,Events)>` reducer
+  signature explicitly not adopted, campaign evidence preserved.
 - Recorded the functional-programming parallel (**Appendix A**, 2026-09-15): the Domain Pod architecture as The Elm Architecture in C++ — structural enforcement standing in for a type-system effect boundary; documents which guarantees are inherited from purity and which the backlog linters must hand-build. Lineage anchored in **"functional core, imperative shell"** (A.5) and the **actor model** (A.6: pods as deterministic actors, concurrency relocated to the edges): *a synchronous, deterministic actor system with event sourcing, running a functional core that speaks to imperative shells through effect-describing values.*
 
 ---
@@ -518,7 +555,7 @@ The automated CI boundary checker (`tools/check_vop_boundaries.sh`) enforces the
 
 > Observational note, not a new law: the VOP architecture is a rediscovery of
 > pure functional programming's core discipline — specifically The Elm
-> Architecture (Model / Update / Msg) — expressed in C++17 where no effect
+> Architecture (Model / Update / Msg) — expressed in C++ (C++23 baseline for the lib, Constitution I §10) where no effect
 > system exists. Recorded so authors recognize which *guarantees* are
 > inherited from FP purity, and which are hand-enforced structurally.
 
@@ -536,7 +573,7 @@ The automated CI boundary checker (`tools/check_vop_boundaries.sh`) enforces the
 
 ### A.2 Enforcement: type system vs. structural law
 
-Haskell enforces the pure/impure boundary with the type system. C++17 has no
+Haskell enforces the pure/impure boundary with the type system. C++ has no (even at the C++23 baseline)
 effect system, so VOP enforces the same boundary *structurally*: directory law
 (`domains/` vs `execution/`), include-direction linters, banned-token and
 banned-pattern checks (`tools/check_vop_boundaries.sh` §10), and the
@@ -632,5 +669,20 @@ optimizes for uptime, Akka for distribution, Elm for UI correctness — this
 architecture optimizes for provability, which is what the parity and replay
 gates require.
 
+### A.7 The F-DOD-DDD correspondence (2026-09-16)
 
+| F-DOD-DDD construct | VOP equivalent |
+| :--- | :--- |
+| State monad (pure reducer) | `reduce_*`: `(State, span<Action>, dt) -> (NewState, Events)` (§2.1) |
+| Writer monad (event accumulation) | caller-arena `pmr::vector<Event>` on both rails (§2, EVENT_FLOW.md) |
+| Either monad (railway) | `expected<T, ClosedEnum>` in planners/compilers/sagas (§8) |
+| Kleisli arrow (pipeline stage) | batch stage `Ctx -> expected<Ctx, Err>`; `.and_then()` chains (§8, Rule 11) |
+| Saga orchestrator | orchestrator-is-a-pod, compensator consumes the fact log (Rule 12) |
+| Bounded context | cohesive pipelines over shared PODs + one error/event language (Rule 11) |
 
+**The one divergence, stated plainly:** F-DOD-DDD's bundled reducer
+`(S_old, A) -> expected<(S_new, Events), Error>` is not adopted. The Writer
+row above is why: our event log rides the arena on *both* rails, always —
+a bundled signature would force failure to either destroy the log or smuggle
+it through the error channel. The channel law (§8) keeps the two monads
+separate where the reference design merges them.
