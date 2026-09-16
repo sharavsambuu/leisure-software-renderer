@@ -12,9 +12,9 @@
 
 #include <string>
 
-#include "shs/domains/resources/loaders/resource_import.hpp"
+#include "shs/domains/resources/edge/resource_import.hpp"
 #include "shs/execution/platform/loaders/texture_loader_sdl.hpp"
-#include "shs/domains/resources/resource_registry.hpp"
+#include "shs/domains/resources/edge/resource_registry.hpp"
 
 namespace shs
 {

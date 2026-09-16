@@ -12,9 +12,9 @@
 */
 
 #include "shs/domains/input/bot_controller.hpp"
-#include "shs/domains/input/camera_commands.hpp"
-#include "shs/domains/input/command.hpp"
-#include "shs/domains/input/command_processor.hpp"
+#include "shs/domains/input/edge/camera_commands.hpp"
+#include "shs/domains/input/edge/command.hpp"
+#include "shs/domains/input/edge/command_processor.hpp"
 #include "shs/domains/input/human_controller.hpp"
 #include "shs/domains/input/input.action.hpp"
 #include "shs/domains/input/input.event.hpp"

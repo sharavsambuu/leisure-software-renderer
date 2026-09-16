@@ -22,7 +22,7 @@
 #include "shs/core/context.hpp"
 #include "shs/domains/frame/frame_params.hpp"
 #include "shs/domains/gfx/rt_handle.hpp"
-#include "shs/domains/gfx/rt_registry.hpp"
+#include "shs/domains/gfx/edge/rt_registry.hpp"
 #include "shs/execution/pipeline/pass_contract.hpp"
 #include "shs/execution/rhi/command/command_desc.hpp"
 #include "shs/domains/scene/scene_types.hpp"

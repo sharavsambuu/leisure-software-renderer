@@ -14,7 +14,7 @@
 
 #include "shs/domains/geometry/primitives.hpp"
 #include "shs/domains/geometry/primitives_builders.hpp"
-#include "shs/domains/resources/resource_registry.hpp"
+#include "shs/domains/resources/edge/resource_registry.hpp"
 
 namespace shs
 {

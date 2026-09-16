@@ -17,7 +17,7 @@
 
 #include "shs/core/context.hpp"
 #include "shs/domains/frame/frame_params.hpp"
-#include "shs/domains/gfx/rt_registry.hpp"
+#include "shs/domains/gfx/edge/rt_registry.hpp"
 #include "shs/domains/scene/scene_objects.hpp"
 #include "shs/domains/scene/scene_types.hpp"
 

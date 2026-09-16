@@ -13,7 +13,7 @@
 #include <memory>
 #include <vector>
 
-#include "shs/domains/scene/system.hpp"
+#include "shs/domains/scene/edge/system.hpp"
 
 namespace shs
 {

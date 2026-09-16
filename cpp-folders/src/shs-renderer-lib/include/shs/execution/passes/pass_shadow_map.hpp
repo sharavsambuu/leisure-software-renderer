@@ -12,11 +12,11 @@
 #include "shs/domains/scene/scene_types.hpp"
 #include "shs/domains/frame/frame_params.hpp"
 #include "shs/domains/gfx/rt_handle.hpp"
-#include "shs/domains/gfx/rt_registry.hpp"
+#include "shs/domains/gfx/edge/rt_registry.hpp"
 #include "shs/domains/gfx/rt_shadow.hpp"
 #include "shs/domains/geometry/aabb.hpp"
 #include "shs/domains/camera/light_camera.hpp"
-#include "shs/domains/resources/resource_registry.hpp"
+#include "shs/domains/resources/edge/resource_registry.hpp"
 
 #include <algorithm>
 #include <cmath>

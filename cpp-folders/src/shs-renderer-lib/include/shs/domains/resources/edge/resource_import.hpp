@@ -12,8 +12,8 @@
 
 #include <string>
 
-#include "shs/domains/resources/loaders/mesh_loader_assimp.hpp"
-#include "shs/domains/resources/resource_registry.hpp"
+#include "shs/domains/resources/edge/mesh_loader_assimp.hpp"
+#include "shs/domains/resources/edge/resource_registry.hpp"
 
 namespace shs
 {

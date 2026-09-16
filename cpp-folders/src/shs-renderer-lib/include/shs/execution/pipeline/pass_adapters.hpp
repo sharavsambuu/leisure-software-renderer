@@ -30,7 +30,7 @@
 #include "shs/execution/pipeline/pass_contract_registry.hpp"
 #include "shs/execution/pipeline/render_pass.hpp"
 #include "shs/execution/sw_render/rasterizer.hpp"
-#include "shs/domains/resources/resource_registry.hpp"
+#include "shs/domains/resources/edge/resource_registry.hpp"
 #include "shs/execution/shader/program.hpp"
 
 namespace shs

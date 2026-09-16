@@ -16,10 +16,10 @@
 
 #include "shs/domains/resources/ibl.hpp"
 #include "shs/domains/resources/loaders/primitive_import.hpp"
-#include "shs/domains/resources/loaders/resource_import.hpp"
+#include "shs/domains/resources/edge/resource_import.hpp"
 #include "shs/domains/resources/material.hpp"
 #include "shs/domains/resources/mesh.hpp"
-#include "shs/domains/resources/resource_registry.hpp"
+#include "shs/domains/resources/edge/resource_registry.hpp"
 #include "shs/domains/resources/texture.hpp"
 
 namespace shs::resources

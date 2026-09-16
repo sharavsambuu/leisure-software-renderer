@@ -14,7 +14,7 @@
 
 #include "shs/domains/gfx/resource_handles.hpp"
 #include "shs/domains/gfx/rt_handle.hpp"
-#include "shs/domains/gfx/rt_registry.hpp"
+#include "shs/domains/gfx/edge/rt_registry.hpp"
 #include "shs/domains/gfx/rt_shadow.hpp"
 #include "shs/domains/gfx/rt_types.hpp"
 

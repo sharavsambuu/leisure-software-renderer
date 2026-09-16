@@ -13,7 +13,7 @@
 #include <utility>
 #include <vector>
 
-#include "shs/domains/input/command.hpp"
+#include "shs/domains/input/edge/command.hpp"
 
 namespace shs
 {

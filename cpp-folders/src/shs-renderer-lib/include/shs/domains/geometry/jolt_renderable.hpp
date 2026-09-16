@@ -21,7 +21,7 @@
 #include <Jolt/Math/Mat44.h>
 
 #include "shs/domains/geometry/scene_shape.hpp"
-#include "shs/domains/resources/resource_registry.hpp"
+#include "shs/domains/resources/edge/resource_registry.hpp"
 #include "shs/domains/scene/scene_bindings.hpp"
 
 namespace shs

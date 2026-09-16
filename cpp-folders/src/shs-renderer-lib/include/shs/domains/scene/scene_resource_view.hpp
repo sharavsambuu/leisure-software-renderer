@@ -11,7 +11,7 @@
 
 
 #include "shs/domains/resources/material.hpp"
-#include "shs/domains/resources/resource_registry.hpp"
+#include "shs/domains/resources/edge/resource_registry.hpp"
 #include "shs/domains/scene/scene_types.hpp"
 
 namespace shs
