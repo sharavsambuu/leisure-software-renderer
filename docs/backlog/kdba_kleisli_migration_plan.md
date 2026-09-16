@@ -61,6 +61,53 @@ inside. Revisit only if a per-command consumer needs individual Step values;
 the kit's replay machinery already covers cross-session needs via the event
 log.
 
+## Run B verdicts (2026-09-17, behavioral pods)
+
+- **K1.3 logic — CONFIRMED, ported.** Writer shape + root namespace + silent
+  drops all real; only caller is `logic_tests.cpp`. Full `Fsm*` vocabulary
+  moved root `shs` → `shs::logic` (safe — zero external consumers). dt moved
+  from `FsmTick` to `LogicContext` per the approved consolidated plan (one
+  dt per batch, matching input; the tick is a pure advance marker).
+  Zero-signal-loss: the audit's three silent sites PLUS a fourth the audit
+  missed (force-while-unstarted emitted nothing) now emit facts;
+  `FsmSignalRejected` split from no-rule into one-fact-per-type
+  (`FsmSignalRejected` / `FsmSignalNoRule`) per the K4.2 lesson.
+- **K2.1 input — CONFIRMED, decomposed.** The `RuntimeCommand{kind, payload}`
+  envelope was the root cause of the switch monolith (double dispatch). The
+  vocabulary is now a PURE closed variant
+  (`variant<MoveLocalIntent, LookIntent, ToggleLightShaftsIntent,
+  ToggleBotIntent, QuitIntent>`) — the kind enum had zero consumers outside
+  the pod, so the envelope died with its switch. Gateway = `std::visit` +
+  `if constexpr` over named `apply_*` arrows, returning `InputStep`.
+- **K5.1 — CONFIRMED, retired.** `runtime_state_gateway` deleted; its lib
+  consumers (`edge/command_processor.hpp`, `core_tests.cpp`) ported to the
+  single public gateway; `value_commands.hpp` remains as the pure command
+  emitter header with the retirement banner.
+- **K1.4 camera — REFUTED as a violation; decision: neither absorb nor fold.**
+  The stub's command/event vocabularies are `variant<monostate>` — no real
+  command can ever arrive, so nothing is silently dropped; the identity
+  gateway is §6.1-legal (frame-pod precedent) and its identity is pinned by
+  kit tests. Its CONTRACT seam is live code (`CameraRig` builders feed
+  `input_state.hpp` + `execution/app/camera_sync.hpp`), so fold-delete would
+  break real consumers. The genuine coupling — camera math living in input's
+  `apply_move_local`/`apply_look` over the rig inside input's own
+  `RuntimeState` aggregate — is *intra-pod* (RuntimeState IS input state),
+  not cross-pod mutation. Full absorption (camera pod owns rig state, input
+  emits facts, edge routes them) needs the orchestrator/host that P6.1–P6.3
+  also wait for. Run C's K1.5 sweep ports the identity shape mechanically.
+
+## Run B semantics notes
+
+- Logic `FsmTick` no longer carries dt (context-owned); a batch of N ticks
+  advances N × context.dt.
+- Logic same-state force/signal rules remain a documented silent no-op
+  (legacy mirror, stated in the gateway header) — the one deliberate
+  exception to zero-signal-loss, pending a Run C K3.3 decision.
+- Input `RuntimeCommand` equality semantics unchanged (variant of ==-able
+  intents); factory names/signatures unchanged, so edge ICommand subclasses
+  needed no edits.
+
+
 ## Port order (Run B/C, from the consolidated plan)
 
 logic (K1.3, copies the K3.2 unchanged-fact answer) → frame → geometry →

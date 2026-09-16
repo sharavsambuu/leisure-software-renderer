@@ -10,8 +10,12 @@
 
 ## How to read this
 
-- **Producer** = the Kleisli pipeline that emits the event (house signature:
-  `(State, span<const Command>, Context) -> expected<Step{NextState, Events}, DomainError>`; failure keeps state + materializes a rejection fact).
+- **Producer** = the pod's Kleisli gateway (house shape per
+  `docs/backlog/kdba_kleisli_migration_plan.md`: batch rim
+  `(State, span<Command>, Context, arena) -> Step` summary — infallible
+  wherever every real failure is already a materialized rejection fact;
+  per-command `expected` rails live inside the arrows; failure keeps state +
+  materializes a rejection fact).
 - **Fact, not command** (Constitution Rule 8.1): each entry is a raw
   state-transition fact. Downstream gateways/edges interpret; the event
   itself never carries downstream instructions.
@@ -42,7 +46,7 @@
 | `RuntimeFlagToggledEvent` | Light-shafts/bot flag flipped (flag id + post-toggle value). |
 | `QuitRequestedEvent` | A Quit action applied (quit_requested now true). |
 
-## logic — `shs::FsmEvent<TStateId>`
+## logic — `shs::logic::FsmEvent<TStateId>`
 
 | Event | Emitted when |
 |---|---|
@@ -51,6 +55,11 @@
 | `FsmStateExited` | A state stopped being current (always immediately before its `FsmStateEntered`). |
 | `FsmTransitionRejected` | A Force targeted an unknown state (current unchanged). |
 | `FsmStartRejected` | A Start targeted an unknown state (machine stays unstarted). |
+| `FsmSignalRejected` | A Signal arrived while the machine is not started (K3.2 fact, Run B). |
+| `FsmSignalNoRule` | A Signal matched no rule from the current state (K3.2 fact, Run B). |
+| `FsmTickUnstarted` | A Tick arrived while the machine is not started (K3.2 fact, Run B). |
+| `FsmTickNoRule` | A Tick fired no time-gated rule (K3.2 fact, Run B). |
+| `FsmForceUnstarted` | A Force arrived while the machine is not started (K3.2 fact, Run B; a silent drop the audit missed, closed by zero-signal-loss). |
 
 ## Silent pods (monostate event vocabulary — emit nothing)
 

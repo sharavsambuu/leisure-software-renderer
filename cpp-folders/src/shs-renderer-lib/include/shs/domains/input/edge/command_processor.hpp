@@ -10,9 +10,13 @@
 */
 
 
+#include <memory_resource>
+#include <span>
 #include <utility>
 #include <vector>
 
+#include "shs/domains/input/input.command.hpp"
+#include "shs/domains/input/input.gateway.hpp"
 #include "shs/domains/input/edge/command.hpp"
 
 namespace shs
@@ -48,10 +52,16 @@ namespace shs
         RuntimeState apply_commands(RuntimeState state, float dt)
         {
             const std::vector<RuntimeCommand> commands = collect_runtime_commands();
-            if (!commands.empty())
-            {
-                state = runtime_state_gateway(state, commands, dt);
-            }
+            if (commands.empty()) return state;
+
+            // K5.1 (Run B): the pod's single public Kleisli gateway, driven
+            // directly from the edge; this edge convenience drops the fact
+            // log (a frame-arena sink would be the replay-ready form).
+            std::pmr::monotonic_buffer_resource arena{1024};
+            std::pmr::vector<shs::input::InputEvent> events{&arena};
+            shs::input::input_gateway(state,
+                std::span<const RuntimeCommand>{commands.data(), commands.size()},
+                shs::input::InputContext{dt}, events);
             return state;
         }
 

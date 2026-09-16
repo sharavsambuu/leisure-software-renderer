@@ -361,8 +361,8 @@ fi
 #     on `inline void reduce_*`, which the §6.6 naming migration already bans
 #     outright — the enforceable regrowth vector is the writer SIGNATURE, so
 #     this gate targets it instead.
-kleisli_migrated_pods=(renderpath)
-kleisli_grandfathered_pods=(camera frame geometry gfx input lighting logic resources scene sky)
+kleisli_migrated_pods=(renderpath logic input)
+kleisli_grandfathered_pods=(camera frame geometry gfx lighting resources scene sky)
 writer_gate=0
 for pod_dir in "${pod_dirs[@]}"; do
   pod="$(basename "${pod_dir}")"

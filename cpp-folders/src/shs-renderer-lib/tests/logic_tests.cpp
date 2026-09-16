@@ -12,12 +12,12 @@
 // Links only shs::renderer-values. No callbacks anywhere on this path.
 namespace
 {
-    using Id     = shs::logic::TrafficLight;
-    using State  = shs::FsmState<Id>;
-    using Action = shs::FsmCommand<Id>;
-    using Event  = shs::FsmEvent<Id>;
-    using Desc   = shs::FsmDesc<Id>;
-    using Context = shs::LogicContext<Id>;
+    using Id      = shs::logic::TrafficLight;
+    using State   = shs::logic::FsmState<Id>;
+    using Action  = shs::logic::FsmCommand<Id>;
+    using Event   = shs::logic::FsmEvent<Id>;
+    using Desc    = shs::logic::FsmDesc<Id>;
+    using Context = shs::logic::LogicContext<Id>;
 
     constexpr uint32_t k_timer = 1;
 
@@ -34,10 +34,10 @@ namespace
     }
 
     std::pmr::vector<Event> run(State& s, const Desc& d, const std::vector<Action>& commands,
-                                std::pmr::monotonic_buffer_resource& arena)
+                                std::pmr::monotonic_buffer_resource& arena, const Context& in = Context{})
     {
         std::pmr::vector<Event> events{&arena};
-        shs::logic_gateway(s, std::span<const Action>{commands.data(), commands.size()}, d, Context{}, events);
+        shs::logic::logic_gateway(s, std::span<const Action>{commands.data(), commands.size()}, d, in, events);
         return events;
     }
 
@@ -47,13 +47,13 @@ namespace
         const Desc desc = make_lights();
         State s{};
         std::pmr::monotonic_buffer_resource arena{4096};
-        std::pmr::vector<Event> e0 = run(s, desc, { Action{shs::FsmStart<Id>{Id::Green}} }, arena);
+        std::pmr::vector<Event> e0 = run(s, desc, { Action{shs::logic::FsmStart<Id>{Id::Green}} }, arena);
         if (!s.started || s.current != Id::Green || e0.size() != 2) return false;
 
-        std::pmr::vector<Event> e1 = run(s, desc, { Action{shs::FsmSignal<Id>{k_timer}} }, arena);
+        std::pmr::vector<Event> e1 = run(s, desc, { Action{shs::logic::FsmSignal<Id>{k_timer}} }, arena);
         if (s.current != Id::Yellow || e1.size() != 2) return false;
-        if (!std::holds_alternative<shs::FsmStateExited<Id>>(e1[0])) return false;
-        if (!std::holds_alternative<shs::FsmStateEntered<Id>>(e1[1])) return false;
+        if (!std::holds_alternative<shs::logic::FsmStateExited<Id>>(e1[0])) return false;
+        if (!std::holds_alternative<shs::logic::FsmStateEntered<Id>>(e1[1])) return false;
         return true;
     }
 
@@ -63,12 +63,13 @@ namespace
         const Desc desc = make_lights();
         State s{};
         std::pmr::monotonic_buffer_resource arena{4096};
-        run(s, desc, { Action{shs::FsmStart<Id>{Id::Yellow}} }, arena);
+        run(s, desc, { Action{shs::logic::FsmStart<Id>{Id::Yellow}} }, arena);
 
-        std::pmr::vector<Event> e1 = run(s, desc, { Action{shs::FsmTick{1.0f}} }, arena);
-        if (s.current != Id::Yellow || !e1.empty()) return false;
+        std::pmr::vector<Event> e1 = run(s, desc, { Action{shs::logic::FsmTick{}} }, arena, Context{1.0f});
+        if (s.current != Id::Yellow || e1.size() != 1) return false; // K3.2: no-rule is a fact now
+        if (!std::holds_alternative<shs::logic::FsmTickNoRule>(e1[0])) return false;
 
-        std::pmr::vector<Event> e2 = run(s, desc, { Action{shs::FsmTick{1.5f}} }, arena);
+        std::pmr::vector<Event> e2 = run(s, desc, { Action{shs::logic::FsmTick{}} }, arena, Context{1.5f});
         return s.current == Id::Red && e2.size() == 2;
     }
 
@@ -79,19 +80,19 @@ namespace
         desc.transitions.push_back({ Id::Red, Id::Yellow, k_timer, -1.0f, 5 });
         State s{};
         std::pmr::monotonic_buffer_resource arena{4096};
-        run(s, desc, { Action{shs::FsmStart<Id>{Id::Red}} }, arena);
+        run(s, desc, { Action{shs::logic::FsmStart<Id>{Id::Red}} }, arena);
 
-        std::pmr::vector<Event> e1 = run(s, desc, { Action{shs::FsmSignal<Id>{k_timer}} }, arena);
+        std::pmr::vector<Event> e1 = run(s, desc, { Action{shs::logic::FsmSignal<Id>{k_timer}} }, arena);
         if (s.current != Id::Yellow) return false; // pri-5 beats pri-0 Green rule
 
-        std::pmr::vector<Event> e2 = run(s, desc, { Action{shs::FsmForce<Id>{Id::Green}} }, arena);
+        std::pmr::vector<Event> e2 = run(s, desc, { Action{shs::logic::FsmForce<Id>{Id::Green}} }, arena);
         if (s.current != Id::Green) return false;
 
         State stuck{};
         std::pmr::vector<Event> e3 = run(stuck, desc,
-            { Action{shs::FsmStart<Id>{static_cast<Id>(9)}} }, arena);
+            { Action{shs::logic::FsmStart<Id>{static_cast<Id>(9)}} }, arena);
         if (stuck.started || e3.size() != 1) return false;
-        return std::holds_alternative<shs::FsmStartRejected<Id>>(e3[0]);
+        return std::holds_alternative<shs::logic::FsmStartRejected<Id>>(e3[0]);
     }
 
     // Kit: same signal log twice -> identical states + logs.
@@ -100,17 +101,17 @@ namespace
         const Desc desc = make_lights();
         const State s0{};
         const std::vector<Action> commands{
-            Action{shs::FsmStart<Id>{Id::Green}},
-            Action{shs::FsmSignal<Id>{k_timer}},
-            Action{shs::FsmTick{2.5f}},
+            Action{shs::logic::FsmStart<Id>{Id::Green}},
+            Action{shs::logic::FsmSignal<Id>{k_timer}},
+            Action{shs::logic::FsmTick{}},
         };
         auto reduce = [&](State& s, std::span<const Action> a, const Context& in,
                           std::pmr::vector<Event>& e)
         {
-            shs::logic_gateway(s, a, desc, in, e);
+            shs::logic::logic_gateway(s, a, desc, in, e);
         };
         return shs::pod_test::replay_is_deterministic<State, Action, Context, Event>(
-            reduce, s0, std::span<const Action>{commands.data(), commands.size()}, Context{});
+            reduce, s0, std::span<const Action>{commands.data(), commands.size()}, Context{2.5f});
     }
 
     bool test_empty_log_stable()
@@ -120,10 +121,36 @@ namespace
         auto reduce = [&](State& s, std::span<const Action> a, const Context& in,
                           std::pmr::vector<Event>& e)
         {
-            shs::logic_gateway(s, a, desc, in, e);
+            shs::logic::logic_gateway(s, a, desc, in, e);
         };
         return shs::pod_test::empty_log_is_stable<State, Action, Context, Event>(
             reduce, s0, Context{});
+    }
+
+    // K3.2 (Run B): zero-signal-loss — unstarted consumptions and no-rule
+    // matches emit facts, never silence.
+    bool test_zero_signal_loss()
+    {
+        const Desc desc = make_lights();
+        State s{};
+        std::pmr::monotonic_buffer_resource arena{4096};
+
+        // Unstarted machine: signal / tick / force are each rejected with a fact.
+        std::pmr::vector<Event> e1 = run(s, desc, { Action{shs::logic::FsmSignal<Id>{k_timer}} }, arena);
+        if (e1.size() != 1 || !std::holds_alternative<shs::logic::FsmSignalRejected>(e1[0])) return false;
+
+        std::pmr::vector<Event> e2 = run(s, desc, { Action{shs::logic::FsmTick{}} }, arena);
+        if (e2.size() != 1 || !std::holds_alternative<shs::logic::FsmTickUnstarted>(e2[0])) return false;
+
+        std::pmr::vector<Event> e3 = run(s, desc, { Action{shs::logic::FsmForce<Id>{Id::Green}} }, arena);
+        if (e3.size() != 1 || !std::holds_alternative<shs::logic::FsmForceUnstarted<Id>>(e3[0])) return false;
+        if (s.started) return false;
+
+        // Started machine: a no-rule signal is observed, not silent.
+        run(s, desc, { Action{shs::logic::FsmStart<Id>{Id::Green}} }, arena);
+        std::pmr::vector<Event> e4 = run(s, desc, { Action{shs::logic::FsmSignal<Id>{77}} }, arena);
+        if (e4.size() != 1 || !std::holds_alternative<shs::logic::FsmSignalNoRule>(e4[0])) return false;
+        return true;
     }
 } // namespace
 
@@ -141,6 +168,7 @@ int main()
     run("priority_and_rejection", test_priority_and_rejection());
     run("replay_deterministic", test_replay_deterministic());
     run("empty_log_stable", test_empty_log_stable());
+    run("zero_signal_loss", test_zero_signal_loss());
 
     if (!ok)
     {

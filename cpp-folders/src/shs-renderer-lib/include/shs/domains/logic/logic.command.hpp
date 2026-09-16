@@ -16,7 +16,7 @@
 #include <cstdint>
 #include <variant>
 
-namespace shs
+namespace shs::logic
 {
     template <typename TStateId>
     struct FsmStart
@@ -44,7 +44,8 @@ namespace shs
 
     struct FsmTick
     {
-        float dt = 0.0f;
+        // K1.3 (Run B): frame time lives in LogicContext (one dt per batch,
+        // matching the input pod) — the tick is a pure time-advance marker.
 
         bool operator==(const FsmTick&) const = default;
     };
@@ -55,7 +56,7 @@ namespace shs
         FsmSignal<TStateId>,
         FsmForce<TStateId>,
         FsmTick>;
-} // namespace shs
+} // namespace shs::logic
 
 namespace shs::logic
 {
@@ -67,5 +68,5 @@ namespace shs::logic
         Yellow = 2
     };
 
-    using TrafficCommand = shs::FsmCommand<TrafficLight>;
+    using TrafficCommand = FsmCommand<TrafficLight>;
 } // namespace shs::logic

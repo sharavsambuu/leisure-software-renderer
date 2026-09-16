@@ -5,7 +5,11 @@
 
     FILE: value_commands.hpp
     MODULE: input
-    PURPOSE: Value-oriented input commands and gateways for runtime state updates.
+    PURPOSE: Pure command emitters (InputState latch -> RuntimeCommand spans).
+             K5.1 (Run B): the legacy by-value runtime_state_gateway wrapper
+             is RETIRED — one pod, one public gateway
+             (shs::input::input_gateway); the edge consumer
+             (edge/command_processor.hpp) drives it directly.
 */
 
 
@@ -30,19 +34,8 @@
 
 namespace shs
 {
-    // Legacy signature, canonical logic: delegates to shs::input::input_gateway
-    // so one logic home serves both paths (conformance pinned in tests).
-    inline RuntimeState runtime_state_gateway(
-        RuntimeState state,
-        std::span<const RuntimeCommand> commands,
-        float dt)
-    {
-        std::array<std::byte, 1024> buf{};
-        std::pmr::monotonic_buffer_resource arena{buf.data(), buf.size()};
-        std::pmr::vector<shs::input::InputEvent> sink{&arena};
-        shs::input::input_gateway(state, commands, shs::input::InputContext{dt}, sink);
-        return state;
-    }
+    // K5.1 (Run B): the legacy by-value runtime_state_gateway wrapper is
+    // retired. One pod, one public Kleisli gateway: shs::input::input_gateway.
 
     inline void emit_human_commands(
         const InputState& in,

@@ -32,10 +32,12 @@ namespace shs::input
 
     // --- command vocabulary (closed; see input.command.hpp) ---
     using shs::RuntimeCommand;
-    using shs::RuntimeCommandKind;
+    using shs::input::InputCommand;
     using shs::MoveLocalIntent;
     using shs::LookIntent;
-    using shs::ToggleFlagIntent;
+    using shs::ToggleLightShaftsIntent;
+    using shs::ToggleBotIntent;
+    using shs::QuitIntent;
 
     // --- latch event vocabulary (edge-tokenized OS events) ---
     using shs::RuntimeInputEvent;

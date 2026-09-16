@@ -15,7 +15,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace shs
+namespace shs::logic
 {
     template <typename TStateId>
     struct FsmTransition
@@ -52,4 +52,4 @@ namespace shs
 
         bool operator==(const FsmState&) const = default;
     };
-} // namespace shs
+} // namespace shs::logic

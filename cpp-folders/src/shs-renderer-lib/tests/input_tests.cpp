@@ -114,20 +114,21 @@ namespace
         return s2.camera.pitch == glm::radians(-85.0f);
     }
 
-    // Legacy/new conformance: the old signature is a pure delegate now.
-    bool test_legacy_conformance()
+    // K5.1 (Run B): the legacy by-value wrapper is retired; the pod exposes a
+    // single public Kleisli gateway, and the Step tally counts every applied
+    // intent (zero-signal-loss is countable).
+    bool test_step_tally()
     {
+        shs::RuntimeState s{};
         const std::vector<shs::RuntimeCommand> commands = make_mixed_log();
-        const shs::RuntimeState legacy = shs::runtime_state_gateway(
-            shs::RuntimeState{}, std::span<const shs::RuntimeCommand>{commands.data(), commands.size()}, 0.5f);
 
-        shs::RuntimeState fresh{};
         std::pmr::monotonic_buffer_resource arena{4096};
         std::pmr::vector<shs::input::InputEvent> events{&arena};
-        shs::input::input_gateway(fresh, std::span<const shs::RuntimeCommand>{commands.data(), commands.size()},
+        const shs::input::InputStep step = shs::input::input_gateway(s,
+            std::span<const shs::RuntimeCommand>{commands.data(), commands.size()},
             shs::input::InputContext{0.5f}, events);
 
-        return legacy == fresh && events.size() == 5;
+        return step.commands_applied == 5 && events.size() == 5;
     }
 
     // Latch gateway stays deterministic (double-run equality, kit-adjacent).
@@ -155,7 +156,7 @@ int main()
     ok = test_empty_log_stable() && ok;
     ok = test_event_contents() && ok;
     ok = test_look_clamp() && ok;
-    ok = test_legacy_conformance() && ok;
+    ok = test_step_tally() && ok;
     ok = test_latch_deterministic() && ok;
 
     if (!ok)

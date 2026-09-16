@@ -164,7 +164,11 @@ namespace
         commands.push_back(shs::make_toggle_bot_intent());
         commands.push_back(shs::make_quit_intent());
 
-        const shs::RuntimeState out = shs::runtime_state_gateway(s, commands, 0.5f);
+        std::pmr::monotonic_buffer_resource arena{4096};
+        std::pmr::vector<shs::input::InputEvent> events{&arena};
+        shs::input::input_gateway(s, std::span<const shs::RuntimeCommand>{commands.data(), commands.size()},
+            shs::input::InputContext{0.5f}, events);
+        const shs::RuntimeState& out = s;
         if (!approx_eq(out.camera.pos.z, 2.0f)) return false;
         if (!approx_eq(out.camera.yaw, glm::half_pi<float>() + 0.1f)) return false;
         if (!approx_eq(out.camera.pitch, 0.05f)) return false;
