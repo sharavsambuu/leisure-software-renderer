@@ -92,6 +92,9 @@ namespace shs
         std::string id{};
         PassId pass_id = PassId::Unknown;
         bool required = true;
+
+        // Value semantics (pod test kit requires snapshot equality).
+        bool operator==(const RenderPathPassEntry&) const = default;
     };
 
     inline RenderPathPassEntry make_render_path_pass_entry(PassId pass_id, bool required)
@@ -123,6 +126,9 @@ namespace shs
 
         bool wants_shadows = true;
         bool strict_validation = true;
+
+        // Value semantics (pod test kit requires snapshot equality).
+        bool operator==(const RenderPathRecipe&) const = default;
     };
 
     inline RenderPathRecipe make_default_soft_shadow_culling_recipe(RenderBackendType backend)

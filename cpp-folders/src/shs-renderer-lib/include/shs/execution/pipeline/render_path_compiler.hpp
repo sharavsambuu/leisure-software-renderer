@@ -39,6 +39,9 @@ namespace shs
         std::string id{};
         PassId pass_id = PassId::Unknown;
         bool required = true;
+
+        // Value semantics (pod test kit requires snapshot equality).
+        bool operator==(const RenderPathCompiledPass&) const = default;
     };
 
     // Native rejection vocabulary (R4 P4.6): each push_error site records its
@@ -66,6 +69,9 @@ namespace shs
         std::vector<std::string> errors{};
         RenderPathCompileRejection rejection = RenderPathCompileRejection::CompileInvalid;
         bool valid = false;
+
+        // Value semantics (pod test kit requires snapshot equality).
+        bool operator==(const RenderPathExecutionPlan&) const = default;
     };
 
     inline TechniqueProfile make_technique_profile(const RenderPathExecutionPlan& plan)

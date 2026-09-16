@@ -26,8 +26,12 @@
 | `PathCompiledEvent` | A recipe compiled valid and became the active plan (carries technique/mode/pass count). |
 | `PathSwapRejectedEvent` | A compile failed; the pod kept the previous plan (carries native `PathSwapRejectionReason`). |
 | `TechniqueSwitchedEvent` | The rendering technique changed (previous → current). |
-| `CullingModeChangedEvent` | View or shadow culling mode changed (previous → current). |
+| `ViewCullingModeChangedEvent` | The view-chain culling mode changed (previous → current). K4.2 split (Run A 2026-09-17): was the positional-bool `CullingModeChangedEvent`. |
+| `ShadowCullingModeChangedEvent` | The shadow-chain culling mode changed (previous → current). K4.2 split (Run A 2026-09-17). |
 | `RuntimeToggledEvent` | A runtime flag flipped (flag id + post-toggle value). |
+| `TechniqueUnchangedEvent` | A technique command requested the already-active technique — no-op fact (K3.2 zero-signal-loss, Run A). |
+| `ViewCullingUnchangedEvent` | A view-culling command requested the already-active mode — no-op fact (K3.2, Run A). |
+| `ShadowCullingUnchangedEvent` | A shadow-culling command requested the already-active mode — no-op fact (K3.2, Run A). |
 
 ## input — `shs::input::InputEvent`
 

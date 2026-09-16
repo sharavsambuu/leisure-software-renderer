@@ -70,8 +70,8 @@ Checked against KDBA laws: Kleisli house signature (`expected<Step{NextState, Ev
 
 ## W1 — Kleisli gateway migration (flagship, phased per pod)
 
-- [ ] **K1.1 Migration law note + per-pod port plan** — publish the port order and the shared `Step`/gateway vocabulary before touching any gateway, so the 11 migrations are mechanical copies of one proven shape, not 12 ad-hoc designs. Pilot = renderpath (its `try_swap_plan` is already an arrow chain: `and_then`/`or_else` over `expected`, only the wrapper is `void` — smallest delta to full house shape). Port order: renderpath -> logic -> frame -> geometry -> lighting -> sky -> scene -> resources -> gfx -> input (input last: biggest monolith, needs W2 first). DoD: plan doc exists; each pod lands with kit-extended tests (replay + empty-log) proving signature swap is behavior-neutral.
-- [ ] **K1.2 renderpath** — `renderpath_gateway` (renderpath.gateway.hpp:137) returns `void`, events via `pmr::vector&` out-param; inner `try_swap_plan` (L108-131) already computes `expected` but discards it into `or_else` event pushes. Port: public gateway returns `expected<RenderPathStep, RenderPathError>` per command (or per batch, per the A.7 bundled-signature divergence note — replay/event-count spike decides batch-vs-single; record the decision). `RenderPathPodState::has_plan` dies here too (K4.1). Evidence: renderpath.gateway.hpp:137-192, 108-131. Unlocks the L1 leftover from the frozen backlog (its "do not churn" unlock condition is hereby superseded by this backlog).
+- [x] **K1.1 Migration law note + per-pod port plan** — DONE 2026-09-17 (Run A): [`kdba_kleisli_migration_plan.md`](kdba_kleisli_migration_plan.md) publishes the shared `Step`/gateway vocabulary, the port order, and the batch-vs-per-command spike decision; renderpath landed with kit-extended tests (replay + empty-log + value-equality `operator==` on state/events) proving the signature swap is behavior-neutral. — was: publish the port order and the shared `Step`/gateway vocabulary before touching any gateway, so the 11 migrations are mechanical copies of one proven shape, not 12 ad-hoc designs. Pilot = renderpath (its `try_swap_plan` is already an arrow chain: `and_then`/`or_else` over `expected`, only the wrapper is `void` — smallest delta to full house shape). Port order: renderpath -> logic -> frame -> geometry -> lighting -> sky -> scene -> resources -> gfx -> input (input last: biggest monolith, needs W2 first).
+- [x] **K1.2 renderpath** — DONE 2026-09-17 (Run A): `renderpath_gateway` now returns `RenderPathStep{commands_applied, noops_observed, swaps_rejected, plan_generation}` by value; events stay on the caller's arena (A.7 divergence honored); transition bodies moved to named per-intent `apply_*` arrows (K2.2 renderpath half); `try_swap_plan` returns its outcome over the unchanged per-command `expected` rail. **Reassessment verdict (banner):** the audit's literal "`expected` at the batch rim" was REFUTED — every real failure is a compile rejection absorbed by the per-command rail and materialized as `PATH_SWAP_REJECTED` (previous plan kept), so a batch-level error enum would be invented/vacuous (ERROR_FLOW non-vacuity law); evidence + decision in the plan doc. Unlocks the L1 leftover from the frozen backlog as stated.
 - [ ] **K1.3 logic** — `logic_gateway` (logic.gateway.hpp:86): writer shape + `FsmInputs` empty + dt lives on `FsmTick` action instead of Inputs (L125-129) while input pod takes dt from Inputs — inconsistent time placement across pods. Port unifies: time in Inputs, gateway returns `expected<FsmStep, FsmError>`; silent `continue` drops become observable (K3.2). Namespace `shs` -> `shs::logic` (L23; every other pod is `shs::<pod>`, FsmDesc/FsmState/FsmEvent are the only domain types at root namespace).
 - [ ] **K1.4 camera** — `camera_gateway` (camera.gateway.hpp:32-42) discards ALL arguments (`(void)state; (void)actions; ...`): a gateway that silently eats every command, the trivial worst-case zero-signal-loss violation. Decide: real camera gateway absorbing the camera math that currently lives in input's MoveLocal/Look handling (input.gateway.hpp:45-68 reaches directly into `state.camera` — cross-vocabulary coupling), or fold camera vocabulary into the input pod and delete the stub. DoD: no discard-all gateway in the tree.
 - [ ] **K1.5 The 8 silent pods (frame, geometry, gfx, lighting, sky, scene, resources, camera-vocab)** — all are identity shells with the writer signature (evidence: grep `inline void reduce_` = 12 hits, all `void ... pmr::vector<X>&`). Mechanical port to the Kleisli shape; their vacuous error channel is `void`-error or a single `None`-style closed enum until real failure modes are designed (failure-rail law: an error enum with no real values is worse than none — ERROR_FLOW.md documents this convention). DoD: grep `inline void reduce_` in domains = 0; all still kit-green; ERROR_FLOW.md updated per drift gate.
@@ -84,13 +84,13 @@ Checked against KDBA laws: Kleisli house signature (`expected<Step{NextState, Ev
 ## W3 — Error-channel + zero-signal-loss conformance
 
 - [ ] **K3.1 Failure-rail inventory per pod** — walk all 11 pods: for each transition, classify infallible / fallible-with-closed-error / currently-silent. Output: per-pod error enums (named `*Error`/`*Rejection`/`*Reason` per ERROR_FLOW.md law) + ERROR_FLOW.md rows. Seed data: renderpath already has the only real rail (`PathSwapRejectionReason`, 6 values, mapped 1:1 from the compiler enum at renderpath.gateway.hpp:55-67 — this stays the model). DoD: ERROR_FLOW.md covers every pod's error vocabulary; drift gate green.
-- [ ] **K3.2 Kill silent signal drops in logic** — `continue` sites consume a command and emit NOTHING: `!state.started` on signal (logic.gateway.hpp:111), no-rule-match on signal (L113) and on tick (L131). Under zero-signal-loss these are invisible failures. Emit `FsmSignalRejected`/`FsmTickNoRule` facts or route through the gateway error channel — pick ONE house answer and mirror it in renderpath's silent no-op sites (renderpath.gateway.hpp:155, 166, 175: same-technique/same-mode commands return silently; document the decision as a constitution note, not folklore).
+- [ ] **K3.2 Kill silent signal drops in logic** — `continue` sites consume a command and emit NOTHING: `!state.started` on signal (logic.gateway.hpp:111), no-rule-match on signal (L113) and on tick (L131). Under zero-signal-loss these are invisible failures. Emit `FsmSignalRejected`/`FsmTickNoRule` facts or route through the gateway error channel — pick ONE house answer and mirror it in renderpath's silent no-op sites (renderpath.gateway.hpp:155, 166, 175: same-technique/same-mode commands return silently; document the decision as a constitution note, not folklore). **Renderpath half DONE 2026-09-17 (Run A):** the house answer is **FACTS** — the three silent no-op sites now emit `TechniqueUnchangedEvent` / `ViewCullingUnchangedEvent` / `ShadowCullingUnchangedEvent` (a no-op is not a failure; it never touches the error rail), pinned by `test_unchanged_facts`; the logic half (`FsmSignalRejected`/`FsmTickNoRule`) remains for Run B, copying this answer.
 - [ ] **K3.3 Compensator sweep (Rule 12)** — only the saga spike test exercises compensation today. Once W1 lands, audit each multi-step transition for invertibility: every state mutation inside a gateway must have a recorded compensator fact or be provably idempotent. DoD: per-pod compensator note in ERROR_FLOW.md or an explicit "no multi-step flows" entry.
 
 ## W4 — State-shape hardening
 
-- [ ] **K4.1 `has_plan` phantom flag** — `RenderPathPodState::has_plan` (renderpath.gateway.hpp:35) is a validity bit shadowing plan existence: state can lie (default plan + has_plan=false is indistinguishable from an empty-but-real plan). Replace with a generation counter (`uint32_t plan_generation = 0`, 0 = none) — value-honest, replay-friendly, and it feeds P6.1's plan-hash executor rebuilds when those unblock. DoD: grep `has_plan` = 0; renderpath tests pin generation semantics.
-- [ ] **K4.2 Positional-bool event** — `CullingModeChangedEvent{ true, previous, mode }` (renderpath.gateway.hpp:170/179) packs view-vs-shadow into an unnamed leading bool — call-site blindness and one event carrying two facts. Split into `ViewCullingModeChangedEvent` / `ShadowCullingModeChangedEvent` (closed vocabulary stays closed; EVENT_FLOW.md + name tables updated together per the P4.5 machinery). DoD: zero unnamed-bool payload fields in events; drift gates green.
+- [x] **K4.1 `has_plan` phantom flag** — DONE 2026-09-17 (Run A): `RenderPathPodState::plan_generation` (`uint32_t`, 0 = none, bumped on every successful plan install; rejections and runtime toggles never bump it) replaces the validity bit; semantics pinned by `test_plan_generation_semantics`; `grep has_plan` in shs-renderer-lib = 0. Feeds P6.1's plan-hash executor rebuilds (precondition contributor). — was: `RenderPathPodState::has_plan` (renderpath.gateway.hpp:35) is a validity bit shadowing plan existence: state can lie (default plan + has_plan=false is indistinguishable from an empty-but-real plan). Replace with a generation counter (`uint32_t plan_generation = 0`, 0 = none) — value-honest, replay-friendly.
+- [x] **K4.2 Positional-bool event** — DONE 2026-09-17 (Run A): split into `ViewCullingModeChangedEvent{previous, current}` / `ShadowCullingModeChangedEvent{previous, current}`; closed vocabulary stays closed (5 → 9 facts); EVENT_FLOW.md + `renderpath_event_name` table updated together; drift gates green. DoD met: zero unnamed-bool payload fields in renderpath events.
 
 ## W5 — Gateway uniqueness + legacy seams
 
@@ -99,7 +99,7 @@ Checked against KDBA laws: Kleisli house signature (`expected<Step{NextState, Ev
 
 ## W6 — Mechanical drift gates (checker)
 
-- [ ] **K6.1 Kleisli-shape gate** — extend `check_kdba_boundaries.sh`: once the FIRST pod lands its gateway (K1.2), FAIL on any NEW `inline void reduce_*` added outside the migrated-pod list (grandfather list carried in the script, shs/pipeline facade-case precedent — same mechanism as P1.1). Prevents writer-shape regrowth during the phased migration.
+- [x] **K6.1 Kleisli-shape gate** — DONE 2026-09-17 (Run A): gate landed in `check_kdba_boundaries.sh` §(4). **Reassessment verdict (banner):** the original wording — gate `inline void reduce_*` — was obsolete (§6.6 already bans those tokens outright), so the gate targets the real regrowth vector, the writer SIGNATURE: FAIL on `void <pod>_gateway(` in a Kleisli-migrated pod, FAIL on any pod missing from the migrated/grandfathered registers (migrated: renderpath; grandfathered: the 10 Run B/C pods — P1.1 facade-case mechanism). — was: once the FIRST pod lands its gateway (K1.2), FAIL on any NEW `inline void reduce_*` added outside the migrated-pod list (grandfather list carried in the script, shs/pipeline facade-case precedent — same mechanism as P1.1). Prevents writer-shape regrowth during the phased migration.
 - [ ] **K6.2 switch-monolith gate** — FAIL on `switch` over action discriminators in `*.gateway.hpp`; lands with W2 completion (audit grep already proven).
 - [ ] **K6.3 Silent-drop gate** — grep-gate the logic silent-drop pattern once K3.2 fixes it — ONLY if the team picks "events" over "error channel"; a gate on an undecided design choice is premature. Standing until K3.2 decides.
 
@@ -110,7 +110,76 @@ Checked against KDBA laws: Kleisli house signature (`expected<Step{NextState, Ev
 - [ ] **P6.3 Rollback snapshots + time-travel overlay** — BLOCKED on windowed host; K4.1's generation counter is a precondition contributor.
 - [ ] **P4.4 Seeded determinism contract (STANDING)** — still no stochastic pods; first stochastic pod authors the contract.
 
-## Run plan
+## Consolidated run plan (2026-09-17) — 3 runs
+
+> User directive: regroup the migrations into as few runs as possible. Only the
+> grouping changed — every DoD, constraint, and the 2026-09-17 reassessment
+> banner are carried forward unchanged. Each reassessment-flagged item
+> (K1.1–K1.5, K5.1, K6.1) is verified against real contracts and callers
+> *inside its run*, before its port lands. Nothing is completed or dropped by
+> this regrouping; the 5-run plan below is kept as provenance.
+> Verification after every run: `build_vcpkg/` ctest 16/16 green +
+> `check_kdba_boundaries.sh` green.
+
+- **Run A — Pilot + state shape (renderpath only).**
+  Preflight: reconfigure the stale `build/` tree (still registers the retired
+  `shs_renderer_vop_*` target names; boundary check "Not Run"; P0.1 déjà vu) so
+  both trees report 16/16 before any port is judged.
+  Reassess K1.1/K1.2 (+ the K5.1/K6.1 touchpoints renderpath can see).
+  Land, in one renderpath-only touch: **K1.1** (plan doc + shared `Step`
+  vocabulary + the batch-vs-per-command spike decision, recorded as a
+  constitution note), **K1.2** (renderpath port to the Kleisli house shape),
+  **K4.1** (`has_plan` → `plan_generation` counter), **K4.2** (culling event
+  split into named view/shadow events), **K3.2's renderpath half** (silent
+  same-technique/same-mode no-op sites get the ONE house answer — the decision
+  Run B's logic emission must copy), **K6.1** (Kleisli-shape gate activated;
+  grandfather list seeded by the K1.2 exemplar).
+  DoD: renderpath is the single conforming Kleisli pod; gate live; both test
+  trees green.
+  **Status: DONE 2026-09-17** — port + K4.1/K4.2 + K3.2 house answer + K6.1
+  gate + K1.1 plan doc landed; verdicts in
+  [`kdba_kleisli_migration_plan.md`](kdba_kleisli_migration_plan.md).
+
+- **Run B — Behavioral pods (logic + input + camera).**
+  Reassess K1.3/K1.4/K2.1/K5.1 against real callers first.
+  Land as two touches: **logic touch** — K1.3 (port to Kleisli shape, dt into
+  `<Pod>Context`, `shs::logic` namespace) + K3.2's logic half (silent
+  `continue` sites emit `FsmSignalRejected`/`FsmTickNoRule` facts — house
+  answer decided in Run A) + K2.2's logic half (inline `std::get_if` ladders →
+  named per-intent arrows; gateway = assembly point only).
+  **input touch** — K2.1 (switch monolith → `std::visit` + `if constexpr` over
+  the closed variant, per-intent `apply_*` arrows) + K1.4 (camera
+  absorb-or-fold decision: real camera gateway absorbing the MoveLocal/Look
+  camera math, or fold camera vocabulary into input and delete the stub —
+  no discard-all gateway survives either way) + K5.1 (dual-gateway retirement:
+  port the edge consumer in `command_processor.hpp`, delete the
+  `runtime_state_gateway` wrapper, retire `value_commands.hpp`).
+  DoD: zero switch/action-discriminator dispatch in `*.gateway.hpp`; one
+  public gateway per pod; `value_commands.hpp` gone or banner-deprecated.
+
+- **Run C — Sweep + harden (mechanical + docs + final gates).**
+  Land: **K1.5** (the 8 silent pods — mechanical copies of the Run A shape,
+  vacuous-channel error convention per ERROR_FLOW.md), **K3.1** (failure-rail
+  inventory across all 11 pods → per-pod error enums + ERROR_FLOW.md rows;
+  renderpath's `PathSwapRejectionReason` stays the model), **K3.3**
+  (compensator sweep — per-pod Rule 12 notes or explicit "no multi-step
+  flows"), **K5.2** (grandfathered re-audits: callback FSM verify-then-delete,
+  PluggablePipeline/FrameGraph re-check, AssetRegistry-fork check), **K6.2**
+  (switch-monolith gate — activates when the last gateway dispatch is ported),
+  **K6.3** (silent-drop gate — unblocked by the Run A/B house-answer
+  decision; ONLY if the team picked "events" over "error channel").
+  DoD: `grep 'void <pod>_gateway('` writer shape = 0 in `domains/`; ERROR_FLOW
+  covers every pod's error vocabulary; all drift gates green; every item in
+  W1–W6 ticked or explicitly closed.
+
+Constraints (carried from the 5-run plan, regrouped): K1.2 lands before K6.1
+activates (internal Run A order); K2.1 before any input Kleisli port (same
+touch, Run B); the K3.2 house answer is decided in Run A so Run B copies it
+instead of deciding; K6.3 waits on the K3.2 decision (Run C). Each run is one
+independently committable unit with its own green ctest + linter evidence —
+no big-bang 12-pod migration.
+
+## Run plan (SUPERSEDED 2026-09-17 by the consolidated run plan above; kept for provenance)
 
 - **Run 1:** K1.1 + K1.2 (renderpath pilot) + K4.1 + K4.2 — one pod proves the whole shape (gateway, generation counter, event split) and K6.1's gate gets its grandfather list.
 - **Run 2:** K2.1 + K1.4 (input decomposition + camera decision) + K5.1 — the monolith dies and the dual-gateway retires in one touch; input's camera reach-in gets rehomed here.

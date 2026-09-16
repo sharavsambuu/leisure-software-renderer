@@ -350,6 +350,44 @@ if [[ "${missing_gw}" -eq 0 ]]; then
   echo "[kdba-boundary] OK: every pod gateway exposes its <pod>_gateway entry point"
 fi
 
+# (4) Kleisli-shape gate (K6.1, Run A 2026-09-17): once a pod lands the house
+#     shape (gateway returns a value Step instead of the retired writer
+#     signature `void <pod>_gateway(..., pmr::vector<Event>&)`), the writer
+#     shape must not regrow in that pod, and every pod must be either
+#     Kleisli-migrated or explicitly grandfathered (P1.1 facade-case
+#     precedent). Grandfather list = pods scheduled for Run B/C of the
+#     consolidated run plan (docs/backlog/kdba_conformance_backlog.md).
+#     Reassessment note (2026-09-17 banner): the original K6.1 wording gated
+#     on `inline void reduce_*`, which the §6.6 naming migration already bans
+#     outright — the enforceable regrowth vector is the writer SIGNATURE, so
+#     this gate targets it instead.
+kleisli_migrated_pods=(renderpath)
+kleisli_grandfathered_pods=(camera frame geometry gfx input lighting logic resources scene sky)
+writer_gate=0
+for pod_dir in "${pod_dirs[@]}"; do
+  pod="$(basename "${pod_dir}")"
+  gw_file="${pod_dir}/${pod}.gateway.hpp"
+  [[ -f "${gw_file}" ]] || continue
+  if printf '%s\n' "${kleisli_migrated_pods[@]}" | grep -qx -- "${pod}"; then
+    writer_hits="$(grep -nE "void[[:space:]]+${pod}_gateway[[:space:]]*\(" "${gw_file}" 2>/dev/null || true)"
+    if [[ -n "${writer_hits}" ]]; then
+      echo "[kdba-boundary] FAIL: ${pod} is Kleisli-migrated but still exposes the writer signature (void ${pod}_gateway)"
+      echo "${writer_hits}"
+      failed=1
+      writer_gate=1
+    fi
+  elif printf '%s\n' "${kleisli_grandfathered_pods[@]}" | grep -qx -- "${pod}"; then
+    : # scheduled for Run B/C; the writer shape is tolerated until its run lands
+  else
+    echo "[kdba-boundary] FAIL: pod ${pod} is neither Kleisli-migrated nor grandfathered (register it in check_kdba_boundaries.sh)"
+    failed=1
+    writer_gate=1
+  fi
+done
+if [[ "${writer_gate}" -eq 0 ]]; then
+  echo "[kdba-boundary] OK: Kleisli-shape gate — ${#kleisli_migrated_pods[@]} migrated pod(s) hold the house shape; ${#kleisli_grandfathered_pods[@]} grandfathered for Run B/C"
+fi
+
 # Final enforcement gate (2026-09-16 hardening): every FAIL above must fail
 # the script. Negative-test proven: the tail-section gates (platform IO,
 # entropy, expected-vector, stringy events, phantom flags, event/error catalog
