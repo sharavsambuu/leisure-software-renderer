@@ -77,6 +77,31 @@ Parked 2026-09-15 backlog, absorbed here at the right slot:
 - [ ] **P6.3 Rollback-ready snapshots + time-travel overlay** (BLOCKED 2026-09-16: overlay needs a windowed host; snapshots are plain values already (precondition met). Unblocks on demo restart.) reading the event log.
 - [ ] DoD: hot-swap of all presets, zero frame allocation outside arenas, overlay ships.
 
+## Monadic pipeline amendment (DONE 2026-09-16)
+
+Constitutional adoption of C++23 monadic pipelines + domain-boundary
+semantics, zero-signal-loss: every non-conflicting DOD/VOP law retained;
+conflicts recorded, not overwritten.
+
+- Retained: FCIS, passive PODs, replay, Core 4 file structure, zone direction,
+  event-only cross-domain traffic, SoA/chunked layout, PMR arenas, closed
+  vocabularies, parity harness, pod test-kit guarantees.
+- Changed: Constitution I §10 (C++23 lib baseline + pod-idiomatic subset);
+  Rules 9/11/12 (C++23 values, bounded contexts, saga compensation);
+  Core 4+1 (orchestrator-is-a-pod, god-object ban); §8 tier doctrine
+  (monads on value/error channels, variants on command/event streams);
+  §7.1 granularity law (monad at chunk level); §10 gate list; §12 entry;
+  Appendix A.7 (F-DOD-DDD correspondence + bundled-signature divergence);
+  Constitution III §3 (orchestrator mapping) + §6 (explicit schedulers);
+  glossary §8 (contexts); EVENT_FLOW saga-fact requirements; two new linter
+  gates (per-element `expected` containers, `std::string` event members).
+- Explicitly NOT adopted: bundled `expected<(State,Events)>` reducer
+  signature — campaign evidence (N-events-per-command, conditional emission,
+  silent pods) preserved in §8/A.7; migration needs a replay/event-count spike.
+- Proved: saga spike `tests/vop_saga_tests.cpp` — RED (flag compensator leaks
+  the wallet debit) then GREEN (fact-log compensator restores all). Suite
+  15/15 -> 16/16 in both build trees; linter green including the two new gates.
+
 ## Leftovers (deferred past R5 — tracked, not dropped)
 
 Explicitly NOT scheduled in R1–R5. Each carries its unlock condition;

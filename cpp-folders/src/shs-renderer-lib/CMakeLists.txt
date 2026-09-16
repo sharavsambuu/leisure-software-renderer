@@ -389,6 +389,17 @@ if(SHS_RENDERER_BUILD_TESTS)
     add_executable(shs_renderer_vop_gfx_tests
         tests/vop_gfx_tests.cpp
     )
+
+    add_executable(shs_renderer_vop_saga_tests
+        tests/vop_saga_tests.cpp
+    )
+    target_link_libraries(shs_renderer_vop_saga_tests PRIVATE shs::renderer-values)
+    target_compile_features(shs_renderer_vop_saga_tests PRIVATE cxx_std_23)
+    if(MSVC)
+        target_compile_options(shs_renderer_vop_saga_tests PRIVATE /W4)
+    else()
+        target_compile_options(shs_renderer_vop_saga_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
     target_link_libraries(shs_renderer_vop_gfx_tests PRIVATE shs::renderer-values)
     target_compile_features(shs_renderer_vop_gfx_tests PRIVATE cxx_std_23)
     if(MSVC)
@@ -400,6 +411,14 @@ if(SHS_RENDERER_BUILD_TESTS)
     add_test(
         NAME shs_renderer_vop_gfx_tests
         COMMAND shs_renderer_vop_gfx_tests
+    )
+
+    add_test(
+        NAME shs_renderer_vop_saga_tests
+        COMMAND shs_renderer_vop_saga_tests
+    )
+    set_tests_properties(shs_renderer_vop_saga_tests PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     )
     set_tests_properties(shs_renderer_vop_gfx_tests PROPERTIES
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
