@@ -29,7 +29,7 @@
 |---|---|
 | `PathCompiledEvent` | A recipe compiled valid and became the active plan (carries technique/mode/pass count). |
 | `PathSwapRejectedEvent` | A compile failed; the pod kept the previous plan (carries native `PathSwapRejectionReason`). |
-| `TechniqueSwitchedEvent` | The rendering technique changed (previous → current). |
+| `TechniqueSwitchedEvent` | The rendering technique changed (previous → current), only after an accepted swap. Rejected technique/view/shadow swaps emit only `PathSwapRejectedEvent`, never a switched/changed fact (Run C K3.3 regression). |
 | `ViewCullingModeChangedEvent` | The view-chain culling mode changed (previous → current). K4.2 split (Run A 2026-09-17): was the positional-bool `CullingModeChangedEvent`. |
 | `ShadowCullingModeChangedEvent` | The shadow-chain culling mode changed (previous → current). K4.2 split (Run A 2026-09-17). |
 | `RuntimeToggledEvent` | A runtime flag flipped (flag id + post-toggle value). |
@@ -60,6 +60,9 @@
 | `FsmTickUnstarted` | A Tick arrived while the machine is not started (K3.2 fact, Run B). |
 | `FsmTickNoRule` | A Tick fired no time-gated rule (K3.2 fact, Run B). |
 | `FsmForceUnstarted` | A Force arrived while the machine is not started (K3.2 fact, Run B; a silent drop the audit missed, closed by zero-signal-loss). |
+| `FsmSignalUnchanged` | A signal matched a same-state rule (carries signal id); no exit/enter or time reset. |
+| `FsmForceUnchanged` | Force requested the current state (carries target); no exit/enter or time reset. |
+| `FsmTickUnchanged` | A tick matched a same-state rule; state id is unchanged, but elapsed time still advances. |
 
 ## Silent pods (monostate event vocabulary — emit nothing)
 
@@ -76,6 +79,24 @@ done-flags. A payment/debit-style mutation without a corresponding fact row
 is non-conforming — the wallet-leak shape (restoring only flagged stages
 while a prior debit leaks) is rejected at review even when the error channel
 carries the context.
+
+## Persistence and evolution policy (2026-09-17)
+
+Under Constitution II §11.1, published wire schemas preserve field meanings
+and stable type identifiers within each version. Do not silently repurpose a
+shipped event or encode its `std::variant` index as a persistent identifier.
+Changes require a new schema/type version and either tested migration or an
+explicit unsupported-version rejection. This is compatibility of published
+formats, not a requirement to keep all historical C++ variants forever.
+
+Persistent payloads encode values and stable logical IDs, never raw pointers,
+spans, allocator addresses or object memory. An in-memory handle requires a
+specified reconstruction/remapping policy. Snapshot/command codecs and old-log
+fixtures remain P6.2 work; this catalog does not establish serializability.
+Facts are observations, not necessarily a complete state reconstruction log.
+Snapshot + commands + recorded external inputs is the default replay contract.
+Retention, checkpoint cadence, ordering and unknown-version handling must be
+specified before persistence ships (S5 in the active conformance backlog).
 
 ## Failure-rail mirror
 

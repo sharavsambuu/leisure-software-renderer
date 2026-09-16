@@ -211,12 +211,12 @@ namespace shs::renderpath
             if (try_swap_plan(state, candidate, compiler, caps, events))
             {
                 step.commands_applied += 1;
+                events.push_back(TechniqueSwitchedEvent{ previous, cmd.technique });
             }
             else
             {
                 step.swaps_rejected += 1;
             }
-            events.push_back(TechniqueSwitchedEvent{ previous, cmd.technique });
         }
 
         inline void apply_set_view_culling(
@@ -239,12 +239,12 @@ namespace shs::renderpath
             if (try_swap_plan(state, candidate, compiler, caps, events))
             {
                 step.commands_applied += 1;
+                events.push_back(ViewCullingModeChangedEvent{ previous, cmd.mode });
             }
             else
             {
                 step.swaps_rejected += 1;
             }
-            events.push_back(ViewCullingModeChangedEvent{ previous, cmd.mode });
         }
 
         inline void apply_set_shadow_culling(
@@ -267,12 +267,12 @@ namespace shs::renderpath
             if (try_swap_plan(state, candidate, compiler, caps, events))
             {
                 step.commands_applied += 1;
+                events.push_back(ShadowCullingModeChangedEvent{ previous, cmd.mode });
             }
             else
             {
                 step.swaps_rejected += 1;
             }
-            events.push_back(ShadowCullingModeChangedEvent{ previous, cmd.mode });
         }
 
         inline void apply_set_runtime_toggle(

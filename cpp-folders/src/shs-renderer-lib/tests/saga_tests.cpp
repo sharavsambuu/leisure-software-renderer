@@ -6,8 +6,8 @@
 
 // Saga compensation spike (constitutional amendment Task 9, Rule 12).
 // Minimal two-stage saga: reserve stock, then charge wallets. Facts are
-// closed-enum payloads. RED phase: the compensator below uses ad hoc
-// done-flags (the rejected shape) — the rollback test MUST fail on wallets.
+// closed-enum payloads. The original RED phase used ad hoc done-flags and
+// leaked a prior wallet debit; reverse-log compensation below pins the fix.
 namespace
 {
     struct SagaItem

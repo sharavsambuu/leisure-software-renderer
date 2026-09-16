@@ -7,6 +7,7 @@
 #include "shs/domains/scene/scene.contract.hpp"
 #include "shs/domains/scene/scene.gateway.hpp"
 #include "shs/domains/pod_test_kit.hpp"
+#include "identity_step_test.hpp"
 
 // Headless tests for the scene pod (R5b P3.6: projection pins + identity).
 // Links only shs::renderer-values + glm. Store mutation is exercised only
@@ -90,6 +91,9 @@ int main()
 
     run("make_render_item", test_make_render_item());
     run("projection_round_trip", test_projection_round_trip());
+    run("identity_step_summary", identity_step_summary<shs::scene::SceneState,
+        shs::scene::SceneCommand, shs::scene::SceneContext,
+        shs::scene::SceneEvent, shs::scene::SceneStep>(shs::scene::scene_gateway));
     run("identity_stable", test_identity_stable());
     run("replay_deterministic", test_replay_deterministic());
 

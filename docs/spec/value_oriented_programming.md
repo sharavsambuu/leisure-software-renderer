@@ -135,7 +135,7 @@ To keep one authority per provision:
     operating over a shared set of Domain PODs, bound by one ubiquitous
     language (one error-enum family, one event vocabulary). Stages compose synchronously as Kleisli chains
     (`.and_then()` / `.transform()` / `.or_else()`) — including across contexts inside a saga orchestrator pod (typed gateway); direct POD writes across boundaries stay forbidden (Rule 8.1).
-12. **KDBA Saga (Transient Context vs Persistent Invariants)**: Multi-domain workflows execute speculatively in-memory over a transient `SagaContext` (stack/arena, in-flight tokens only) and commit atomically on 100% success; on failure the transient evaporates and persistent PODs stay pristine. Persistent PODs carry zero phantom flags (`is_pending`, `is_locked`, `retry_count`). Validate-before-mutate is preferred; the `.or_else()` compensator consumes the emitted receipt/fact — never ad hoc done-flags. A workflow that takes payment and then aborts without a refunding fact violates this rule (the wallet-leak shape).
+12. **KDBA Saga (Transient Context vs Persistent Invariants)**: Multi-domain workflows execute speculatively in-memory over a transient `SagaContext` (stack/arena, in-flight tokens only) and commit atomically on 100% success; on failure the transient evaporates and persistent PODs stay pristine. Persistent PODs carry zero phantom flags (`is_pending`, `is_locked`, `retry_count`). Validate-before-mutate is preferred; the `.or_else()` compensator consumes the emitted receipt/fact — never ad hoc done-flags. A workflow that takes payment and then aborts without a refunding fact violates this rule (the wallet-leak shape). Before a production multi-domain workflow ships, test failure at every stage, reverse-order compensation, repeated compensation, and preservation of earlier facts. This atomicity requirement applies to an explicitly staged saga, not an ordinary sequential command batch. External effects cannot be undone by discarding transient memory: their edge protocol must specify idempotency keys, acknowledgement, retry, and compensation-failure handling; irreversible effects require an explicit recovery policy. The in-memory saga test is not proof of distributed atomicity.
 
 ---
 
@@ -550,6 +550,78 @@ The automated CI boundary checker (`cpp-folders/src/shs-renderer-lib/tools/check
 4. **Hardware Portability**: The simulation center is 100% decoupled from graphics backends, allowing seamless swapping between the multi-threaded software rasterizer and modern GPU-driven Vulkan compute pipelines.
 
 ---
+
+### 11.1 Future-domain scalability contracts (amendment, 2026-09-17)
+
+These provisions refine Rules 4, 5, 7, 8 and 12; they do not claim that a
+codec, large-state implementation, host scheduler or production saga exists.
+Implementation and acceptance evidence are tracked in the active conformance
+backlog under S1–S6. Constitution III's governing clarification still applies.
+
+**Determinism and explicit randomness (P4.4).** A stochastic domain must own
+its RNG state, seedable through an explicit command, or use a specified
+counter-based stream keyed by recorded inputs. Mutable RNG state owned by the
+pod is legal; hidden global/thread-local generators and ambient entropy are
+not. Record the algorithm/version, seed, stream identity, state or counter,
+draw order, and mapping from integers to samples. Snapshot RNG progress, not
+just its initial seed. Parallel scheduling must not change draw assignment.
+Known-answer and snapshot/resume tests are required before the first stochastic
+pod ships. A seed alone does not promise cross-platform floating-point parity:
+declare and test the supported numeric/compiler/backend envelope under Rule 4;
+any narrower guarantee needs an explicit amendment, not an undocumented waiver.
+Explicit durations and timestamps are values, not ambient clock reads. The
+existing P4.3 regex gate is a heuristic and can overmatch legal spellings; it
+is neither semantic purity analysis nor proof of deterministic helper calls.
+
+**Large state and legal optimization (Rules 5/7; §7).** Value semantics do
+not require whole-table copies per command. Domain-owned persistent SoA,
+chunked exclusive output spans, preallocated staging, generational handles and
+validated deltas are legal when rejection leaves committed state unchanged.
+A memory resource must outlive every borrower; transient arenas cannot back
+persistent snapshots. Bound capacities, exhaustion policy, reclamation, and
+peak retained memory explicitly; a monotonically growing arena is not a
+scalability solution. Benchmark before choosing a representation. Parallel
+results merge in a documented stable order. Optimize layout and kernels, not
+by granting another domain writes or hiding effects inside a gateway.
+
+**External IO and streaming (Rules 3/8).** Edges turn device/network/file
+observations into explicit intents or completion inputs; gateways decide and
+emit facts, while edges execute resolved effects. The host owns ingestion
+cadence, ordering and bounded queues. Each streaming protocol must specify
+sequence/tick assignment, capacity, backpressure or overflow policy, duplicate
+handling and observability of loss. Coalescing is legal only with documented
+semantic equivalence and tests; it must not silently discard required facts.
+Device clocks and arrival order that affect decisions are replay inputs.
+
+**Simulation time (Rule 4, default for new real-time hosts).** Use fixed-step
+simulation with a host-side accumulator and variable-rate presentation.
+Record logical tick, timestep configuration, input-to-tick assignment and
+ordering. Specify catch-up limits and overload handling; presentation
+interpolation must not mutate authoritative simulation state. No universal
+frequency is mandated. Audio sample clocks, offline rendering and domains
+requiring variable steps may use an explicit domain-specific time contract,
+with recorded deltas and tests. This is a prospective policy, not a claim
+that existing hosts have been converted.
+
+**Replay and schema compatibility (Rules 4/8).** Value types and generational
+handles alone do not define a portable codec. Persist explicit field encodings,
+stable schema/type identifiers, versions, ordering, required asset/configuration
+identities, and supported numeric assumptions. Never serialize raw object
+bytes, pointers, allocator identities or variant ordinals as the protocol.
+Published versions preserve their meaning: evolve through a new version/type
+with a tested migration or explicit unsupported-version rejection. In-memory
+variants need not accumulate every historical alternative. Snapshot plus
+commands and recorded external inputs is the default replay model; facts alone
+are not assumed sufficient to reconstruct state. See the event catalog's
+compatibility policy. Bound log/checkpoint retention and test decoding failures.
+
+**Evidence-based amendments (§2.2).** Changes to these laws require a concrete
+use case, conflict statement, measured or regression-test evidence, explicit
+scope, and synchronized authoritative law, catalog and gate updates. Record
+which former provision is superseded and why (Run C K1.5 is the precedent).
+Backlog scheduling does not amend law; an exception is not an unreviewed gate
+allowlist. New generic machinery is justified by a tested domain need, not
+by an imagined requirement.
 
 ## 12. Adoption Snapshot
 

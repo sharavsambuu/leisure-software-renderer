@@ -13,7 +13,7 @@
              Unstarted/Rejected facts, no-rule matches emit NoRule facts,
              invalid ids emit rejections. Legacy parity: priority
              strictly-greater wins (first max on ties), dt clamped >= 0,
-             same-state force is a documented silent no-op (legacy mirror),
+             same-state signal/force/tick emit Unchanged facts (Run C),
              unknown ids reject observably instead of returning false.
 */
 
@@ -71,23 +71,23 @@ namespace shs::logic
             bool                      use_event,
             float                     elapsed)
         {
+            // Candidate filter written as one eligibility predicate (K6.3:
+            // gateways carry no consume-and-skip `continue` — the same law
+            // reads uniformly on rule-search loops).
             const FsmTransition<TStateId>* selected          = nullptr;
             int                            selected_priority = std::numeric_limits<int>::min();
             for (const auto& tr : desc.transitions)
             {
-                if (tr.from != state.current) continue;
-                if (use_event)
+                const bool matches_channel = use_event
+                    ? (tr.on_event != 0 && tr.on_event == event_id)
+                    : !(tr.after_s < 0.0f || elapsed < tr.after_s);
+                if (tr.from == state.current && matches_channel)
                 {
-                    if (tr.on_event == 0 || tr.on_event != event_id) continue;
-                }
-                else
-                {
-                    if (tr.after_s < 0.0f || elapsed < tr.after_s) continue;
-                }
-                if (!selected || tr.priority > selected_priority)
-                {
-                    selected          = &tr;
-                    selected_priority = tr.priority;
+                    if (!selected || tr.priority > selected_priority)
+                    {
+                        selected          = &tr;
+                        selected_priority = tr.priority;
+                    }
                 }
             }
             return selected;
@@ -99,7 +99,7 @@ namespace shs::logic
             const TStateId&                to,
             std::pmr::vector<FsmEvent<TStateId>>& events)
         {
-            if (state.current == to) return false; // documented silent no-op (legacy mirror)
+            if (state.current == to) return false; // caller emits the command's Unchanged fact
             events.push_back(FsmStateExited<TStateId>{state.current});
             enter_state(state, to, events);
             return true;
@@ -157,7 +157,8 @@ namespace shs::logic
             }
             else
             {
-                step.facts_observed += 1; // same-state rule: documented legacy no-op
+                step.facts_observed += 1;
+                events.push_back(FsmSignalUnchanged{cmd.event_id});
             }
         }
 
@@ -187,7 +188,8 @@ namespace shs::logic
             }
             else
             {
-                step.facts_observed += 1; // same-state force: documented legacy no-op
+                step.facts_observed += 1;
+                events.push_back(FsmForceUnchanged<TStateId>{cmd.to});
             }
         }
 
@@ -216,7 +218,10 @@ namespace shs::logic
                 events.push_back(FsmTickNoRule{});
                 return;
             }
-            apply_transition(state, rule->to, events);
+            if (!apply_transition(state, rule->to, events))
+            {
+                events.push_back(FsmTickUnchanged{});
+            }
         }
     } // namespace fsm_detail
 

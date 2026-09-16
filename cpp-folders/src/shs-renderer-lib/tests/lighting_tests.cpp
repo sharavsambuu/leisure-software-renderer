@@ -6,6 +6,7 @@
 #include "shs/domains/lighting/lighting.contract.hpp"
 #include "shs/domains/lighting/lighting.gateway.hpp"
 #include "shs/domains/pod_test_kit.hpp"
+#include "identity_step_test.hpp"
 
 // Headless tests for the lighting pod (R4 P3.5: shading-term pins + identity).
 // Links only shs::renderer-values + glm.
@@ -61,6 +62,9 @@ int main()
 
     ok = test_lambert_known_answers() && ok;
     ok = test_shade_composition() && ok;
+    ok = identity_step_summary<shs::lighting::LightingState,
+        shs::lighting::LightingCommand, shs::lighting::LightingContext,
+        shs::lighting::LightingEvent, shs::lighting::LightingStep>(shs::lighting::lighting_gateway) && ok;
     ok = test_identity_stable() && ok;
     ok = test_replay_deterministic() && ok;
 

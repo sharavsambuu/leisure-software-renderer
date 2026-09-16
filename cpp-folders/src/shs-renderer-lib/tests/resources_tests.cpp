@@ -6,6 +6,7 @@
 #include "shs/domains/resources/resources.contract.hpp"
 #include "shs/domains/resources/resources.gateway.hpp"
 #include "shs/domains/pod_test_kit.hpp"
+#include "identity_step_test.hpp"
 
 // Headless tests for the resources pod (R5a P3.7: data-type + registry pins).
 // Links only shs::renderer-values + glm. Registry API is exercised as-is
@@ -72,6 +73,9 @@ int main()
 
     ok = test_data_basics() && ok;
     ok = test_registry_round_trip() && ok;
+    ok = identity_step_summary<shs::resources::ResourcesState,
+        shs::resources::ResourcesCommand, shs::resources::ResourcesContext,
+        shs::resources::ResourcesEvent, shs::resources::ResourcesStep>(shs::resources::resources_gateway) && ok;
     ok = test_identity_stable() && ok;
     ok = test_replay_deterministic() && ok;
 

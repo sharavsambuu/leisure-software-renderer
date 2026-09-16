@@ -152,6 +152,43 @@ namespace
         if (e4.size() != 1 || !std::holds_alternative<shs::logic::FsmSignalNoRule>(e4[0])) return false;
         return true;
     }
+    bool test_same_state_facts()
+    {
+        Desc desc{};
+        desc.states = {Id::Red};
+        desc.transitions = {
+            {Id::Red, Id::Red, k_timer, -1.0f, 0},
+            {Id::Red, Id::Red, 0, 0.0f, 0},
+        };
+        State s{};
+        std::pmr::monotonic_buffer_resource arena{4096};
+        run(s, desc, {Action{shs::logic::FsmStart<Id>{Id::Red}}}, arena);
+        s.state_time = 2.0f;
+        const State before = s;
+        const std::vector<Action> commands{
+            shs::logic::FsmSignal<Id>{k_timer},
+            shs::logic::FsmForce<Id>{Id::Red},
+            shs::logic::FsmTick{},
+        };
+        std::pmr::vector<Event> events{&arena};
+        const auto step = shs::logic::logic_gateway(
+            s, std::span<const Action>{commands}, desc, Context{0.5f}, events);
+        if (step != shs::logic::FsmStep{1, 2, 0} || events.size() != 3) return false;
+        if (events[0] != Event{shs::logic::FsmSignalUnchanged{k_timer}}) return false;
+        if (events[1] != Event{shs::logic::FsmForceUnchanged<Id>{Id::Red}}) return false;
+        if (events[2] != Event{shs::logic::FsmTickUnchanged{}}) return false;
+        if (!s.started || s.current != before.current || s.state_time != 2.5f) return false;
+
+        State replay = before;
+        std::pmr::vector<Event> replay_events{&arena};
+        const auto replay_step = shs::logic::logic_gateway(
+            replay, std::span<const Action>{commands}, desc, Context{0.5f}, replay_events);
+        if (replay != s || replay_events != events || replay_step != step) return false;
+        events.clear();
+        const auto empty_step = shs::logic::logic_gateway(
+            s, std::span<const Action>{}, desc, Context{0.5f}, events);
+        return empty_step == shs::logic::FsmStep{} && events.empty() && s == replay;
+    }
 } // namespace
 
 int main()
@@ -169,6 +206,7 @@ int main()
     run("replay_deterministic", test_replay_deterministic());
     run("empty_log_stable", test_empty_log_stable());
     run("zero_signal_loss", test_zero_signal_loss());
+    run("same_state_facts", test_same_state_facts());
 
     if (!ok)
     {

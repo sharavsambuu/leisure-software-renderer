@@ -361,8 +361,8 @@ fi
 #     on `inline void reduce_*`, which the §6.6 naming migration already bans
 #     outright — the enforceable regrowth vector is the writer SIGNATURE, so
 #     this gate targets it instead.
-kleisli_migrated_pods=(renderpath logic input)
-kleisli_grandfathered_pods=(camera frame geometry gfx lighting resources scene sky)
+kleisli_migrated_pods=(camera frame geometry gfx input lighting logic renderpath resources scene sky)
+kleisli_grandfathered_pods=()
 writer_gate=0
 for pod_dir in "${pod_dirs[@]}"; do
   pod="$(basename "${pod_dir}")"
@@ -385,7 +385,39 @@ for pod_dir in "${pod_dirs[@]}"; do
   fi
 done
 if [[ "${writer_gate}" -eq 0 ]]; then
-  echo "[kdba-boundary] OK: Kleisli-shape gate — ${#kleisli_migrated_pods[@]} migrated pod(s) hold the house shape; ${#kleisli_grandfathered_pods[@]} grandfathered for Run B/C"
+  echo "[kdba-boundary] OK: Kleisli-shape gate — ${#kleisli_migrated_pods[@]}/${#pod_dirs[@]} pod(s) hold the house shape; ${#kleisli_grandfathered_pods[@]} grandfathered"
+fi
+
+# (5) Switch-monolith gate (K6.2, Run C): no `switch` over a command/action
+#     discriminator inside a pod gateway — dispatch is std::visit + if
+#     constexpr over the closed variant (Rule 2 as amended). Pure enum
+#     MAPPINGS inside a gateway (renderpath's technique_mode_for /
+#     map_rejection / apply_runtime_toggle) are not action dispatch and stay
+#     legal; the discriminator pattern (switch over .type/.kind) is what is
+#     banned.
+gw_files=()
+while IFS= read -r f; do gw_files+=("${f}"); done < <(find "${domains_dir}" -name '*.gateway.hpp' | sort)
+monolith_hits="$(grep -nE 'switch[[:space:]]*\([[:space:]]*[A-Za-z_]+(\.type|\.kind)[[:space:]]*\)' "${gw_files[@]}" 2>/dev/null || true)"
+if [[ -n "${monolith_hits}" ]]; then
+  echo "[kdba-boundary] FAIL: switch over a command/action discriminator in a gateway (Rule 2 amended — use std::visit over the closed variant)"
+  echo "${monolith_hits}"
+  failed=1
+else
+  echo "[kdba-boundary] OK: no switch-monolith dispatch in pod gateways (K6.2)"
+fi
+
+# (6) Silent-drop gate (K6.3, Run C): the team answered K3.2 with FACTS — a
+#     consumed command never emits nothing. The consume-and-skip shape
+#     (`continue;` inside a gateway) is therefore banned: a named arrow emits
+#     its fact, or returns (the documented legacy mirrors live inside arrows,
+#     never in the assembly loop).
+drop_hits="$(grep -n 'continue;' "${gw_files[@]}" 2>/dev/null || true)"
+if [[ -n "${drop_hits}" ]]; then
+  echo "[kdba-boundary] FAIL: consume-and-skip 'continue' in a gateway (K3.2 house answer is FACTS — emit the fact or return from the arrow)"
+  echo "${drop_hits}"
+  failed=1
+else
+  echo "[kdba-boundary] OK: no silent-drop 'continue' in pod gateways (K6.3)"
 fi
 
 # Final enforcement gate (2026-09-16 hardening): every FAIL above must fail

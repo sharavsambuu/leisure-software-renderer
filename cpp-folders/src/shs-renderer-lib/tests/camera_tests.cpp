@@ -7,6 +7,7 @@
 #include "shs/domains/camera/camera.contract.hpp"
 #include "shs/domains/camera/camera.gateway.hpp"
 #include "shs/domains/pod_test_kit.hpp"
+#include "identity_step_test.hpp"
 
 // Headless tests for the camera pod (R5a P3.3: builder pins + identity).
 // Links only shs::renderer-values + glm.
@@ -101,6 +102,9 @@ int main()
     run("follow_known_answers", test_follow_known_answers());
     run("light_camera_fit", test_light_camera_fit());
     run("view_chain", test_view_chain());
+    run("identity_step_summary", identity_step_summary<shs::camera::CameraState,
+        shs::camera::CameraCommand, shs::camera::CameraContext,
+        shs::camera::CameraEvent, shs::camera::CameraStep>(shs::camera::camera_gateway));
     run("identity_stable", test_identity_stable());
     run("replay_deterministic", test_replay_deterministic());
 

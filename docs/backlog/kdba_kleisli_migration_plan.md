@@ -100,9 +100,10 @@ log.
 
 - Logic `FsmTick` no longer carries dt (context-owned); a batch of N ticks
   advances N × context.dt.
-- Logic same-state force/signal rules remain a documented silent no-op
-  (legacy mirror, stated in the gateway header) — the one deliberate
-  exception to zero-signal-loss, pending a Run C K3.3 decision.
+- Run C closes the logic same-state exception: signal, force, and tick emit
+  `FsmSignalUnchanged`, `FsmForceUnchanged`, and `FsmTickUnchanged` respectively.
+  No exit/enter pair or time reset occurs; ticks still advance elapsed time.
+  `test_same_state_facts` pins event payloads, Step counts, replay, and empty batches.
 - Input `RuntimeCommand` equality semantics unchanged (variant of ==-able
   intents); factory names/signatures unchanged, so edge ICommand subclasses
   needed no edits.
@@ -119,9 +120,11 @@ carried in `check_kdba_boundaries.sh`.
 
 ## Semantics preserved (behavior-neutral notes)
 
-- `TechniqueSwitchedEvent` / `*CullingModeChangedEvent` are still emitted
-  after an attempted swap **even when the swap was rejected** — pre-existing
-  semantics, unchanged by Run A (the rejection fact records the outcome).
-  A future Run C (K3.3) may revisit this as a double-fact question.
+- **Run C correctness fix (K3.3):** `TechniqueSwitchedEvent` and
+  `*CullingModeChangedEvent` now follow accepted swaps only. Rejected swaps
+  append only `PathSwapRejectedEvent` and preserve recipe/plan/generation.
+  Focused red-to-green tests cover rejection, event prefixes, replay, empty
+  batches, and accepted retries. This intentionally corrects Run A's retained
+  attempted-swap facts; it is not a behavior-neutral signature migration.
 - `plan_generation` counts *successful installs* (0 = none, 1 after the
   first, +1 per swap); rejections and runtime toggles do not bump it.

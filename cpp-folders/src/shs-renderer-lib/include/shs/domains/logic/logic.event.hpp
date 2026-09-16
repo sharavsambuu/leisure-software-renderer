@@ -91,6 +91,30 @@ namespace shs::logic
         bool operator==(const FsmForceUnstarted&) const = default;
     };
 
+    // K3.3 same-state facts (Run C): the last silent no-op closed. A consumed
+    // command that resolves to the state it is already in emits an *Unchanged
+    // fact (the Run A K3.2 house answer, mirrored): no exit/enter pair, one
+    // observation, every consumption visible.
+    struct FsmSignalUnchanged
+    {
+        uint32_t event_id = 0;  // signal matched a rule back to the current state
+
+        bool operator==(const FsmSignalUnchanged&) const = default;
+    };
+
+    struct FsmTickUnchanged
+    {
+        bool operator==(const FsmTickUnchanged&) const = default;
+    };
+
+    template <typename TStateId>
+    struct FsmForceUnchanged
+    {
+        TStateId to{};
+
+        bool operator==(const FsmForceUnchanged&) const = default;
+    };
+
     template <typename TStateId>
     using FsmEvent = std::variant<
         FsmStarted<TStateId>,
@@ -102,7 +126,10 @@ namespace shs::logic
         FsmSignalNoRule,
         FsmTickUnstarted,
         FsmTickNoRule,
-        FsmForceUnstarted<TStateId>>;
+        FsmForceUnstarted<TStateId>,
+        FsmSignalUnchanged,
+        FsmTickUnchanged,
+        FsmForceUnchanged<TStateId>>;
 
     inline const char* fsm_event_name_traffic(const FsmEvent<TrafficLight>& ev)
     {
@@ -115,10 +142,13 @@ namespace shs::logic
         if (std::holds_alternative<FsmSignalNoRule>(ev))                     return "signal_no_rule";
         if (std::holds_alternative<FsmTickUnstarted>(ev))                    return "tick_unstarted";
         if (std::holds_alternative<FsmTickNoRule>(ev))                       return "tick_no_rule";
-        return "force_unstarted";
+        if (std::holds_alternative<FsmForceUnstarted<TrafficLight>>(ev))     return "force_unstarted";
+        if (std::holds_alternative<FsmSignalUnchanged>(ev))                  return "signal_unchanged";
+        if (std::holds_alternative<FsmTickUnchanged>(ev))                    return "tick_unchanged";
+        return "force_unchanged";
     }
 
-    static_assert(std::variant_size_v<FsmEvent<TrafficLight>> == 10,
+    static_assert(std::variant_size_v<FsmEvent<TrafficLight>> == 13,
         "logic event vocabulary changed: update name table + EVENT_FLOW.md");
 } // namespace shs::logic
 

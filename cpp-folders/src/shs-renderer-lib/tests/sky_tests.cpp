@@ -7,6 +7,7 @@
 #include "shs/domains/sky/sky.contract.hpp"
 #include "shs/domains/sky/sky.gateway.hpp"
 #include "shs/domains/pod_test_kit.hpp"
+#include "identity_step_test.hpp"
 
 // Headless tests for the sky pod (R5a P3.9: procedural-sky pins + identity).
 // Links only shs::renderer-values + glm.
@@ -78,6 +79,9 @@ int main()
     ok = test_procedural_known_answers() && ok;
     ok = test_sun_disk() && ok;
     ok = test_sample_deterministic() && ok;
+    ok = identity_step_summary<shs::sky::SkyState,
+        shs::sky::SkyCommand, shs::sky::SkyContext,
+        shs::sky::SkyEvent, shs::sky::SkyStep>(shs::sky::sky_gateway) && ok;
     ok = test_identity_stable() && ok;
     ok = test_replay_deterministic() && ok;
 

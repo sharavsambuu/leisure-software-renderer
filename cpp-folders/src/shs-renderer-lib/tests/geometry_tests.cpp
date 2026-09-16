@@ -7,6 +7,7 @@
 #include "shs/domains/geometry/geometry.contract.hpp"
 #include "shs/domains/geometry/geometry.gateway.hpp"
 #include "shs/domains/pod_test_kit.hpp"
+#include "identity_step_test.hpp"
 
 // Headless tests for the geometry pod (R4 P3.4: TBN operator pins + identity).
 // Links only shs::renderer-values + glm.
@@ -93,6 +94,9 @@ int main()
     ok = test_frame_tilted() && ok;
     ok = test_perturb_identity() && ok;
     ok = test_decode_corners() && ok;
+    ok = identity_step_summary<shs::geometry::GeometryState,
+        shs::geometry::GeometryCommand, shs::geometry::GeometryContext,
+        shs::geometry::GeometryEvent, shs::geometry::GeometryStep>(shs::geometry::geometry_gateway) && ok;
     ok = test_identity_stable() && ok;
     ok = test_replay_deterministic() && ok;
 

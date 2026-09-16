@@ -6,6 +6,7 @@
 #include "shs/domains/gfx/gfx.contract.hpp"
 #include "shs/domains/gfx/gfx.gateway.hpp"
 #include "shs/domains/pod_test_kit.hpp"
+#include "identity_step_test.hpp"
 
 // Headless tests for the gfx pod (R5b P3.8: handle/buffer pins + identity).
 // Links only shs::renderer-values + glm. Registry allocation is exercised
@@ -73,6 +74,9 @@ int main()
 
     run("handle_validity", test_handle_validity());
     run("pixel_buffer", test_pixel_buffer());
+    run("identity_step_summary", identity_step_summary<shs::gfx::GfxState,
+        shs::gfx::GfxCommand, shs::gfx::GfxContext,
+        shs::gfx::GfxEvent, shs::gfx::GfxStep>(shs::gfx::gfx_gateway));
     run("identity_stable", test_identity_stable());
     run("replay_deterministic", test_replay_deterministic());
 

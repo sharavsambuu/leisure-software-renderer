@@ -60,6 +60,36 @@ root-level as a cross-pod aggregate); the `docs/outdated/` and `docs/education/k
 archives (never rewritten); and the ~11 `exps-gpu-renderer` demos that include the long-dead
 `shs/input/...` path (pre-existing breakage, not caused by this migration).
 
+## Run C close-out (2026-09-17)
+
+- K1.5 reassessed: identity gateways are legal, not signature defects. Retain
+  their existing plain Step summaries as explicitly tested per-batch counts;
+  no universal return-type requirement or vacuous error enum is introduced.
+  All eight identity suites pin counts, state/event preservation, replay, and
+  empty batches. Input has real intents and its own Step/fact tests, not the
+  monostate helper. The current 11-pod shape register is a drift guard only.
+- K3.1/K3.3: per-pod transition/compensation inventory is in
+  [ERROR_FLOW.md](../pods/ERROR_FLOW.md). Renderpath is the sole closed error
+  family; logic rejects with typed facts. All three renderpath setters now
+  emit change facts only on accepted swaps, with red-to-green rejection,
+  prefix, replay, empty-batch, and retry regression coverage. Domain rejection
+  safety is not an allocation-exception or general undo guarantee.
+- K3.2: same-state logic signal/force/tick facts are emitted and tested.
+- K5.2: source scan found no callback FSM consumers or AssetRegistry class
+  forks; legacy FSM headers remain deleted. PluggablePipeline/FrameGraph are
+  retained in execution: the former owns the latter and core tests still
+  exercise the pipeline. Gateway value summaries do not replace executor
+  ownership/lifetimes; P6.1 remains the retirement/rebuild prerequisite.
+- K6.2/K6.3: temporary-copy probes for discriminator switches and silent
+  `continue;` each exit 1 at the intended gate; an uncatalogued error-enum
+  probe also exits 1. Baseline/restored copies exit 0. These regex gates
+  recognize known syntax, not all semantic dispatch or lost-fact defects.
+- Validation: clean build succeeded in `cpp-folders/build`; after the final
+  renderpath fix, full rebuild and unfiltered CTest passed **16/16**, including
+  the boundary checker. No Run C commit was made. P6.1–P6.3 remain blocked;
+  P4.4 remains standing. This reassessed close-out supersedes the historical
+  signature-only/vacuous-error Run C plan below.
+
 ## Audit summary (2026-09-16)
 
 Checked against KDBA laws: Kleisli house signature (`expected<Step{NextState, Events}, ClosedEnumError>`), switch-monolith ban (Rule 2 as amended — gateway = gateway, never `switch(action.type)`), zero-signal-loss, closed error vocabularies + failure-rail catalog, phantom/validity-flag ban, named-field events (no positional bools), one public gateway per pod, purity/edge laws.
@@ -74,7 +104,7 @@ Checked against KDBA laws: Kleisli house signature (`expected<Step{NextState, Ev
 - [x] **K1.2 renderpath** — DONE 2026-09-17 (Run A): `renderpath_gateway` now returns `RenderPathStep{commands_applied, noops_observed, swaps_rejected, plan_generation}` by value; events stay on the caller's arena (A.7 divergence honored); transition bodies moved to named per-intent `apply_*` arrows (K2.2 renderpath half); `try_swap_plan` returns its outcome over the unchanged per-command `expected` rail. **Reassessment verdict (banner):** the audit's literal "`expected` at the batch rim" was REFUTED — every real failure is a compile rejection absorbed by the per-command rail and materialized as `PATH_SWAP_REJECTED` (previous plan kept), so a batch-level error enum would be invented/vacuous (ERROR_FLOW non-vacuity law); evidence + decision in the plan doc. Unlocks the L1 leftover from the frozen backlog as stated.
 - [x] **K1.3 logic** — DONE 2026-09-17 (Run B): `logic_gateway` + the full `Fsm*` vocabulary moved to `shs::logic` (zero external consumers); dt moved from `FsmTick` to `LogicContext` (one dt per batch, input-parity); gateway returns `FsmStep{commands_applied, facts_observed, commands_rejected}` (batch rim infallible per the Run A decision — no invented error enum); dispatch is `std::visit` + `if constexpr` over named `apply_*` arrows; silent `continue` drops now emit facts (K3.2). — was: `logic_gateway` (logic.gateway.hpp:86): writer shape + `FsmInputs` empty + dt lives on `FsmTick` action instead of Inputs (L125-129) while input pod takes dt from Inputs — inconsistent time placement across pods. Port unifies: time in Inputs, gateway returns `expected<FsmStep, FsmError>`; silent `continue` drops become observable (K3.2). Namespace `shs` -> `shs::logic`.
 - [x] **K1.4 camera** — RESOLVED BY REASSESSMENT 2026-09-17 (Run B; verdict in `kdba_kleisli_migration_plan.md`): the "discard-all gateway" charge is vacuous — the camera pod's command/event vocabularies are `variant<monostate>` (§6.1-legal empty vocabularies, frame-pod precedent; identity pinned by kit tests), so no real signal can ever be dropped. Its contract seam (`CameraRig`, builders) is live code, so fold-delete would break real consumers; the input pod's camera math over the rig inside its OWN `RuntimeState` aggregate is intra-pod, not cross-pod mutation. Decision: neither absorb nor fold — full absorption waits for an orchestrator host (same blocker family as P6.1-P6.3); Run C's K1.5 sweep ports the identity shape mechanically. DoD met in the reassessed form: no gateway with a non-empty vocabulary discards commands. — was: `camera_gateway` (camera.gateway.hpp:32-42) discards ALL arguments (`(void)state; (void)actions; ...`): a gateway that silently eats every command, the trivial worst-case zero-signal-loss violation. Decide: real camera gateway absorbing the camera math that currently lives in input's MoveLocal/Look handling (input.gateway.hpp:45-68 reaches directly into `state.camera` — cross-vocabulary coupling), or fold camera vocabulary into the input pod and delete the stub.
-- [ ] **K1.5 The 8 silent pods (frame, geometry, gfx, lighting, sky, scene, resources, camera-vocab)** — all are identity shells with the writer signature (evidence: grep `inline void reduce_` = 12 hits, all `void ... pmr::vector<X>&`). Mechanical port to the Kleisli shape; their vacuous error channel is `void`-error or a single `None`-style closed enum until real failure modes are designed (failure-rail law: an error enum with no real values is worse than none — ERROR_FLOW.md documents this convention). DoD: grep `inline void reduce_` in domains = 0; all still kit-green; ERROR_FLOW.md updated per drift gate.
+- [x] **K1.5 The 8 identity pods (frame, geometry, gfx, lighting, sky, scene, resources, camera)** — RESOLVED BY REASSESSMENT 2026-09-17. Identity is legal; retain plain Step batch counts with explicit tests in every suite (including replay and empty batches). No invented error enum and no universal signature rule. See Run C close-out above.
 
 ## W2 — Kill the switch monoliths (Rule 2 as amended)
 
@@ -83,9 +113,9 @@ Checked against KDBA laws: Kleisli house signature (`expected<Step{NextState, Ev
 
 ## W3 — Error-channel + zero-signal-loss conformance
 
-- [ ] **K3.1 Failure-rail inventory per pod** — walk all 11 pods: for each transition, classify infallible / fallible-with-closed-error / currently-silent. Output: per-pod error enums (named `*Error`/`*Rejection`/`*Reason` per ERROR_FLOW.md law) + ERROR_FLOW.md rows. Seed data: renderpath already has the only real rail (`PathSwapRejectionReason`, 6 values, mapped 1:1 from the compiler enum at renderpath.gateway.hpp:55-67 — this stays the model). DoD: ERROR_FLOW.md covers every pod's error vocabulary; drift gate green.
-- [x] **K3.2 Kill silent signal drops in logic** — `continue` sites consume a command and emit NOTHING: `!state.started` on signal (logic.gateway.hpp:111), no-rule-match on signal (L113) and on tick (L131). Under zero-signal-loss these are invisible failures. Emit `FsmSignalRejected`/`FsmTickNoRule` facts or route through the gateway error channel — pick ONE house answer and mirror it in renderpath's silent no-op sites (renderpath.gateway.hpp:155, 166, 175: same-technique/same-mode commands return silently; document the decision as a constitution note, not folklore). **DONE 2026-09-17 (Runs A+B):** the house answer is **FACTS**. Renderpath half (Run A): the three silent no-op sites emit `TechniqueUnchangedEvent` / `ViewCullingUnchangedEvent` / `ShadowCullingUnchangedEvent`. Logic half (Run B): unstarted/no-rule consumptions emit `FsmSignalRejected` / `FsmSignalNoRule` / `FsmTickUnstarted` / `FsmTickNoRule` / `FsmForceUnstarted` (the force-while-unstarted drop the audit missed is closed too); pinned by `test_unchanged_facts` + `test_zero_signal_loss`. The one remaining documented exception: logic's same-state force/signal rule (legacy mirror, gateway header).
-- [ ] **K3.3 Compensator sweep (Rule 12)** — only the saga spike test exercises compensation today. Once W1 lands, audit each multi-step transition for invertibility: every state mutation inside a gateway must have a recorded compensator fact or be provably idempotent. DoD: per-pod compensator note in ERROR_FLOW.md or an explicit "no multi-step flows" entry.
+- [x] **K3.1 Failure-rail inventory per pod** — DONE 2026-09-17: all 11 pods classified in ERROR_FLOW.md; only real error vocabulary retained; drift gate and temporary-copy negative probe green. Historical scope: — walk all 11 pods: for each transition, classify infallible / fallible-with-closed-error / currently-silent. Output: per-pod error enums (named `*Error`/`*Rejection`/`*Reason` per ERROR_FLOW.md law) + ERROR_FLOW.md rows. Seed data: renderpath already has the only real rail (`PathSwapRejectionReason`, 6 values, mapped 1:1 from the compiler enum at renderpath.gateway.hpp:55-67 — this stays the model). DoD: ERROR_FLOW.md covers every pod's error vocabulary; drift gate green.
+- [x] **K3.2 Kill silent signal drops in logic** — `continue` sites consume a command and emit NOTHING: `!state.started` on signal (logic.gateway.hpp:111), no-rule-match on signal (L113) and on tick (L131). Under zero-signal-loss these are invisible failures. Emit `FsmSignalRejected`/`FsmTickNoRule` facts or route through the gateway error channel — pick ONE house answer and mirror it in renderpath's silent no-op sites (renderpath.gateway.hpp:155, 166, 175: same-technique/same-mode commands return silently; document the decision as a constitution note, not folklore). **DONE 2026-09-17 (Runs A+B):** the house answer is **FACTS**. Renderpath half (Run A): the three silent no-op sites emit `TechniqueUnchangedEvent` / `ViewCullingUnchangedEvent` / `ShadowCullingUnchangedEvent`. Logic half (Run B): unstarted/no-rule consumptions emit `FsmSignalRejected` / `FsmSignalNoRule` / `FsmTickUnstarted` / `FsmTickNoRule` / `FsmForceUnstarted` (the force-while-unstarted drop the audit missed is closed too); pinned by `test_unchanged_facts` + `test_zero_signal_loss`. Run C closes the remaining same-state signal/force/tick exception with typed `*Unchanged` facts; `test_same_state_facts` pins payloads, counters, elapsed time, replay, and empty batches.
+- [x] **K3.3 Compensator sweep (Rule 12)** — DONE 2026-09-17: per-pod audit and explicit scope limits in ERROR_FLOW.md; false renderpath change facts fixed and regression-tested; saga full rollback green. Historical scope: — only the saga spike test exercises compensation today. Once W1 lands, audit each multi-step transition for invertibility: every state mutation inside a gateway must have a recorded compensator fact or be provably idempotent. DoD: per-pod compensator note in ERROR_FLOW.md or an explicit "no multi-step flows" entry.
 
 ## W4 — State-shape hardening
 
@@ -95,20 +125,71 @@ Checked against KDBA laws: Kleisli house signature (`expected<Step{NextState, Ev
 ## W5 — Gateway uniqueness + legacy seams
 
 - [x] **K5.1 input dual-gateway retirement** — DONE 2026-09-17 (Run B): `runtime_state_gateway` deleted from `value_commands.hpp` (now the pure command-emitter header with a retirement banner); lib consumers ported to the single public gateway (`edge/command_processor.hpp` drives `shs::input::input_gateway` directly; `core_tests.cpp` + `input_tests.cpp` updated). DoD met: single grep-visible gateway per pod. — was: input pod exposes BOTH `input_gateway` (house signature) and `runtime_state_gateway` (legacy by-value signature, value_commands.hpp:35-43, consumed by edge/command_processor.hpp:53). One pod, one public Kleisli gateway. Port the edge consumer, delete the legacy wrapper.
-- [ ] **K5.2 Grandfathered-architecture sweep** — parked items whose unlock conditions this directive supersedes: legacy callback StateMachine beside the value FSM (logic — "zero consumers" per P3.10; verify then delete), PluggablePipeline/FrameGraph retention re-check (P5.2 kept them pending P6.1; re-audit if W1 changes the calculus), AssetRegistry-class stale forks (deleted in P5.1; confirm none regrew).
+- [x] **K5.2 Grandfathered-architecture sweep** — DONE 2026-09-17: callback headers deleted with no source consumers, no AssetRegistry class forks, execution pipeline/graph retained with live consumers pending P6.1 (see close-out evidence). Historical scope: — parked items whose unlock conditions this directive supersedes: legacy callback StateMachine beside the value FSM (logic — "zero consumers" per P3.10; verify then delete), PluggablePipeline/FrameGraph retention re-check (P5.2 kept them pending P6.1; re-audit if W1 changes the calculus), AssetRegistry-class stale forks (deleted in P5.1; confirm none regrew).
 
 ## W6 — Mechanical drift gates (checker)
 
 - [x] **K6.1 Kleisli-shape gate** — DONE 2026-09-17 (Run A): gate landed in `check_kdba_boundaries.sh` §(4). **Reassessment verdict (banner):** the original wording — gate `inline void reduce_*` — was obsolete (§6.6 already bans those tokens outright), so the gate targets the real regrowth vector, the writer SIGNATURE: FAIL on `void <pod>_gateway(` in a Kleisli-migrated pod, FAIL on any pod missing from the migrated/grandfathered registers (migrated: renderpath; grandfathered: the 10 Run B/C pods — P1.1 facade-case mechanism). — was: once the FIRST pod lands its gateway (K1.2), FAIL on any NEW `inline void reduce_*` added outside the migrated-pod list (grandfather list carried in the script, shs/pipeline facade-case precedent — same mechanism as P1.1). Prevents writer-shape regrowth during the phased migration.
-- [ ] **K6.2 switch-monolith gate** — FAIL on `switch` over action discriminators in `*.gateway.hpp`; lands with W2 completion (audit grep already proven).
-- [ ] **K6.3 Silent-drop gate** — grep-gate the logic silent-drop pattern once K3.2 fixes it — ONLY if the team picks "events" over "error channel"; a gate on an undecided design choice is premature. Standing until K3.2 decides.
+- [x] **K6.2 switch-monolith gate** — DONE 2026-09-17; baseline and negative temporary-copy checks passed (see close-out). — FAIL on `switch` over action discriminators in `*.gateway.hpp`; lands with W2 completion (audit grep already proven).
+- [x] **K6.3 Silent-drop gate** — DONE 2026-09-17; fact-based house answer and negative temporary-copy check verified (see close-out). — grep-gate the logic silent-drop pattern once K3.2 fixes it — ONLY if the team picks "events" over "error channel"; a gate on an undecided design choice is premature. Standing until K3.2 decides.
 
 ## Rolled forward from the frozen backlog (tracked, not dropped)
 
 - [ ] **P6.1 PATH_COMPILED-driven executor rebuilds** — BLOCKED (needs a live demo host; unchanged).
-- [ ] **P6.2 Replay harness (cross-session codec + CI replay)** — BLOCKED on demo host; K1.5 strengthens the pod-level replay story (Step values are serializable by construction).
+- [ ] **P6.2 Replay harness (cross-session codec + CI replay)** — host integration remains BLOCKED on demo host; headless codec/fixture preparation can proceed independently (S5). K1.5 strengthens pod-level replay tests, not portable serialization: explicit codecs, versions and reconstruction rules remain unbuilt.
 - [ ] **P6.3 Rollback snapshots + time-travel overlay** — BLOCKED on windowed host; K4.1's generation counter is a precondition contributor.
-- [ ] **P4.4 Seeded determinism contract (STANDING)** — still no stochastic pods; first stochastic pod authors the contract.
+- [ ] **P4.4 Seeded determinism implementation (STANDING)** — baseline contract adopted in Constitution II §11.1; first stochastic pod selects/version-pins its algorithm and proves S1. No stochastic implementation is claimed complete.
+
+## Future-domain scalability preparedness (2026-09-17)
+
+Authority: [Constitution II §11.1](../spec/value_oriented_programming.md#111-future-domain-scalability-contracts-amendment-2026-09-17)
+and Rule 12; event compatibility is mirrored in EVENT_FLOW.md. These are new
+follow-ups, not reopened Run C migration items. Laws are adopted; the unchecked
+implementation items below are not complete. Use existing PMR/SoA/span and test
+facilities; do not build a general framework before a measured need exists.
+
+- [ ] **S1 Seeded determinism proof (P4.4)** — Trigger: first stochastic pod.
+  Pin algorithm/version, integer-to-sample mapping, seed/state/counter and
+  stable stream assignment. DoD: known-answer vectors, snapshot/resume parity,
+  replay and scheduling-order tests within a declared numeric/platform envelope.
+  Existing P4.3 entropy gate remains; no duplicate gate. Add targeted positive
+  and negative linter fixtures when refining its broad regex matches.
+- [ ] **S2 Large-state headless spike** — Trigger: before the first high-volume
+  mutable domain; available independently of a windowed host. Exercise 10k and
+  100k entities in persistent SoA with preallocated chunk output/delta staging.
+  Compare sparse/dense changes against a simple reference; measure allocations,
+  bytes copied, latency and peak retained memory (report hardware/build settings,
+  no invented universal time threshold). DoD: stable old snapshots, rejected
+  batch preservation, stale-handle detection, arena reset/lifetime safety,
+  capacity exhaustion and reclamation tests; deterministic results across chunk
+  sizes/worker counts. Do not promote the disposable probe into shared machinery
+  until the evidence justifies it.
+- [ ] **S3 Streaming edge contract** — Trigger: first asynchronous IO/streaming
+  domain. Specify bounded queue capacity, order/tick assignment, backpressure,
+  loss reporting, duplicate handling and completion intents. DoD: burst/overflow,
+  delayed/duplicate delivery and recorded-input replay tests; any coalescing
+  proves semantic equivalence and preserves required facts.
+- [ ] **S4 Time policy integration** — Trigger: next real-time host integration
+  (P6.1). Default adopted: fixed simulation step, host accumulator, variable-rate
+  presentation; domain-specific deviations require an explicit contract.
+  DoD: identical authoritative state for the same logical inputs under differing
+  presentation rates, pause/resume, catch-up limits and overload; record step
+  configuration and input-to-tick assignment. Host rollout remains blocked.
+- [ ] **S5 Replay persistence and retention (P6.2/P6.3)** — Trigger: before
+  shipping a persisted session format. Headless preparation need not wait for
+  GPU/window availability. Specify snapshot + command + external-input codec,
+  stable IDs, version migration/rejection, asset/config identities, ordering,
+  checkpoint cadence and bounded log/storage retention. DoD: round trips,
+  historical fixtures, unknown versions, truncated/corrupt logs, handle remapping,
+  and checkpoint/resume parity. Catalog completeness is not a codec test.
+  Host replay and time-travel overlay remain blocked under P6.
+- [ ] **S6 Production saga proof (Rule 12)** — Trigger: first multi-domain
+  transaction. Preserve the existing in-memory saga regression; add failure at
+  each stage, reverse-order compensation, repeated compensation and prefix
+  preservation tests. For external effects, also specify/test idempotency,
+  acknowledgement, retry, compensation failure and irreversible-effect recovery.
+  DoD: persistent invariants survive each tested failure; do not describe
+  external compensation as atomic rollback. Extract helpers only when reused.
 
 ## Consolidated run plan (2026-09-17) — 3 runs
 

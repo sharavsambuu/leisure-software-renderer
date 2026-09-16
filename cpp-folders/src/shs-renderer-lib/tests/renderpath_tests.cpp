@@ -189,6 +189,93 @@ namespace
         return true;
     }
 
+    // A rejected culling change must not announce a mutation that never happened.
+    bool test_rejected_view_culling_has_no_changed_fact()
+    {
+        shs::RenderPathCompiler compiler{};
+        auto caps = make_sw_caps();
+        caps.supports_occlusion_query = false;
+        shs::renderpath::RenderPathPodState state{};
+        state.recipe = make_forward_recipe("forward_sw");
+        state.plan = compiler.compile(state.recipe, caps);
+        if (!state.plan.valid) return false;
+        state.plan_generation = 1;
+        const auto previous = state;
+
+        std::pmr::monotonic_buffer_resource arena{4096};
+        std::pmr::vector<shs::renderpath::RenderPathEvent> events{&arena};
+        const std::vector<shs::renderpath::RenderPathCommand> commands{
+            shs::renderpath::SetViewCullingModeIntent{
+                shs::RenderPathCullingMode::FrustumAndOcclusion}
+        };
+        const auto step = shs::renderpath::renderpath_gateway(
+            state, commands, compiler, caps, events);
+        if (state != previous) return false;
+        if (step != shs::renderpath::RenderPathStep{0, 0, 1, 1}) return false;
+        if (events.size() != 1)
+        {
+            std::fprintf(stderr, "[renderpath-tests] rejected view culling emitted %zu facts; expected only rejection\n",
+                events.size());
+            return false;
+        }
+        const auto* rejected = std::get_if<shs::renderpath::PathSwapRejectedEvent>(&events.front());
+        return rejected && rejected->reason == shs::renderpath::PathSwapRejectionReason::OcclusionUnsupported;
+    }
+
+    // Every swap handler must preserve the caller's prefix and reject without
+    // a false change fact. A later accepted retry must still install normally.
+    bool test_rejected_swap_facts_and_recovery()
+    {
+        using namespace shs::renderpath;
+        shs::RenderPathCompiler compiler{};
+        const auto caps = make_sw_caps();
+        auto unavailable = caps;
+        unavailable.has_backend = false;
+        RenderPathPodState initial{};
+        initial.recipe = make_forward_recipe("forward_sw");
+        initial.plan = compiler.compile(initial.recipe, caps);
+        if (!initial.plan.valid) return false;
+        initial.plan_generation = 1;
+        const std::vector<RenderPathCommand> commands{
+            SetRenderingTechniqueIntent{shs::RenderPathRenderingTechnique::ForwardPlus},
+            SetViewCullingModeIntent{shs::RenderPathCullingMode::None},
+            SetShadowCullingModeIntent{shs::RenderPathCullingMode::None}
+        };
+        for (const auto& command : commands)
+        {
+            auto state = initial;
+            auto replay = initial;
+            std::pmr::monotonic_buffer_resource arena{4096};
+            std::pmr::vector<RenderPathEvent> events{&arena};
+            events.push_back(PathSwapRejectedEvent{PathSwapRejectionReason::CompileInvalid});
+            auto replay_events = events;
+            const std::span<const RenderPathCommand> batch{&command, 1};
+            const auto step = renderpath_gateway(state, batch, compiler, unavailable, events);
+            if (state != initial || step != RenderPathStep{0, 0, 1, 1}) return false;
+            if (events.size() != 2 || events.front() != replay_events.front()) return false;
+            const auto* rejected = std::get_if<PathSwapRejectedEvent>(&events.back());
+            if (!rejected || rejected->reason != PathSwapRejectionReason::BackendUnavailable) return false;
+            if (renderpath_gateway(replay, batch, compiler, unavailable, replay_events) != step
+                || replay != state || replay_events != events) return false;
+            if (renderpath_gateway(state, {}, compiler, unavailable, events) != RenderPathStep{0, 0, 0, 1}
+                || state != initial || events != replay_events) return false;
+            const auto retry = renderpath_gateway(state, batch, compiler, caps, events);
+            if (retry != RenderPathStep{1, 0, 0, 2} || events.size() != 4
+                || !std::holds_alternative<PathCompiledEvent>(events[2])) return false;
+            const bool changed = std::visit([&](const auto& cmd) {
+                using T = std::decay_t<decltype(cmd)>;
+                if constexpr (std::is_same_v<T, SetRenderingTechniqueIntent>)
+                    return std::holds_alternative<TechniqueSwitchedEvent>(events.back());
+                else if constexpr (std::is_same_v<T, SetViewCullingModeIntent>)
+                    return std::holds_alternative<ViewCullingModeChangedEvent>(events.back());
+                else
+                    return std::holds_alternative<ShadowCullingModeChangedEvent>(events.back());
+            }, command);
+            if (!changed) return false;
+        }
+        return true;
+    }
+
     // Runtime toggles mutate runtime state; never trigger a recompile.
     bool test_runtime_toggles()
     {
@@ -389,6 +476,8 @@ int main()
     ok = check("technique_switching", test_technique_switching) && ok;
     ok = check("culling_mode_changes", test_culling_mode_changes) && ok;
     ok = check("rejection_keeps_previous_plan", test_rejection_keeps_previous_plan) && ok;
+    ok = check("rejected_view_culling_has_no_changed_fact", test_rejected_view_culling_has_no_changed_fact) && ok;
+    ok = check("rejected_swap_facts_and_recovery", test_rejected_swap_facts_and_recovery) && ok;
     ok = check("runtime_toggles", test_runtime_toggles) && ok;
     ok = check("unchanged_facts", test_unchanged_facts) && ok;
     ok = check("plan_generation_semantics", test_plan_generation_semantics) && ok;
