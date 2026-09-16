@@ -69,3 +69,6 @@ cpp-folders/**/*.bmp
 cpp-folders/**/*.log
 
 cpp-folders/build_det/
+
+# Hermes agent session artifacts (plans, runs) — local only, never tracked
+.hermes/
