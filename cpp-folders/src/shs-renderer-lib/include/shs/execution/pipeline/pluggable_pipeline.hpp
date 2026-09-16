@@ -1,6 +1,15 @@
 #pragma once
 
 /*
+    DEPRECATION (R5b P5.2 audit): legacy orchestration seam. New path
+    configuration must go through the renderpath Domain Pod
+    (shs/domains/renderpath/); this facade retires once PATH_COMPILED events
+    drive executor rebuilds (P6.1). Until then it stays tested (vop_core_tests)
+    and supported — do not extend it.
+*/
+
+
+/*
     SHS РЕНДЕРЕР САН
 
     ФАЙЛ: pluggable_pipeline.hpp

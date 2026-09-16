@@ -66,7 +66,7 @@ Parked 2026-09-15 backlog, absorbed here at the right slot:
 ## P5 — Convergence sweep (Run 4 close-out)
 
 - [x] **P5.1 Suffix completion (edge migration)** — DONE 2026-09-16: edge-classified headers moved to pod edge/ subfolders (scene system+processors, gfx rt_registry, resources registry+importers, input command queue; 22 live includes rewired); broken AssetRegistry fork DELETED (git rm, recoverable); Core 4 completeness holds 11/11. Full per-header suffixing of the remaining ~70 value headers is intentional non-work (they are single-role values needing no suffix). — multi-role headers split into *.contract|plan|edge.hpp (e.g. scene/system.hpp -> scene.edge.hpp).
-- [ ] **P5.2 Legacy seam retirement** — audit frame_graph.hpp / pluggable_pipeline.hpp for removal once renderpath pod covers use.
+- [x] **P5.2 Legacy seam retirement (audited: RETAIN)** — DONE 2026-09-16: PluggablePipeline (1036 lines) serves only vop_core_tests; FrameGraph only it. Removal condition (renderpath pod covering executor rebuilds) is FALSE pending P6.1, so both stay tested + supported with deprecation banners pointing at the pod. Deleting tested code with no replacement was rejected. — audit frame_graph.hpp / pluggable_pipeline.hpp for removal once renderpath pod covers use.
 - [ ] **P5.3 Linter-docs sync** — S6.4 table <-> tree agreement, glossary rows point at final homes, law citations valid (no dangling Rule N), pluggability lint (extensions resolve via open registries, no core edits).
 - [ ] DoD: zero old-path includes; glossary + S6.4 match tree exactly (CI-verified).
 
