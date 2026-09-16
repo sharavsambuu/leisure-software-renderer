@@ -80,7 +80,6 @@ include_directories(${stb_SOURCE_DIR}/)
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/game/include)
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/engine/include)
 
 
 # --- Main executable: Hello3DTetris (domain pod architecture) ---
@@ -123,7 +122,6 @@ add_executable(Hello3DTetris
 if (LUA_FOUND)
     target_include_directories(Hello3DTetris PRIVATE ${LUA_INCLUDE_DIR})
     target_link_libraries(Hello3DTetris PRIVATE ${LUA_LIBRARIES})
-    target_link_libraries(Hello3DTetris PRIVATE shs::engine)
     target_compile_definitions(Hello3DTetris PRIVATE TETRIS_LUA_ENABLED=1)
 endif()
 
@@ -239,7 +237,7 @@ if (WIN32)
     target_compile_definitions(tetris_step_tests PRIVATE SDL_MAIN_HANDLED)
 endif()
 target_compile_features(tetris_step_tests PRIVATE cxx_std_20)
-target_link_libraries(tetris_step_tests PRIVATE SDL2::SDL2 glm::glm shs::engine)
+target_link_libraries(tetris_step_tests PRIVATE SDL2::SDL2 glm::glm)
 target_include_directories(tetris_step_tests PRIVATE ${_TETRIS_VCPKG_INSTALLED_DIR}/include)
 if (MSVC)
     target_compile_options(tetris_step_tests PRIVATE /W4)
@@ -286,7 +284,6 @@ add_executable(tetris_goal_bridge_tests
 set_property(TARGET tetris_goal_bridge_tests PROPERTY INCLUDE_DIRECTORIES
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/game/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/engine/include
     ${HelloSHSRenderer_SOURCE_DIR}
     ${LUA_INCLUDE_DIR}
     ${ASSIMP_INCLUDE_DIR}

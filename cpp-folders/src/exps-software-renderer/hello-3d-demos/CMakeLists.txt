@@ -70,11 +70,6 @@ include_directories(${CMAKE_CURRENT_LIST_DIR}/snake)
 include_directories(${CMAKE_CURRENT_LIST_DIR}/../../shs-software-renderer-lib/include)
 
 # --- Include all demo subdirectories (each is self-contained with its own CMakeLists.txt) ---
-# --- Shared engine skeleton (P5): header-only fixed-step loop etc -------
-# NOTE (2026-09 reorg): demos moved one level deeper (exps-software-renderer/),
-# so libs/engine is now three levels up, not two.
-add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/../../../libs/engine shs_engine.build)
-
 add_subdirectory(fps)          # fps/CMakeLists.txt  → HelloFPSDemo
 add_subdirectory(plane)        # plane/CMakeLists.txt → HelloPlaneDemo  
 add_subdirectory(tetris)       # tetris/CMakeLists.txt → Hello3DTetris
