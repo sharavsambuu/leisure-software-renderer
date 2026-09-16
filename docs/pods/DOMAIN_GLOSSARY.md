@@ -72,3 +72,23 @@ source of truth for naming/factory/transform conventions.
 > + `flat_map.hpp` (generational column table / node-free keyed lookup).
 > Demos and pods must not define private copies; keyed hot lookups use
 > `FlatMap`, and dense column walks target `SoaTable::column<I>()` spans.
+
+## 7. Pod homes (Core 4 complete 11/11 — hardening campaign R1–R5b)
+
+Each pod: `<pod>.contract/action/event/reducer.hpp` (+ `plan.hpp` where the
+litmus demands; edge code under `<pod>/edge/`). Event catalog:
+`docs/pods/EVENT_FLOW.md` (drift-gated by `check_vop_boundaries.sh`).
+
+| Pod | Home | Notes |
+| :--- | :--- | :--- |
+| `renderpath` | `shs/domains/renderpath/` | First formal pod; reducer wraps the compiler; invalid ⇒ keep + reject. |
+| `input` | `shs/domains/input/` (+ `edge/` queue) | `reduce_input` canonical; legacy `reduce_runtime_state` delegates. |
+| `frame` | `shs/domains/frame/` | Empty vocabs (monostate); identity reducer, pinned. |
+| `geometry` | `shs/domains/geometry/` | TBN operator ingested (rung 08); culling runtimes migrate later. |
+| `lighting` | `shs/domains/lighting/` | Lambert terms ingested (rung 08); culling runtimes migrate later. |
+| `camera` | `shs/domains/camera/` | Pure builders; bridge in `execution/platform/`. |
+| `resources` | `shs/domains/resources/` (+ `edge/` stores) | Asset data spine; registries are edge candidates. |
+| `sky` | `shs/domains/sky/` | Value models; `ISkyModel` virtual flagged for replacement. |
+| `logic` | `shs/domains/logic/` | Table-driven value FSM beside the legacy callback class. |
+| `scene` | `shs/domains/scene/` (+ `edge/` stores) | Item values + projection spine; stores are edge candidates. |
+| `gfx` | `shs/domains/gfx/` (+ `edge/` registry) | Handles + pixel buffers; `RTRegistry` is an edge candidate. |
