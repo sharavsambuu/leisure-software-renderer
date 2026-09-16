@@ -63,3 +63,9 @@ done-flags. A payment/debit-style mutation without a corresponding fact row
 is non-conforming — the wallet-leak shape (restoring only flagged stages
 while a prior debit leaks) is rejected at review even when the error channel
 carries the context.
+
+## Failure-rail mirror
+
+Closed error enums (the `expected` error channel and rejection facts) are
+cataloged in `docs/pods/ERROR_FLOW.md` under the same drift gate —
+rejections are facts too.

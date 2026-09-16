@@ -66,7 +66,7 @@ Concretely:
    vocabulary), `*.reducer.hpp` (pure transition), `*.event.hpp` (closed event
    vocabulary). Components are never omitted; an empty vocabulary is an explicit
    closed type (Constitution II §6.1/6.2).
-2. **Kleisli arrows are the only state transitions (KDBA, 2026-09-16)** — every transition is a composition of atomic arrows `A -> expected<B, DomainError>` via `.and_then()` / `.transform()` / `.or_else()`; switch-case reducer monoliths are forbidden. Deterministic (Rule 4.1); side effects exist only at execution edges.
+2. **Kleisli arrows are the only state transitions (KDBA, 2026-09-16)** — every transition is a composition of atomic arrows `A -> expected<B, DomainError>` via `.and_then()` / `.transform()` / `.or_else()`; switch-case reducer monoliths are forbidden. Deterministic (Rule 4.1); side effects exist only at execution edges. Terminology (2026-09-16): a pod's **reducer** is its *public Kleisli gateway* — the single assembly point of the arrow chain returning `expected<Step{NextState, Events}, ClosedEnumError>` (§6.2 `*.reducer.hpp`); the word never denotes a `switch(action.type)` function, which is precisely the forbidden monolith.
 3. **Cross-domain interaction is Commands in, Events out (KDBA gateway)** (Rule 8.1, Rule 11) — no direct POD writes across boundaries; sagas compose sub-domain Kleisli gateways synchronously inside an orchestrator pod, with immutable Domain Events as egress.
 4. **Physical layout mirrors the law** — domain logic lives in `shs/domains/<pod>/`
    (library) or `domains/<pod>/` (demos); execution edges live in the edge zone
@@ -114,7 +114,7 @@ To keep one authority per provision:
 1. **Explicit Structs by Value**: All planning, simulation, and query APIs must accept immutable inputs and return explicit value structs by value.
 2. **Side-Effect Free Center**: Simulation reducers, AI evaluators, and batch planners must be pure functions with zero hidden globals, zero singleton reads, and zero dynamic heap allocations.
 3. **Pre-Resolved Edge Inputs**: Side-effect execution edges (GPU submission, Audio DAC, Disk I/O) must consume pre-resolved, complete execution plans; they must not recalculate planning decisions or query simulation state internally.
-4. **Deterministic Reduction (Rule 4.1)**: Kleisli stages/arrows (`verify_*`, `apply_*`, composed pipelines) must be strictly deterministic. Identical initial state snapshots and identical action spans must produce identical resulting snapshots across all target platforms. Non-deterministic factors (RNG seeds, system clocks, hardware inputs) must be tokenized at input edges and passed in explicitly.
+4. **Deterministic Reduction (Rule 4.1)**: Kleisli stages/arrows (`verify_*`, `apply_*`, composed pipelines) must be strictly deterministic. Identical initial state snapshots and identical action spans must produce identical resulting snapshots across all target platforms. Non-deterministic factors (RNG seeds, system clocks, hardware inputs) must be tokenized at input edges and passed in explicitly. The frame loop's pod drain order (orchestrator mailbox order, Appendix A.6) is itself part of the determinism contract: fixed, named per bounded context, and versioned like any other replay-relevant input.
 5. **Dual-Tier Memory Separation (Rule 5.1)**:
    - **Transient Frame Arena (`FrameMemoryResource`)**: A linear bump allocator reset in $\mathcal{O}(1)$ at frame boundaries. Used exclusively for per-frame command streams, active render batches, temporary polygon clips, and UI draw tokens.
    - **Persistent State Storage (`std::pmr::get_default_resource()`)**: Used for world snapshots, player stats, and persistent entity tables that survive across frame boundaries.
@@ -432,7 +432,6 @@ The atomic Kleisli arrow `A -> expected<B, DomainError>` is the sole unit of log
 - Introduce incrementally in Run 2 (GPU-free demo mode) and the Task 3 pure
   planner extraction — both are leaf-level plumbing where it pays; prototype as
   a small reversible spike (e.g. `try_swap_plan`) before committing.
-- `std::expected` (C++23 / `tl::expected`): For fallible planning and resource loading; planners must return explicit error types instead of crashing or throwing exceptions.
 
 ### KDBA saga law (amendment, 2026-09-16 — supersedes compensation note)
 
@@ -471,6 +470,7 @@ The automated CI boundary checker (`cpp-folders/src/shs-renderer-lib/tools/check
 - [x] Reject any `*.reducer.hpp` containing `mutable`, `static` local variables, or `std::mutex`.
 - [x] Validate that all planning passes require registered descriptor hints and return explicit execution plans by value.
 - [x] KDBA Kleisli doctrine (§8): atomic `A -> expected<B, DomainError>` arrows via `.and_then()` / `.transform()` / `.or_else()`; phantom flags in `*.contract.hpp` FAIL; per-element `expected` in hot loops FAIL (§7.1 granularity); `std::string` members in `*.event.hpp` facts FAIL (closed payloads only, Rule 12); switch-case sites in `*.reducer.hpp` are INFO-tracked on the monolith-decomposition backlog (lib: renderpath ×3 closed-enum dispatches, input ×1 `action.type` — next breaking-parts phase).
+- [x] KDBA error-rail catalog (2026-09-16 hardening): every closed error enum (`*Error` / `*Rejection` / `*Reason`) declared in `domains/*/*.event.hpp` or `*.contract.hpp` must appear in `docs/pods/ERROR_FLOW.md` — drift FAILs exactly like the `EVENT_FLOW.md` event gate (Rule 11: one error family per bounded context; Rule 12: compensators consume cataloged rejection facts).
 
 ---
 

@@ -258,4 +258,33 @@ if [[ "${drift}" -eq 0 ]]; then
   echo "[vop-boundary] OK: EVENT_FLOW.md covers all pod events"
 fi
 
+# KDBA error-rail catalog (Constitution II §8 + Rule 12, hardening 2026-09-16):
+# every closed error enum (*Error|*Rejection|*Reason) declared in a pod
+# event/contract header must appear in docs/pods/ERROR_FLOW.md — the failure
+# rail is a first-class vocabulary too (Rule 11: one error family per context).
+error_names="$(grep -rhE 'enum class [A-Za-z0-9_]*(Error|Rejection|Reason)\b' \
+  $(find "${domains_dir}" \( -name '*.event.hpp' -o -name '*.contract.hpp' \) | sort) 2>/dev/null \
+  | grep -oE '[A-Za-z0-9_]*(Error|Rejection|Reason)\b' | sort -u)"
+error_doc="${lib_root}/../../../docs/pods/ERROR_FLOW.md"
+edrift=0
+for err in ${error_names}; do
+  if ! grep -q "${err}" "${error_doc}" 2>/dev/null; then
+    echo "[vop-boundary] FAIL: error enum ${err} missing from docs/pods/ERROR_FLOW.md"
+    edrift=1
+    failed=1
+  fi
+done
+if [[ "${edrift}" -eq 0 ]]; then
+  echo "[vop-boundary] OK: ERROR_FLOW.md covers all pod error enums"
+fi
+
+# Final enforcement gate (2026-09-16 hardening): every FAIL above must fail
+# the script. Negative-test proven: the tail-section gates (platform IO,
+# entropy, expected-vector, stringy events, phantom flags, event/error catalog
+# drift) previously printed FAIL but exited 0 — CI-binding now.
+if [[ "${failed}" -ne 0 ]]; then
+  echo "[vop-boundary] boundary violations detected"
+  exit 1
+fi
+
 echo "[vop-boundary] all checks passed"
