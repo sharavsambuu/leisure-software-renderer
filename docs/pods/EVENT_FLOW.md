@@ -55,3 +55,11 @@
 (`ResourcesEvent`), `sky` (`SkyEvent`), `scene` (`SceneEvent`), `gfx`
 (`GfxEvent`). Their reducers are identity transitions; the first real
 transition in any of them adds a row to a table above in the same commit.
+## Saga fact requirements (Rule 12)
+
+Every mutation a compensator may need to undo must exist here as a fact row
+*before* the saga ships: the compensator consumes this catalog, never ad hoc
+done-flags. A payment/debit-style mutation without a corresponding fact row
+is non-conforming — the wallet-leak shape (restoring only flagged stages
+while a prior debit leaks) is rejected at review even when the error channel
+carries the context.

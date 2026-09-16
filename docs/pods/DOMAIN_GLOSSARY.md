@@ -92,3 +92,17 @@ litmus demands; edge code under `<pod>/edge/`). Event catalog:
 | `logic` | `shs/domains/logic/` | Table-driven value FSM beside the legacy callback class. |
 | `scene` | `shs/domains/scene/` (+ `edge/` stores) | Item values + projection spine; stores are edge candidates. |
 | `gfx` | `shs/domains/gfx/` (+ `edge/` registry) | Handles + pixel buffers; `RTRegistry` is an edge candidate. |
+## 8. Bounded contexts & orchestrators (amendment, 2026-09-16)
+
+A bounded context (Constitution II Rule 11) is a suite of cohesive pipelines
+over shared PODs with one error/event language. Current contexts:
+
+| Context | PODs | Error / event language |
+| :--- | :--- | :--- |
+| Rendering | `renderpath`, `frame`, `geometry`, `lighting`, `camera`, `resources`, `sky`, `scene`, `gfx` | `PathSwapRejectionReason` + per-pod `*Event` (catalog: `EVENT_FLOW.md`) |
+| Session flow | `input`, `logic` | `InputEvent`, `FsmEvent` (+ rejections as facts) |
+
+Stages inside one context may compose synchronously as monadic chains;
+traffic across contexts is event-only through the shell. A multi-context
+workflow adds a saga orchestrator that is itself a pod (Core 4+1, §6.1);
+its compensator consumes the fact log per Rule 12.
