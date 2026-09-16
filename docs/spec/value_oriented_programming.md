@@ -124,7 +124,7 @@ To keep one authority per provision:
 6. **Data-Oriented Memory Layout (SoA) (Rule 6.1)**: Hot-path data (physics bodies, bot tables, particles, light grids) must use Structure of Arrays (SoA) and generational index handles (`uint32_t`), avoiding pointer-chasing and Array of Structures (AoS).
 7. **Wait-Free Span Contract (Rule 7.1)**: Multi-threaded jobs must be pure functions that take an immutable `std::span<const T>` and write exclusively to a non-overlapping `std::span<U>`. No mutexes, atomics, or spinlocks are allowed inside worker threads.
 8. **Discrete Event Sourcing (Rule 8.1)**: Gameplay domains must never directly invoke methods or mutate state in other domains. Cross-domain interaction must occur exclusively through immutable **Discrete Event Values** (`CombatEvent`, `QuestEvent`, `InventoryEvent`) emitted by pure reducers and consumed by downstream domain reducers or execution edges.
-9. **C++20 Value Abstractions**: Core APIs must leverage standard value types (`std::span`, `std::string_view` with `constexpr` hashing, `std::variant`, `std::pmr`, `std::expected`) to enforce safety and zero allocation overhead.
+9. **C++23 Value Abstractions**: Core APIs must leverage standard value types (`std::span`, `std::string_view` with `constexpr` hashing, `std::variant`, `std::pmr`, `std::expected`) to enforce safety and zero allocation overhead. The library baselines C++23 (Constitution I §10); the pod-idiomatic subset is defined in §8.
 10. **Universal Domain Pod Law (Constitution §2.1)**: Every stateful subsystem — in
     `shs-renderer-lib` **and** in every demo — is a Domain Pod with the
     mandatory Core 4 (`*.contract.hpp`, `*.action.hpp`, `*.reducer.hpp`,
@@ -133,6 +133,19 @@ To keep one authority per provision:
     `domains/<pod>/` (demos); edges live in the edge zone. Compliance is
     mechanically verified: the structure linter checks Core 4 completeness and zone
     include-direction in CI (roadmap P0.5/P5).
+11. **Bounded Contexts**: A bounded context is a suite of cohesive pipelines
+    operating over a shared set of Domain PODs, bound by one ubiquitous
+    language (one error-enum family, one event vocabulary). Stages inside a
+    single context may compose synchronously as monadic chains
+    (`.and_then()` / `.transform()` / `.or_else()`); traffic *across*
+    contexts is event-only through the shell (Rule 8.1) — never a direct
+    synchronous call.
+12. **Saga Compensation**: Multi-domain workflows prefer validate-before-mutate.
+    Where mutation precedes a fallible step, the compensator consumes the
+    emitted fact/event log — never ad hoc done-flags — and every compensated
+    mutation has a corresponding fact. A workflow that takes payment and then
+    aborts without a refunding fact violates this rule (the wallet-leak shape:
+    compensating only the flagged stage while a prior debit leaks through).
 
 ---
 
