@@ -406,7 +406,7 @@ requirements instead of aspirations.
 - `std::string_view` & `constexpr` hashing: For zero-allocation ID lookups and asset tag resolution.
 - `std::expected` (C++23 / `tl::expected`): For fallible planning and resource loading; planners must return explicit error types instead of crashing or throwing exceptions.
 
-### Monadic Targeted Adoption (decision, 2026-09-15)
+### Monadic Tier Doctrine (amendment, 2026-09-16)
 
 C++23 monadic vocabulary types (`std::expected`, monadic `std::optional`,
 enum `std::format`ters) are adopted as a **tier doctrine, not a migration**.

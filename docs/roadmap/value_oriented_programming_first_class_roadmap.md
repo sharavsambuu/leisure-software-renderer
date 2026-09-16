@@ -107,9 +107,9 @@ Renderer is "fully VOP-first" only when all are true:
 4. Compatibility wrappers are removed or constrained to external-only shims.
 5. CI and deterministic tests enforce VOP boundaries continuously.
 
-## C++20 Modernization Track (VOP-Aligned)
+## C++23 Modernization Track (VOP-Aligned)
 
-Apply C++20 features aggressively where they increase value-semantics clarity:
+Apply C++23 features aggressively where they increase value-semantics clarity:
 
 1. Standardize `std::span` for non-owning contiguous inputs in planner/reducer APIs.
 2. Standardize `std::string_view` for pass/recipe IDs and key lookup APIs.
@@ -121,11 +121,11 @@ Apply C++20 features aggressively where they increase value-semantics clarity:
 8. Remove planner-side `dynamic_cast` and mutable `static` caches.
    - In progress: removed backend policy `dynamic_cast` from render-path capability resolution; continue auditing for remaining planner-side dynamic type branches.
 9. Adopt `std::expected` (or `tl::expected`) to formalize error states in planner diagnostics instead of asserting or crashing.
-   - Scope (decision 2026-09-15): **targeted adoption at leaf seams only** — compile/resolve error channels, `(payload, valid)` pods, input-bridge optionals, enum formatters. The reducer/command core keeps its closed variant + event-stream shape; see `../spec/value_oriented_programming.md` §8 "Monadic Targeted Adoption". Toolchain bump to C++23 is a separate prerequisite decision.
+   - Scope (amendment 2026-09-16): **channel-based tier doctrine** — `expected` on value/error channels (compile/resolve, `(payload, valid)` pods, input-bridge optionals, enum formatters); the reducer/command core keeps its closed variant + event-stream shape; orchestrator/saga pipelines compose monadically; see `../spec/value_oriented_programming.md` §8 "C++23 Monadic Pipeline Doctrine". The lib baselines C++23 (Constitution I §10). The superseded leaf-seams paragraph is preserved verbatim at `../outdated/vop-track-leaf-seams-scope-2026-09-16.md`.
 
 Review rule:
 
-- For each refactor PR, include at least one C++20 uplift where suitable in touched files.
+- For each refactor PR, include at least one C++23 uplift where suitable in touched files (`expected`/optional/formatters at the right tier).
 
 ## North Star
 
@@ -189,9 +189,9 @@ Only step 5 is side-effecting.
 2. Add CI checks that planner layer has no backend calls.
 3. Add code review checklist enforcing VOP boundaries.
 
-## Phase 7: C++20 Uplift and Cleanup
+## Phase 7: C++23 Uplift and Cleanup
 
-1. Add C++20-first coding checklist to VOP reviews (`span/string_view/concepts/ranges/constexpr`).
+1. Add C++23-first coding checklist to VOP reviews (`span/string_view/concepts/ranges/constexpr`, `expected`/monadic `optional`, enum formatters, monadic tier restrictions).
 2. Replace planner-side legacy patterns (`dynamic_cast`, hidden caches, ownership-opaque pointer switching).
 3. Introduce memory-safe zero-cost planners using `std::pmr` and `constexpr` string string hashing for IDs.
 4. Complete compatibility-wrapper retirement once core + demos consume value APIs end-to-end.
