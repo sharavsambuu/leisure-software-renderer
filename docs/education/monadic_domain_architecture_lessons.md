@@ -98,8 +98,7 @@ shared PODs speaking one language:
 | Coroutines | edges only | never inside a reducer body |
 | Concepts | API rims | never constraining reducer bodies |
 
-Baseline: the lib is `cxx_std_23` (Constitution I §10); parked demos follow
-on restart. `tl::expected` is the documented fallback where the toolchain
+Baseline: every tree is `cxx_std_23` since 2026-09-16 (Constitution I §10, L2 closed). `tl::expected` is the documented fallback where the toolchain
 lags — same shape, same laws.
 
 ## 6. Gotchas — each bought with a real failure

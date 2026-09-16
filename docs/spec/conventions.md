@@ -252,8 +252,7 @@ const size_t vcount = quads.size();
 ## 10. Language Baseline — C++23 (amendment, 2026-09-16)
 
 The library (`shs-renderer-lib`) baselines **C++23** (`cxx_std_23`, GCC 13.3+).
-Parked demo trees still pin C++20; they move to C++23 on restart (hardening
-backlog L2). The toolchain bump is therefore baseline, not a separate
+All trees — lib, demos, adventures — baseline C++23 since 2026-09-16 (hardening backlog L2 closed). The toolchain bump is therefore baseline, not a separate
 prerequisite.
 
 Pod-idiomatic C++23 subset (supplements Constitution II §8):

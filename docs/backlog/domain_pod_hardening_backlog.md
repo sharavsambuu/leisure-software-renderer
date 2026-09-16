@@ -19,7 +19,7 @@ Constraints: R1 -> everything; R2 -> R5; R4 proves the interleave loop before R5
 
 - [x] **P0.1 Test-dir canonicalization** — DONE 2026-09-16: build_vcpkg cache pointed at deleted src/hello-3d-demos (stale restructure); wiped CMakeCache/CMakeFiles, fresh configure (75s), test binaries built, both dirs 5/5 green. — `build/` registers 5/5, `build_vcpkg/` registers 0. Reconfigure `build_vcpkg` (or correct `agent_environment.md` to name `build/` canonical). DoD: both dirs report identical test counts; doc matches reality.
 - [x] **P0.2 Evict SDL from `domains/`** — DONE 2026-09-16: texture_loader_sdl + cubemap_loader_sdl + asset_manager (0 consumers) moved to execution/platform/loaders/; import_texture_sdl moved with the loader (edge->domain include is legal direction); resource_import.hpp keeps assimp only (assimp-in-domains noted as future debt). DoD: grep SDL_ domains = 0, no stale paths, build + 5/5. — `resources/loaders/texture_loader_sdl.hpp` (+ `sky/loaders/cubemap_loader_sdl.hpp`) include SDL_image and touch SDL_Surface in the pure zone (violates S2.1 layout + Rule 2). Move to `execution/platform/` loaders; leave pure TextureData/CubemapData contracts in `domains/resources|sky/`. DoD: grep SDL_ in domains = 0.
-- [x] **P0.3 C++ standard decision** — DONE 2026-09-16 for lib (6 targets cxx_std_20 -> cxx_std_23, build + 5/5 green, GCC 13.3). Demos still pin cxx_std_20; follow in P3 per-pod commits. DoD met for lib; S8 prerequisite note still stale for demos (follow-up).
+- [x] **P0.3 C++ standard decision** — DONE 2026-09-16 for lib (6 targets cxx_std_20 -> cxx_std_23, build + 5/5 green, GCC 13.3). Demos followed 2026-09-16 (L2 closed — all trees C++23, S8 note current).
 
 ## P1 — Kill the shadow tree (days, Run 1+2)
 
@@ -110,8 +110,7 @@ review this section at the R5 close-out, no earlier.
 - [ ] **L1 Renderpath uniform-sig migration** — reduce_render_path predates the
   P4.1 house signature and works; do not churn it. Unlock: the next
   renderpath feature touch migrates it as drive-by.
-- [ ] **L2 Demo cxx_std_20 pins** — parked demo trees still pin C++20 while
-  the lib is C++23. Unlock: per-pod migration when demos restart (R5+).
+- [x] **L2 Demo cxx_std_20 pins** — CLOSED 2026-09-16: all 15 demo/adventure CMakeLists bumped to `cxx_std_23` in one pass (bold cleanup); no per-pod migration needed.
 - [x] **L3 Tier0 01/02 drift file** — CLEARED 2026-09-16: 01 fixed exact, 02 envelope-pinned, suite green. Close-out verifies the suite still passes. — NOT deferred (R4 entry ticket): filed
   under P1.3. Listed here only so close-out verifies it is gone, not parked.
 

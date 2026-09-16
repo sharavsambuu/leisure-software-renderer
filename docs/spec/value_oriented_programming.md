@@ -466,7 +466,7 @@ would reduce fidelity, not improve it. The variant vocabulary stays.
 
 **Prerequisites & constraints:**
 - Toolchain: C++23 is baseline for `shs-renderer-lib` (Constitution I §10,
-  GCC 13.3+); parked demo trees follow on restart (hardening backlog L2).
+  GCC 13.3+); all trees baseline C++23 since 2026-09-16 (L2 closed).
 - Error types must stay closed enums (no `std::string` in `expected` payloads
   inside pod/intent vocabulary).
 - Introduce incrementally in Run 2 (GPU-free demo mode) and the Task 3 pure

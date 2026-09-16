@@ -12,7 +12,7 @@ include_directories(${stb_SOURCE_DIR}/)
 
 include_directories(${HelloSHSRenderer_SOURCE_DIR}/)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()

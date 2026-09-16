@@ -13,7 +13,7 @@
 cmake_minimum_required(VERSION 3.28)
 project(Hello3DTetris VERSION 0.1 LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -196,7 +196,7 @@ add_executable(tetris_reducer_tests
     tests/reducer_tests.cpp
 )
 target_include_directories(tetris_reducer_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_compile_features(tetris_reducer_tests PRIVATE cxx_std_20)
+target_compile_features(tetris_reducer_tests PRIVATE cxx_std_23)
 if (MSVC)
     target_compile_options(tetris_reducer_tests PRIVATE /W4)
 else()
@@ -236,7 +236,7 @@ if (WIN32)
     # SDL_main.h #defines main -> SDL_main; these tests use plain int main().
     target_compile_definitions(tetris_step_tests PRIVATE SDL_MAIN_HANDLED)
 endif()
-target_compile_features(tetris_step_tests PRIVATE cxx_std_20)
+target_compile_features(tetris_step_tests PRIVATE cxx_std_23)
 target_link_libraries(tetris_step_tests PRIVATE SDL2::SDL2 glm::glm)
 target_include_directories(tetris_step_tests PRIVATE ${_TETRIS_VCPKG_INSTALLED_DIR}/include)
 if (MSVC)
@@ -265,7 +265,7 @@ add_executable(tetris_mission_tests
 set_property(TARGET tetris_mission_tests PROPERTY INCLUDE_DIRECTORIES
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
-target_compile_features(tetris_mission_tests PRIVATE cxx_std_20)
+target_compile_features(tetris_mission_tests PRIVATE cxx_std_23)
 if (MSVC)
     target_compile_options(tetris_mission_tests PRIVATE /W4)
 else()
@@ -292,7 +292,7 @@ set_property(TARGET tetris_goal_bridge_tests PROPERTY INCLUDE_DIRECTORIES
     ${stb_SOURCE_DIR}
     ${_TETRIS_VCPKG_INSTALLED_DIR}/include
 )
-target_compile_features(tetris_goal_bridge_tests PRIVATE cxx_std_20)
+target_compile_features(tetris_goal_bridge_tests PRIVATE cxx_std_23)
 target_compile_definitions(tetris_goal_bridge_tests PRIVATE
     TETRIS_SOURCE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}")
 if (LUA_FOUND)
@@ -321,7 +321,7 @@ set_property(TARGET tetris_stage_tests PROPERTY INCLUDE_DIRECTORIES
     ${stb_SOURCE_DIR}
     ${_TETRIS_VCPKG_INSTALLED_DIR}/include
 )
-target_compile_features(tetris_stage_tests PRIVATE cxx_std_20)
+target_compile_features(tetris_stage_tests PRIVATE cxx_std_23)
 target_compile_definitions(tetris_stage_tests PRIVATE
     TETRIS_SOURCE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}")
 if (LUA_FOUND)

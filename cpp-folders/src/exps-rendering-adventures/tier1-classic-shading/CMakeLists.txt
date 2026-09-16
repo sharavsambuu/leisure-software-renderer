@@ -14,7 +14,7 @@ target_include_directories(t1_adventures_common PUBLIC
     ${stb_SOURCE_DIR})
 target_link_libraries(t1_adventures_common PUBLIC glm::glm)
 target_compile_definitions(t1_adventures_common PUBLIC GLM_FORCE_DEPTH_ZERO_TO_ONE=1)
-target_compile_features(t1_adventures_common PUBLIC cxx_std_20)
+target_compile_features(t1_adventures_common PUBLIC cxx_std_23)
 
 if(Vulkan_FOUND)
     target_sources(t1_adventures_common PRIVATE ../tier0-rasterization-foundations/common/adventures_vk.cpp)

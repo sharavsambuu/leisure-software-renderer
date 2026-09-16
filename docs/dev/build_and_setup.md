@@ -40,7 +40,7 @@ normal machine. To force a GPU-free configure (software-only), see
 
 ## Common prerequisites
 
-All platforms need: CMake ≥ 3.20, a C++23-capable compiler (GCC 13.3+ builds the lib; demos still accept C++20), vcpkg, and the vcpkg packages
+All platforms need: CMake ≥ 3.20, a C++23-capable compiler (GCC 13.3+; all trees C++23), vcpkg, and the vcpkg packages
 below. Vulkan SDK and Slang are per-platform.
 
 ### vcpkg packages (required at configure time)

@@ -16,7 +16,7 @@ include_directories(${HelloSHSRenderer_SOURCE_DIR}/)
 #link_directories(${Boost_LIBRARY_DIR})
 #set(Boost_USE_STATIC_LIBS ON)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
@@ -71,7 +71,7 @@ target_link_libraries(HelloJobSystemGraph Threads::Threads)
 
 
 add_executable(HelloXsimdThreads hello_xsimd_threads.cpp)
-target_compile_features(HelloXsimdThreads PRIVATE cxx_std_20)
+target_compile_features(HelloXsimdThreads PRIVATE cxx_std_23)
 target_link_libraries(HelloXsimdThreads PRIVATE xsimd)
 if (MSVC)
   target_compile_options(HelloXsimdThreads PRIVATE /O2 /fp:fast)

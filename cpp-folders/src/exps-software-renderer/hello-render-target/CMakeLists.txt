@@ -22,7 +22,7 @@ include_directories(${stb_SOURCE_DIR}/)
 include_directories(${HelloSHSRenderer_SOURCE_DIR}/)
 #include_directories(${CMAKE_SOURCE_DIR}/src/shs-renderer-lib/include)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
@@ -74,7 +74,7 @@ target_link_libraries(HelloIblSkybox PRIVATE SDL2::SDL2 SDL2_image::Main glm::gl
 
 
 add_executable(HelloIblSkyboxOpt hello_ibl_skybox_optimized.cpp)
-target_compile_features(HelloIblSkyboxOpt PRIVATE cxx_std_20)
+target_compile_features(HelloIblSkyboxOpt PRIVATE cxx_std_23)
 target_link_libraries(HelloIblSkyboxOpt PRIVATE xsimd SDL2::SDL2 SDL2_image::Main glm::glm assimp::assimp)
 if (MSVC)
     target_compile_options(HelloIblSkyboxOpt PRIVATE /O2 /fp:fast /arch:AVX2)
@@ -89,7 +89,7 @@ endif()
 
 
 #add_executable(HelloIblSkyboxXSIMD hello_ibl_skybox_xsimd.cpp)
-#target_compile_features(HelloIblSkyboxXSIMD PRIVATE cxx_std_20)
+#target_compile_features(HelloIblSkyboxXSIMD PRIVATE cxx_std_23)
 #target_link_libraries(HelloIblSkyboxXSIMD PRIVATE xsimd SDL2::SDL2 SDL2_image::Main glm::glm assimp::assimp)
 #if (MSVC)
 #    target_compile_options(HelloIblSkyboxXSIMD PRIVATE /O2 /fp:fast /arch:AVX2)
@@ -101,7 +101,7 @@ endif()
 
 
 #add_executable(HelloPBR hello_pbr.cpp)
-#target_compile_features(HelloPBR PRIVATE cxx_std_20)
+#target_compile_features(HelloPBR PRIVATE cxx_std_23)
 #target_link_libraries(HelloPBR PRIVATE xsimd SDL2::SDL2 SDL2_image::Main glm::glm assimp::assimp)
 #if (MSVC)
 #    target_compile_options(HelloPBR PRIVATE /O2 /fp:fast /arch:AVX2)
@@ -113,7 +113,7 @@ endif()
 
 
 #add_executable(HelloPBRLightShafts hello_pbr_light_shafts.cpp)
-#target_compile_features(HelloPBRLightShafts PRIVATE cxx_std_20)
+#target_compile_features(HelloPBRLightShafts PRIVATE cxx_std_23)
 #target_link_libraries(HelloPBRLightShafts PRIVATE xsimd SDL2::SDL2 SDL2_image::Main glm::glm assimp::assimp)
 #if (MSVC)
 #    target_compile_options(HelloPBRLightShafts PRIVATE /O2 /fp:fast /arch:AVX2)

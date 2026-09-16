@@ -22,7 +22,7 @@ include_directories(${stb_SOURCE_DIR}/)
 
 include_directories(${HelloSHSRenderer_SOURCE_DIR}/)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
@@ -54,7 +54,7 @@ add_executable(HelloFlatShading hello_flat_shading.cpp)
 target_link_libraries(HelloFlatShading PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm assimp::assimp)
 
 add_executable(HelloFlatShadingXSIMD hello_flat_shading_xsimd.cpp)
-target_compile_features(HelloFlatShadingXSIMD PRIVATE cxx_std_20)
+target_compile_features(HelloFlatShadingXSIMD PRIVATE cxx_std_23)
 target_link_libraries(HelloFlatShadingXSIMD PRIVATE xsimd ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES} glm::glm assimp::assimp)
 if (MSVC)
     target_compile_options(HelloFlatShadingXSIMD PRIVATE /O2 /fp:fast /arch:AVX2)
