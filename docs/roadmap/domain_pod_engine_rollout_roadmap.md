@@ -425,3 +425,52 @@ outside arenas; event log overlay ships in the demo.
   in architecture doc §5 is dependency-safe; each step keeps the demo runnable.
 - P0.5 is moves-only (no content edits) and one module per commit with facade shims,
   so review and rollback stay trivial; P5 does the content-level suffixing later.
+
+## Backlog — POD Semantics Hardening (parked 2026-09-15; work later)
+
+> Suggestions from the post-Tier0 lib review on strengthening pure reducer
+> Domain POD semantics in `shs-renderer-lib`. Not scheduled — recorded so the
+> Runs 1–5 plan above can absorb them at the right moment. `renderpath` (P1)
+> proved the pattern; this backlog is about making the pattern cheap to follow
+> correctly and hard to follow incorrectly.
+
+- [ ] **Uniform reducer signature** — pin the house signature
+      `reduce(PodState&, span<const Action>, const Inputs&, pmr::vector<Event>&)`
+      (time/caps/compiler inputs always explicit parameters; events on the
+      caller's frame arena) across all future pods, so one generic edge loop
+      drives every pod and the P6 replay harness is a lib facility, not
+      per-pod work. *Slot: Run 1 (main-loop rewrite is where per-pod glue
+      gets deleted).*
+- [ ] **Header-only pod test kit** (`domains/pod_test_kit.hpp`) — replay
+      assert (command log × 2 → identical event log), snapshot value-equality
+      round-trip (also enforces "pod state is a value"), per-pod invariant
+      predicates checked after each reduction in debug builds. Turns the
+      "every pod lands with a headless ctest" gate into three lines per pod.
+      *Slot: Run 4.*
+- [ ] **Semantic purity linters** (extend the P0.5 boundary linter beyond
+      include-direction): forbid ambient entropy/time in `domains/`
+      (`rand(`, `std::chrono`, `std::time`, `getenv` — dt arrives as input);
+      forbid `std::unordered_*` iteration in reducer paths (hash order breaks
+      replay); extend the `Vk*` token gate pattern to `canvas`, `SDL_`,
+      `fopen` in `domains/` (would have caught `skybox_renderer.hpp` /
+      `jolt_debug_draw.hpp` at birth). *Slot: Run 4.*
+- [ ] **Promote the `std::expected` fallible-transition idiom** from
+      `renderpath.reducer.hpp` `detail` (VOP spec §8) to the canonical
+      Constitution recipe for rejected transitions — closed-enum error
+      payload, events only in `transform/or_else` continuations, previous
+      state untouched on rejection; new compilers return `expected` directly
+      instead of post-hoc string classification
+      (`classify_plan_rejection`'s string-matching is the smell to not
+      repeat). *Slot: Constitution/roadmap doc edit, any time.*
+- [ ] **Generated event-flow docs** — each pod's `event.hpp` declares a
+      `constexpr` name table; `EVENT_FLOW.md` and the P6 debug overlay's
+      event labels generate from those tables (generate beats lint for
+      doc-drift). *Slot: Run 4, extending the P5 linter ↔ docs sync.*
+- [ ] **Seeded determinism contract** — any stochastic pod carries its RNG
+      state *in the pod state* (seedable via action), never a global
+      (xorshift precedent in tetris/spatial_fx). *Slot: Constitution doc
+      edit, any time.*
+- [ ] **Replay harness consumes the test kit** — P6's replay CI should
+      reuse the pod test kit's replay machinery, not reimplement it.
+      *Slot: Run 5.*
+

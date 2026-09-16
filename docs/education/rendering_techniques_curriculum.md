@@ -5,7 +5,12 @@
 > principles to SOTA. Each rung is executable work (recipe preset + pass contracts +
 > Slang module + software `cpp_impl` + validation gate), not a demo.
 > Companion docs: `docs/roadmap/slang_utilization_plan.md` (Slang migration rides on
-> this ladder), `docs/arch/render_path_architecture.md` (recipe/pass machinery).
+> this ladder), `docs/arch/render_path_architecture.md` (recipe/pass machinery),
+> `docs/education/demo_to_lib_ingestion_notes.md` (demo-first → lib ingestion,
+> Domain POD adoption trigger, operator-promotion path),
+> `docs/education/backend_capability_notes.md` (SW-vs-Vulkan capability map,
+> parity maturity exact → tolerance, approximation as a measurable axis,
+> compute dual-implementation).
 
 ## How to use this curriculum
 
@@ -19,6 +24,10 @@
   deferred → attachment semantics; clustered → data-parallel backend parity.
 - Status markers: ✅ exists end-to-end in the lib · 🔶 frozen GLSL reference exists
   (port at migration) · ⬜ planned (new work) · 💡 deep bet (recommended SOTA target).
+- A second, orthogonal axis rides on the same ladder: **quality tiers** — the
+  same scene data rendered through recipes of decreasing fidelity (ground
+  truth → approximated), with the software path as the measurable oracle for
+  approximation error. See `backend_capability_notes.md` §4.
 - GLSL references live frozen under `shs-renderer-lib/shaders/vulkan/` — port
   semantics, cite file+lines, never include them (see Slang plan §0).
 
@@ -31,7 +40,8 @@
 2. ✅ Perspective & orthographic projection, view frustum
 3. ✅ Depth test, alpha blending, render-order
 4. ✅ Texture sampling (bilinear, repeat/linear), scissor/viewport
-5. ⬜ Stencil buffer operations
+5. ✅ Stencil buffer operations *(demo 05: write REPLACE / test EQUAL / INVERT,
+   driven to 0.00% parity — see lessons doc)*
 
 ## Tier 1 — Classic shading
 

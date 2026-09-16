@@ -487,3 +487,127 @@ The automated CI boundary checker (`tools/check_vop_boundaries.sh`) enforces the
 - Codified Glimmer/Ember Domain Pod standard (`domains/<domain>/`) with strict suffix naming contracts.
 - Codified Lock-Free SPSC Audio Edge for glitch-free procedural sound synthesis.
 - Decided C++23 monadic **targeted adoption** (2026-09-15): `std::expected` at compile/resolve error seams, monadic `std::optional` in input bridges, enum formatters for diagnostics; reducer/command variant + event-stream core explicitly out of scope (see §8).
+- Recorded the functional-programming parallel (**Appendix A**, 2026-09-15): the Domain Pod architecture as The Elm Architecture in C++ — structural enforcement standing in for a type-system effect boundary; documents which guarantees are inherited from purity and which the backlog linters must hand-build. Lineage anchored in **"functional core, imperative shell"** (A.5) and the **actor model** (A.6: pods as deterministic actors, concurrency relocated to the edges): *a synchronous, deterministic actor system with event sourcing, running a functional core that speaks to imperative shells through effect-describing values.*
+
+---
+
+## Appendix A — The Functional-Programming Parallel (2026-09-15)
+
+> Observational note, not a new law: the VOP architecture is a rediscovery of
+> pure functional programming's core discipline — specifically The Elm
+> Architecture (Model / Update / Msg) — expressed in C++17 where no effect
+> system exists. Recorded so authors recognize which *guarantees* are
+> inherited from FP purity, and which are hand-enforced structurally.
+
+### A.1 Correspondence table
+
+| VOP / Domain Pod construct | Functional-programming equivalent |
+| :--- | :--- |
+| Pure reducer: `State_{t+1}, Events = f(State_t, Commands, dt)` | `(State, [Event]) ← foldl update State commands` |
+| `domains/` never including `execution/` | the `IO` boundary: pure functions cannot touch effects |
+| Events on a caller-provided PMR arena | explicit effect channel (Elm's `(Model, Cmd)` return pair) |
+| `std::expected` + `.transform()` / `.or_else()` (§8) | the `Either` monad; monadic chaining hand-rolled |
+| Closed `Command` / `Event` `std::variant` vocabularies | sum types (algebraic data types) |
+| Replay harness: same command log → same event log | referential transparency, tested |
+| Time-travel debug overlay (P6) | the Elm debugger (possible *because* of the architecture) |
+
+### A.2 Enforcement: type system vs. structural law
+
+Haskell enforces the pure/impure boundary with the type system. C++17 has no
+effect system, so VOP enforces the same boundary *structurally*: directory law
+(`domains/` vs `execution/`), include-direction linters, banned-token and
+banned-pattern checks (`tools/check_vop_boundaries.sh` §10), and the
+Constitution itself. This is machine-checked in CI — a stronger artifact for
+this project than compiler-only enforcement, and the only honest option in a
+language without effects.
+
+### A.3 Guarantees that fall out of purity (not bolted on)
+
+Replayability and determinism gates, cross-backend pixel-parity proofs,
+GPU-free reducer `ctest`s, time-travel debugging, seeded/replayable stochastic
+sampling, rollback-ready networking (§11.1) — these are the standard benefits
+of referential transparency. The architecture earns them by construction; no
+per-feature test harness is required to believe them.
+
+### A.4 What is kept that FP surrenders, and what is still hand-built
+
+- **Kept:** PMR frame arenas, SoA hot tables (§7), zero-alloc frame budgets,
+  cache-contiguous backing stores (§7.2) — layout and latency control that a
+  GC'd lazy language gives up. "Pure functional core, data-oriented edges."
+- **Still hand-built** (see Domain Pod roadmap backlog): variant exhaustiveness
+  checking (GHC does this for free), immutability-by-default, semantic purity
+  linters (no ambient entropy/time, no unordered-container iteration in
+  reducers), and the pod replay test kit. The backlog is, in effect,
+  compiling Haskell's compiler guarantees into this project's toolchain.
+
+### A.5 Lineage: functional core, imperative shell
+
+The closest named ancestor of this architecture is **"functional core,
+imperative shell"** (Gary Bernhardt, ~2012): pure functions transform data in
+the center; the imperative shell performs effects at the boundary. §2's
+diagram is that pattern drawn. The FCIS testability claim — *test the core
+without mocks, because it never touches the shell* — is realized here as the
+GPU-free reducer `ctest`s (zero Vulkan/SDL links).
+
+This architecture extends classic FCIS in three directions it does not go:
+
+1. **Effects reified as first-class data, not shell code.** Classic FCIS keeps
+   imperative effects as shell *code*; here effects are values — closed
+   `Command`/`Event` variants in, `PipelineExecutionPlan` describing what the
+   edges will do — so the shell is a generic interpreter of
+   effect-descriptions, not bespoke glue. (FCIS toward Elm/event-sourcing.)
+2. **The boundary is machine-checked.** Classic FCIS is convention and code
+   review; here it is include-direction linters and banned-token gates (§10) —
+   the core physically cannot call the shell.
+3. **One core, many shells.** Classic FCIS usually has one shell per
+   application. Here many edges (SW rasterizer, Vulkan, audio, platform) share
+   one functional core — which is exactly what makes cross-shell parity
+   provable: the core is the invariant, so the shells can be diffed against
+   each other.
+
+What FCIS does not supply, this spec does: the data-oriented half. Bernhardt's
+formulation lives in GC'd languages where effect descriptions are cheap; the
+Dual-Tier Memory Specification (§7), SoA hot tables, and PMR arenas make the
+pure core also the *fast* core.
+
+Lineage: **functional core, imperative shell** (the boundary) → **Elm
+Architecture** (the command/event vocabulary, time travel) → **Domain Pod
+Constitution** (effects as data, structurally enforced boundary, many shells
+over one proven core, systems-level memory control).
+
+### A.6 The actor-model parallel (Erlang / Akka)
+
+Each Domain Pod is semantically an **actor**: private state reachable only
+through its own handler, commands in through a mailbox (the per-frame command
+stream), events out to the rest of the system (the frame-arena event log),
+one batch processed at a time. `Rule 8.1`'s "consume only raw-fact events;
+never touch the grid" is tell-don't-ask / no-shared-state. The boundary
+linter's ban on `std::mutex` in reducers is the actor invariant made
+structural: an actor's state is only ever touched by its own message handler.
+`PATH_SWAP_REJECTED` is actor supervision in miniature — a bad message does
+not crash the pod; state survives and the failure is observable as an event.
+
+**The one deliberate divergence — determinism.** Erlang/Akka actors are
+concurrent, so cross-actor message order is unspecified: fault-tolerance and
+scaling at the cost of reproducibility. Domain Pods are actors with a **global
+deterministic scheduler**: the frame loop drains every mailbox in a fixed
+order, making the whole system a pure function of (initial state, command
+logs). Concurrency is not lost — it is relocated to the edges, where real
+message-passing belongs: the lock-free SPSC audio ring is a literal mailbox
+between processes, `WaitGroup` job stages are supervised workers.
+Deterministic actors inside, Erlang-style message passing at the edges.
+
+Lineage, complete: **functional core, imperative shell** (the boundary) →
+**Elm Architecture** (the command/event vocabulary, time travel) → **actor
+model** (state privacy, message-only communication, supervision) → **Domain
+Pod Constitution** — composes all three and adds what none had: a
+deterministic global scheduler, effects-as-data plans, cross-shell parity
+proofs, and systems-level memory control. One-line identity: *a synchronous,
+deterministic actor system with event sourcing, running a functional core
+that speaks to imperative shells through effect-describing values.* Erlang
+optimizes for uptime, Akka for distribution, Elm for UI correctness — this
+architecture optimizes for provability, which is what the parity and replay
+gates require.
+
+
+

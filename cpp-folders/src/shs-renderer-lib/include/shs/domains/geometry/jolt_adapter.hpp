@@ -112,6 +112,22 @@ namespace shs::jolt
         );
     }
 
+    // =========================================================================
+    //  Quaternion conversion (negate x, y — involution: same formula both ways)
+    //  q' = (-qx, -qy, qz, qw) == S·q·S with S = diag(1, 1, -1)
+    //  (conventions.md §3; glm::quat is (w, x, y, z), JPH::Quat is (x, y, z, w))
+    // =========================================================================
+
+    inline JPH::Quat to_jph(const glm::quat& q) noexcept
+    {
+        return JPH::Quat(-q.x, -q.y, q.z, q.w);
+    }
+
+    inline glm::quat to_glm(const JPH::Quat& q) noexcept
+    {
+        return glm::quat(q.GetW(), -q.GetX(), -q.GetY(), q.GetZ());
+    }
+
     inline glm::mat4 to_glm(const JPH::Mat44& m) noexcept
     {
         // Reverse is identical: S·M·S with S = diag(1,1,-1,1)
@@ -130,7 +146,9 @@ namespace shs::jolt
 
 
     // =========================================================================
-    //  Plane conversion  (negate normal Z, keep distance)
+    //  Plane conversion (negate normal Z, negate d)
+    //  SHS plane eq: dot(n, x) + d = 0  <->  Jolt: dot(n, x) = constant
+    //  → Jolt constant = -d. Round-trip test required at first call site.
     // =========================================================================
 
     inline Plane to_shs_plane(const JPH::Plane& p) noexcept
@@ -138,7 +156,7 @@ namespace shs::jolt
         const JPH::Vec3 n = p.GetNormal();
         return Plane{
             glm::vec3(n.GetX(), n.GetY(), -n.GetZ()),
-            to_shs_distance(p.GetConstant())
+            -to_shs_distance(p.GetConstant())
         };
     }
 
@@ -146,7 +164,7 @@ namespace shs::jolt
     {
         return JPH::Plane(
             JPH::Vec3(p.normal.x, p.normal.y, -p.normal.z),
-            to_jph_distance(p.d));
+            -to_jph_distance(p.d));
     }
 
 

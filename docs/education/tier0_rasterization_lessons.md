@@ -4,7 +4,11 @@
 > (2026-09). Five software-vs-Vulkan/Slang demo pairs were driven to exact pixel
 > parity (0.00% differing pixels on every pair). This doc records what the parity
 > chase taught us, so Tier 1+ rungs don't re-learn it the hard way.
-> Companion: `docs/education/rendering_techniques_curriculum.md` (Tier 0 section).
+> Companion: `docs/education/rendering_techniques_curriculum.md` (Tier 0 section),
+> `docs/education/demo_to_lib_ingestion_notes.md` (what graduates from the demos
+> into shs-renderer-lib, and when Domain PODs enter the demos),
+> `docs/education/backend_capability_notes.md` (where parity goes next: exact →
+> tolerance as shader complexity grows).
 
 ## The headline lesson
 

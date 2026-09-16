@@ -46,18 +46,25 @@ discipline.
    Compiling all shaders column-major makes shader `mul(M, v)` mean exactly
    GLM's `M * v`. Never write per-file matrix-layout pragmas.
 2. **Depth range — zero-to-one everywhere.** Vulkan NDC depth is [0,1]; GL was
-   [-1,1]. P1 must audit whether the software rasterizer's `FragmentIn::depth01`
-   and the Vulkan path agree, then pin `GLM_FORCE_DEPTH_ZERO_TO_ONE` (or an
+   [-1,1]. P1 audit status: the software rasterizer already remaps NDC z to
+   `z01 = z_ndc * 0.5 + 0.5` (rasterizer.hpp), but the depth-motion path overwrites
+   it with *linear* view-z — two meanings of "depth01" to unify. Then pin
+   `GLM_FORCE_DEPTH_ZERO_TO_ONE` (or an
    explicit `shs_perspective_zo()` shared by both backends) so one projection
-   source feeds both. No GL-style depth survives P1.
+   source feeds both. No GL-style depth survives P1. Until then,
+   `conventions.md` §2/§5 ([−1,1] projection + explicit remap) is the shipped truth.
 3. **Framebuffer Y origin — negative viewport height.** Standard Vulkan
    negative-height viewport keeps world/clip-space math identical to the
    software path; no per-shader Y flips. Verify the existing monolith viewport
    setup and conform — don't fork a second convention.
 4. **Winding — pass-authored, contract-checked.** `RHIFrontFace` already maps to
-   `VK_FRONT_FACE_*` in `vk_pipelines.hpp`; with negative viewport height front
-   faces keep the software rasterizer's sense. Any pass flip must be stated in
-   its pass contract, not fixed in shader code.
+   `VK_FRONT_FACE_*` in `vk_pipelines.hpp`. Correction over the earlier draft:
+   with negative viewport height, Vulkan evaluates facing in *framebuffer* space,
+   so the screen winding is inverted — the VK `frontFace` must be the **opposite**
+   enum from the software rasterizer's canvas-space sense. The current identity
+   mapping (`vk_device.hpp`) is only safe while culling is disabled; resolve at P1
+   with a dual-backend culling parity test (see `conventions.md` §5). Any pass
+   flip must be stated in its pass contract, not fixed in shader code.
 5. **GLSL → Slang type mapping:** `vec3`→`float3`, `mat4`→`float4x4`,
    `mix`→`lerp`, `fract`→`frac`, `texture()`→`SampleLevel` (explicit LOD),
    `textureLod`→`SampleLevel`. GLSL `mod` is positive-mod; HLSL `fmod` differs in
