@@ -88,7 +88,7 @@ if(_shs_sdl2_config)
 endif()
 
 # C++ standard for everyone who links this
-target_compile_features(shs_renderer PUBLIC cxx_std_20)
+target_compile_features(shs_renderer PUBLIC cxx_std_23)
 
 # Packages (vcpkg config mode)
 find_package(SDL2 CONFIG REQUIRED)
@@ -172,7 +172,7 @@ target_include_directories(shs_renderer_values INTERFACE
     ${CMAKE_BINARY_DIR}
     ${stb_SOURCE_DIR}
 )
-target_compile_features(shs_renderer_values INTERFACE cxx_std_20)
+target_compile_features(shs_renderer_values INTERFACE cxx_std_23)
 # glm is header-only; safe to propagate without linking any compiled lib.
 target_link_libraries(shs_renderer_values INTERFACE glm::glm)
 if(TARGET xsimd::xsimd)
@@ -191,7 +191,7 @@ if(SHS_RENDERER_BUILD_TESTS)
         tests/vop_core_tests.cpp
     )
     target_link_libraries(shs_renderer_vop_tests PRIVATE shs::renderer)
-    target_compile_features(shs_renderer_vop_tests PRIVATE cxx_std_20)
+    target_compile_features(shs_renderer_vop_tests PRIVATE cxx_std_23)
     if(MSVC)
         target_compile_options(shs_renderer_vop_tests PRIVATE /W4)
     else()
@@ -204,7 +204,7 @@ if(SHS_RENDERER_BUILD_TESTS)
         tests/vop_renderpath_tests.cpp
     )
     target_link_libraries(shs_renderer_vop_renderpath_tests PRIVATE shs::renderer-values)
-    target_compile_features(shs_renderer_vop_renderpath_tests PRIVATE cxx_std_20)
+    target_compile_features(shs_renderer_vop_renderpath_tests PRIVATE cxx_std_23)
     if(MSVC)
         target_compile_options(shs_renderer_vop_renderpath_tests PRIVATE /W4)
     else()
@@ -239,7 +239,7 @@ if(SHS_RENDERER_BUILD_TESTS)
         tests/vop_containers_tests.cpp
     )
     target_link_libraries(shs_renderer_vop_containers_tests PRIVATE shs::renderer-values)
-    target_compile_features(shs_renderer_vop_containers_tests PRIVATE cxx_std_20)
+    target_compile_features(shs_renderer_vop_containers_tests PRIVATE cxx_std_23)
     if(MSVC)
         target_compile_options(shs_renderer_vop_containers_tests PRIVATE /W4)
     else()
@@ -275,7 +275,7 @@ if(SHS_RENDERER_BUILD_TESTS)
             shs::renderer-values
             Vulkan::Vulkan
         )
-        target_compile_features(shs_renderer_vop_vk_driver_tests PRIVATE cxx_std_20)
+        target_compile_features(shs_renderer_vop_vk_driver_tests PRIVATE cxx_std_23)
         if(MSVC)
             target_compile_options(shs_renderer_vop_vk_driver_tests PRIVATE /W4)
         else()
