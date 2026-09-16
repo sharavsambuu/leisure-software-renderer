@@ -351,7 +351,7 @@ extension role, and the classification is machine-checked.
       through open registries, and that no core header is a hard dependency of
       the extension mechanism.
 
-**DoD**: zero old-path includes; every `domains/<pod>/` passes the Core 4
+**DoD**: zero old-path includes; every `domains/<pod>/` passes the Core 4 (+ saga orchestrator as a pod wherever a multi-context workflow exists, Constitution II §6.1)
 completeness check; §6.4 table and glossary match the tree exactly (CI-verified).
 End state: single **`shs-renderer-lib`** (the P3/P5 retirement decision above);
 software vs GPU backends differ only by driver pod.
@@ -454,14 +454,14 @@ outside arenas; event log overlay ships in the demo.
       replay); extend the `Vk*` token gate pattern to `canvas`, `SDL_`,
       `fopen` in `domains/` (would have caught `skybox_renderer.hpp` /
       `jolt_debug_draw.hpp` at birth). *Slot: Run 4.*
-- [ ] **Promote the `std::expected` fallible-transition idiom** from
+- [x] **Promote the `std::expected` fallible-transition idiom** from
       `renderpath.reducer.hpp` `detail` (VOP spec §8) to the canonical
       Constitution recipe for rejected transitions — closed-enum error
       payload, events only in `transform/or_else` continuations, previous
       state untouched on rejection; new compilers return `expected` directly
       instead of post-hoc string classification
       (`classify_plan_rejection`'s string-matching is the smell to not
-      repeat). *Slot: Constitution/roadmap doc edit, any time.*
+      repeat). DONE 2026-09-16: P4.6 deleted the classifier; the monadic amendment (§8 tier doctrine + `tests/vop_saga_tests.cpp`) closes the recipe.*
 - [ ] **Generated event-flow docs** — each pod's `event.hpp` declares a
       `constexpr` name table; `EVENT_FLOW.md` and the P6 debug overlay's
       event labels generate from those tables (generate beats lint for

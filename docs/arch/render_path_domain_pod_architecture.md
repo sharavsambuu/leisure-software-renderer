@@ -3,6 +3,7 @@
 > Status: **Architecture plan (approved direction, 2026-09-15)**. Implements the Core 4
 > Domain Pod canon (Constitution §2.1, canon tables §6.1–6.2) across the dynamic render path system and
 > the Vulkan backend. Companion roadmap: `docs/roadmap/domain_pod_engine_rollout_roadmap.md`.
+> Multi-context workflows add the saga orchestrator as a pod (Core 4+1, Constitution II §6.1, Rules 11–12).
 
 ## 1. Why
 

@@ -16,8 +16,15 @@ Coroutines are the primary scheduling primitive for the **Angstrom Era** Virtual
 - **Stackless Tasks**: Each render tile or compute job is a stackless coroutine submitted to a persistent `jthread` worker.
 - **Always-Busy / Non-Blocking**: Replaces traditional mutex/semaphore synchronization with `co_await` on job completion. If a job is blocked by a dependency, the worker doesn't wait; it suspends the job and immediately moves to the next one in its mailbox.
 
-## 1. Logic → Coroutine Scripts
-Replace the callback-based `StateMachine` with sequential coroutine scripts for "Patrol -> Chase -> Attack" logic.
+## 1. Gameplay logic stays value reducers (ruled, 2026-09-16)
+
+Superseded recommendation preserved verbatim at
+`../outdated/coroutine-logic-scripts-2026-09-16.md`. Gameplay state machines
+(Patrol → Chase → Attack) are table-driven value FSMs (`logic` pod
+precedent, Constitution II Rule 12), not coroutine scripts: coroutines live
+on execution edges only (Constitution I §10). Coroutine-driven gameplay
+logic would hide state transitions outside reducers and break replay.
+Revisit only if a demo proves otherwise with a replay-pinned spike.
 
 ## 2. Asset Loading
 Make `AssetManager::load_mesh_async()` return an awaitable to avoid stalling the main thread during I/O.
