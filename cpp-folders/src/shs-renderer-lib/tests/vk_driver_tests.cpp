@@ -283,7 +283,7 @@ namespace
         stream.push_back(shs::rhi_cmd_end_pass());
 
         SpySink sink;
-        shs::record_commands(std::span<const shs::RHICmd>(stream.data(), stream.size()), sink);
+        if (!shs::record_commands(std::span<const shs::RHICmd>(stream.data(), stream.size()), sink)) return false;
 
         if (sink.calls.size() != 6) return false;
         const uint32_t expected[] = {1, 3, 4, 5, 6, 2};
@@ -308,11 +308,57 @@ namespace
         stream.push_back(shs::rhi_cmd_barrier(mb));
 
         SpySink sink;
-        shs::record_commands(std::span<const shs::RHICmd>(stream.data(), stream.size()), sink);
+        if (!shs::record_commands(std::span<const shs::RHICmd>(stream.data(), stream.size()), sink)) return false;
         if (sink.calls.size() != 2) return false;
         if (sink.calls[0] != 7 || sink.ids[0] != 4) return false;
         if (sink.calls[1] != 8 || sink.ids[1] != (uint64_t)shs::RHIPipelineStage::ComputeShader) return false;
         return true;
+    }
+
+    bool test_command_stream_rejection()
+    {
+        struct RejectingSink : SpySink
+        {
+            std::expected<void, shs::VulkanRecordingError> bind_pipeline(
+                const shs::RHICmdBindPipelineDesc&)
+            {
+                calls.push_back(3);
+                return std::unexpected(shs::VulkanRecordingError::UnsupportedCommand);
+            }
+        };
+        const shs::RHICmd stream[] = {
+            shs::rhi_cmd_begin_pass({}),
+            shs::rhi_cmd_bind_pipeline(47),
+            shs::rhi_cmd_end_pass()
+        };
+        RejectingSink sink;
+        const auto result = shs::record_commands(stream, sink);
+        if (result || result.error().code != shs::VulkanRecordingError::UnsupportedCommand ||
+            result.error().command_index != 1) return false;
+        return sink.calls == std::vector<uint32_t>{1, 3};
+    }
+
+    bool test_recorder_unsupported_commands()
+    {
+        shs::VulkanBufferPool buffers{std::pmr::get_default_resource()};
+        shs::VulkanImagePool images{std::pmr::get_default_resource()};
+        shs::VulkanCommandRecorder recorder{VK_NULL_HANDLE, VK_NULL_HANDLE, buffers, images};
+        // Unsupported operations reject before touching Vulkan, even when called directly.
+        const shs::RHICmd commands[] = {
+            shs::rhi_cmd_begin_pass({}), shs::rhi_cmd_end_pass(),
+            shs::rhi_cmd_bind_pipeline(47), shs::rhi_cmd_draw_indexed({}),
+            shs::rhi_cmd_dispatch(1, 1, 1)
+        };
+        for (const auto& command : commands)
+        {
+            const auto result = shs::record_commands(std::span<const shs::RHICmd>(&command, 1), recorder);
+            if (result || result.error().code != shs::VulkanRecordingError::UnsupportedCommand ||
+                result.error().command_index != 0) return false;
+        }
+        const auto bind = recorder.bind_vertex_buffer({123, 0});
+        const auto barrier = recorder.barrier({});
+        return !bind && bind.error() == shs::VulkanRecordingError::DeviceUnavailable &&
+               !barrier && barrier.error() == shs::VulkanRecordingError::DeviceUnavailable;
     }
 
     // --- frame sync: slot rotation, timeline semantics ---------------------------
@@ -381,10 +427,12 @@ namespace
         stream.push_back(shs::rhi_cmd_bind_pipeline(0x47ull));
         const auto recorded = backend.record_frame_commands(
             std::span<const shs::RHICmd>(stream.data(), stream.size()));
-        if (recorded || recorded.error() != shs::VulkanRecordingError::DeviceUnavailable) return false;
+        if (recorded || recorded.error().code != shs::VulkanRecordingError::DeviceUnavailable ||
+            recorded.error().command_index != SIZE_MAX) return false;
         // Even an empty stream must not disguise an unavailable execution edge.
         const auto empty = backend.record_frame_commands({});
-        if (empty || empty.error() != shs::VulkanRecordingError::DeviceUnavailable) return false;
+        if (empty || empty.error().code != shs::VulkanRecordingError::DeviceUnavailable ||
+            empty.error().command_index != SIZE_MAX) return false;
 
         backend.shutdown();
         return true;
@@ -442,6 +490,8 @@ int main()
         {"vk_pipeline_cache_explicit", test_pipeline_cache_explicit},
         {"vk_command_stream_translation", test_command_stream_translation},
         {"vk_command_stream_dispatch_barrier", test_command_stream_dispatch_and_barrier},
+        {"vk_command_stream_rejection", test_command_stream_rejection},
+        {"vk_recorder_unsupported_commands", test_recorder_unsupported_commands},
         {"vk_frame_sync_slots", test_frame_sync_slots},
         {"vk_frame_sync_triple_buffer", test_frame_sync_triple_buffer},
         {"vk_backend_headless_contract", test_backend_headless_contract},

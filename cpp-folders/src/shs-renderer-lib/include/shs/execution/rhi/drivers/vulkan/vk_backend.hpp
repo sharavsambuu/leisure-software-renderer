@@ -32,12 +32,6 @@
 
 namespace shs
 {
-    enum class VulkanRecordingError : uint8_t
-    {
-        DeviceUnavailable,
-        CommandBufferUnavailable
-    };
-
     using VulkanBufferPool = containers::FlatMap<uint64_t, VkBuffer>;
     using VulkanImagePool = containers::FlatMap<uint64_t, VkImage>;
     using VulkanMemoryPool = containers::FlatMap<uint64_t, VkDeviceMemory>;
@@ -52,59 +46,85 @@ namespace shs
                               const VulkanImagePool& images)
             : device_(device), cmd_(cmd), buffers_(buffers), images_(images) {}
 
-        void begin_pass(const RHICmdBeginPassDesc& d)
+        std::expected<void, VulkanRecordingError> begin_pass(const RHICmdBeginPassDesc& d)
         {
             (void)d;
             // Renderpass dynamic rendering comes with the resource-plan wiring;
             // recording contract established here (P2).
+            return std::unexpected(VulkanRecordingError::UnsupportedCommand);
         }
 
-        void end_pass(const RHICmdEndPassDesc&) {}
+        std::expected<void, VulkanRecordingError> end_pass(const RHICmdEndPassDesc&)
+        {
+            return std::unexpected(VulkanRecordingError::UnsupportedCommand);
+        }
 
-        void bind_pipeline(const RHICmdBindPipelineDesc& d)
+        std::expected<void, VulkanRecordingError> bind_pipeline(const RHICmdBindPipelineDesc& d)
         {
             (void)d;
+            return std::unexpected(VulkanRecordingError::UnsupportedCommand);
         }
 
-        void bind_vertex_buffer(const RHICmdBindVertexBufferDesc& d)
+        std::expected<void, VulkanRecordingError> bind_vertex_buffer(const RHICmdBindVertexBufferDesc& d)
         {
-            if (const VkBuffer* b = buffers_.find(d.buffer))
+            if (auto ready = recording_ready(); !ready) return ready;
+            if (const VkBuffer* b = buffers_.find(d.buffer); b && *b != VK_NULL_HANDLE)
             {
                 const VkDeviceSize offset = (VkDeviceSize)d.offset;
                 vkCmdBindVertexBuffers(cmd_, 0, 1, b, &offset);
+                return {};
             }
+            return std::unexpected(VulkanRecordingError::MissingBuffer);
         }
 
-        void bind_index_buffer(const RHICmdBindIndexBufferDesc& d)
+        std::expected<void, VulkanRecordingError> bind_index_buffer(const RHICmdBindIndexBufferDesc& d)
         {
-            if (const VkBuffer* b = buffers_.find(d.buffer))
+            if (auto ready = recording_ready(); !ready) return ready;
+            if (const VkBuffer* b = buffers_.find(d.buffer); b && *b != VK_NULL_HANDLE)
             {
                 vkCmdBindIndexBuffer(cmd_, *b, (VkDeviceSize)d.offset,
                                      d.index_u32 ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16);
+                return {};
             }
+            return std::unexpected(VulkanRecordingError::MissingBuffer);
         }
 
-        void draw_indexed(const RHICmdDrawIndexedDesc& d)
+        std::expected<void, VulkanRecordingError> draw_indexed(const RHICmdDrawIndexedDesc& d)
         {
-            vkCmdDrawIndexed(cmd_, d.index_count, d.instance_count, d.first_index, d.vertex_offset, d.first_instance);
+            (void)d;
+            // Pipeline binding must exist before draws are legal (G2).
+            return std::unexpected(VulkanRecordingError::UnsupportedCommand);
         }
 
-        void dispatch(const RHICmdDispatchDesc& d)
+        std::expected<void, VulkanRecordingError> dispatch(const RHICmdDispatchDesc& d)
         {
-            vkCmdDispatch(cmd_, d.group_x, d.group_y, d.group_z);
+            (void)d;
+            // Compute pipeline binding must exist before dispatch is legal (G2).
+            return std::unexpected(VulkanRecordingError::UnsupportedCommand);
         }
 
-        void barrier(const RHICmdBarrierDesc& d)
+        std::expected<void, VulkanRecordingError> barrier(const RHICmdBarrierDesc& d)
         {
+            if (auto ready = recording_ready(); !ready) return ready;
             VkMemoryBarrier barrier{};
             barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
             barrier.srcAccessMask = vk_access_of(d.memory.src_access);
             barrier.dstAccessMask = vk_access_of(d.memory.dst_access);
             vkCmdPipelineBarrier(cmd_, vk_stage_of(d.memory.src_stage), vk_stage_of(d.memory.dst_stage),
                                  0, 1, &barrier, 0, nullptr, 0, nullptr);
+            return {};
         }
 
     private:
+        std::expected<void, VulkanRecordingError> recording_ready() const
+        {
+            if (device_ == VK_NULL_HANDLE)
+                return std::unexpected(VulkanRecordingError::DeviceUnavailable);
+            if (cmd_ == VK_NULL_HANDLE)
+                return std::unexpected(VulkanRecordingError::CommandBufferUnavailable);
+            return {};
+        }
+
         VkDevice device_;
         VkCommandBuffer cmd_;
         const VulkanBufferPool& buffers_;
@@ -175,16 +195,15 @@ namespace shs
 
         // ---- CommandDesc stream recording (arch §4 rule 2) ----------------
 
-        [[nodiscard]] std::expected<void, VulkanRecordingError> record_frame_commands(
+        [[nodiscard]] std::expected<void, VulkanRecordingFailure> record_frame_commands(
             std::span<const RHICmd> stream)
         {
             if (!device_.device_available())
-                return std::unexpected(VulkanRecordingError::DeviceUnavailable);
+                return std::unexpected(VulkanRecordingFailure{VulkanRecordingError::DeviceUnavailable});
             if (command_buffer_ == VK_NULL_HANDLE)
-                return std::unexpected(VulkanRecordingError::CommandBufferUnavailable);
+                return std::unexpected(VulkanRecordingFailure{VulkanRecordingError::CommandBufferUnavailable});
             VulkanCommandRecorder recorder{device_.device(), command_buffer_, buffers_, images_};
-            record_commands(stream, recorder);
-            return {};
+            return record_commands(stream, recorder);
         }
 
         void set_command_buffer(VkCommandBuffer cmd) { command_buffer_ = cmd; }

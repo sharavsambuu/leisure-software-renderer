@@ -13,8 +13,11 @@
             translation layer replayable and testable without a device.
 */
 
+#include <cstddef>
 #include <cstdint>
+#include <expected>
 #include <span>
+#include <type_traits>
 #include <variant>
 
 #include "shs/execution/rhi/command/command_desc.hpp"
@@ -22,6 +25,23 @@
 
 namespace shs
 {
+    enum class VulkanRecordingError : uint8_t
+    {
+        DeviceUnavailable,
+        CommandBufferUnavailable,
+        UnsupportedCommand,
+        MissingBuffer
+    };
+
+    struct VulkanRecordingFailure
+    {
+        VulkanRecordingError code;
+        // SIZE_MAX denotes a recording prerequisite, not a stream command.
+        std::size_t command_index = SIZE_MAX;
+    };
+
+    // Sink methods return expected<void, VulkanRecordingError>.
+    // Infallible void-returning translation spies are also supported.
     // Sink concept (compile-time duck typing):
     //   void begin_pass(const RHICmdBeginPassDesc&);
     //   void end_pass(const RHICmdEndPassDesc&);
@@ -35,19 +55,42 @@ namespace shs
     // The sink receives stable 64-bit IDs only — resolving them to Vk* handles
     // happens below the driver boundary.
 
+    // Fail-fast translation: earlier calls are not rolled back on rejection.
     template <typename Sink>
-    void record_commands(std::span<const RHICmd> stream, Sink& sink)
+    [[nodiscard]] std::expected<void, VulkanRecordingFailure> record_commands(
+        std::span<const RHICmd> stream, Sink& sink)
     {
-        for (const RHICmd& cmd : stream)
+        const auto invoke = [](auto&& call) -> std::expected<void, VulkanRecordingError> {
+            if constexpr (std::is_void_v<decltype(call())>)
+            {
+                call();
+                return {};
+            }
+            else return call();
+        };
+        for (std::size_t i = 0; i < stream.size(); ++i)
         {
-            if (const auto* d = std::get_if<RHICmdBeginPassDesc>(&cmd.payload)) sink.begin_pass(*d);
-            else if (const auto* d = std::get_if<RHICmdEndPassDesc>(&cmd.payload)) sink.end_pass(*d);
-            else if (const auto* d = std::get_if<RHICmdBindPipelineDesc>(&cmd.payload)) sink.bind_pipeline(*d);
-            else if (const auto* d = std::get_if<RHICmdBindVertexBufferDesc>(&cmd.payload)) sink.bind_vertex_buffer(*d);
-            else if (const auto* d = std::get_if<RHICmdBindIndexBufferDesc>(&cmd.payload)) sink.bind_index_buffer(*d);
-            else if (const auto* d = std::get_if<RHICmdDrawIndexedDesc>(&cmd.payload)) sink.draw_indexed(*d);
-            else if (const auto* d = std::get_if<RHICmdDispatchDesc>(&cmd.payload)) sink.dispatch(*d);
-            else if (const auto* d = std::get_if<RHICmdBarrierDesc>(&cmd.payload)) sink.barrier(*d);
+            const RHICmd& cmd = stream[i];
+            std::expected<void, VulkanRecordingError> result;
+            if (const auto* d = std::get_if<RHICmdBeginPassDesc>(&cmd.payload))
+                result = invoke([&] { return sink.begin_pass(*d); });
+            else if (const auto* d = std::get_if<RHICmdEndPassDesc>(&cmd.payload))
+                result = invoke([&] { return sink.end_pass(*d); });
+            else if (const auto* d = std::get_if<RHICmdBindPipelineDesc>(&cmd.payload))
+                result = invoke([&] { return sink.bind_pipeline(*d); });
+            else if (const auto* d = std::get_if<RHICmdBindVertexBufferDesc>(&cmd.payload))
+                result = invoke([&] { return sink.bind_vertex_buffer(*d); });
+            else if (const auto* d = std::get_if<RHICmdBindIndexBufferDesc>(&cmd.payload))
+                result = invoke([&] { return sink.bind_index_buffer(*d); });
+            else if (const auto* d = std::get_if<RHICmdDrawIndexedDesc>(&cmd.payload))
+                result = invoke([&] { return sink.draw_indexed(*d); });
+            else if (const auto* d = std::get_if<RHICmdDispatchDesc>(&cmd.payload))
+                result = invoke([&] { return sink.dispatch(*d); });
+            else if (const auto* d = std::get_if<RHICmdBarrierDesc>(&cmd.payload))
+                result = invoke([&] { return sink.barrier(*d); });
+            else result = std::unexpected(VulkanRecordingError::UnsupportedCommand);
+            if (!result) return std::unexpected(VulkanRecordingFailure{result.error(), i});
         }
+        return {};
     }
 }
