@@ -21,6 +21,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace camera
+    {
     struct LightCamera
     {
         glm::mat4 view{1.0f};
@@ -97,4 +100,6 @@ namespace shs
         lc.viewproj = lc.proj * lc.view;
         return lc;
     }
+
+    } // inline namespace camera
 }

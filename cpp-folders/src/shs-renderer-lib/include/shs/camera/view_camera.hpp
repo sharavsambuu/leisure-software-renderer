@@ -16,6 +16,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace camera
+    {
     struct ViewCamera
     {
         glm::vec3 pos{0.0f, 0.0f, -3.0f};
@@ -39,4 +42,6 @@ namespace shs
             viewproj = proj * view;
         }
     };
+
+    } // inline namespace camera
 }

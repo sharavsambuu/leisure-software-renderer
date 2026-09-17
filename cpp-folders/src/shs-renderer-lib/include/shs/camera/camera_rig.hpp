@@ -17,6 +17,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace camera
+    {
     struct CameraRig
     {
         glm::vec3 pos{0.0f, 0.0f, -3.0f};
@@ -35,5 +38,7 @@ namespace shs
             return right_from_forward(forward());
         }
     };
+
+    } // inline namespace camera
 }
 

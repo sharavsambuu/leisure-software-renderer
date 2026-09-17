@@ -18,6 +18,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace camera
+    {
     inline void follow_target(
         CameraRig& rig,
         const glm::vec3& target_pos,
@@ -31,4 +34,6 @@ namespace shs
         const glm::vec3 desired = target_pos + offset_ws;
         rig.pos = glm::mix(rig.pos, desired, t);
     }
+
+    } // inline namespace camera
 }

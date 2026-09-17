@@ -390,6 +390,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "camera",
       "namespace_declarations": [
+        "camera",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -427,6 +428,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "camera",
       "namespace_declarations": [
+        "camera",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -458,6 +460,7 @@
       "review_status": "approved-canonical",
       "proposed_owner": "camera",
       "namespace_declarations": [
+        "camera",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -496,6 +499,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "camera",
       "namespace_declarations": [
+        "camera",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -525,6 +529,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "camera",
       "namespace_declarations": [
+        "camera",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -557,6 +562,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "camera",
       "namespace_declarations": [
+        "camera",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -595,6 +601,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "camera",
       "namespace_declarations": [
+        "camera",
         "shs"
       ],
       "visibility": "public-include-tree",

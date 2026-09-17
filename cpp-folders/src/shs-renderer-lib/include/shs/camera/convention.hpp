@@ -15,6 +15,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace camera
+    {
     // Зүүн гарын дүрэмтэй (LH) харах матриц (look-at matrix). NDC Z-тэнхлэг нь [-1, 1] хооронд байна.
     inline glm::mat4 look_at_lh(const glm::vec3& eye, const glm::vec3& target, const glm::vec3& up)
     {
@@ -32,4 +35,6 @@ namespace shs
     {
         return glm::orthoLH_NO(left, right, bottom, top, znear, zfar);
     }
+
+    } // inline namespace camera
 }

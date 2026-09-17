@@ -19,6 +19,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace camera
+    {
     /** @brief Domain-owned camera move intent (platform bridge maps into this). */
     struct FreeCameraInput
     {
@@ -82,4 +85,6 @@ namespace shs
             return right_from_forward(forward_vector());
         }
     };
+
+    } // inline namespace camera
 }

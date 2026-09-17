@@ -16,6 +16,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace camera
+    {
     inline glm::vec3 forward_from_yaw_pitch(float yaw, float pitch)
     {
         glm::vec3 f{};
@@ -29,4 +32,6 @@ namespace shs
     {
         return glm::normalize(glm::cross(world_up, fwd));
     }
+
+    } // inline namespace camera
 }
