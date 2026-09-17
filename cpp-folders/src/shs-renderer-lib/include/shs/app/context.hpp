@@ -24,6 +24,9 @@
 
 namespace shs
 {
+// namespace-cutover: app compat wrapper (step 7; shs::app pre-exists, cannot be inline)
+    namespace app
+    {
     // Рендерлэлтийн үеийн гүйцэтгэл болон дебаг мэдээллийг хадгалах бүтэц.
     // Хэдэн гурвалжин зурагдсан, ямар функц хэр удаан ажилласан зэргийг хянана.
     struct RenderDebugStats
@@ -185,4 +188,13 @@ namespace shs
             return b ? b->name() : render_backend_type_name(RenderBackendType::Software);
         }
     };
+
+    } // namespace app
+
+    // namespace-cutover compatibility (step 7): root spellings of app symbols
+    using app::RenderDebugStats;
+    using app::ShadowRuntimeState;
+    using app::RenderHistoryState;
+    using app::TemporalAARuntimeState;
+    using app::Context;
 }

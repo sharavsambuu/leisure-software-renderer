@@ -11,6 +11,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "app",
       "namespace_declarations": [
+        "app",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -51,6 +52,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "app",
       "namespace_declarations": [
+        "app",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -76,6 +78,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "app",
       "namespace_declarations": [
+        "app",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -141,6 +144,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "app",
       "namespace_declarations": [
+        "app",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -187,6 +191,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "app",
       "namespace_declarations": [
+        "app",
         "detail",
         "shs",
         "shs::app"
@@ -8770,6 +8775,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "rhi",
       "namespace_declarations": [
+        "app",
         "rhi",
         "shs"
       ],

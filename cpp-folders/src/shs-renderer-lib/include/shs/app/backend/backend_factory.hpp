@@ -26,6 +26,9 @@
 
 namespace shs
 {
+// namespace-cutover: app compat wrapper (step 7; shs::app pre-exists, cannot be inline)
+    namespace app
+    {
     struct RenderBackendCreateResult
     {
         std::unique_ptr<IRenderBackend> backend{};
@@ -101,4 +104,12 @@ namespace shs
     {
         return create_render_backend(parse_render_backend_type(requested_text, RenderBackendType::Software));
     }
+
+    } // namespace app
+
+    // namespace-cutover compatibility (step 7): root spellings of app symbols
+    using app::RenderBackendCreateResult;
+    using app::to_lower_ascii;
+    using app::parse_render_backend_type;
+    using app::create_render_backend;
 }

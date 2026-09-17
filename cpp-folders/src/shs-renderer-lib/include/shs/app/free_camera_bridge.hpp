@@ -15,6 +15,9 @@
 
 namespace shs
 {
+// namespace-cutover: app compat wrapper (step 7; shs::app pre-exists, cannot be inline)
+    namespace app
+    {
     inline FreeCameraInput to_camera_input(const PlatformInputState& in)
     {
         FreeCameraInput out{};
@@ -32,4 +35,10 @@ namespace shs
     {
         cam.update(to_camera_input(in), dt);
     }
+
+    } // namespace app
+
+    // namespace-cutover compatibility (step 7): root spellings of app symbols
+    using app::to_camera_input;
+    using app::update_free_camera_from_platform;
 } // namespace shs

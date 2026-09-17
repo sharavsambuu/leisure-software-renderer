@@ -186,7 +186,15 @@ namespace shs::app
 
 namespace shs
 {
+// namespace-cutover: app compat wrapper (step 7; shs::app pre-exists, cannot be inline)
+    namespace app
+    {
     // Root compatibility alias (step 4.1): the session aggregate moved from
     // the input pod to app ownership; the old root symbol stays valid.
     using RuntimeState = shs::app::SessionState;
+
+    } // namespace app
+
+    // namespace-cutover compatibility (step 7): root spelling of app symbol
+    using app::RuntimeState;
 } // namespace shs

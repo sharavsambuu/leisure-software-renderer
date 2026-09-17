@@ -16,6 +16,9 @@
 
 namespace shs
 {
+// namespace-cutover: app compat wrapper (step 7; shs::app pre-exists, cannot be inline)
+    namespace app
+    {
     // Pre-4.2 compatibility path (step 4.2,
     // engine_domain_separation_migration.md): projection settings are read
     // from the scene copy. The canonical camera-settings funnel is
@@ -43,4 +46,9 @@ namespace shs
         scene.cam.prev_viewproj = vc.prev_viewproj;
         scene.cam.viewproj = vc.viewproj;
     }
+
+    } // namespace app
+
+    // namespace-cutover compatibility (step 7): root spelling of app symbol
+    using app::sync_camera_to_scene;
 }

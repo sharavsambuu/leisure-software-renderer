@@ -17,10 +17,16 @@
 namespace shs
 {
     // The context passed through the backend interface is the app-owned
-    // Context (definition in shs/app/context.hpp); forward-declared here at
-    // the root namespace so it denotes the same entity while the app module
-    // is still un-namespaced. Re-pointed to shs::app by the app cutover slice.
+    // Context (definition in shs/app/context.hpp); forward-declared in
+    // shs::app (re-pointed by the app cutover slice, step 7).
+    namespace app
+    {
     struct Context;
+    }
+
+    // Root spelling compatibility (step 7): shs::Context denotes the
+    // app-owned shs::app::Context.
+    using app::Context;
 
 // namespace-cutover: inline compatibility wrapper (step 7)
     inline namespace rhi
