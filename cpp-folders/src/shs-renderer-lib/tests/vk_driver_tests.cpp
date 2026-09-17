@@ -207,11 +207,33 @@ namespace
         if (p1 == 0 || p1 != p2 || creates != 1) return false;
         if (cache.stats().cache_hits != 1) return false;
 
+        const shs::VulkanPipelineRecord* record = cache.find_graphics(p1);
+        if (!record || record->id != p1 ||
+            record->desc_hash != shs::hash_graphics_pipeline_desc(d)) return false;
+
         // A state field change must produce a distinct slot (no accidental reuse).
         shs::RHIGraphicsPipelineDesc d2 = d;
         d2.depth.enable_write = !d2.depth.enable_write;
         const uint64_t p3 = cache.intern_graphics(d2, [](uint64_t, const shs::RHIGraphicsPipelineDesc&) { return true; });
         if (p3 == 0 || p3 == p1) return false;
+        record = cache.find_graphics(p3);
+        if (!record || record->id != p3 ||
+            record->desc_hash != shs::hash_graphics_pipeline_desc(d2)) return false;
+        record = cache.find_graphics(p1);
+        if (!record || record->id != p1) return false;
+        if (cache.find_graphics(0) || cache.find_graphics(UINT64_MAX)) return false;
+
+        auto failed_desc = d;
+        failed_desc.blend.enable = !failed_desc.blend.enable;
+        uint64_t failed_id = 0;
+        if (cache.intern_graphics(failed_desc, [&](uint64_t id, const shs::RHIGraphicsPipelineDesc&) {
+                failed_id = id;
+                return false;
+            }) != 0) return false;
+        if (failed_id == 0 || cache.find_graphics(failed_id)) return false;
+        const uint64_t retried = cache.intern_graphics(failed_desc, [](uint64_t, const shs::RHIGraphicsPipelineDesc&) { return true; });
+        record = cache.find_graphics(retried);
+        if (!record || record->id != retried || cache.find_graphics(failed_id)) return false;
 
         // Shader modules intern independently and dedupe by content hash.
         uint32_t module_creates = 0;

@@ -46,7 +46,7 @@ namespace shs
         static constexpr uint64_t kComputePipelineIdBase = 0x4300000000000000ull;  // 'C'
 
         explicit VulkanPipelineCache(std::pmr::memory_resource* resource = std::pmr::get_default_resource())
-            : shader_modules_(resource), graphics_(resource), compute_(resource) {}
+            : shader_modules_(resource), graphics_(resource), compute_(resource), graphics_hash_by_id_(resource) {}
 
         template <typename CreateFn>
         [[nodiscard]] uint64_t intern_shader_module(const RHIShaderModuleDesc& d, CreateFn&& create)
@@ -77,6 +77,7 @@ namespace shs
             if (!create(id, d)) return 0;
             stats_.graphics_pipeline_creates++;
             graphics_.insert_or_assign(h, VulkanPipelineRecord{id, h});
+            graphics_hash_by_id_.insert_or_assign(id, h);
             return id;
         }
 
@@ -96,7 +97,11 @@ namespace shs
             return id;
         }
 
-        [[nodiscard]] const VulkanPipelineRecord* find_graphics(uint64_t id) const { return graphics_.find(id); }
+        [[nodiscard]] const VulkanPipelineRecord* find_graphics(uint64_t id) const
+        {
+            const uint64_t* hash = graphics_hash_by_id_.find(id);
+            return hash ? graphics_.find(*hash) : nullptr;
+        }
 
         [[nodiscard]] const VulkanPipelineStats& stats() const { return stats_; }
 
@@ -105,6 +110,8 @@ namespace shs
         RecordMap shader_modules_;
         RecordMap graphics_;
         RecordMap compute_;
+        // Descriptor hashes dedupe creation; public IDs resolve through this index.
+        containers::FlatMap<uint64_t, uint64_t> graphics_hash_by_id_;
         uint64_t next_shader_module_id_ = 0;
         uint64_t next_graphics_id_ = 0;
         uint64_t next_compute_id_ = 0;
