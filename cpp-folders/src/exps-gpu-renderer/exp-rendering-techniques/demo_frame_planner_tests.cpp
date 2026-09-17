@@ -40,8 +40,8 @@ namespace
         in.active_plan.recipe_name = "demo_forward_plus";
         in.active_plan.valid = true;
         in.active_plan.pass_chain = {
-            shs::RenderPathCompiledPass{"shadow_map", shs::PassId::ShadowMap, false},
-            shs::RenderPathCompiledPass{"pbr_forward_plus", shs::PassId::PBRForwardPlus, true}};
+            shs::renderpath::RenderPathCompiledPass{"shadow_map", shs::PassId::ShadowMap, false},
+            shs::renderpath::RenderPathCompiledPass{"pbr_forward_plus", shs::PassId::PBRForwardPlus, true}};
 
         const shs::demo::DemoFramePlan plan = shs::demo::plan_demo_frame(in, &arena);
         if (plan.resolved_plan.recipe_name != "demo_forward_plus") return false;
@@ -57,10 +57,10 @@ namespace
         in.active_plan_valid = true;
         in.active_plan.valid = true;
         in.active_plan.pass_chain = {
-            shs::RenderPathCompiledPass{"depth_prepass", shs::PassId::DepthPrepass, true},
-            shs::RenderPathCompiledPass{"pbr_forward_plus", shs::PassId::PBRForwardPlus, true},
-            shs::RenderPathCompiledPass{"motion_blur", shs::PassId::MotionBlur, false},
-            shs::RenderPathCompiledPass{"dof", shs::PassId::DepthOfField, false}};
+            shs::renderpath::RenderPathCompiledPass{"depth_prepass", shs::PassId::DepthPrepass, true},
+            shs::renderpath::RenderPathCompiledPass{"pbr_forward_plus", shs::PassId::PBRForwardPlus, true},
+            shs::renderpath::RenderPathCompiledPass{"motion_blur", shs::PassId::MotionBlur, false},
+            shs::renderpath::RenderPathCompiledPass{"dof", shs::PassId::DepthOfField, false}};
         in.depth_prepass_enabled = true;
         in.scene_pass_enabled = false;
         in.multithread_recording_enabled = true;
@@ -112,7 +112,7 @@ namespace
         in.active_plan_valid = true;
         in.active_plan.valid = true;
         in.active_plan.pass_chain = {
-            shs::RenderPathCompiledPass{"tonemap", shs::PassId::Tonemap, true}};
+            shs::renderpath::RenderPathCompiledPass{"tonemap", shs::PassId::Tonemap, true}};
         in.motion_blur_enabled = true;
 
         const shs::demo::DemoFramePlan a = shs::demo::plan_demo_frame(in, &arena);

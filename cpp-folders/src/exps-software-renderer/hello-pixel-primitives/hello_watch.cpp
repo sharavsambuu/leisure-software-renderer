@@ -23,7 +23,7 @@ static inline void angle_to_dir(double angle_deg, double &dx, double &dy)
     dy = std::sin(a);
 }
 
-static void draw_hand(shs::Canvas &canvas, int cx, int cy, double angle_deg, int len, shs::Color p)
+static void draw_hand(shs::Canvas &canvas, int cx, int cy, double angle_deg, int len, shs::render::Color p)
 {
     double dx, dy;
     angle_to_dir(angle_deg, dx, dy);
@@ -32,7 +32,7 @@ static void draw_hand(shs::Canvas &canvas, int cx, int cy, double angle_deg, int
     shs::Canvas::draw_line(canvas, cx, cy, x1, y1, p);
 }
 
-static void draw_tick(shs::Canvas &canvas, int cx, int cy, double angle_deg, int r0, int r1, shs::Color p)
+static void draw_tick(shs::Canvas &canvas, int cx, int cy, double angle_deg, int r0, int r1, shs::render::Color p)
 {
     double dx, dy;
     angle_to_dir(angle_deg, dx, dy);
@@ -67,11 +67,11 @@ int main(int argc, char* argv[])
     const int cy = CANVAS_HEIGHT / 2;
     const int R  = (CANVAS_HEIGHT < CANVAS_WIDTH ? CANVAS_HEIGHT : CANVAS_WIDTH) / 2 - 10;
 
-    shs::Color yellow(255, 220, 40, 255);
-    shs::Color red   = shs::Color::red();
-    shs::Color green = shs::Color::green();
-    shs::Color blue  = shs::Color::blue();
-    shs::Color white = shs::Color::white();
+    shs::render::Color yellow(255, 220, 40, 255);
+    shs::render::Color red   = shs::Color::red();
+    shs::render::Color green = shs::Color::green();
+    shs::render::Color blue  = shs::Color::blue();
+    shs::render::Color white = shs::Color::white();
 
     while (!exit)
     {

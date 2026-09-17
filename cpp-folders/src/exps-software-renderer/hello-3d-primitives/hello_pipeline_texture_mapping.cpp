@@ -51,7 +51,7 @@ struct Uniforms {
     glm::vec3  light_dir;
     glm::vec3  camera_pos;
 
-    shs::Color color;
+    shs::render::Color color;
 
     const shs::Texture2D *albedo = nullptr;
     bool use_texture = false;
@@ -76,7 +76,7 @@ shs::Varyings blinn_phong_tex_vertex_shader(const glm::vec3& aPos, const glm::ve
 /*
     FRAGMENT SHADER (Blinn-Phong, texture albedo)
 */
-shs::Color blinn_phong_tex_fragment_shader(const shs::Varyings& in, const Uniforms& u)
+shs::render::Color blinn_phong_tex_fragment_shader(const shs::Varyings& in, const Uniforms& u)
 {
     glm::vec3 norm     = glm::normalize(in.normal);
     glm::vec3 lightDir = glm::normalize(-u.light_dir);
@@ -98,7 +98,7 @@ shs::Color blinn_phong_tex_fragment_shader(const shs::Varyings& in, const Unifor
     glm::vec3 baseColor;
 
     if (u.use_texture && u.albedo && u.albedo->valid()) {
-        shs::Color tc = sample_nearest(*u.albedo, in.uv);
+        shs::render::Color tc = sample_nearest(*u.albedo, in.uv);
         baseColor = glm::vec3(tc.r, tc.g, tc.b) / 255.0f;
     } else {
         baseColor = glm::vec3(u.color.r, u.color.g, u.color.b) / 255.0f;
@@ -107,7 +107,7 @@ shs::Color blinn_phong_tex_fragment_shader(const shs::Varyings& in, const Unifor
     glm::vec3 result = (ambient + diffuse + specular) * baseColor;
     result = glm::clamp(result, 0.0f, 1.0f);
 
-    return shs::Color{
+    return shs::render::Color{
         (uint8_t)(result.r * 255),
         (uint8_t)(result.g * 255),
         (uint8_t)(result.b * 255),
@@ -123,7 +123,7 @@ shs::Color blinn_phong_tex_fragment_shader(const shs::Varyings& in, const Unifor
 class SubaruObject : public shs::AbstractObject3D
 {
 public:
-    SubaruObject(glm::vec3 position, glm::vec3 scale, shs::Color color, const shs::Texture2D *albedo)
+    SubaruObject(glm::vec3 position, glm::vec3 scale, shs::render::Color color, const shs::Texture2D *albedo)
     {
         this->position       = position;
         this->scale          = scale;
@@ -153,7 +153,7 @@ public:
 
     glm::vec3      scale;
     glm::vec3      position;
-    shs::Color     color;
+    shs::render::Color     color;
     float          rotation_angle;
 };
 
@@ -168,7 +168,7 @@ public:
         this->light_direction = glm::normalize(glm::vec3(-1.0f, -0.4f, 1.0f));
 
         this->scene_objects.push_back(
-            new SubaruObject(glm::vec3(0.0f, 0.0f, 25.0f), glm::vec3(0.08f), shs::Color{200, 200, 200, 255}, albedo)
+            new SubaruObject(glm::vec3(0.0f, 0.0f, 25.0f), glm::vec3(0.08f), shs::render::Color{200, 200, 200, 255}, albedo)
         );
     }
     ~HelloScene() {
@@ -209,7 +209,7 @@ public:
         const std::vector<glm::vec3> &normals,
         const std::vector<glm::vec2> &uvs,
         std::function<shs::Varyings(const glm::vec3&, const glm::vec3&, const glm::vec2&)> vertex_shader,
-        std::function<shs::Color(const shs::Varyings&)> fragment_shader,
+        std::function<shs::render::Color(const shs::Varyings&)> fragment_shader,
         glm::ivec2 tile_min, glm::ivec2 tile_max)
     {
         // [VERTEX STAGE]
@@ -401,7 +401,7 @@ class SystemProcessor
 public:
     SystemProcessor(HelloScene *scene, shs::Job::ThreadedPriorityJobSystem *job_sys)
     {
-        this->command_processor = new shs::CommandProcessor();
+        this->command_processor = new shs::input::CommandProcessor();
         this->renderer_system   = new RendererSystem(scene, job_sys);
         this->logic_system      = new LogicSystem(scene);
     }
@@ -421,7 +421,7 @@ public:
         this->renderer_system->process(delta_time);
     }
 
-    shs::CommandProcessor *command_processor;
+    shs::input::CommandProcessor *command_processor;
     LogicSystem           *logic_system;
     RendererSystem        *renderer_system;
 };
@@ -497,7 +497,7 @@ int main(int argc, char* argv[])
 
         sys->process(delta_time);
 
-        shs::Canvas::fill_pixel(*main_canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{20, 20, 25, 255});
+        shs::Canvas::fill_pixel(*main_canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT, shs::render::Color{20, 20, 25, 255});
         sys->render(delta_time);
 
         shs::Canvas::copy_to_SDLSurface(main_sdlsurface, main_canvas);

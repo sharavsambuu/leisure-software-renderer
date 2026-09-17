@@ -246,16 +246,16 @@ namespace tetris::game {
                 switch (w.env.phase) {
                 case environment::PHASE_RAIN:
                     hud.spawn_floater("GARBAGE RAIN",
-                        shs::Color{ 255, 160, 60, 255 }, 2.2f);
+                        shs::render::Color{ 255, 160, 60, 255 }, 2.2f);
                     if (ctx.audio) ctx.audio->play(11 /*SND_THUD*/);
                     break;
                 case environment::PHASE_BLACKOUT:
                     hud.spawn_floater("BLACKOUT",
-                        shs::Color{ 140, 150, 220, 255 }, 2.2f);
+                        shs::render::Color{ 140, 150, 220, 255 }, 2.2f);
                     break;
                 case environment::PHASE_CRESCENDO:
                     hud.spawn_floater("FINALE",
-                        shs::Color{ 255, 210, 60, 255 }, 2.6f);
+                        shs::render::Color{ 255, 210, 60, 255 }, 2.6f);
                     if (ctx.audio) ctx.audio->play(5 /*SND_TETRIS_FOUR*/);
                     break;
                 default: break;

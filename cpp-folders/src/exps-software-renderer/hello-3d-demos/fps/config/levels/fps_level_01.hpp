@@ -46,15 +46,15 @@ namespace fps::config {
         glm::vec3 sun_dir_world = glm::normalize(glm::vec3(0.45f, -0.85f, 0.35f));
 
         // --- Palette ---
-        shs::Color floor_dark   { 45, 52, 60, 255 };
-        shs::Color floor_light  { 65, 75, 88, 255 };
-        shs::Color wall_base    { 95, 105, 118, 255 };
-        shs::Color wall_trim    { 130, 140, 155, 255 };
-        shs::Color platform_top { 180, 140, 80, 255 };
-        shs::Color platform_side{ 120, 95, 60, 255 };
-        shs::Color pillar       { 140, 145, 155, 255 };
-        shs::Color crate_wood   { 165, 110, 60, 255 };
-        shs::Color crate_dark   { 120, 75, 40, 255 };
+        shs::render::Color floor_dark   { 45, 52, 60, 255 };
+        shs::render::Color floor_light  { 65, 75, 88, 255 };
+        shs::render::Color wall_base    { 95, 105, 118, 255 };
+        shs::render::Color wall_trim    { 130, 140, 155, 255 };
+        shs::render::Color platform_top { 180, 140, 80, 255 };
+        shs::render::Color platform_side{ 120, 95, 60, 255 };
+        shs::render::Color pillar       { 140, 145, 155, 255 };
+        shs::render::Color crate_wood   { 165, 110, 60, 255 };
+        shs::render::Color crate_dark   { 120, 75, 40, 255 };
 
         // Derived helpers
         float player_clamp_bound() const { return arena_half_size - player_clamp_margin; }

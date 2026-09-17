@@ -17,7 +17,7 @@ namespace
     // Down == horizon exactly (mix weight 0 is exact); sun disk == 15.
     bool test_procedural_known_answers()
     {
-        const shs::ProceduralSky sky{};
+        const shs::sky::ProceduralSky sky{};
         if (sky.sample(glm::vec3(0.0f, -1.0f, 0.0f)) != glm::vec3(0.30f, 0.60f, 1.00f)) return false;
         if (!near_vec(sky.sample(glm::vec3(0.0f, 1.0f, 0.0f)), glm::vec3(0.05f, 0.20f, 0.50f))) return false;
         return true;
@@ -27,14 +27,14 @@ namespace
     bool test_sun_disk()
     {
         const glm::vec3 sun = glm::normalize(glm::vec3(0.4668f, -0.3487f, 0.8127f));
-        const shs::ProceduralSky sky{sun};
+        const shs::sky::ProceduralSky sky{sun};
         return sky.sample(-sun) == glm::vec3(15.0f);
     }
 
     // Sampling is deterministic (double evaluation identical).
     bool test_sample_deterministic()
     {
-        const shs::ProceduralSky sky{};
+        const shs::sky::ProceduralSky sky{};
         const glm::vec3 d = glm::normalize(glm::vec3(0.4f, 0.2f, 0.9f));
         return sky.sample(d) == sky.sample(d);
     }

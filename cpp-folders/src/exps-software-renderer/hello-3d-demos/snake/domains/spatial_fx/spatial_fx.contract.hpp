@@ -6,7 +6,7 @@
 #include <array>
 #include <memory_resource>
 #include <glm/glm.hpp>
-#include "shs_renderer.hpp"   // shs::Color (shared renderer from hello-shs-renderer; dir is on the global include path via parent aggregator)
+#include "shs_renderer.hpp"   // shs::render::Color (shared renderer from hello-shs-renderer; dir is on the global include path via parent aggregator)
 #include "shs/containers/soa_table.hpp"   // P1.5: shared SoaTable backing store (§7.2)
 
 namespace snake::spatial_fx {
@@ -15,7 +15,7 @@ namespace snake::spatial_fx {
     // pre-shaded color + depth bias. Declared before PipelineExecutionPlan, which stores them by value.
     struct ProcessedTriangle {
         glm::vec4  c0, c1, c2;
-        shs::Color lit_color;
+        shs::render::Color lit_color;
         float      depth_bias;
     };
 
@@ -46,7 +46,7 @@ namespace snake::spatial_fx {
     // contiguous 64-byte-aligned pmr allocation per column, generational handles,
     // swap-and-pop removal (§7.2). Column order: position, velocity, color, life.
     // Mirrors tetris's 4-vector SoA (kept there until its own P1.5 migration).
-    using ShatterParticleSoA = shs::containers::SoaTable<glm::vec3, glm::vec3, shs::Color, float>;
+    using ShatterParticleSoA = shs::containers::SoaTable<glm::vec3, glm::vec3, shs::render::Color, float>;
 
     // Named column indices for the particle table (readability at call sites).
     inline constexpr std::size_t kParticlePosition = 0;
@@ -57,7 +57,7 @@ namespace snake::spatial_fx {
     // Burst helper: emits one particle row (was SoaTable-free struct's add()).
     inline shs::containers::SoaHandle add_particle(ShatterParticleSoA& particles,
                                                    glm::vec3 pos, glm::vec3 vel,
-                                                   shs::Color col, float duration = 0.8f)
+                                                   shs::render::Color col, float duration = 0.8f)
     {
         return particles.insert(pos, vel, col, duration);
     }

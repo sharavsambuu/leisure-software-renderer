@@ -306,8 +306,8 @@ namespace adventures
     int OffscreenVulkan::add_pipeline(const VkPipelineSetup& setup)
     {
         std::vector<char> vs_bytes, fs_bytes;
-        if (!shs::vk_try_read_binary_file(setup.vs_spv_path, vs_bytes) ||
-            !shs::vk_try_read_binary_file(setup.fs_spv_path, fs_bytes))
+        if (!shs::rhi::vk_try_read_binary_file(setup.vs_spv_path, vs_bytes) ||
+            !shs::rhi::vk_try_read_binary_file(setup.fs_spv_path, fs_bytes))
         {
             std::fprintf(stderr, "adventures-vk: failed to read SPIR-V (%s / %s)\n",
                          setup.vs_spv_path, setup.fs_spv_path);

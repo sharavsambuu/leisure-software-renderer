@@ -62,26 +62,26 @@ namespace
         return true;
     }
 
-    shs::RenderPathRecipe make_demo_recipe(const char* name, shs::renderpath::RenderPathRenderingTechnique tech)
+    shs::renderpath::RenderPathRecipe make_demo_recipe(const char* name, shs::renderpath::RenderPathRenderingTechnique tech)
     {
-        shs::RenderPathRecipe recipe{};
+        shs::renderpath::RenderPathRecipe recipe{};
         recipe.name = name;
         recipe.backend = shs::RenderBackendType::Vulkan;
         recipe.render_technique = tech;
         recipe.technique_mode = shs::demo::mode_for_technique(tech);
         recipe.pass_chain = {
-            shs::make_render_path_pass_entry(shs::PassId::ShadowMap, true),
-            shs::make_render_path_pass_entry(shs::PassId::PBRForwardPlus, true),
-            shs::make_render_path_pass_entry(shs::PassId::Tonemap, true)};
+            shs::renderpath::make_render_path_pass_entry(shs::PassId::ShadowMap, true),
+            shs::renderpath::make_render_path_pass_entry(shs::PassId::PBRForwardPlus, true),
+            shs::renderpath::make_render_path_pass_entry(shs::PassId::Tonemap, true)};
         return recipe;
     }
 
     // End-to-end (still GPU-free): intents -> pure reducer -> events.
     bool test_reducer_accepts_and_hot_swaps()
     {
-        shs::RenderPathCompiler compiler{};
-        const shs::RenderPathCapabilitySet caps = shs::make_render_path_capability_set(
-            shs::RenderBackendType::Vulkan, shs::BackendCapabilities{});
+        shs::renderpath::RenderPathCompiler compiler{};
+        const shs::renderpath::RenderPathCapabilitySet caps = shs::renderpath::make_render_path_capability_set(
+            shs::RenderBackendType::Vulkan, shs::rhi::BackendCapabilities{});
         shs::renderpath::RenderPathPodState state{};
         std::pmr::vector<shs::renderpath::RenderPathEvent> events{};
 
@@ -113,7 +113,7 @@ namespace
             return false;
 
         // Invalid candidate: rejection keeps the previous plan.
-        shs::RenderPathRecipe broken =
+        shs::renderpath::RenderPathRecipe broken =
             make_demo_recipe("broken", shs::renderpath::RenderPathRenderingTechnique::Deferred);
         broken.pass_chain.clear();
         const shs::renderpath::RenderPathCommand bad[] = {

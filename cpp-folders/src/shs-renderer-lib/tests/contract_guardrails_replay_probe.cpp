@@ -22,7 +22,7 @@ namespace
 
     span_digest run_recorded_span()
     {
-        shs::FrameParams state{};
+        shs::render::FrameParams state{};
         state.w = 640;
         state.h = 480;
         state.exposure = 1.25f;

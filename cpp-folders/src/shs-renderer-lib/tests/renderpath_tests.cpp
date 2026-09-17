@@ -16,40 +16,40 @@ namespace
     // Software-backend capability snapshot as a pure value (no Context needed).
     // Mirrors the software stack: occlusion culling is supported via the
     // software depth-cull path.
-    shs::RenderPathCapabilitySet make_sw_caps()
+    shs::renderpath::RenderPathCapabilitySet make_sw_caps()
     {
-        shs::BackendCapabilities backend_caps{};
-        shs::RenderPathCapabilitySet caps =
-            shs::make_render_path_capability_set(shs::RenderBackendType::Software, backend_caps);
+        shs::rhi::BackendCapabilities backend_caps{};
+        shs::renderpath::RenderPathCapabilitySet caps =
+            shs::renderpath::make_render_path_capability_set(shs::RenderBackendType::Software, backend_caps);
         return caps;
     }
 
     // Valid forward-lit software recipe: shadows on, frustum view culling.
-    shs::RenderPathRecipe make_forward_recipe(const char* name)
+    shs::renderpath::RenderPathRecipe make_forward_recipe(const char* name)
     {
-        shs::RenderPathRecipe recipe{};
+        shs::renderpath::RenderPathRecipe recipe{};
         recipe.name = name;
         recipe.backend = shs::RenderBackendType::Software;
         recipe.render_technique = shs::RenderPathRenderingTechnique::ForwardLit;
         recipe.technique_mode = shs::TechniqueMode::Forward;
         recipe.view_culling = shs::RenderPathCullingMode::Frustum;
         recipe.pass_chain = {
-            shs::make_render_path_pass_entry(shs::PassId::ShadowMap, true),
-            shs::make_render_path_pass_entry(shs::PassId::PBRForward, true),
-            shs::make_render_path_pass_entry(shs::PassId::Tonemap, true)
+            shs::renderpath::make_render_path_pass_entry(shs::PassId::ShadowMap, true),
+            shs::renderpath::make_render_path_pass_entry(shs::PassId::PBRForward, true),
+            shs::renderpath::make_render_path_pass_entry(shs::PassId::Tonemap, true)
         };
         return recipe;
     }
 
     // Occlusion-capable recipe: view culling requires occlusion, so a
     // depth_prepass pass is mandatory under the default compatibility rules.
-    shs::RenderPathRecipe make_occlusion_recipe(const char* name)
+    shs::renderpath::RenderPathRecipe make_occlusion_recipe(const char* name)
     {
-        shs::RenderPathRecipe recipe = make_forward_recipe(name);
+        shs::renderpath::RenderPathRecipe recipe = make_forward_recipe(name);
         recipe.view_culling = shs::RenderPathCullingMode::FrustumAndOcclusion;
         recipe.pass_chain.insert(
             recipe.pass_chain.begin() + 1,
-            shs::make_render_path_pass_entry(shs::PassId::DepthPrepass, true));
+            shs::renderpath::make_render_path_pass_entry(shs::PassId::DepthPrepass, true));
         return recipe;
     }
 
@@ -58,8 +58,8 @@ namespace
     // Path selection: preset select compiles and becomes the active plan.
     bool test_path_selection()
     {
-        shs::RenderPathCompiler compiler{};
-        const shs::RenderPathCapabilitySet caps = make_sw_caps();
+        shs::renderpath::RenderPathCompiler compiler{};
+        const shs::renderpath::RenderPathCapabilitySet caps = make_sw_caps();
 
         shs::renderpath::RenderPathPodState state{};
         std::pmr::monotonic_buffer_resource arena{ 4096 };
@@ -87,8 +87,8 @@ namespace
     // Technique switching: hot-swap recompiles and flips technique_mode.
     bool test_technique_switching()
     {
-        shs::RenderPathCompiler compiler{};
-        const shs::RenderPathCapabilitySet caps = make_sw_caps();
+        shs::renderpath::RenderPathCompiler compiler{};
+        const shs::renderpath::RenderPathCapabilitySet caps = make_sw_caps();
 
         shs::renderpath::RenderPathPodState state{};
         state.recipe = make_forward_recipe("forward_sw");
@@ -121,11 +121,11 @@ namespace
     // they do not (previous plan surviving the rejection).
     bool test_culling_mode_changes()
     {
-        shs::RenderPathCompiler compiler{};
+        shs::renderpath::RenderPathCompiler compiler{};
 
         // (a) Accepted: occlusion-capable caps + depth_prepass in the chain.
-        shs::BackendCapabilities occlusion_backend_caps{};
-        shs::RenderPathCapabilitySet occlusion_caps = shs::make_render_path_capability_set(
+        shs::rhi::BackendCapabilities occlusion_backend_caps{};
+        shs::renderpath::RenderPathCapabilitySet occlusion_caps = shs::renderpath::make_render_path_capability_set(
             shs::RenderBackendType::Software, occlusion_backend_caps);
         occlusion_caps.supports_occlusion_query = true;
 
@@ -154,18 +154,18 @@ namespace
     // Rejection behavior: invalid compile keeps previous plan + PATH_SWAP_REJECTED.
     bool test_rejection_keeps_previous_plan()
     {
-        shs::RenderPathCompiler compiler{};
-        const shs::RenderPathCapabilitySet caps = make_sw_caps();
+        shs::renderpath::RenderPathCompiler compiler{};
+        const shs::renderpath::RenderPathCapabilitySet caps = make_sw_caps();
 
         shs::renderpath::RenderPathPodState state{};
         state.recipe = make_forward_recipe("forward_sw");
         state.plan = compiler.compile(state.recipe, caps);
         state.plan_generation = state.plan.valid ? 1u : 0u;
         if (state.plan_generation == 0) return false;
-        const shs::RenderPathExecutionPlan previous_plan = state.plan;
+        const shs::renderpath::RenderPathExecutionPlan previous_plan = state.plan;
 
         // Invalid candidate: empty pass chain must fail compilation.
-        shs::RenderPathRecipe broken = make_forward_recipe("broken_sw");
+        shs::renderpath::RenderPathRecipe broken = make_forward_recipe("broken_sw");
         broken.pass_chain.clear();
 
         std::pmr::monotonic_buffer_resource arena{ 4096 };
@@ -192,7 +192,7 @@ namespace
     // A rejected culling change must not announce a mutation that never happened.
     bool test_rejected_view_culling_has_no_changed_fact()
     {
-        shs::RenderPathCompiler compiler{};
+        shs::renderpath::RenderPathCompiler compiler{};
         auto caps = make_sw_caps();
         caps.supports_occlusion_query = false;
         shs::renderpath::RenderPathPodState state{};
@@ -227,7 +227,7 @@ namespace
     bool test_rejected_swap_facts_and_recovery()
     {
         using namespace shs::renderpath;
-        shs::RenderPathCompiler compiler{};
+        shs::renderpath::RenderPathCompiler compiler{};
         const auto caps = make_sw_caps();
         auto unavailable = caps;
         unavailable.has_backend = false;
@@ -279,8 +279,8 @@ namespace
     // Runtime toggles mutate runtime state; never trigger a recompile.
     bool test_runtime_toggles()
     {
-        shs::RenderPathCompiler compiler{};
-        const shs::RenderPathCapabilitySet caps = make_sw_caps();
+        shs::renderpath::RenderPathCompiler compiler{};
+        const shs::renderpath::RenderPathCapabilitySet caps = make_sw_caps();
 
         shs::renderpath::RenderPathPodState state{};
         state.recipe = make_forward_recipe("forward_sw");
@@ -322,8 +322,8 @@ namespace
     // K3.2 (Run A): same-value commands emit *Unchanged facts, not silence.
     bool test_unchanged_facts()
     {
-        shs::RenderPathCompiler compiler{};
-        const shs::RenderPathCapabilitySet caps = make_sw_caps();
+        shs::renderpath::RenderPathCompiler compiler{};
+        const shs::renderpath::RenderPathCapabilitySet caps = make_sw_caps();
 
         shs::renderpath::RenderPathPodState state{};
         state.recipe = make_forward_recipe("forward_sw");
@@ -357,8 +357,8 @@ namespace
     // successful install, untouched by rejections and runtime toggles.
     bool test_plan_generation_semantics()
     {
-        shs::RenderPathCompiler compiler{};
-        const shs::RenderPathCapabilitySet caps = make_sw_caps();
+        shs::renderpath::RenderPathCompiler compiler{};
+        const shs::renderpath::RenderPathCapabilitySet caps = make_sw_caps();
 
         shs::renderpath::RenderPathPodState state{};
         if (state.plan_generation != 0) return false; // 0 = no plan ever installed
@@ -393,11 +393,11 @@ namespace
     {
         struct GatewayContext
         {
-            shs::RenderPathCompiler compiler{};
-            shs::RenderPathCapabilitySet caps{};
+            shs::renderpath::RenderPathCompiler compiler{};
+            shs::renderpath::RenderPathCapabilitySet caps{};
         };
 
-        shs::RenderPathCompiler compiler{};
+        shs::renderpath::RenderPathCompiler compiler{};
         GatewayContext context{ compiler, make_sw_caps() };
 
         shs::renderpath::RenderPathPodState initial{};
@@ -434,11 +434,11 @@ namespace
     {
         struct GatewayContext
         {
-            shs::RenderPathCompiler compiler{};
-            shs::RenderPathCapabilitySet caps{};
+            shs::renderpath::RenderPathCompiler compiler{};
+            shs::renderpath::RenderPathCapabilitySet caps{};
         };
 
-        shs::RenderPathCompiler compiler{};
+        shs::renderpath::RenderPathCompiler compiler{};
         GatewayContext context{ compiler, make_sw_caps() };
 
         shs::renderpath::RenderPathPodState initial{};

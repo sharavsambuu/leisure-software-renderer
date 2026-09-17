@@ -134,14 +134,14 @@ static inline float clamp01(float v)
 {
     return (v < 0.0f) ? 0.0f : (v > 1.0f ? 1.0f : v);
 }
-static inline glm::vec3 color_to_rgb01(const shs::Color& c)
+static inline glm::vec3 color_to_rgb01(const shs::render::Color& c)
 {
     return glm::vec3(float(c.r), float(c.g), float(c.b)) / 255.0f;
 }
-static inline shs::Color rgb01_to_color(const glm::vec3& c01)
+static inline shs::render::Color rgb01_to_color(const glm::vec3& c01)
 {
     glm::vec3 c = glm::clamp(c01, 0.0f, 1.0f) * 255.0f;
-    return shs::Color{ (uint8_t)c.x, (uint8_t)c.y, (uint8_t)c.z, 255 };
+    return shs::render::Color{ (uint8_t)c.x, (uint8_t)c.y, (uint8_t)c.z, 255 };
 }
 
 // ------------------------------------------
@@ -164,7 +164,7 @@ static inline glm::mat4 ortho_lh_zo(float left, float right, float bottom, float
 // TEXTURE SAMPLER (nearest)
 // ------------------------------------------
 #define UV_FLIP_V 0
-static inline shs::Color sample_nearest(const shs::Texture2D &tex, glm::vec2 uv)
+static inline shs::render::Color sample_nearest(const shs::Texture2D &tex, glm::vec2 uv)
 {
     float u = uv.x;
     float v = uv.y;
@@ -724,7 +724,7 @@ struct Uniforms
     glm::vec3 light_dir_world;
     glm::vec3 camera_pos;
 
-    shs::Color base_color;
+    shs::render::Color base_color;
     const shs::Texture2D *albedo = nullptr;
     bool use_texture = false;
 
@@ -849,7 +849,7 @@ static void draw_triangle_tile_color_depth_softshadow(
     const std::vector<glm::vec3>& tri_norms,
     const std::vector<glm::vec2>& tri_uvs,
     std::function<VaryingsFull(const glm::vec3&, const glm::vec3&, const glm::vec2&)> vs,
-    std::function<shs::Color(const VaryingsFull&, int px, int py)> fs,
+    std::function<shs::render::Color(const VaryingsFull&, int px, int py)> fs,
     glm::ivec2 tile_min, glm::ivec2 tile_max)
 {
     int W = color.get_width();
@@ -988,7 +988,7 @@ static void draw_triangle_tile_color_depth_softshadow(
 // ==========================================
 // FRAGMENT SHADER (Direct Blinn-Phong + PCSS Soft Shadow)
 // ==========================================
-static shs::Color fragment_shader_softshadow(const VaryingsFull& in, const Uniforms& u, int px, int py)
+static shs::render::Color fragment_shader_softshadow(const VaryingsFull& in, const Uniforms& u, int px, int py)
 {
     glm::vec3 N = glm::normalize(in.normal);
     glm::vec3 L = glm::normalize(-u.light_dir_world);
@@ -997,7 +997,7 @@ static shs::Color fragment_shader_softshadow(const VaryingsFull& in, const Unifo
     // BaseColor
     glm::vec3 baseColor;
     if (u.use_texture && u.albedo && u.albedo->valid()) {
-        shs::Color tc = shs::sample_nearest(*u.albedo, in.uv);
+        shs::render::Color tc = shs::sample_nearest(*u.albedo, in.uv);
         baseColor     = shs::color_to_rgb01(tc);
     } else {
         baseColor = shs::color_to_rgb01(u.base_color);
@@ -1085,7 +1085,7 @@ public:
     RendererSystem(DemoScene* scene, shs::Job::ThreadedPriorityJobSystem* job_sys)
         : scene(scene), job_system(job_sys)
     {
-        color  = new shs::Canvas(CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{20,20,25,255});
+        color  = new shs::Canvas(CANVAS_WIDTH, CANVAS_HEIGHT, shs::render::Color{20,20,25,255});
         depth  = new shs::ZBuffer(CANVAS_WIDTH, CANVAS_HEIGHT, scene->viewer->camera->z_near, scene->viewer->camera->z_far);
         shadow = new ShadowMap(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
     }
@@ -1213,7 +1213,7 @@ public:
         // -----------------------
         // PASS1: Camera render
         // -----------------------
-        color->buffer().clear(shs::Color{20,20,25,255});
+        color->buffer().clear(shs::render::Color{20,20,25,255});
         depth->clear();
 
         {
@@ -1248,7 +1248,7 @@ public:
                             u.light_vp        = light_vp;
                             u.light_dir_world = LIGHT_DIR_WORLD;
                             u.camera_pos      = scene->viewer->position;
-                            u.base_color      = shs::Color{ 120, 122, 128, 255 };
+                            u.base_color      = shs::render::Color{ 120, 122, 128, 255 };
                             u.albedo          = nullptr;
                             u.use_texture     = false;
                             u.shadow          = shadow;
@@ -1302,7 +1302,7 @@ public:
                                 u.light_vp        = light_vp;
                                 u.light_dir_world = LIGHT_DIR_WORLD;
                                 u.camera_pos      = scene->viewer->position;
-                                u.base_color      = shs::Color{200,200,200,255};
+                                u.base_color      = shs::render::Color{200,200,200,255};
                                 u.albedo          = car->albedo;
                                 u.use_texture     = (car->albedo && car->albedo->valid());
                                 u.shadow          = shadow;
@@ -1345,7 +1345,7 @@ public:
                                 u.light_vp        = light_vp;
                                 u.light_dir_world = LIGHT_DIR_WORLD;
                                 u.camera_pos      = scene->viewer->position;
-                                u.base_color      = shs::Color{ 180, 150, 95, 255 };
+                                u.base_color      = shs::render::Color{ 180, 150, 95, 255 };
                                 u.albedo          = nullptr;
                                 u.use_texture     = false;
                                 u.shadow          = shadow;
@@ -1424,7 +1424,7 @@ class SystemProcessor
 public:
     SystemProcessor(DemoScene* scene, shs::Job::ThreadedPriorityJobSystem* job_sys)
     {
-        command_processor = new shs::CommandProcessor();
+        command_processor = new shs::input::CommandProcessor();
         logic_system      = new LogicSystem(scene);
         renderer_system   = new RendererSystem(scene, job_sys);
     }
@@ -1449,7 +1449,7 @@ public:
 
     shs::Canvas& output() { return renderer_system->output(); }
 
-    shs::CommandProcessor* command_processor;
+    shs::input::CommandProcessor* command_processor;
     LogicSystem*           logic_system;
     RendererSystem*        renderer_system;
 };
@@ -1472,7 +1472,7 @@ int main(int argc, char* argv[])
     SDL_CreateWindowAndRenderer(WINDOW_WIDTH, WINDOW_HEIGHT, 0, &window, &renderer);
 
     // Present canvas
-    shs::Canvas* screen_canvas  = new shs::Canvas(CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{20,20,25,255});
+    shs::Canvas* screen_canvas  = new shs::Canvas(CANVAS_WIDTH, CANVAS_HEIGHT, shs::render::Color{20,20,25,255});
     SDL_Surface* screen_surface = screen_canvas->create_sdl_surface();
     SDL_Texture* screen_texture = SDL_CreateTextureFromSurface(renderer, screen_surface);
 

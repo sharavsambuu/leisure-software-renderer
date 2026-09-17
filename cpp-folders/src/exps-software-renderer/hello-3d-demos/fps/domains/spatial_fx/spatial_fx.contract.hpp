@@ -24,10 +24,10 @@ namespace fps::spatial_fx {
         glm::vec3  p0;
         glm::vec3  p1;
         glm::vec3  p2;
-        shs::Color color;
+        shs::render::Color color;
         float      depth_bias;
 
-        LowPolyTriangle(glm::vec3 a, glm::vec3 b, glm::vec3 c, shs::Color col, float bias = 0.0f)
+        LowPolyTriangle(glm::vec3 a, glm::vec3 b, glm::vec3 c, shs::render::Color col, float bias = 0.0f)
             : p0(a), p1(b), p2(c), color(col), depth_bias(bias) {
         }
     };
@@ -35,14 +35,14 @@ namespace fps::spatial_fx {
     namespace MeshBuilder {
         inline void add_quad(std::vector<LowPolyTriangle>& tris,
                              glm::vec3 v0, glm::vec3 v1, glm::vec3 v2, glm::vec3 v3,
-                             shs::Color c, float bias = 0.0f) {
+                             shs::render::Color c, float bias = 0.0f) {
             tris.emplace_back(v0, v1, v2, c, bias);
             tris.emplace_back(v0, v2, v3, c, bias);
         }
 
         inline void add_box(std::vector<LowPolyTriangle>& tris,
                             glm::vec3 center, glm::vec3 size,
-                            shs::Color c_top, shs::Color c_side, shs::Color c_bot,
+                            shs::render::Color c_top, shs::render::Color c_side, shs::render::Color c_bot,
                             float bias = 0.0f) {
             const glm::vec3 h = size * 0.5f;
             const glm::vec3 p000 = center + glm::vec3(-h.x, -h.y, -h.z);
@@ -64,7 +64,7 @@ namespace fps::spatial_fx {
 
         inline void add_cylinder(std::vector<LowPolyTriangle>& tris,
                                  glm::vec3 base_center, float radius, float height, int segments,
-                                 shs::Color color) {
+                                 shs::render::Color color) {
             const glm::vec3 top_center = base_center + glm::vec3(0, height, 0);
             const float     step       = glm::two_pi<float>() / static_cast<float>(segments);
 
@@ -91,7 +91,7 @@ namespace fps::spatial_fx {
     // ------------------------------------------------------------------
     struct ProcessedTriangle {
         glm::vec4  c0, c1, c2;
-        shs::Color lit_color;
+        shs::render::Color lit_color;
         float      depth_bias;
     };
 

@@ -47,10 +47,10 @@ struct LowPolyTriangle {
     glm::vec3  p0;
     glm::vec3  p1;
     glm::vec3  p2;
-    shs::Color color;
+    shs::render::Color color;
     float      depth_bias;
 
-    LowPolyTriangle(glm::vec3 a, glm::vec3 b, glm::vec3 c, shs::Color col, float bias = 0.0f)
+    LowPolyTriangle(glm::vec3 a, glm::vec3 b, glm::vec3 c, shs::render::Color col, float bias = 0.0f)
         : p0(a), p1(b), p2(c), color(col), depth_bias(bias) {}
 };
 
@@ -86,11 +86,11 @@ public:
         const float STEP = SIZE / (float)GRID;
         const float HALF = SIZE * 0.5f;
 
-        shs::Color grass_c1 = shs::Color{85, 155, 65, 255};
-        shs::Color grass_c2 = shs::Color{70, 140, 55, 255};
-        shs::Color hill_c   = shs::Color{135, 125, 110, 255};
-        shs::Color runway_c = shs::Color{50, 55, 60, 255};
-        shs::Color stripe_c = shs::Color{240, 240, 240, 255};
+        shs::render::Color grass_c1 = shs::render::Color{85, 155, 65, 255};
+        shs::render::Color grass_c2 = shs::render::Color{70, 140, 55, 255};
+        shs::render::Color hill_c   = shs::render::Color{135, 125, 110, 255};
+        shs::render::Color runway_c = shs::render::Color{50, 55, 60, 255};
+        shs::render::Color stripe_c = shs::render::Color{240, 240, 240, 255};
 
         for (int iz = 0; iz < GRID; ++iz) {
             float z0 = -HALF + (float)iz * STEP;
@@ -111,7 +111,7 @@ public:
                 glm::vec3 p11(x1, y11, z1);
 
                 float avg_y    = (y00 + y10 + y01 + y11) * 0.25f;
-                shs::Color col = ((ix + iz) % 2 == 0) ? grass_c1 : grass_c2;
+                shs::render::Color col = ((ix + iz) % 2 == 0) ? grass_c1 : grass_c2;
                 if (avg_y > 28.0f) col = hill_c;
 
                 // Top-facing (+Y) winding. SHS uses LH +Z forward, but the
@@ -151,18 +151,18 @@ public:
     static std::vector<LowPolyTriangle> build_mesh() {
         std::vector<LowPolyTriangle> tris;
 
-        shs::Color red    = shs::Color{225, 45, 40, 255};
-        shs::Color white  = shs::Color{240, 240, 245, 255};
-        shs::Color glass  = shs::Color{70, 160, 235, 255};
-        shs::Color yellow = shs::Color{245, 205, 40, 255};
-        shs::Color dark   = shs::Color{45, 45, 50, 255};
+        shs::render::Color red    = shs::render::Color{225, 45, 40, 255};
+        shs::render::Color white  = shs::render::Color{240, 240, 245, 255};
+        shs::render::Color glass  = shs::render::Color{70, 160, 235, 255};
+        shs::render::Color yellow = shs::render::Color{245, 205, 40, 255};
+        shs::render::Color dark   = shs::render::Color{45, 45, 50, 255};
 
-        auto add_quad = [&](glm::vec3 v0, glm::vec3 v1, glm::vec3 v2, glm::vec3 v3, shs::Color c) {
+        auto add_quad = [&](glm::vec3 v0, glm::vec3 v1, glm::vec3 v2, glm::vec3 v3, shs::render::Color c) {
             tris.emplace_back(v0, v1, v2, c, 0.0f);
             tris.emplace_back(v0, v2, v3, c, 0.0f);
         };
 
-        auto add_box = [&](glm::vec3 center, glm::vec3 size, shs::Color c_top, shs::Color c_side, shs::Color c_bot) {
+        auto add_box = [&](glm::vec3 center, glm::vec3 size, shs::render::Color c_top, shs::render::Color c_side, shs::render::Color c_bot) {
             glm::vec3 h    = size * 0.5f;
             glm::vec3 p000 = center + glm::vec3(-h.x, -h.y, -h.z);
             glm::vec3 p100 = center + glm::vec3( h.x, -h.y, -h.z);
@@ -223,8 +223,8 @@ public:
 
     static std::vector<LowPolyTriangle> build_propeller() {
         std::vector<LowPolyTriangle> tris;
-        shs::Color prop_c = shs::Color{30, 30, 30, 255};
-        shs::Color tip_c  = shs::Color{245, 205, 40, 255};
+        shs::render::Color prop_c = shs::render::Color{30, 30, 30, 255};
+        shs::render::Color tip_c  = shs::render::Color{245, 205, 40, 255};
 
         auto add_blade = [&](float angle) {
             float c = std::cos(angle);
@@ -266,9 +266,9 @@ class SyntheticClouds {
 public:
     static std::vector<LowPolyTriangle> build_cloud_field() {
         std::vector<LowPolyTriangle> tris;
-        shs::Color c_top  = shs::Color{245, 250, 255, 255};
-        shs::Color c_side = shs::Color{220, 230, 245, 255};
-        shs::Color c_bot  = shs::Color{185, 200, 220, 255};
+        shs::render::Color c_top  = shs::render::Color{245, 250, 255, 255};
+        shs::render::Color c_side = shs::render::Color{220, 230, 245, 255};
+        shs::render::Color c_bot  = shs::render::Color{185, 200, 220, 255};
 
         auto add_cloud_block = [&](glm::vec3 center, glm::vec3 size) {
             glm::vec3 h = size * 0.5f;
@@ -459,7 +459,7 @@ static inline glm::vec4 clip_to_screen_vec4(const glm::vec4& clip, int W, int H)
 static void rasterize_perspective_triangle_tile(
     shs::Canvas& canvas, shs::ZBuffer& z_buffer,
     const glm::vec4& sc0, const glm::vec4& sc1, const glm::vec4& sc2,
-    shs::Color lit_color, float depth_bias,
+    shs::render::Color lit_color, float depth_bias,
     glm::ivec2 tile_min, glm::ivec2 tile_max)
 {
     glm::vec2 v0(sc0.x, sc0.y);
@@ -567,7 +567,7 @@ static void render_sky_pass(shs::Canvas& canvas, const glm::mat4& view, const gl
 // HUD OVERLAY
 // ============================================================================
 static void draw_hud(shs::Canvas& canvas, const PlaneState& plane) {
-    shs::Color hud_col = shs::Color{40, 230, 100, 255};
+    shs::render::Color hud_col = shs::render::Color{40, 230, 100, 255};
 
     int cx = canvas.get_width() / 2;
     int cy = canvas.get_height() / 2;
@@ -620,7 +620,7 @@ int main(int argc, char* argv[]) {
     );
     SDL_Surface* screen_surface = SDL_CreateRGBSurfaceWithFormat(0, CANVAS_WIDTH, CANVAS_HEIGHT, 32, SDL_PIXELFORMAT_RGBA32);
 
-    shs::Canvas canvas(CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{30, 35, 45, 255});
+    shs::Canvas canvas(CANVAS_WIDTH, CANVAS_HEIGHT, shs::render::Color{30, 35, 45, 255});
     shs::ZBuffer z_buffer(CANVAS_WIDTH, CANVAS_HEIGHT, -1.0f, 1.0f);
 
     shs::Job::ThreadedPriorityJobSystem job_system(THREAD_COUNT);
@@ -731,7 +731,7 @@ int main(int argc, char* argv[]) {
         // Assemble transformed world batches
         struct ProcessedTriangle {
             glm::vec4 c0, c1, c2; // Clip coordinates
-            shs::Color lit_color;
+            shs::render::Color lit_color;
             float depth_bias;
         };
 
@@ -768,7 +768,7 @@ int main(int argc, char* argv[]) {
                 float fog = glm::clamp((dist - 200.0f) / 750.0f, 0.0f, 0.85f);
                 lit_rgb = glm::mix(lit_rgb, glm::vec3(0.68f, 0.85f, 0.98f), fog);
 
-                shs::Color final_c = shs::rgb01_to_color(lit_rgb);
+                shs::render::Color final_c = shs::rgb01_to_color(lit_rgb);
 
                 glm::vec4 c0 = mvp * glm::vec4(tri.p0, 1.0f);
                 glm::vec4 c1 = mvp * glm::vec4(tri.p1, 1.0f);

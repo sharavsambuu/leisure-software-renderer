@@ -55,7 +55,7 @@ struct Uniforms {
     glm::mat4  view;
     glm::vec3  light_dir;
     glm::vec3  camera_pos;
-    shs::Color color;
+    shs::render::Color color;
 };
 
 /*
@@ -79,7 +79,7 @@ shs::Varyings blinn_phong_vertex_shader(const glm::vec3& aPos, const glm::vec3& 
     return out;
 }
 
-shs::Color blinn_phong_fragment_shader(const shs::Varyings& in, const Uniforms& u)
+shs::render::Color blinn_phong_fragment_shader(const shs::Varyings& in, const Uniforms& u)
 {
     glm::vec3 norm     = glm::normalize(in.normal);
     glm::vec3 lightDir = glm::normalize(-u.light_dir);
@@ -103,7 +103,7 @@ shs::Color blinn_phong_fragment_shader(const shs::Varyings& in, const Uniforms& 
 
     result = glm::clamp(result, 0.0f, 1.0f);
 
-    return shs::Color{
+    return shs::render::Color{
         (uint8_t)(result.r * 255),
         (uint8_t)(result.g * 255),
         (uint8_t)(result.b * 255),
@@ -135,21 +135,21 @@ static inline float smoothstep01(float t)
     return t * t * (3.0f - 2.0f * t);
 }
 
-static inline shs::Color color_from_rgbaf(float r, float g, float b, float a)
+static inline shs::render::Color color_from_rgbaf(float r, float g, float b, float a)
 {
     r = std::min(255.0f, std::max(0.0f, r));
     g = std::min(255.0f, std::max(0.0f, g));
     b = std::min(255.0f, std::max(0.0f, b));
     a = std::min(255.0f, std::max(0.0f, a));
-    return shs::Color{ (uint8_t)r, (uint8_t)g, (uint8_t)b, (uint8_t)a };
+    return shs::render::Color{ (uint8_t)r, (uint8_t)g, (uint8_t)b, (uint8_t)a };
 }
 
-static inline shs::Color lerp_color(const shs::Color& a, const shs::Color& b, float t)
+static inline shs::render::Color lerp_color(const shs::render::Color& a, const shs::render::Color& b, float t)
 {
     t = clampf(t, 0.0f, 1.0f);
     float ia = 1.0f - t;
 
-    return shs::Color{
+    return shs::render::Color{
         (uint8_t)(ia * a.r + t * b.r),
         (uint8_t)(ia * a.g + t * b.g),
         (uint8_t)(ia * a.b + t * b.b),
@@ -157,15 +157,15 @@ static inline shs::Color lerp_color(const shs::Color& a, const shs::Color& b, fl
     };
 }
 
-static inline shs::Color monkey_color_from_i(int i)
+static inline shs::render::Color monkey_color_from_i(int i)
 {
     const int m = i % 6;
-    if (m == 0) return shs::Color{  60, 100, 200, 255 };
-    if (m == 1) return shs::Color{ 200,  90,  80, 255 };
-    if (m == 2) return shs::Color{  80, 200, 120, 255 };
-    if (m == 3) return shs::Color{ 210, 180,  80, 255 };
-    if (m == 4) return shs::Color{ 180,  90, 210, 255 };
-    return             shs::Color{  80, 180, 200, 255 };
+    if (m == 0) return shs::render::Color{  60, 100, 200, 255 };
+    if (m == 1) return shs::render::Color{ 200,  90,  80, 255 };
+    if (m == 2) return shs::render::Color{  80, 200, 120, 255 };
+    if (m == 3) return shs::render::Color{ 210, 180,  80, 255 };
+    if (m == 4) return shs::render::Color{ 180,  90, 210, 255 };
+    return             shs::render::Color{  80, 180, 200, 255 };
 }
 
 // ==========================================
@@ -203,7 +203,7 @@ static void gaussian_blur_pass(
                 int x1 = std::min(x0 + TILE_SIZE_X, W);
                 int y1 = std::min(y0 + TILE_SIZE_Y, H);
 
-                auto sample = [&](int sx, int sy) -> shs::Color {
+                auto sample = [&](int sx, int sy) -> shs::render::Color {
                     sx = clampi(sx, 0, W - 1);
                     sy = clampi(sy, 0, H - 1);
                     return src.get_color_at(sx, sy);
@@ -215,22 +215,22 @@ static void gaussian_blur_pass(
                         float r = 0, g = 0, b = 0, a = 0;
 
                         if (horizontal) {
-                            shs::Color c0 = sample(x - 2, y);
-                            shs::Color c1 = sample(x - 1, y);
-                            shs::Color c2 = sample(x,     y);
-                            shs::Color c3 = sample(x + 1, y);
-                            shs::Color c4 = sample(x + 2, y);
+                            shs::render::Color c0 = sample(x - 2, y);
+                            shs::render::Color c1 = sample(x - 1, y);
+                            shs::render::Color c2 = sample(x,     y);
+                            shs::render::Color c3 = sample(x + 1, y);
+                            shs::render::Color c4 = sample(x + 2, y);
 
                             r = w0*c0.r + w1*c1.r + w2*c2.r + w1*c3.r + w0*c4.r;
                             g = w0*c0.g + w1*c1.g + w2*c2.g + w1*c3.g + w0*c4.g;
                             b = w0*c0.b + w1*c1.b + w2*c2.b + w1*c3.b + w0*c4.b;
                             a = w0*c0.a + w1*c1.a + w2*c2.a + w1*c3.a + w0*c4.a;
                         } else {
-                            shs::Color c0 = sample(x, y - 2);
-                            shs::Color c1 = sample(x, y - 1);
-                            shs::Color c2 = sample(x, y);
-                            shs::Color c3 = sample(x, y + 1);
-                            shs::Color c4 = sample(x, y + 2);
+                            shs::render::Color c0 = sample(x, y - 2);
+                            shs::render::Color c1 = sample(x, y - 1);
+                            shs::render::Color c2 = sample(x, y);
+                            shs::render::Color c3 = sample(x, y + 1);
+                            shs::render::Color c4 = sample(x, y + 2);
 
                             r = w0*c0.r + w1*c1.r + w2*c2.r + w1*c3.r + w0*c4.r;
                             g = w0*c0.g + w1*c1.g + w2*c2.g + w1*c3.g + w0*c4.g;
@@ -327,8 +327,8 @@ static void dof_composite_pass(
                         float t   = smoothstep01(coc);
                         t = clampf(t * max_blur, 0.0f, 1.0f);
 
-                        shs::Color c_sharp = sharp.get_color_at(x, y);
-                        shs::Color c_blur  = blur.get_color_at(x, y);
+                        shs::render::Color c_sharp = sharp.get_color_at(x, y);
+                        shs::render::Color c_blur  = blur.get_color_at(x, y);
 
                         out.draw_pixel(x, y, lerp_color(c_sharp, c_blur, t));
                     }
@@ -421,7 +421,7 @@ public:
 class MonkeyObject : public shs::AbstractObject3D
 {
 public:
-    MonkeyObject(ModelGeometry* shared_geom, glm::vec3 position, glm::vec3 scale, shs::Color color, bool rotate_enabled, float rotate_speed_deg)
+    MonkeyObject(ModelGeometry* shared_geom, glm::vec3 position, glm::vec3 scale, shs::render::Color color, bool rotate_enabled, float rotate_speed_deg)
     {
         this->geometry        = shared_geom;
         this->position        = position;
@@ -454,7 +454,7 @@ public:
     ModelGeometry *geometry;
     glm::vec3      scale;
     glm::vec3      position;
-    shs::Color     color;
+    shs::render::Color     color;
 
     bool  rotate_enabled;
     float rotate_speed_deg;
@@ -517,7 +517,7 @@ public:
 class RendererSystem : public shs::AbstractSystem
 {
 public:
-    RendererSystem(HelloScene *scene, shs::Job::ThreadedPriorityJobSystem *job_sys, shs::RT_ColorDepth *target)
+    RendererSystem(HelloScene *scene, shs::Job::ThreadedPriorityJobSystem *job_sys, shs::render::RT_ColorDepth *target)
         : scene(scene), job_system(job_sys), target(target)
     {}
 
@@ -527,7 +527,7 @@ public:
         const std::vector<glm::vec3> &vertices,
         const std::vector<glm::vec3> &normals,
         std::function<shs::Varyings(const glm::vec3&, const glm::vec3&)> vertex_shader,
-        std::function<shs::Color(const shs::Varyings&)> fragment_shader,
+        std::function<shs::render::Color(const shs::Varyings&)> fragment_shader,
         glm::ivec2 tile_min, glm::ivec2 tile_max)
     {
         shs::Varyings vout[3];
@@ -577,7 +577,7 @@ public:
     {
         (void)delta_time;
 
-        this->target->clear(shs::Color{20, 20, 25, 255});
+        this->target->clear(shs::render::Color{20, 20, 25, 255});
 
         glm::mat4 view = this->scene->viewer->camera->view_matrix;
         glm::mat4 proj = this->scene->viewer->camera->projection_matrix;
@@ -648,7 +648,7 @@ public:
 private:
     HelloScene                          *scene;
     shs::Job::ThreadedPriorityJobSystem *job_system;
-    shs::RT_ColorDepth                  *target;
+    shs::render::RT_ColorDepth                  *target;
     shs::Job::WaitGroup                  wait_group;
 };
 
@@ -673,9 +673,9 @@ private:
 class SystemProcessor
 {
 public:
-    SystemProcessor(HelloScene *scene, shs::Job::ThreadedPriorityJobSystem *job_sys, shs::RT_ColorDepth *target)
+    SystemProcessor(HelloScene *scene, shs::Job::ThreadedPriorityJobSystem *job_sys, shs::render::RT_ColorDepth *target)
     {
-        this->command_processor = new shs::CommandProcessor();
+        this->command_processor = new shs::input::CommandProcessor();
         this->renderer_system   = new RendererSystem(scene, job_sys, target);
         this->logic_system      = new LogicSystem(scene);
     }
@@ -695,7 +695,7 @@ public:
         this->renderer_system->process(delta_time);
     }
 
-    shs::CommandProcessor *command_processor;
+    shs::input::CommandProcessor *command_processor;
     LogicSystem           *logic_system;
     RendererSystem        *renderer_system;
 };
@@ -719,8 +719,8 @@ int main(int argc, char* argv[])
     Viewer     *viewer      = new Viewer(glm::vec3(0.0f, 5.0f, -20.0f), 50.0f);
     HelloScene *hello_scene = new HelloScene(viewer);
 
-    shs::RT_ColorDepth ping(CANVAS_WIDTH, CANVAS_HEIGHT, viewer->camera->z_near, viewer->camera->z_far, shs::Color{20,20,25,255});
-    shs::RT_ColorDepth pong(CANVAS_WIDTH, CANVAS_HEIGHT, viewer->camera->z_near, viewer->camera->z_far, shs::Color{20,20,25,255});
+    shs::render::RT_ColorDepth ping(CANVAS_WIDTH, CANVAS_HEIGHT, viewer->camera->z_near, viewer->camera->z_far, shs::render::Color{20,20,25,255});
+    shs::render::RT_ColorDepth pong(CANVAS_WIDTH, CANVAS_HEIGHT, viewer->camera->z_near, viewer->camera->z_far, shs::render::Color{20,20,25,255});
 
     shs::Canvas sharp_copy(CANVAS_WIDTH, CANVAS_HEIGHT);
 

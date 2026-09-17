@@ -24,7 +24,7 @@
 
 #define PIXELS_PER_JOB     4096
 
-static shs::Color fragment_shader(glm::vec2 uniform_uv, float uniform_time)
+static shs::render::Color fragment_shader(glm::vec2 uniform_uv, float uniform_time)
 {
     glm::vec2 st = (uniform_uv / glm::vec2(CANVAS_WIDTH, CANVAS_HEIGHT)) * 3.0f;
     st += float(glm::abs(glm::sin(uniform_time * 0.1f) * 3.0f)) * st;
@@ -90,7 +90,7 @@ int main(int argc, char* argv[])
         }
         if (exit_loop) break;
 
-        shs::Canvas::fill_pixel(*main_canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{0, 0, 0, 255});
+        shs::Canvas::fill_pixel(*main_canvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT, shs::render::Color{0, 0, 0, 255});
 
         const int W = CANVAS_WIDTH;
         const int H = CANVAS_HEIGHT;
@@ -112,7 +112,7 @@ int main(int argc, char* argv[])
                     int y = idx / W;
 
                     glm::vec2 uv = { (float)x, (float)y };
-                    shs::Color color = fragment_shader(uv, time_accumulator);
+                    shs::render::Color color = fragment_shader(uv, time_accumulator);
 
                     main_canvas->draw_pixel(x, y, color);
                 }

@@ -20,7 +20,7 @@ namespace vop {
     static void rasterize_triangle_tile(
         shs::Canvas& canvas, shs::ZBuffer& z_buffer,
         const glm::vec4& sc0, const glm::vec4& sc1, const glm::vec4& sc2,
-        shs::Color lit_color, float depth_bias,
+        shs::render::Color lit_color, float depth_bias,
         glm::ivec2 tile_min, glm::ivec2 tile_max,
         uint8_t alpha = 255
     ) {
@@ -53,7 +53,7 @@ namespace vop {
                         // already there), then blended; depth NOT written so
                         // nearer opaque geometry drawn later still wins.
                         const int cy = (int)canvas.get_height() - 1 - py;
-                        const shs::Color dst = canvas.buffer().at(px, cy);
+                        const shs::render::Color dst = canvas.buffer().at(px, cy);
                         canvas.draw_pixel_screen_space(
                             px, py, shs::alpha_blend(dst, lit_color, alpha));
                     }

@@ -14,9 +14,9 @@ namespace
     // Empty assets are invalid/empty; handles start null.
     bool test_data_basics()
     {
-        const shs::Texture2DData tex{};
+        const shs::resources::Texture2DData tex{};
         if (tex.valid()) return false;
-        const shs::MeshData mesh{};
+        const shs::resources::MeshData mesh{};
         if (!mesh.empty()) return false;
         return true;
     }
@@ -24,14 +24,14 @@ namespace
     // Registry round-trip: add -> get -> same bytes; bad handle -> null.
     bool test_registry_round_trip()
     {
-        shs::ResourceRegistry reg{};
-        shs::Texture2DData tex{};
+        shs::resources::ResourceRegistry reg{};
+        shs::resources::Texture2DData tex{};
         tex.w = 2;
         tex.h = 2;
         if (reg.get_texture(0) != nullptr) return false;
-        const shs::TextureAssetHandle h = reg.add_texture(std::move(tex), "t");
+        const shs::resources::TextureAssetHandle h = reg.add_texture(std::move(tex), "t");
         if (h == 0) return false;
-        const shs::Texture2DData* back = reg.get_texture(h);
+        const shs::resources::Texture2DData* back = reg.get_texture(h);
         if (!back || back->w != 2 || back->h != 2) return false;
         return reg.get_texture(h + 100) == nullptr;
     }

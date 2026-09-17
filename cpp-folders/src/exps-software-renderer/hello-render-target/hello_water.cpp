@@ -83,7 +83,7 @@ static const float MB_KNEE_PIXELS  = 18.0f;
 // ------------------------------------------
 static const float FLOOR_Y = -3.0f;     // шал усны доор
 static const float WATER_Y = -0.20f;    // усны түвшин (машиныг живүүлэхгүй)
-static const shs::Color CLEAR_BG = shs::Color{ 24, 34, 58, 255 }; // background
+static const shs::render::Color CLEAR_BG = shs::render::Color{ 24, 34, 58, 255 }; // background
 
 // ==========================================
 // HELPERS
@@ -105,10 +105,10 @@ static inline float clampf(float v, float lo, float hi)
 
 static inline float clamp01(float v) { return (v < 0.0f) ? 0.0f : (v > 1.0f ? 1.0f : v); }
 
-// Using standardized shs::ShadowMap, shs::MotionBuffer, shs::RT_ColorDepthVelocity
+// Using standardized shs::ShadowMap, shs::MotionBuffer, shs::render::RT_ColorDepthVelocity
 //using ShadowMap    = shs::ShadowMap;
 //using MotionBuffer = shs::MotionBuffer;
-//using RT_ColorDepthMotion = shs::RT_ColorDepthVelocity;
+//using RT_ColorDepthMotion = shs::render::RT_ColorDepthVelocity;
 
 // Using standardized shs::Viewer and shs::ModelGeometry
 //using Viewer        = shs::Viewer;
@@ -118,7 +118,7 @@ static inline float clamp01(float v) { return (v < 0.0f) ? 0.0f : (v > 1.0f ? 1.
 // TEXTURE SAMPLER (nearest)
 // ==========================================
 
-static inline shs::Color sample_nearest(const shs::Texture2D &tex, glm::vec2 uv)
+static inline shs::render::Color sample_nearest(const shs::Texture2D &tex, glm::vec2 uv)
 {
     float u = uv.x;
     float v = uv.y;
@@ -143,7 +143,7 @@ static inline shs::Color sample_nearest(const shs::Texture2D &tex, glm::vec2 uv)
 // CANVAS SAMPLER (nearest) - Canvas coords (y up)
 // ==========================================
 
-static inline shs::Color sample_canvas_nearest(const shs::Canvas &c, int x, int y)
+static inline shs::render::Color sample_canvas_nearest(const shs::Canvas &c, int x, int y)
 {
     x = clampi(x, 0, c.get_width() - 1);
     y = clampi(y, 0, c.get_height() - 1);
@@ -270,13 +270,13 @@ struct MotionBuffer
 /*
 struct RT_ColorDepthMotion
 {
-    RT_ColorDepthMotion(int W, int H, float zn, float zf, shs::Color clear_col)
+    RT_ColorDepthMotion(int W, int H, float zn, float zf, shs::render::Color clear_col)
         : color(W, H, clear_col), depth(W, H, zn, zf), motion(W, H)
     {
         clear(clear_col);
     }
 
-    inline void clear(shs::Color c)
+    inline void clear(shs::render::Color c)
     {
         color.buffer().clear(c);
         depth.clear();
@@ -644,7 +644,7 @@ struct Uniforms
     glm::vec3 light_dir_world;
     glm::vec3 camera_pos;
 
-    shs::Color base_color;
+    shs::render::Color base_color;
     const shs::Texture2D *albedo = nullptr;
     bool use_texture = false;
 
@@ -935,7 +935,7 @@ static inline void water_flow_normal_and_foam(
 // FRAGMENT SHADER - atmosphere
 // ==========================================
 
-static shs::Color fragment_shader_full(const VaryingsFull& in, const Uniforms& u)
+static shs::render::Color fragment_shader_full(const VaryingsFull& in, const Uniforms& u)
 {
     glm::vec3 N   = glm::normalize(in.normal);
     glm::vec3 L   = glm::normalize(-u.light_dir_world);
@@ -944,7 +944,7 @@ static shs::Color fragment_shader_full(const VaryingsFull& in, const Uniforms& u
 
     glm::vec3 baseColor;
     if (u.use_texture && u.albedo && u.albedo->valid()) {
-        shs::Color tc = shs::sample_nearest(*u.albedo, in.uv);
+        shs::render::Color tc = shs::sample_nearest(*u.albedo, in.uv);
         baseColor     = glm::vec3(tc.r, tc.g, tc.b) / 255.0f;
     } else {
         baseColor = glm::vec3(u.base_color.r, u.base_color.g, u.base_color.b) / 255.0f;
@@ -985,7 +985,7 @@ static shs::Color fragment_shader_full(const VaryingsFull& in, const Uniforms& u
 
     glm::vec3 ldr = gamma_2p2(tonemap_reinhard(hdr));
 
-    return shs::Color{
+    return shs::render::Color{
         (uint8_t)clampi((int)std::lround(ldr.r * 255.0f), 0, 255),
         (uint8_t)clampi((int)std::lround(ldr.g * 255.0f), 0, 255),
         (uint8_t)clampi((int)std::lround(ldr.b * 255.0f), 0, 255),
@@ -997,7 +997,7 @@ static shs::Color fragment_shader_full(const VaryingsFull& in, const Uniforms& u
 // FRAGMENT SHADER (WATER) - fresnel + reflection + fog
 // ==========================================
 
-static shs::Color fragment_shader_water(const VaryingsFull& in, const Uniforms& u)
+static shs::render::Color fragment_shader_water(const VaryingsFull& in, const Uniforms& u)
 {
     glm::vec3 N;
     float foam = 0.0f;
@@ -1037,7 +1037,7 @@ static shs::Color fragment_shader_water(const VaryingsFull& in, const Uniforms& 
                 int ry_screen = (int)std::lround(sy);
                 int ry_canvas = (u.reflection_color->get_height() - 1) - ry_screen;
 
-                shs::Color rc = sample_canvas_nearest(*u.reflection_color, rx, ry_canvas);
+                shs::render::Color rc = sample_canvas_nearest(*u.reflection_color, rx, ry_canvas);
                 refl_col      = glm::vec3(rc.r, rc.g, rc.b) / 255.0f;
             }
         }
@@ -1088,7 +1088,7 @@ static shs::Color fragment_shader_water(const VaryingsFull& in, const Uniforms& 
     hdr *= 0.90f;
     glm::vec3 ldr = gamma_2p2(tonemap_reinhard(hdr));
 
-    return shs::Color{
+    return shs::render::Color{
         (uint8_t)clampi((int)std::lround(ldr.r * 255.0f), 0, 255),
         (uint8_t)clampi((int)std::lround(ldr.g * 255.0f), 0, 255),
         (uint8_t)clampi((int)std::lround(ldr.b * 255.0f), 0, 255),
@@ -1183,12 +1183,12 @@ static inline glm::vec2 clip_to_screen_xy(const glm::vec4& clip, int w, int h)
 }
 
 static void draw_triangle_tile_color_depth_motion_shadow(
-    shs::RT_ColorDepthMotion& rt,
+    shs::render::RT_ColorDepthMotion& rt,
     const std::vector<glm::vec3>& tri_verts,
     const std::vector<glm::vec3>& tri_norms,
     const std::vector<glm::vec2>& tri_uvs,
     std::function<VaryingsFull(const glm::vec3&, const glm::vec3&, const glm::vec2&)> vs,
-    std::function<shs::Color(const VaryingsFull&)> fs,
+    std::function<shs::render::Color(const VaryingsFull&)> fs,
     glm::ivec2 tile_min, glm::ivec2 tile_max)
 {
     int W = rt.color.get_width();
@@ -1465,7 +1465,7 @@ static void combined_motion_blur_pass(
                 int x1 = std::min(x0 + TILE_SIZE_X, W);
                 int y1 = std::min(y0 + TILE_SIZE_Y, H);
 
-                auto sample = [&](int sx, int sy) -> shs::Color {
+                auto sample = [&](int sx, int sy) -> shs::render::Color {
                     sx = clampi(sx, 0, W - 1);
                     sy = clampi(sy, 0, H - 1);
                     return src.get_color_at(sx, sy);
@@ -1516,7 +1516,7 @@ static void combined_motion_blur_pass(
                             int sy = clampi((int)std::round(p.y), 0, H - 1);
 
                             float wgt = 1.0f - std::abs(a);
-                            shs::Color c = sample(sx, sy);
+                            shs::render::Color c = sample(sx, sy);
 
                             r += wgt * float(c.r);
                             g += wgt * float(c.g);
@@ -1526,7 +1526,7 @@ static void combined_motion_blur_pass(
 
                         if (wsum < 0.0001f) wsum = 1.0f;
 
-                        dst.draw_pixel(x, y, shs::Color{
+                        dst.draw_pixel(x, y, shs::render::Color{
                             (uint8_t)clampi((int)(r / wsum), 0, 255),
                             (uint8_t)clampi((int)(g / wsum), 0, 255),
                             (uint8_t)clampi((int)(b / wsum), 0, 255),
@@ -1615,7 +1615,7 @@ public:
     RendererSystem(DemoScene* scene, shs::Job::ThreadedPriorityJobSystem* job_sys)
         : scene(scene), job_system(job_sys)
     {
-        rt = new shs::RT_ColorDepthMotion(
+        rt = new shs::render::RT_ColorDepthMotion(
             CANVAS_WIDTH, CANVAS_HEIGHT,
             scene->viewer->camera->z_near,
             scene->viewer->camera->z_far,
@@ -1624,7 +1624,7 @@ public:
 
         mb_out = new shs::Canvas(CANVAS_WIDTH, CANVAS_HEIGHT, CLEAR_BG);
 
-        reflection_rt = new shs::RT_ColorDepthMotion(
+        reflection_rt = new shs::render::RT_ColorDepthMotion(
             CANVAS_WIDTH, CANVAS_HEIGHT,
             scene->viewer->camera->z_near,
             scene->viewer->camera->z_far,
@@ -1804,7 +1804,7 @@ public:
                             refl_cam_pos.y = 2.0f * WATER_Y - refl_cam_pos.y;
                             u.camera_pos = refl_cam_pos;
 
-                            u.base_color      = shs::Color{ 85, 95, 115, 255 };
+                            u.base_color      = shs::render::Color{ 85, 95, 115, 255 };
                             u.albedo          = nullptr;
                             u.use_texture     = false;
 
@@ -1864,7 +1864,7 @@ public:
                                 refl_cam_pos.y = 2.0f * WATER_Y - refl_cam_pos.y;
                                 u.camera_pos = refl_cam_pos;
 
-                                u.base_color      = shs::Color{200,200,200,255};
+                                u.base_color      = shs::render::Color{200,200,200,255};
                                 u.albedo          = car->albedo;
                                 u.use_texture     = (car->albedo && car->albedo->valid());
 
@@ -1913,7 +1913,7 @@ public:
                                 refl_cam_pos.y = 2.0f * WATER_Y - refl_cam_pos.y;
                                 u.camera_pos = refl_cam_pos;
 
-                                u.base_color      = shs::Color{ 180, 150, 95, 255 };
+                                u.base_color      = shs::render::Color{ 180, 150, 95, 255 };
                                 u.albedo          = nullptr;
                                 u.use_texture     = false;
 
@@ -1989,7 +1989,7 @@ public:
                             u.camera_pos      = scene->viewer->position;
                             u.shadow          = shadow;
 
-                            u.base_color      = shs::Color{ 92, 105, 125, 255 };
+                            u.base_color      = shs::render::Color{ 92, 105, 125, 255 };
                             u.albedo          = nullptr;
                             u.use_texture     = false;
 
@@ -2040,7 +2040,7 @@ public:
                             u.camera_pos      = scene->viewer->position;
                             u.shadow          = shadow;
 
-                            u.base_color      = shs::Color{ 40, 90, 105, 255 };
+                            u.base_color      = shs::render::Color{ 40, 90, 105, 255 };
                             u.albedo          = nullptr;
                             u.use_texture     = false;
 
@@ -2100,7 +2100,7 @@ public:
                                 u.camera_pos      = scene->viewer->position;
                                 u.shadow          = shadow;
 
-                                u.base_color      = shs::Color{200,200,200,255};
+                                u.base_color      = shs::render::Color{200,200,200,255};
                                 u.albedo          = car->albedo;
                                 u.use_texture     = (car->albedo && car->albedo->valid());
 
@@ -2149,7 +2149,7 @@ public:
                                 u.camera_pos      = scene->viewer->position;
                                 u.shadow          = shadow;
 
-                                u.base_color      = shs::Color{ 180, 150, 95, 255 };
+                                u.base_color      = shs::render::Color{ 180, 150, 95, 255 };
                                 u.albedo          = nullptr;
                                 u.use_texture     = false;
 
@@ -2248,8 +2248,8 @@ private:
     DemoScene* scene;
     shs::Job::ThreadedPriorityJobSystem* job_system;
 
-    shs::RT_ColorDepthMotion* rt;
-    shs::RT_ColorDepthMotion* reflection_rt;
+    shs::render::RT_ColorDepthMotion* rt;
+    shs::render::RT_ColorDepthMotion* reflection_rt;
     shs::Canvas* mb_out;
 
     shs::ShadowMap* shadow;
@@ -2292,7 +2292,7 @@ class SystemProcessor
 public:
     SystemProcessor(DemoScene* scene, shs::Job::ThreadedPriorityJobSystem* job_sys)
     {
-        command_processor = new shs::CommandProcessor();
+        command_processor = new shs::input::CommandProcessor();
         logic_system      = new LogicSystem(scene);
         renderer_system   = new RendererSystem(scene, job_sys);
     }
@@ -2317,7 +2317,7 @@ public:
 
     shs::Canvas& output() { return renderer_system->output(); }
 
-    shs::CommandProcessor* command_processor;
+    shs::input::CommandProcessor* command_processor;
     LogicSystem*           logic_system;
     RendererSystem*        renderer_system;
 };

@@ -134,7 +134,7 @@ static inline glm::vec3 render_wormhole(glm::vec2 pixel_xy, float time_sec)
     return col;
 }
 
-static inline shs::Color fragment_shader(glm::vec2 pixel_xy, float time_sec)
+static inline shs::render::Color fragment_shader(glm::vec2 pixel_xy, float time_sec)
 {
     const int SAMPLES = 7;
 
@@ -150,7 +150,7 @@ static inline shs::Color fragment_shader(glm::vec2 pixel_xy, float time_sec)
 
     glm::vec3 rgb255 = glm::clamp(col, glm::vec3(0.0f), glm::vec3(1.0f)) * 255.0f;
 
-    return shs::Color{
+    return shs::render::Color{
         (uint8_t)shs::Math::clamp((int)std::round(rgb255.r), 0, 255),
         (uint8_t)shs::Math::clamp((int)std::round(rgb255.g), 0, 255),
         (uint8_t)shs::Math::clamp((int)std::round(rgb255.b), 0, 255),
@@ -168,7 +168,7 @@ int main(int argc, char* argv[])
     SDL_Renderer* renderer = nullptr;
     SDL_CreateWindowAndRenderer(WINDOW_WIDTH, WINDOW_HEIGHT, 0, &window, &renderer);
 
-    shs::Canvas* canvas = new shs::Canvas(CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{0,0,0,255});
+    shs::Canvas* canvas = new shs::Canvas(CANVAS_WIDTH, CANVAS_HEIGHT, shs::render::Color{0,0,0,255});
     SDL_Surface* surface = canvas->create_sdl_surface();
     SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
 
@@ -219,7 +219,7 @@ int main(int argc, char* argv[])
                     {
                         for (int x = x0; x < x1; ++x)
                         {
-                            shs::Color out = fragment_shader(glm::vec2(float(x), float(y)), time_accum);
+                            shs::render::Color out = fragment_shader(glm::vec2(float(x), float(y)), time_accum);
                             canvas->draw_pixel(x, y, out);
                         }
                     }

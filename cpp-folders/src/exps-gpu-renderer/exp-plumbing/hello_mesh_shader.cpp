@@ -61,7 +61,7 @@ private:
 
     void init_backend()
     {
-        shs::RenderBackendCreateResult created = shs::create_render_backend(shs::RenderBackendType::Vulkan);
+        shs::app::RenderBackendCreateResult created = shs::app::create_render_backend(shs::RenderBackendType::Vulkan);
         if (!created.note.empty())
         {
             std::fprintf(stderr, "[shs] %s\n", created.note.c_str());
@@ -85,7 +85,7 @@ private:
             throw std::runtime_error("Vulkan backend is not active in this build/configuration.");
         }
 
-        vk_ = dynamic_cast<shs::VulkanRenderBackend*>(ctx_.backend(shs::RenderBackendType::Vulkan));
+        vk_ = dynamic_cast<shs::rhi::VulkanRenderBackend*>(ctx_.backend(shs::RenderBackendType::Vulkan));
         if (!vk_)
         {
             throw std::runtime_error("Factory returned non-Vulkan backend instance for Vulkan request.");
@@ -111,7 +111,7 @@ private:
             throw std::runtime_error("Vulkan backend init_sdl failed");
         }
         
-        const shs::BackendCapabilities caps = vk_->capabilities();
+        const shs::rhi::BackendCapabilities caps = vk_->capabilities();
         if (!caps.features.mesh_shader)
         {
             throw std::runtime_error("Mesh Shaders (VK_EXT_mesh_shader) are not supported or could not be enabled on this device.");
@@ -128,10 +128,10 @@ private:
         if (dev == VK_NULL_HANDLE) throw std::runtime_error("Vulkan device not ready");
         if (vk_->render_pass() == VK_NULL_HANDLE) throw std::runtime_error("Vulkan render pass not ready");
 
-        const std::vector<char> ms_code = shs::vk_read_binary_file(SHS_VK_MESH_TRIANGLE_MESH_SPV);
-        const std::vector<char> fs_code = shs::vk_read_binary_file(SHS_VK_MESH_TRIANGLE_FRAG_SPV);
-        VkShaderModule ms = shs::vk_create_shader_module(dev, ms_code);
-        VkShaderModule fs = shs::vk_create_shader_module(dev, fs_code);
+        const std::vector<char> ms_code = shs::rhi::vk_read_binary_file(SHS_VK_MESH_TRIANGLE_MESH_SPV);
+        const std::vector<char> fs_code = shs::rhi::vk_read_binary_file(SHS_VK_MESH_TRIANGLE_FRAG_SPV);
+        VkShaderModule ms = shs::rhi::vk_create_shader_module(dev, ms_code);
+        VkShaderModule fs = shs::rhi::vk_create_shader_module(dev, fs_code);
 
         VkPipelineShaderStageCreateInfo stages[2]{};
         stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -246,10 +246,10 @@ private:
     void main_loop()
     {
         bool running = true;
-        shs::RuntimeInputLatch input_latch{};
-        std::vector<shs::RuntimeInputEvent> pending_input_events{};
-        shs::RuntimeState runtime_state{};
-        std::vector<shs::RuntimeCommand> runtime_actions{};
+        shs::input::RuntimeInputLatch input_latch{};
+        std::vector<shs::input::RuntimeInputEvent> pending_input_events{};
+        shs::app::RuntimeState runtime_state{};
+        std::vector<shs::input::RuntimeCommand> runtime_actions{};
         while (running)
         {
             SDL_Event e{};
@@ -257,11 +257,11 @@ private:
             {
                 if (e.type == SDL_QUIT)
                 {
-                    pending_input_events.push_back(shs::make_quit_input_event());
+                    pending_input_events.push_back(shs::input::make_quit_input_event());
                 }
                 if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE)
                 {
-                    pending_input_events.push_back(shs::make_quit_input_event());
+                    pending_input_events.push_back(shs::input::make_quit_input_event());
                 }
                 if (e.type == SDL_WINDOWEVENT &&
                     (e.window.event == SDL_WINDOWEVENT_SIZE_CHANGED || e.window.event == SDL_WINDOWEVENT_RESIZED))
@@ -273,7 +273,7 @@ private:
             pending_input_events.clear();
 
             runtime_actions.clear();
-            shs::InputState runtime_input{};
+            shs::input::InputState runtime_input{};
             runtime_input.quit = input_latch.quit_requested;
             shs::emit_human_actions(runtime_input, runtime_actions, 0.0f, 1.0f, 0.0f);
             runtime_state = shs::runtime_state_gateway(runtime_state, runtime_actions, 0.0f);
@@ -299,7 +299,7 @@ private:
             return;
         }
 
-        shs::RenderBackendFrameInfo frame{};
+        shs::rhi::RenderBackendFrameInfo frame{};
         frame.frame_index = ctx_.frame_index;
         frame.width = dw;
         frame.height = dh;
@@ -340,7 +340,7 @@ private:
         vkCmdBeginRenderPass(fi.cmd, &rp, VK_SUBPASS_CONTENTS_INLINE);
         vkCmdBindPipeline(fi.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_);
 
-        shs::vk_cmd_set_viewport_scissor(fi.cmd, fi.extent.width, fi.extent.height, true);
+        shs::rhi::vk_cmd_set_viewport_scissor(fi.cmd, fi.extent.width, fi.extent.height, true);
         
         // Output exactly 1 workgroup since the shader outputs 1 triangle.
         vk_->cmd_draw_mesh_tasks(fi.cmd, 1, 1, 1);
@@ -385,9 +385,9 @@ private:
     bool cleaned_up_ = false;
     bool sdl_ready_ = false;
     SDL_Window* win_ = nullptr;
-    shs::Context ctx_{};
-    std::vector<std::unique_ptr<shs::IRenderBackend>> keep_{};
-    shs::VulkanRenderBackend* vk_ = nullptr;
+    shs::app::Context ctx_{};
+    std::vector<std::unique_ptr<shs::rhi::IRenderBackend>> keep_{};
+    shs::rhi::VulkanRenderBackend* vk_ = nullptr;
     VkPipelineLayout pipeline_layout_ = VK_NULL_HANDLE;
     VkPipeline pipeline_ = VK_NULL_HANDLE;
     uint64_t pipeline_gen_ = 0;

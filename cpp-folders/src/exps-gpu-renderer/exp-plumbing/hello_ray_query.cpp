@@ -80,10 +80,10 @@ private:
 
     void init_backend()
     {
-        shs::RenderBackendCreateResult created = shs::create_render_backend(shs::RenderBackendType::Vulkan);
+        shs::app::RenderBackendCreateResult created = shs::app::create_render_backend(shs::RenderBackendType::Vulkan);
         if (!created.backend) throw std::runtime_error("Backend factory did not return a backend");
         keep_.push_back(std::move(created.backend));
-        vk_ = dynamic_cast<shs::VulkanRenderBackend*>(keep_.back().get());
+        vk_ = dynamic_cast<shs::rhi::VulkanRenderBackend*>(keep_.back().get());
         
         shs::VulkanRenderBackend::InitDesc desc{};
         desc.window = win_;
@@ -117,12 +117,12 @@ private:
         const VkDeviceSize vSize = vertices.size() * sizeof(Vertex);
         const VkDeviceSize iSize = indices.size() * sizeof(uint32_t);
 
-        shs::vk_create_buffer(vk_->device(), vk_->physical_device(), vSize,
+        shs::rhi::vk_create_buffer(vk_->device(), vk_->physical_device(), vSize,
             VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR,
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
             vBuf_, vMem_);
 
-        shs::vk_create_buffer(vk_->device(), vk_->physical_device(), iSize,
+        shs::rhi::vk_create_buffer(vk_->device(), vk_->physical_device(), iSize,
             VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR,
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
             iBuf_, iMem_);
@@ -183,7 +183,7 @@ private:
 
         // Scratch buffer
         VkBuffer scratch; VkDeviceMemory sMem;
-        shs::vk_create_buffer(dev, vk_->physical_device(), sizeInfo.buildScratchSize,
+        shs::rhi::vk_create_buffer(dev, vk_->physical_device(), sizeInfo.buildScratchSize,
             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, scratch, sMem);
 
@@ -224,7 +224,7 @@ private:
 
         vkFreeCommandBuffers(dev, pool, 1, &cmd);
         vkDestroyCommandPool(dev, pool, nullptr);
-        shs::vk_destroy_buffer(dev, scratch, sMem);
+        shs::rhi::vk_destroy_buffer(dev, scratch, sMem);
 
         // TLAS
         VkAccelerationStructureInstanceKHR instance{};
@@ -236,7 +236,7 @@ private:
         instance.accelerationStructureReference = blas_.device_address;
 
         VkBuffer instBuf; VkDeviceMemory instMem;
-        shs::vk_create_buffer(dev, vk_->physical_device(), sizeof(instance),
+        shs::rhi::vk_create_buffer(dev, vk_->physical_device(), sizeof(instance),
             VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR,
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
             instBuf, instMem);
@@ -267,7 +267,7 @@ private:
         }
         printf("[demo] TLAS created, address=0x%llx\n", (unsigned long long)tlas_.device_address);
 
-        shs::vk_create_buffer(dev, vk_->physical_device(), sizeInfo.buildScratchSize,
+        shs::rhi::vk_create_buffer(dev, vk_->physical_device(), sizeInfo.buildScratchSize,
             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, scratch, sMem);
 
@@ -287,18 +287,18 @@ private:
 
         vkFreeCommandBuffers(dev, pool, 1, &cmd);
         vkDestroyCommandPool(dev, pool, nullptr);
-        shs::vk_destroy_buffer(dev, scratch, sMem);
-        shs::vk_destroy_buffer(dev, instBuf, instMem);
+        shs::rhi::vk_destroy_buffer(dev, scratch, sMem);
+        shs::rhi::vk_destroy_buffer(dev, instBuf, instMem);
     }
 
     void create_pipeline()
     {
         const VkDevice dev = vk_->device();
         
-        auto vCode = shs::vk_read_binary_file(SHS_VK_RAY_QUERY_VERT_SPV);
-        auto fCode = shs::vk_read_binary_file(SHS_VK_RAY_QUERY_FRAG_SPV);
-        VkShaderModule vMod = shs::vk_create_shader_module(dev, vCode);
-        VkShaderModule fMod = shs::vk_create_shader_module(dev, fCode);
+        auto vCode = shs::rhi::vk_read_binary_file(SHS_VK_RAY_QUERY_VERT_SPV);
+        auto fCode = shs::rhi::vk_read_binary_file(SHS_VK_RAY_QUERY_FRAG_SPV);
+        VkShaderModule vMod = shs::rhi::vk_create_shader_module(dev, vCode);
+        VkShaderModule fMod = shs::rhi::vk_create_shader_module(dev, fCode);
 
         // Descriptors
         VkDescriptorSetLayoutBinding binding{};
@@ -432,10 +432,10 @@ private:
     void main_loop()
     {
         bool running = true;
-        shs::RuntimeInputLatch input_latch{};
-        std::vector<shs::RuntimeInputEvent> pending_input_events{};
-        shs::RuntimeState runtime_state{};
-        std::vector<shs::RuntimeCommand> runtime_actions{};
+        shs::input::RuntimeInputLatch input_latch{};
+        std::vector<shs::input::RuntimeInputEvent> pending_input_events{};
+        shs::app::RuntimeState runtime_state{};
+        std::vector<shs::input::RuntimeCommand> runtime_actions{};
         while (running)
         {
             SDL_Event e;
@@ -443,13 +443,13 @@ private:
             {
                 if (e.type == SDL_QUIT)
                 {
-                    pending_input_events.push_back(shs::make_quit_input_event());
+                    pending_input_events.push_back(shs::input::make_quit_input_event());
                 }
                 if (e.type == SDL_KEYDOWN)
                 {
                     if (e.key.keysym.sym == SDLK_ESCAPE)
                     {
-                        pending_input_events.push_back(shs::make_quit_input_event());
+                        pending_input_events.push_back(shs::input::make_quit_input_event());
                     }
                 }
             }
@@ -457,7 +457,7 @@ private:
             pending_input_events.clear();
 
             runtime_actions.clear();
-            shs::InputState runtime_input{};
+            shs::input::InputState runtime_input{};
             runtime_input.quit = input_latch.quit_requested;
             shs::emit_human_actions(runtime_input, runtime_actions, 0.0f, 1.0f, 0.0f);
             runtime_state = shs::runtime_state_gateway(runtime_state, runtime_actions, 0.0f);
@@ -469,7 +469,7 @@ private:
 
     void draw_frame()
     {
-        shs::RenderBackendFrameInfo frame{};
+        shs::rhi::RenderBackendFrameInfo frame{};
         shs::VulkanRenderBackend::FrameInfo fi{};
         if (!vk_->begin_frame(ctx_, frame, fi)) return;
 
@@ -489,12 +489,12 @@ private:
         vkCmdBindPipeline(fi.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_);
         vkCmdBindDescriptorSets(fi.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pLayout_, 0, 1, &dsSet_, 0, nullptr);
 
-        shs::vk_cmd_set_viewport_scissor(fi.cmd, fi.extent.width, fi.extent.height, true);
+        shs::rhi::vk_cmd_set_viewport_scissor(fi.cmd, fi.extent.width, fi.extent.height, true);
 
         PushConstants pcs{};
         pcs.model = glm::mat4(1.0f);
-        pcs.view = shs::look_at_lh(glm::vec3(0, 5, 10), glm::vec3(0, 2, 0), glm::vec3(0, 1, 0));
-        pcs.proj = shs::perspective_lh_no(
+        pcs.view = shs::camera::look_at_lh(glm::vec3(0, 5, 10), glm::vec3(0, 2, 0), glm::vec3(0, 1, 0));
+        pcs.proj = shs::camera::perspective_lh_no(
             glm::radians(45.0f),
             (float)fi.extent.width / fi.extent.height,
             0.1f,
@@ -520,8 +520,8 @@ private:
             vkDeviceWaitIdle(vk_->device());
             vk_->destroy_acceleration_structure(blas_);
             vk_->destroy_acceleration_structure(tlas_);
-            shs::vk_destroy_buffer(vk_->device(), vBuf_, vMem_);
-            shs::vk_destroy_buffer(vk_->device(), iBuf_, iMem_);
+            shs::rhi::vk_destroy_buffer(vk_->device(), vBuf_, vMem_);
+            shs::rhi::vk_destroy_buffer(vk_->device(), iBuf_, iMem_);
             vkDestroyPipeline(vk_->device(), pipeline_, nullptr);
             vkDestroyPipelineLayout(vk_->device(), pLayout_, nullptr);
             vkDestroyDescriptorPool(vk_->device(), dsPool_, nullptr);
@@ -533,9 +533,9 @@ private:
 
 private:
     SDL_Window* win_ = nullptr;
-    shs::Context ctx_{};
-    std::vector<std::unique_ptr<shs::IRenderBackend>> keep_{};
-    shs::VulkanRenderBackend* vk_ = nullptr;
+    shs::app::Context ctx_{};
+    std::vector<std::unique_ptr<shs::rhi::IRenderBackend>> keep_{};
+    shs::rhi::VulkanRenderBackend* vk_ = nullptr;
 
     VkBuffer vBuf_ = VK_NULL_HANDLE, iBuf_ = VK_NULL_HANDLE;
     VkDeviceMemory vMem_ = VK_NULL_HANDLE, iMem_ = VK_NULL_HANDLE;

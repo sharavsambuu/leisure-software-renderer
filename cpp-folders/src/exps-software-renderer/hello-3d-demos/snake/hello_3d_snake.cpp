@@ -60,7 +60,7 @@ static inline glm::vec4 clip_to_screen_vec4(const glm::vec4& clip, int W, int H)
 static void rasterize_triangle_tile(
     shs::Canvas& canvas, shs::ZBuffer& z_buffer,
     const glm::vec4& sc0, const glm::vec4& sc1, const glm::vec4& sc2,
-    shs::Color lit_color, float depth_bias,
+    shs::render::Color lit_color, float depth_bias,
     glm::ivec2 tile_min, glm::ivec2 tile_max)
 {
     glm::vec2 v0(sc0.x, sc0.y), v1(sc1.x, sc1.y), v2(sc2.x, sc2.y);
@@ -142,7 +142,7 @@ int main(int argc, char* argv[]) {
     );
     SDL_Surface* screen_surface = SDL_CreateRGBSurfaceWithFormat(0, CANVAS_WIDTH, CANVAS_HEIGHT, 32, SDL_PIXELFORMAT_RGBA32);
 
-    shs::Canvas   canvas(CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{ 14, 16, 22, 255 });
+    shs::Canvas   canvas(CANVAS_WIDTH, CANVAS_HEIGHT, shs::render::Color{ 14, 16, 22, 255 });
     shs::ZBuffer  z_buffer(CANVAS_WIDTH, CANVAS_HEIGHT, -1.0f, 1.0f);
 
     snake::config::Difficulty difficulty;      // default: soft walls (bounce)
@@ -233,7 +233,7 @@ int main(int argc, char* argv[]) {
                     particles,
                     glm::vec3(float(snap.head_pos.x), 0.4f, -float(snap.head_pos.y)),
                     glm::vec3(dir.x * speed, up_pop, -dir.y * speed),
-                    shs::Color{ 255, 90, 60, 255 }, 0.8f);
+                    shs::render::Color{ 255, 90, 60, 255 }, 0.8f);
             }
         }
 
@@ -258,7 +258,7 @@ int main(int argc, char* argv[]) {
                                                         CANVAS_WIDTH, CANVAS_HEIGHT);
 
         // 5. TILED PARALLEL RASTERIZATION (frustum clip + barycentric depth test per tile)
-        canvas.buffer().clear(shs::Color{ 14, 16, 22, 255 });
+        canvas.buffer().clear(shs::render::Color{ 14, 16, 22, 255 });
         z_buffer.clear();
 
         int W    = canvas.get_width();

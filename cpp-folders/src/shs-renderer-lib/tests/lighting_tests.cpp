@@ -11,15 +11,15 @@ namespace
     // Facing light -> 1, perpendicular -> 0, behind -> clamped 0.
     bool test_lambert_known_answers()
     {
-        if (shs::lambert_diffuse(glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(0.0f, 0.0f, 1.0f)) != 1.0f) return false;
-        if (shs::lambert_diffuse(glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(1.0f, 0.0f, 0.0f)) != 0.0f) return false;
-        return shs::lambert_diffuse(glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(0.0f, 0.0f, -1.0f)) == 0.0f;
+        if (shs::lighting::lambert_diffuse(glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(0.0f, 0.0f, 1.0f)) != 1.0f) return false;
+        if (shs::lighting::lambert_diffuse(glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(1.0f, 0.0f, 0.0f)) != 0.0f) return false;
+        return shs::lighting::lambert_diffuse(glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(0.0f, 0.0f, -1.0f)) == 0.0f;
     }
 
     // Composition matches the rung-08 pair formula exactly.
     bool test_shade_composition()
     {
-        const glm::vec3 out = shs::shade_lambert(glm::vec3(0.85f, 0.87f, 0.90f), 0.5f, 0.08f);
+        const glm::vec3 out = shs::lighting::shade_lambert(glm::vec3(0.85f, 0.87f, 0.90f), 0.5f, 0.08f);
         return out == glm::vec3(0.85f * 0.5f + 0.08f, 0.87f * 0.5f + 0.08f, 0.90f * 0.5f + 0.08f);
     }
 } // namespace

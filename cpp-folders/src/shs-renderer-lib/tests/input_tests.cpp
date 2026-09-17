@@ -13,19 +13,19 @@
 // Links only shs::renderer-values + glm: no SDL, no Vulkan, no Context.
 namespace
 {
-    std::vector<shs::RuntimeCommand> make_mixed_log()
+    std::vector<shs::input::RuntimeCommand> make_mixed_log()
     {
-        std::vector<shs::RuntimeCommand> commands{};
-        commands.push_back(shs::make_move_local_intent(glm::vec3(0.0f, 0.0f, 1.0f), 4.0f));
-        commands.push_back(shs::make_look_intent(10.0f, -3.0f, 0.01f));
-        commands.push_back(shs::make_toggle_light_shafts_intent());
-        commands.push_back(shs::make_toggle_bot_intent());
-        commands.push_back(shs::make_quit_intent());
+        std::vector<shs::input::RuntimeCommand> commands{};
+        commands.push_back(shs::input::make_move_local_intent(glm::vec3(0.0f, 0.0f, 1.0f), 4.0f));
+        commands.push_back(shs::input::make_look_intent(10.0f, -3.0f, 0.01f));
+        commands.push_back(shs::input::make_toggle_light_shafts_intent());
+        commands.push_back(shs::input::make_toggle_bot_intent());
+        commands.push_back(shs::input::make_quit_intent());
         return commands;
     }
 
     auto run_gateway = [](shs::app::SessionState& s,
-                             std::span<const shs::RuntimeCommand> a,
+                             std::span<const shs::input::RuntimeCommand> a,
                              const shs::input::InputContext& in,
                              std::pmr::vector<shs::input::InputEvent>& e)
     {
@@ -36,12 +36,12 @@ namespace
     bool test_replay_deterministic()
     {
         const shs::app::SessionState s0{};
-        const std::vector<shs::RuntimeCommand> commands = make_mixed_log();
+        const std::vector<shs::input::RuntimeCommand> commands = make_mixed_log();
         const shs::input::InputContext in{0.5f};
-        return shs::pod_test::replay_is_deterministic<shs::app::SessionState, shs::RuntimeCommand,
+        return shs::pod_test::replay_is_deterministic<shs::app::SessionState, shs::input::RuntimeCommand,
             shs::input::InputContext, shs::input::InputEvent>(
             run_gateway, s0,
-            std::span<const shs::RuntimeCommand>{commands.data(), commands.size()}, in);
+            std::span<const shs::input::RuntimeCommand>{commands.data(), commands.size()}, in);
     }
 
     // P4.2 kit: empty log -> bit-identical state, zero events.
@@ -49,7 +49,7 @@ namespace
     {
         const shs::app::SessionState s0{};
         const shs::input::InputContext in{0.5f};
-        return shs::pod_test::empty_log_is_stable<shs::app::SessionState, shs::RuntimeCommand,
+        return shs::pod_test::empty_log_is_stable<shs::app::SessionState, shs::input::RuntimeCommand,
             shs::input::InputContext, shs::input::InputEvent>(
             run_gateway, s0, in);
     }
@@ -59,11 +59,11 @@ namespace
     {
         shs::app::SessionState s{};
         const glm::vec3 pos0 = s.camera.pos;
-        const std::vector<shs::RuntimeCommand> commands = make_mixed_log();
+        const std::vector<shs::input::RuntimeCommand> commands = make_mixed_log();
 
         std::pmr::monotonic_buffer_resource arena{4096};
         std::pmr::vector<shs::input::InputEvent> events{&arena};
-        shs::app::session_orchestrate(s, std::span<const shs::RuntimeCommand>{commands.data(), commands.size()},
+        shs::app::session_orchestrate(s, std::span<const shs::input::RuntimeCommand>{commands.data(), commands.size()},
             shs::input::InputContext{0.5f}, events);
 
         if (events.size() != 5) return false;
@@ -96,22 +96,22 @@ namespace
     bool test_look_clamp()
     {
         shs::app::SessionState s{};
-        const std::vector<shs::RuntimeCommand> commands{
-            shs::make_look_intent(0.0f, -100000.0f, 1.0f) // pitch -= negative -> drives up
+        const std::vector<shs::input::RuntimeCommand> commands{
+            shs::input::make_look_intent(0.0f, -100000.0f, 1.0f) // pitch -= negative -> drives up
         };
         std::pmr::monotonic_buffer_resource arena{4096};
         std::pmr::vector<shs::input::InputEvent> events{&arena};
-        shs::app::session_orchestrate(s, std::span<const shs::RuntimeCommand>{commands.data(), commands.size()},
+        shs::app::session_orchestrate(s, std::span<const shs::input::RuntimeCommand>{commands.data(), commands.size()},
             shs::input::InputContext{0.016f}, events);
         if (s.camera.pitch != glm::radians(85.0f)) return false;
 
         shs::app::SessionState s2{};
-        const std::vector<shs::RuntimeCommand> down{
-            shs::make_look_intent(0.0f, 100000.0f, 1.0f)
+        const std::vector<shs::input::RuntimeCommand> down{
+            shs::input::make_look_intent(0.0f, 100000.0f, 1.0f)
         };
         std::pmr::monotonic_buffer_resource arena2{4096};
         std::pmr::vector<shs::input::InputEvent> events2{&arena2};
-        shs::app::session_orchestrate(s2, std::span<const shs::RuntimeCommand>{down.data(), down.size()},
+        shs::app::session_orchestrate(s2, std::span<const shs::input::RuntimeCommand>{down.data(), down.size()},
             shs::input::InputContext{0.016f}, events2);
         return s2.camera.pitch == glm::radians(-85.0f);
     }
@@ -122,12 +122,12 @@ namespace
     bool test_step_tally()
     {
         shs::app::SessionState s{};
-        const std::vector<shs::RuntimeCommand> commands = make_mixed_log();
+        const std::vector<shs::input::RuntimeCommand> commands = make_mixed_log();
 
         std::pmr::monotonic_buffer_resource arena{4096};
         std::pmr::vector<shs::input::InputEvent> events{&arena};
         const shs::input::InputStep step = shs::app::session_orchestrate(s,
-            std::span<const shs::RuntimeCommand>{commands.data(), commands.size()},
+            std::span<const shs::input::RuntimeCommand>{commands.data(), commands.size()},
             shs::input::InputContext{0.5f}, events);
 
         return step.commands_applied == 5 && events.size() == 5;
@@ -136,16 +136,16 @@ namespace
     // Latch gateway stays deterministic (double-run equality, kit-adjacent).
     bool test_latch_deterministic()
     {
-        const shs::RuntimeInputLatch s0{};
-        const std::vector<shs::RuntimeInputEvent> ev{
-            shs::make_bool_input_event(shs::RuntimeInputEventType::SetForward, true),
-            shs::make_mouse_delta_input_event(4.0f, -2.0f),
-            shs::make_quit_input_event()
+        const shs::input::RuntimeInputLatch s0{};
+        const std::vector<shs::input::RuntimeInputEvent> ev{
+            shs::input::make_bool_input_event(shs::RuntimeInputEventType::SetForward, true),
+            shs::input::make_mouse_delta_input_event(4.0f, -2.0f),
+            shs::input::make_quit_input_event()
         };
-        const shs::RuntimeInputLatch a = shs::input_latch_gateway(s0,
-            std::span<const shs::RuntimeInputEvent>{ev.data(), ev.size()});
-        const shs::RuntimeInputLatch b = shs::input_latch_gateway(s0,
-            std::span<const shs::RuntimeInputEvent>{ev.data(), ev.size()});
+        const shs::input::RuntimeInputLatch a = shs::input::input_latch_gateway(s0,
+            std::span<const shs::input::RuntimeInputEvent>{ev.data(), ev.size()});
+        const shs::input::RuntimeInputLatch b = shs::input::input_latch_gateway(s0,
+            std::span<const shs::input::RuntimeInputEvent>{ev.data(), ev.size()});
         return a == b && a.forward && a.mouse_dx_accum == 4.0f && a.quit_requested;
     }
 } // namespace

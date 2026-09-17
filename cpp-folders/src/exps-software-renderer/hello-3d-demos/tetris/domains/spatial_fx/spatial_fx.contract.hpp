@@ -19,24 +19,24 @@ using tetris::matrix::BLOCK_GAP;
 
     struct LowPolyTriangle {
         glm::vec3  p0, p1, p2;
-        shs::Color color;
+        shs::render::Color color;
         float      depth_bias = 0.0f;
         bool       emissive   = false;   // true: unshaded (self-luminous)
 
-        LowPolyTriangle(glm::vec3 a, glm::vec3 b, glm::vec3 c, shs::Color col, float bias = 0.0f)
+        LowPolyTriangle(glm::vec3 a, glm::vec3 b, glm::vec3 c, shs::render::Color col, float bias = 0.0f)
             : p0(a), p1(b), p2(c), color(col), depth_bias(bias) {}
     };
 
     struct ShatterParticleSoA {
         std::pmr::vector<glm::vec3> position;
         std::pmr::vector<glm::vec3> velocity;
-        std::pmr::vector<shs::Color> color;
+        std::pmr::vector<shs::render::Color> color;
         std::pmr::vector<float>     life;
 
         explicit ShatterParticleSoA(std::pmr::memory_resource* mr)
             : position(mr), velocity(mr), color(mr), life(mr) {}
 
-        void add(glm::vec3 pos, glm::vec3 vel, shs::Color col, float duration = 1.2f) {
+        void add(glm::vec3 pos, glm::vec3 vel, shs::render::Color col, float duration = 1.2f) {
             position.push_back(pos);
             velocity.push_back(vel);
             color.push_back(col);
@@ -52,12 +52,12 @@ using tetris::matrix::BLOCK_GAP;
         std::pmr::vector<float>      speed;
         std::pmr::vector<float>      life;
         std::pmr::vector<float>      max_life;
-        std::pmr::vector<shs::Color> color;
+        std::pmr::vector<shs::render::Color> color;
 
         explicit RingFxSoA(std::pmr::memory_resource* mr)
             : center(mr), radius(mr), speed(mr), life(mr), max_life(mr), color(mr) {}
 
-        void add(glm::vec3 c, float r0, float spd, shs::Color col, float duration = 0.8f) {
+        void add(glm::vec3 c, float r0, float spd, shs::render::Color col, float duration = 0.8f) {
             center.push_back(c);
             radius.push_back(r0);
             speed.push_back(spd);
@@ -68,9 +68,9 @@ using tetris::matrix::BLOCK_GAP;
     };
 
     // Render-vocabulary color helpers (channel math in float, rounded back).
-    static inline shs::Color lerp_color(shs::Color a, shs::Color b, float t) {
+    static inline shs::render::Color lerp_color(shs::render::Color a, shs::render::Color b, float t) {
         t = glm::clamp(t, 0.0f, 1.0f);
-        return shs::Color{
+        return shs::render::Color{
             static_cast<uint8_t>(a.r + (b.r - a.r) * t + 0.5f),
             static_cast<uint8_t>(a.g + (b.g - a.g) * t + 0.5f),
             static_cast<uint8_t>(a.b + (b.b - a.b) * t + 0.5f),
@@ -78,9 +78,9 @@ using tetris::matrix::BLOCK_GAP;
         };
     }
 
-    static inline shs::Color fade_color(shs::Color c, float fade) {
+    static inline shs::render::Color fade_color(shs::render::Color c, float fade) {
         fade = glm::clamp(fade, 0.0f, 1.0f);
-        return shs::Color{
+        return shs::render::Color{
             static_cast<uint8_t>(c.r * fade + 0.5f),
             static_cast<uint8_t>(c.g * fade + 0.5f),
             static_cast<uint8_t>(c.b * fade + 0.5f),
@@ -92,7 +92,7 @@ using tetris::matrix::BLOCK_GAP;
         static inline void add_quad(
             std::vector<LowPolyTriangle>& tris,
             glm::vec3 v0, glm::vec3 v1, glm::vec3 v2, glm::vec3 v3,
-            shs::Color col, float bias = 0.0f
+            shs::render::Color col, float bias = 0.0f
         ) {
             tris.emplace_back(v0, v1, v2, col, bias);
             tris.emplace_back(v0, v2, v3, col, bias);
@@ -101,7 +101,7 @@ using tetris::matrix::BLOCK_GAP;
         static inline void add_box(
             std::vector<LowPolyTriangle>& tris,
             glm::vec3 center, glm::vec3 size,
-            shs::Color c_top, shs::Color c_side, shs::Color c_bot,
+            shs::render::Color c_top, shs::render::Color c_side, shs::render::Color c_bot,
             float bias = 0.0f
         ) {
             glm::vec3 h = size * 0.5f;
@@ -125,8 +125,8 @@ using tetris::matrix::BLOCK_GAP;
 
     struct ProcessedTriangle {
         glm::vec4  c0, c1, c2;
-        shs::Color lit_color;
-        shs::Color src_color{ 0, 0, 0, 0 };   // DEBUG: pre-lighting color
+        shs::render::Color lit_color;
+        shs::render::Color src_color{ 0, 0, 0, 0 };   // DEBUG: pre-lighting color
         float      depth_bias;
         uint8_t    alpha = 255;   // 255 = opaque (default); <255 blends
                                   // against dst AFTER the depth test without
@@ -183,24 +183,24 @@ using tetris::matrix::BLOCK_GAP;
     };
 
     // Piece palette (render vocabulary — moved out of the grid contract).
-    static inline shs::Color get_piece_color(PieceType type) {
+    static inline shs::render::Color get_piece_color(PieceType type) {
         switch (type) {
-            case PieceType::I: return shs::Color{  40, 220, 240, 255 }; // Cyan
-            case PieceType::O: return shs::Color{ 255, 225,  45, 255 }; // Yellow
-            case PieceType::T: return shs::Color{ 185,  70, 240, 255 }; // Purple
-            case PieceType::S: return shs::Color{  60, 230,  95, 255 }; // Green
-            case PieceType::Z: return shs::Color{ 245,  55,  55, 255 }; // Red
-            case PieceType::J: return shs::Color{  45, 110, 245, 255 }; // Blue
-            case PieceType::L: return shs::Color{ 255, 140,  35, 255 }; // Orange
+            case PieceType::I: return shs::render::Color{  40, 220, 240, 255 }; // Cyan
+            case PieceType::O: return shs::render::Color{ 255, 225,  45, 255 }; // Yellow
+            case PieceType::T: return shs::render::Color{ 185,  70, 240, 255 }; // Purple
+            case PieceType::S: return shs::render::Color{  60, 230,  95, 255 }; // Green
+            case PieceType::Z: return shs::render::Color{ 245,  55,  55, 255 }; // Red
+            case PieceType::J: return shs::render::Color{  45, 110, 245, 255 }; // Blue
+            case PieceType::L: return shs::render::Color{ 255, 140,  35, 255 }; // Orange
             case PieceType::Garbage:
-                               return shs::Color{ 138, 106,  74, 255 }; // Mud brown (canyon rubble)
+                               return shs::render::Color{ 138, 106,  74, 255 }; // Mud brown (canyon rubble)
             case PieceType::Bomb:
-                               return shs::Color{ 255, 120,  30, 255 }; // Hot orange (detonator)
+                               return shs::render::Color{ 255, 120,  30, 255 }; // Hot orange (detonator)
             case PieceType::Laser:
-                               return shs::Color{ 255,  60, 200, 255 }; // Magenta beam
+                               return shs::render::Color{ 255,  60, 200, 255 }; // Magenta beam
             case PieceType::Freeze:
-                               return shs::Color{ 140, 230, 255, 255 }; // Ice cyan
-            default:           return shs::Color{  80,  90, 105, 255 };
+                               return shs::render::Color{ 140, 230, 255, 255 }; // Ice cyan
+            default:           return shs::render::Color{  80,  90, 105, 255 };
         }
     }
 

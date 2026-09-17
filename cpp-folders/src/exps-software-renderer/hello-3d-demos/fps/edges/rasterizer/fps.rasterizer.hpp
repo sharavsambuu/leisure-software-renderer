@@ -32,7 +32,7 @@ namespace fps::raster {
     inline void rasterize_perspective_triangle_tile(
         shs::Canvas& canvas, shs::ZBuffer& z_buffer,
         const glm::vec4& sc0, const glm::vec4& sc1, const glm::vec4& sc2,
-        shs::Color lit_color, float depth_bias,
+        shs::render::Color lit_color, float depth_bias,
         glm::ivec2 tile_min, glm::ivec2 tile_max)
     {
         const glm::vec2 v0(sc0.x, sc0.y);

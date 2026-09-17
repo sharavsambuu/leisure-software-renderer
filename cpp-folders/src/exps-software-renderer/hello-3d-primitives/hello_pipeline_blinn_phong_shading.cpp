@@ -38,7 +38,7 @@ struct Uniforms {
     glm::mat4  model;        
     glm::vec3  light_dir;    
     glm::vec3  camera_pos;   
-    shs::Color color;       
+    shs::render::Color color;       
 };
 
 /*
@@ -60,7 +60,7 @@ shs::Varyings blinn_phong_vertex_shader(const glm::vec3& aPos, const glm::vec3& 
     FRAGMENT SHADER (Blinn-Phong)
     Ambient + Diffuse + Specular (Halfway vector ашиглана)
 */
-shs::Color blinn_phong_fragment_shader(const shs::Varyings& in, const Uniforms& u)
+shs::render::Color blinn_phong_fragment_shader(const shs::Varyings& in, const Uniforms& u)
 {
     glm::vec3 norm     = glm::normalize(in.normal);
     glm::vec3 lightDir = glm::normalize(-u.light_dir); 
@@ -88,7 +88,7 @@ shs::Color blinn_phong_fragment_shader(const shs::Varyings& in, const Uniforms& 
 
     result = glm::clamp(result, 0.0f, 1.0f);
 
-    return shs::Color{
+    return shs::render::Color{
         (uint8_t)(result.r * 255),
         (uint8_t)(result.g * 255),
         (uint8_t)(result.b * 255),
@@ -109,7 +109,7 @@ using ModelGeometry = shs::ModelGeometry;
 class MonkeyObject : public shs::AbstractObject3D
 {
 public:
-    MonkeyObject(glm::vec3 position, glm::vec3 scale, shs::Color color)
+    MonkeyObject(glm::vec3 position, glm::vec3 scale, shs::render::Color color)
     {
         this->position       = position;
         this->scale          = scale;
@@ -137,7 +137,7 @@ public:
     ModelGeometry *geometry;
     glm::vec3      scale;
     glm::vec3      position;
-    shs::Color     color;
+    shs::render::Color     color;
     float          rotation_angle;
 };
 
@@ -150,7 +150,7 @@ public:
         this->viewer = viewer;
         // Гэрлийн чиглэл: Зүүн-Доод-Урдаас
         this->light_direction = glm::normalize(glm::vec3(-1.0f, -0.4f, 1.0f));
-        this->scene_objects.push_back(new MonkeyObject(glm::vec3(0.0f, 0.0f, 10.0f), glm::vec3(4.0f), shs::Color{60, 100, 200, 255}));
+        this->scene_objects.push_back(new MonkeyObject(glm::vec3(0.0f, 0.0f, 10.0f), glm::vec3(4.0f), shs::render::Color{60, 100, 200, 255}));
     }
     ~HelloScene() {
         for (auto *obj : this->scene_objects) delete obj;
@@ -192,7 +192,7 @@ public:
         const std::vector<glm::vec3> &vertices,    
         const std::vector<glm::vec3> &normals,     
         std::function<shs::Varyings(const glm::vec3&, const glm::vec3&)> vertex_shader,
-        std::function<shs::Color(const shs::Varyings&)> fragment_shader,
+        std::function<shs::render::Color(const shs::Varyings&)> fragment_shader,
         glm::ivec2 tile_min, glm::ivec2 tile_max)
     {
         // [VERTEX STAGE]
@@ -341,7 +341,7 @@ class SystemProcessor
 public:
     SystemProcessor(HelloScene *scene, shs::Job::ThreadedPriorityJobSystem *job_sys) 
     {
-        this->command_processor = new shs::CommandProcessor();
+        this->command_processor = new shs::input::CommandProcessor();
         this->renderer_system   = new RendererSystem(scene, job_sys);
         this->logic_system      = new LogicSystem(scene);
     }
@@ -361,7 +361,7 @@ public:
         this->renderer_system->process(delta_time);
     }
 
-    shs::CommandProcessor *command_processor;
+    shs::input::CommandProcessor *command_processor;
     LogicSystem           *logic_system;
     RendererSystem        *renderer_system;  
 };

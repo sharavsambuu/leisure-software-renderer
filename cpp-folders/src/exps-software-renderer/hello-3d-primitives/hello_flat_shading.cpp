@@ -248,7 +248,7 @@ class SystemProcessor
 public:
     SystemProcessor(HelloScene *scene) 
     {
-        this->command_processor = new shs::CommandProcessor();
+        this->command_processor = new shs::input::CommandProcessor();
         this->renderer_system   = new RendererSystem(scene);
         this->logic_system      = new LogicSystem(scene);
     }
@@ -268,7 +268,7 @@ public:
         this->renderer_system->process(delta_time);
     }
 
-    shs::CommandProcessor *command_processor;
+    shs::input::CommandProcessor *command_processor;
     LogicSystem           *logic_system;
     RendererSystem        *renderer_system;  
 };

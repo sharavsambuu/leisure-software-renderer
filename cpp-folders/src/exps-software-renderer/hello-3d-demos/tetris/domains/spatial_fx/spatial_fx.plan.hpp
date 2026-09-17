@@ -75,28 +75,28 @@ using tetris::matrix::get_piece_blocks;
         // L5 encore mood: cyan → crimson → gold tint applied over the base
         // ladder when the finale environment is live (main wires 0/1).
         const float finale = glm::clamp(fx.env_finale, 0.0f, 1.0f);
-        auto mood_tint = [&](shs::Color c) {
+        auto mood_tint = [&](shs::render::Color c) {
             if (finale < 0.5f) return c;
             const float mp = glm::clamp(fx.mood_phase, 0.0f, 1.0f);
-            const shs::Color cyan{ 40, 180, 240, 255 };
-            const shs::Color crim{ 235, 60, 60, 255 };
-            const shs::Color gold{ 255, 210, 60, 255 };
+            const shs::render::Color cyan{ 40, 180, 240, 255 };
+            const shs::render::Color crim{ 235, 60, 60, 255 };
+            const shs::render::Color gold{ 255, 210, 60, 255 };
             return lerp_color((mp < 0.5f) ? lerp_color(cyan, crim, mp * 2.0f)
                                           : lerp_color(crim, gold, (mp - 0.5f) * 2.0f),
                               c, 0.25f);
         };
-        shs::Color rail_col = lerp_color(lerp_color(shs::Color{ 60,  70,  90, 255 },
-                                                    shs::Color{ 96,  66,  44, 255 }, dusk),
-                                         shs::Color{ 16,  18,  34, 255 }, neon);
-        shs::Color trim_col = lerp_color(
-            lerp_color(lerp_color(shs::Color{ 40, 180, 240, 255 },
-                                  shs::Color{ 255, 160, 40, 255 },
+        shs::render::Color rail_col = lerp_color(lerp_color(shs::render::Color{ 60,  70,  90, 255 },
+                                                    shs::render::Color{ 96,  66,  44, 255 }, dusk),
+                                         shs::render::Color{ 16,  18,  34, 255 }, neon);
+        shs::render::Color trim_col = lerp_color(
+            lerp_color(lerp_color(shs::render::Color{ 40, 180, 240, 255 },
+                                  shs::render::Color{ 255, 160, 40, 255 },
                                   fx.mood_intensity),
-                       shs::Color{ 255, 150, 60, 255 }, dusk * 0.8f),
-            shs::Color{ 120, 240, 255, 255 }, neon);
-        shs::Color bg_grid  = lerp_color(lerp_color(shs::Color{ 18,  22,  30, 255 },
-                                                    shs::Color{ 36,  26,  26, 255 }, dusk),
-                                         shs::Color{ 10,  10,  24, 255 }, neon);
+                       shs::render::Color{ 255, 150, 60, 255 }, dusk * 0.8f),
+            shs::render::Color{ 120, 240, 255, 255 }, neon);
+        shs::render::Color bg_grid  = lerp_color(lerp_color(shs::render::Color{ 18,  22,  30, 255 },
+                                                    shs::render::Color{ 36,  26,  26, 255 }, dusk),
+                                         shs::render::Color{ 10,  10,  24, 255 }, neon);
         rail_col = mood_tint(rail_col);
         trim_col = mood_tint(trim_col);
         bg_grid  = mood_tint(bg_grid);
@@ -110,19 +110,19 @@ using tetris::matrix::get_piece_blocks;
         MeshGen::add_box(tris, glm::vec3(  0.0f, -0.7f, 0.0f), glm::vec3(11.2f, 0.5f, 1.1f), trim_col, rail_col, rail_col);
 
         // Pedestal Floor (sandstone in the canyon)
-        shs::Color floor_top  = lerp_color(lerp_color(shs::Color{ 25, 30, 42, 255 },
-                                                      shs::Color{ 104, 78, 50, 255 }, dusk),
-                                           shs::Color{ 18, 20, 40, 255 }, neon);
-        shs::Color floor_side = lerp_color(lerp_color(shs::Color{ 14, 16, 22, 255 },
-                                                      shs::Color{ 58, 42, 30, 255 }, dusk),
-                                           shs::Color{ 10, 11, 22, 255 }, neon);
+        shs::render::Color floor_top  = lerp_color(lerp_color(shs::render::Color{ 25, 30, 42, 255 },
+                                                      shs::render::Color{ 104, 78, 50, 255 }, dusk),
+                                           shs::render::Color{ 18, 20, 40, 255 }, neon);
+        shs::render::Color floor_side = lerp_color(lerp_color(shs::render::Color{ 14, 16, 22, 255 },
+                                                      shs::render::Color{ 58, 42, 30, 255 }, dusk),
+                                           shs::render::Color{ 10, 11, 22, 255 }, neon);
         MeshGen::add_box(tris, glm::vec3(0.0f, -1.2f, 1.0f), glm::vec3(26.0f, 0.6f, 14.0f), floor_top, floor_side, floor_side);
 
         // L3 canyon diorama embryo: mesa silhouettes + flickering torches.
         // Gated on env_dusk so every other stage renders pixel-identical.
         if (dusk > 0.5f) {
-            const shs::Color mesa_far  { 46, 32, 36, 255 };
-            const shs::Color mesa_near { 58, 38, 38, 255 };
+            const shs::render::Color mesa_far  { 46, 32, 36, 255 };
+            const shs::render::Color mesa_near { 58, 38, 38, 255 };
             MeshGen::add_box(tris, glm::vec3(-17.0f,  5.0f, -10.0f), glm::vec3(13.0f, 16.0f, 2.5f), mesa_far,  mesa_far,  mesa_far);
             MeshGen::add_box(tris, glm::vec3( 17.0f,  7.0f, -10.0f), glm::vec3(11.0f, 20.0f, 2.5f), mesa_far,  mesa_far,  mesa_far);
             MeshGen::add_box(tris, glm::vec3( -6.0f,  2.0f, -13.0f), glm::vec3(9.0f,  9.0f, 2.0f),  mesa_near, mesa_near, mesa_near);
@@ -131,13 +131,13 @@ using tetris::matrix::get_piece_blocks;
             // Torch flames on the well rails — deterministic flicker from fx.time.
             const float flick = 0.75f + 0.18f * std::sin(fx.time * 11.3f)
                                       + 0.07f * std::sin(fx.time * 23.7f);
-            const shs::Color flame{ (uint8_t)(255), (uint8_t)(150 * flick + 40), 40, 255 };
+            const shs::render::Color flame{ (uint8_t)(255), (uint8_t)(150 * flick + 40), 40, 255 };
             for (const float tx : { -5.35f, 5.35f }) {
                 MeshGen::add_box(tris, glm::vec3(tx, 19.9f, 0.55f),
                                  glm::vec3(0.34f, 0.62f * flick, 0.34f), flame, flame, flame);
                 MeshGen::add_box(tris, glm::vec3(tx, 19.45f, 0.55f),
-                                 glm::vec3(0.22f, 0.28f, 0.22f), shs::Color{ 70, 52, 40, 255 },
-                                 shs::Color{ 70, 52, 40, 255 }, shs::Color{ 70, 52, 40, 255 });
+                                 glm::vec3(0.22f, 0.28f, 0.22f), shs::render::Color{ 70, 52, 40, 255 },
+                                 shs::render::Color{ 70, 52, 40, 255 }, shs::render::Color{ 70, 52, 40, 255 });
             }
         }
 
@@ -145,11 +145,11 @@ using tetris::matrix::get_piece_blocks;
         // pulsing horizon bar. Gated on env_neon so every other stage renders
         // pixel-identical.
         if (neon > 0.5f) {
-            const shs::Color strip_a{ 60, 220, 255, 255 };
-            const shs::Color strip_b{ 255,  60, 200, 255 };
+            const shs::render::Color strip_a{ 60, 220, 255, 255 };
+            const shs::render::Color strip_b{ 255,  60, 200, 255 };
             const float pulse = 0.6f + 0.4f * std::sin(fx.time * 2.1f);
             for (int i = -3; i <= 3; ++i) {
-                const shs::Color sc = (i & 1) ? strip_b : strip_a;
+                const shs::render::Color sc = (i & 1) ? strip_b : strip_a;
                 MeshGen::add_box(tris, glm::vec3((float)i * 7.0f, -1.55f, 4.0f + (float)std::abs(i) * 1.5f),
                                  glm::vec3(0.35f, 0.12f, 9.0f), sc, sc, sc);
             }
@@ -158,7 +158,7 @@ using tetris::matrix::get_piece_blocks;
             MeshGen::add_box(tris, glm::vec3( 5.35f, 19.75f, 0.0f), glm::vec3(0.56f, 0.14f, 1.16f),
                              strip_b, strip_b, strip_b);
             const uint8_t hb = (uint8_t)(140 + 100 * pulse);
-            const shs::Color horizon{ 40, hb, (uint8_t)(hb / 2), 255 };
+            const shs::render::Color horizon{ 40, hb, (uint8_t)(hb / 2), 255 };
             MeshGen::add_box(tris, glm::vec3(0.0f, 8.0f, -13.5f), glm::vec3(46.0f, 0.25f, 0.25f),
                              horizon, horizon, horizon);
         }
@@ -180,10 +180,10 @@ using tetris::matrix::get_piece_blocks;
                 const uint8_t a = static_cast<uint8_t>(
                     glm::clamp(base_a + 110.0f * wave, 0.0f, 220.0f));
                 if (a < 6) continue;
-                shs::Color gc =
-                    (tint_sel == 2.0f) ? shs::Color{ 255, 210, 60, a }
-                  : (tint_sel == 1.0f) ? shs::Color{ 120, 120, 220, a }
-                                       : shs::Color{  60, 220, 255, a };
+                shs::render::Color gc =
+                    (tint_sel == 2.0f) ? shs::render::Color{ 255, 210, 60, a }
+                  : (tint_sel == 1.0f) ? shs::render::Color{ 120, 120, 220, a }
+                                       : shs::render::Color{  60, 220, 255, a };
                 const float cx = (float)col - 4.5f;
                 for (const LowPolyTriangle& q : {
                      LowPolyTriangle(glm::vec3(cx - 0.48f, 19.00f, 0.50f),
@@ -207,7 +207,7 @@ using tetris::matrix::get_piece_blocks;
             for (int x = 0; x < GRID_W; ++x) {
                 uint8_t cell = m.grid[y][x];
                 if (cell != 0) {
-                    shs::Color col = get_piece_color(static_cast<PieceType>(cell));
+                    shs::render::Color col = get_piece_color(static_cast<PieceType>(cell));
                     glm::vec3 center((float)x - 4.5f, (float)y, 0.0f);
                     MeshGen::add_box(tris, center, glm::vec3(block_size, block_size, 0.85f), col, col, col);
                 }
@@ -218,7 +218,7 @@ using tetris::matrix::get_piece_blocks;
         if (m.active.type != PieceType::None && !m.game_over && !fx.ghost_hidden) {
             int ghost_y = get_ghost_y(m.grid, m.active);
             auto blocks = get_piece_blocks(m.active.type, m.active.rotation);
-            shs::Color ghost_col{ 50, 60, 80, 255 };
+            shs::render::Color ghost_col{ 50, 60, 80, 255 };
 
             for (const auto& b : blocks) {
                 int gx = m.active.pos.x + b.x;
@@ -232,7 +232,7 @@ using tetris::matrix::get_piece_blocks;
 
         // 4. ACTIVE FALLING TETROMINO
         if (m.active.type != PieceType::None && !m.game_over) {
-            shs::Color active_col = get_piece_color(m.active.type);
+            shs::render::Color active_col = get_piece_color(m.active.type);
             auto blocks = get_piece_blocks(m.active.type, m.active.rotation);
 
             for (const auto& b : blocks) {
@@ -251,7 +251,7 @@ using tetris::matrix::get_piece_blocks;
             MeshGen::add_box(tris, pod_center - glm::vec3(0, 1.2f, 0), glm::vec3(3.8f, 0.25f, 3.8f), trim_col, rail_col, rail_col);
 
             if (type == PieceType::None) return; // Skip piece blocks if empty
-            shs::Color col = get_piece_color(type);
+            shs::render::Color col = get_piece_color(type);
             auto blocks = get_piece_blocks(type, 0);
 
             for (const auto& b : blocks) {
@@ -279,7 +279,7 @@ using tetris::matrix::get_piece_blocks;
         // of voxel segments in the board plane, fading as life drains.
         for (size_t i = 0; i < fx.rings.center.size(); ++i) {
             const float fade = fx.rings.life[i] / fx.rings.max_life[i];
-            const shs::Color rc = fade_color(fx.rings.color[i], 0.25f + 0.75f * fade);
+            const shs::render::Color rc = fade_color(fx.rings.color[i], 0.25f + 0.75f * fade);
             const float seg_box = 0.14f + 0.12f * fade;
             constexpr int SEGS = 26;
             for (int sgi = 0; sgi < SEGS; ++sgi) {
@@ -320,7 +320,7 @@ using tetris::matrix::get_piece_blocks;
             const glm::vec3 amb_tint   = glm::mix(glm::vec3(0.50f, 0.70f, 1.00f), glm::vec3(0.85f, 0.55f, 0.35f), dusk);
             glm::vec3 lit_rgb = base_col * (diffuse * key_tint + ambient * amb_tint);
 
-            shs::Color lit_c;
+            shs::render::Color lit_c;
             if (tri.emissive) {
                 lit_c = tri.color;      // unshaded: overlay emits its own light
             } else {

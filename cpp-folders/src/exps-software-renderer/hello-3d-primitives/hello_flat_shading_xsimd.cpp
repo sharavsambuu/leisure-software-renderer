@@ -68,7 +68,7 @@ struct TriProcessed {
     int min_x, min_y, max_x, max_y;
 
     // Flat shading өнгө
-    shs::Color color;
+    shs::render::Color color;
 };
 
 struct TileBin {
@@ -118,7 +118,7 @@ public:
 class HelloScene : public shs::AbstractSceneState
 {
 public:
-    HelloScene(shs::RT_ColorDepth *rt, Viewer *viewer) {
+    HelloScene(shs::render::RT_ColorDepth *rt, Viewer *viewer) {
         this->rt     = rt;
         this->viewer = viewer;
 
@@ -134,7 +134,7 @@ public:
     void process() override {}
 
     std::vector<shs::AbstractObject3D *> scene_objects;
-    shs::RT_ColorDepth *rt     = nullptr;
+    shs::render::RT_ColorDepth *rt     = nullptr;
     Viewer             *viewer = nullptr;
 
     // Гэрлийн чиглэл (world -> view болгож хэрэглэнэ)
@@ -302,7 +302,7 @@ private:
         if (bin.tri_indices.empty()) return;
 
         // Буферүүд (Canvas is bottom-up; row_offset дээр y-г хөрвүүлнэ)
-        shs::Color* c_buf_raw = scene->rt->color.buffer().raw();
+        shs::render::Color* c_buf_raw = scene->rt->color.buffer().raw();
         float*      z_buf_raw = scene->rt->depth.buffer().raw();
 
         const int width  = CANVAS_WIDTH;
@@ -317,9 +317,9 @@ private:
             return bf::load_aligned(tmp);
         }();
 
-        static_assert(sizeof(shs::Color) == 4, "shs::Color must be 4 bytes to pack to u32");
+        static_assert(sizeof(shs::render::Color) == 4, "shs::render::Color must be 4 bytes to pack to u32");
 
-        auto pack_rgba_u32 = [](const shs::Color& c) -> uint32_t {
+        auto pack_rgba_u32 = [](const shs::render::Color& c) -> uint32_t {
             return (uint32_t)c.r | ((uint32_t)c.g << 8) | ((uint32_t)c.b << 16) | ((uint32_t)c.a << 24);
         };
 
@@ -461,7 +461,7 @@ private:
 class SystemProcessor {
 public:
     SystemProcessor(HelloScene *scene, shs::Job::ThreadedPriorityJobSystem *jobs) {
-        cmd_proc     = new shs::CommandProcessor();
+        cmd_proc     = new shs::input::CommandProcessor();
         logic_sys    = new LogicSystem(scene);
         renderer_sys = new RendererSystemXSIMD(scene, jobs);
     }
@@ -475,22 +475,22 @@ public:
         renderer_sys->process(dt); 
     }
 
-    shs::CommandProcessor *cmd_proc     = nullptr;
+    shs::input::CommandProcessor *cmd_proc     = nullptr;
     LogicSystem           *logic_sys    = nullptr;
     RendererSystemXSIMD   *renderer_sys = nullptr;
 };
 
 static void copy_canvas_to_sdl(SDL_Surface *surface, const shs::Canvas &canvas) {
     uint32_t* dst_pixels         = (uint32_t*)surface->pixels;
-    const shs::Color* src_pixels = canvas.buffer().raw();
+    const shs::render::Color* src_pixels = canvas.buffer().raw();
     int w = canvas.get_width();
     int h = canvas.get_height();
     for (int y = 0; y < h; ++y) {
         int src_y = (h - 1) - y;
-        const shs::Color* src_row = src_pixels + src_y * w;
+        const shs::render::Color* src_row = src_pixels + src_y * w;
         uint32_t* dst_row = dst_pixels + y * w;
         for (int x = 0; x < w; ++x) {
-            shs::Color c = src_row[x];
+            shs::render::Color c = src_row[x];
             dst_row[x] = (uint32_t)c.r | ((uint32_t)c.g << 8) | ((uint32_t)c.b << 16) | ((uint32_t)c.a << 24);
         }
     }
@@ -513,7 +513,7 @@ int main(int argc, char* argv[])
     SDL_CreateWindowAndRenderer(WINDOW_WIDTH, WINDOW_HEIGHT, 0, &window, &renderer);
     SDL_RenderSetScale(renderer, 1, 1);
 
-    shs::RT_ColorDepth *rt      = new shs::RT_ColorDepth(CANVAS_WIDTH, CANVAS_HEIGHT, 0.1f, 1000.0f);
+    shs::render::RT_ColorDepth *rt      = new shs::render::RT_ColorDepth(CANVAS_WIDTH, CANVAS_HEIGHT, 0.1f, 1000.0f);
     SDL_Surface *screen_surface = rt->color.create_sdl_surface();
     SDL_Texture *screen_texture = SDL_CreateTextureFromSurface(renderer, screen_surface);
 

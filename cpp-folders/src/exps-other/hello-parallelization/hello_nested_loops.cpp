@@ -29,7 +29,7 @@
  * optimize those nested loops with some CPU extension magic since there is a -O3 flag doe.
  */
 
-shs::Color fragment_shader(glm::vec2 uniform_uv, float uniform_time)
+shs::render::Color fragment_shader(glm::vec2 uniform_uv, float uniform_time)
 {
     glm::vec2 st = (uniform_uv/glm::vec2(CANVAS_WIDTH, CANVAS_HEIGHT))*3.0f;
     st += float(glm::abs(glm::sin(uniform_time*0.1f)*3.0f))*st;
@@ -123,7 +123,7 @@ int main(int argc, char* argv[])
             for (int y=0; y<CANVAS_HEIGHT; y++)
             {
                 glm::vec2 uv = {float(x), float(y)};
-                shs::Color color = fragment_shader(uv, time_accumulator);
+                shs::render::Color color = fragment_shader(uv, time_accumulator);
                 shs::Canvas::draw_pixel(*main_canvas, x, y, color);
             }
         }

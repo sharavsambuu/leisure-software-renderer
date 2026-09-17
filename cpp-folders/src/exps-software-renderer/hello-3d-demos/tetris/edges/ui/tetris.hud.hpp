@@ -157,7 +157,7 @@ static const char* HINT_BACK       = "ESC/P - \xD0\x91\xD0\xA3\xD0\xA6\xD0\x90\x
 static const char* HINT_SOUND      = "M - \xD0\x94\xD0\xA3\xD0\xA3\xD0\x9D";
 
 // Line drawing
-static void draw_line_screen(shs::Canvas& c, int x0, int y0, int x1, int y1, shs::Color col) {
+static void draw_line_screen(shs::Canvas& c, int x0, int y0, int x1, int y1, shs::render::Color col) {
     int dx = std::abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
     int dy = -std::abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
     int err = dx + dy, e2;
@@ -171,7 +171,7 @@ static void draw_line_screen(shs::Canvas& c, int x0, int y0, int x1, int y1, shs
 }
 
 // Filled rectangle
-static void draw_rect_fill(shs::Canvas& c, int x, int y, int w, int h, shs::Color col) {
+static void draw_rect_fill(shs::Canvas& c, int x, int y, int w, int h, shs::render::Color col) {
     int x0 = std::max(0, x), y0 = std::max(0, y);
     int x1 = std::min(c.get_width() - 1, x + w), y1 = std::min(c.get_height() - 1, y + h);
     for (int py = y0; py <= y1; ++py) {
@@ -180,7 +180,7 @@ static void draw_rect_fill(shs::Canvas& c, int x, int y, int w, int h, shs::Colo
 }
 
 // Rectangle outline
-static void draw_rect_border(shs::Canvas& c, int x, int y, int w, int h, shs::Color col) {
+static void draw_rect_border(shs::Canvas& c, int x, int y, int w, int h, shs::render::Color col) {
     int x1 = std::min(c.get_width() - 1, x + w), y1 = std::min(c.get_height() - 1, y + h);
     for (int px = std::max(0, x); px <= x1; ++px) {
         c.draw_pixel_screen_space(px, y, col);
@@ -193,7 +193,7 @@ static void draw_rect_border(shs::Canvas& c, int x, int y, int w, int h, shs::Co
 }
 
 // Dithered fill (checkerboard) — fake translucency on the opaque canvas.
-static void draw_rect_fill_dithered(shs::Canvas& c, int x, int y, int w, int h, shs::Color col, int phase = 0) {
+static void draw_rect_fill_dithered(shs::Canvas& c, int x, int y, int w, int h, shs::render::Color col, int phase = 0) {
     int x0 = std::max(0, x), y0 = std::max(0, y);
     int x1 = std::min(c.get_width() - 1, x + w), y1 = std::min(c.get_height() - 1, y + h);
     for (int py = y0; py <= y1; ++py) {
@@ -217,9 +217,9 @@ static int text_width_px(const char* s, int scale) {
 }
 
 // Defined below (after the font engine); forward-declared for the helpers.
-static void draw_text(shs::Canvas& c, int x, int y, const char* str, shs::Color col, int scale);
+static void draw_text(shs::Canvas& c, int x, int y, const char* str, shs::render::Color col, int scale);
 
-static void draw_text_centered(shs::Canvas& c, int cx, int y, const char* s, shs::Color col, int scale = 2) {
+static void draw_text_centered(shs::Canvas& c, int cx, int y, const char* s, shs::render::Color col, int scale = 2) {
     draw_text(c, cx - text_width_px(s, scale) / 2, y, s, col, scale);
 }
 
@@ -231,16 +231,16 @@ static void format_clock(char* buf, int cap, float seconds) {
 }
 
 // L4 ruling flash: white wash scaled by intensity (0..1).
-static shs::Color fade_white(float t) {
+static shs::render::Color fade_white(float t) {
     t = glm::clamp(t, 0.0f, 1.0f);
     const uint8_t v = (uint8_t)(255.0f * t + 0.5f);
-    return shs::Color{ v, v, v, 255 };
+    return shs::render::Color{ v, v, v, 255 };
 }
 
 // Local color lerp (same math as spatial_fx vocabulary; kept edge-local)
-static shs::Color hud_lerp_color(shs::Color a, shs::Color b, float t) {
+static shs::render::Color hud_lerp_color(shs::render::Color a, shs::render::Color b, float t) {
     t = glm::clamp(t, 0.0f, 1.0f);
-    return shs::Color{
+    return shs::render::Color{
         (uint8_t)(a.r + (b.r - a.r) * t + 0.5f),
         (uint8_t)(a.g + (b.g - a.g) * t + 0.5f),
         (uint8_t)(a.b + (b.b - a.b) * t + 0.5f),
@@ -375,7 +375,7 @@ static const uint8_t* get_font_glyph(uint32_t cp) {
 }
 
 // UTF-8 Text Drawing Function
-static void draw_text(shs::Canvas& c, int x, int y, const char* str, shs::Color col, int scale = 2) {
+static void draw_text(shs::Canvas& c, int x, int y, const char* str, shs::render::Color col, int scale = 2) {
     if (!str) return;
     int cur_x = x;
     const unsigned char* p = (const unsigned char*)str;
@@ -419,7 +419,7 @@ static void draw_text(shs::Canvas& c, int x, int y, const char* str, shs::Color 
 }
 
 // Bold 7-segment digit drawing (2px stroke thickness)
-static void draw_digit_bold(shs::Canvas& c, int x, int y, int d, int w, int h, shs::Color col) {
+static void draw_digit_bold(shs::Canvas& c, int x, int y, int d, int w, int h, shs::render::Color col) {
     static const uint8_t segs[10] = {
         0b00111111, 0b00000110, 0b01011011, 0b01001111, 0b01100110,
         0b01101101, 0b01111101, 0b00000111, 0b01111111, 0b01101111
@@ -441,7 +441,7 @@ static void draw_digit_bold(shs::Canvas& c, int x, int y, int d, int w, int h, s
 }
 
 // Multi-digit integer drawer
-static void draw_number_bold(shs::Canvas& c, int x, int y, int val, int digits, shs::Color col) {
+static void draw_number_bold(shs::Canvas& c, int x, int y, int val, int digits, shs::render::Color col) {
     int w = 12, h = 20, gap = 5;
     for (int i = digits - 1; i >= 0; --i) {
         int d = val % 10;
@@ -459,7 +459,7 @@ struct Floater {
     float      life     = 0.0f;
     float      max_life = 1.3f;
     char       text[24] = {};
-    shs::Color color{ 255, 255, 255, 255 };
+    shs::render::Color color{ 255, 255, 255, 255 };
 };
 
 struct HudState {
@@ -471,7 +471,7 @@ struct HudState {
     Floater floaters[8];
     int     next_floater  = 0;
 
-    void spawn_floater(const char* txt, shs::Color col, float life = 1.3f) {
+    void spawn_floater(const char* txt, shs::render::Color col, float life = 1.3f) {
         Floater& f = floaters[next_floater];
         next_floater = (next_floater + 1) % 8;
         f.life = life;
@@ -520,17 +520,17 @@ static void step_hud(HudState& hud,
             char buf[24];
             std::snprintf(buf, sizeof(buf),
                           "\xD0\x9A\xD0\x9E\xD0\x9C\xD0\x91\xD0\x9E x%d", ev.combo);
-            hud.spawn_floater(buf, shs::Color{ 40, 220, 240, 255 });
+            hud.spawn_floater(buf, shs::render::Color{ 40, 220, 240, 255 });
             break;
         }
         case progression::ProgressionEventType::TIME_BONUS: {
             char buf[24];
             std::snprintf(buf, sizeof(buf), "+%ds", (int)ev.seconds);
-            hud.spawn_floater(buf, shs::Color{ 45, 240, 110, 255 });
+            hud.spawn_floater(buf, shs::render::Color{ 45, 240, 110, 255 });
             break;
         }
         case progression::ProgressionEventType::TIME_UP:
-            hud.spawn_floater(TXT_TIME_UP, shs::Color{ 245, 55, 55, 255 }, 2.0f);
+            hud.spawn_floater(TXT_TIME_UP, shs::render::Color{ 245, 55, 55, 255 }, 2.0f);
             break;
         default:
             break;
@@ -585,8 +585,8 @@ static void draw_hud(shs::Canvas& canvas, const matrix::MatrixSnapshot& m,
 
     // Level-up flash factor → brief gold palette shift on card accents.
     const float lvl_flash = (hud.levelup_timer > 0.0f) ? (hud.levelup_timer / 2.2f) : 0.0f;
-    auto accent = [&](shs::Color base) {
-        return hud_lerp_color(base, shs::Color{ 255, 200, 60, 255 }, lvl_flash * 0.8f);
+    auto accent = [&](shs::render::Color base) {
+        return hud_lerp_color(base, shs::render::Color{ 255, 200, 60, 255 }, lvl_flash * 0.8f);
     };
 
     // Stack height projection (shared by vignette + canyon depth gauge).
@@ -603,37 +603,37 @@ static void draw_hud(shs::Canvas& canvas, const matrix::MatrixSnapshot& m,
     // 1. TOP RIGHT: SCORE CARD (ОНОО / ДЭЭД)
     // ------------------------------------------------------------------------
     int sx = W - 265, sy = 18, sw = 245, sh = 88;
-    draw_rect_fill(canvas, sx, sy, sw, sh, shs::Color{ 15, 18, 26, 230 });
-    draw_rect_border(canvas, sx, sy, sw, sh, accent(shs::Color{ 60, 140, 220, 255 }));
+    draw_rect_fill(canvas, sx, sy, sw, sh, shs::render::Color{ 15, 18, 26, 230 });
+    draw_rect_border(canvas, sx, sy, sw, sh, accent(shs::render::Color{ 60, 140, 220, 255 }));
 
-    draw_text(canvas, sx + 14, sy + 14, TXT_SCORE, shs::Color{ 255, 225, 45, 255 }, 2);
-    draw_number_bold(canvas, sx + 125, sy + 12, sc.score, 6, shs::Color{ 255, 225, 45, 255 });
+    draw_text(canvas, sx + 14, sy + 14, TXT_SCORE, shs::render::Color{ 255, 225, 45, 255 }, 2);
+    draw_number_bold(canvas, sx + 125, sy + 12, sc.score, 6, shs::render::Color{ 255, 225, 45, 255 });
 
-    draw_text(canvas, sx + 14, sy + 48, TXT_BEST, shs::Color{ 140, 155, 175, 255 }, 2);
-    draw_number_bold(canvas, sx + 125, sy + 46, sc.high_score, 6, shs::Color{ 140, 155, 175, 255 });
+    draw_text(canvas, sx + 14, sy + 48, TXT_BEST, shs::render::Color{ 140, 155, 175, 255 }, 2);
+    draw_number_bold(canvas, sx + 125, sy + 46, sc.high_score, 6, shs::render::Color{ 140, 155, 175, 255 });
 
     // ------------------------------------------------------------------------
     // 2. TOP LEFT: GOAL & STATS CARD (ЗОРИЛГО / МӨР / ҮЕ)
     // ------------------------------------------------------------------------
     int ox = 20, oy = 18, ow = 280, oh = 88;
-    draw_rect_fill(canvas, ox, oy, ow, oh, shs::Color{ 15, 18, 26, 230 });
-    draw_rect_border(canvas, ox, oy, ow, oh, accent(shs::Color{ 60, 140, 220, 255 }));
+    draw_rect_fill(canvas, ox, oy, ow, oh, shs::render::Color{ 15, 18, 26, 230 });
+    draw_rect_border(canvas, ox, oy, ow, oh, accent(shs::render::Color{ 60, 140, 220, 255 }));
 
     // Target Progress Bar — score chase by default; excavation progress when
     // the canyon objective is active (amber fill + N/T readout).
-    shs::Color goal_col = shs::Color{ 45, 220, 120, 255 };
+    shs::render::Color goal_col = shs::render::Color{ 45, 220, 120, 255 };
     float progress;
     if (canyon.active && sc.target_lines > 0) {
-        goal_col = shs::Color{ 235, 160, 60, 255 };
+        goal_col = shs::render::Color{ 235, 160, 60, 255 };
         progress = glm::clamp((float)sc.lines_cleared / (float)sc.target_lines, 0.0f, 1.0f);
     } else {
         progress = glm::clamp((float)sc.score / (float)sc.target_score, 0.0f, 1.0f);
     }
     draw_text(canvas, ox + 12, oy + 12, TXT_GOAL, goal_col, 2);
     int bar_x = ox + 105, bar_y = oy + 12, bar_w = ow - 120, bar_h = 14;
-    draw_rect_fill(canvas, bar_x, bar_y, bar_w, bar_h, shs::Color{ 35, 40, 52, 255 });
+    draw_rect_fill(canvas, bar_x, bar_y, bar_w, bar_h, shs::render::Color{ 35, 40, 52, 255 });
     draw_rect_fill(canvas, bar_x, bar_y, (int)(progress * (float)bar_w), bar_h, goal_col);
-    draw_rect_border(canvas, bar_x, bar_y, bar_w, bar_h, shs::Color{ 80, 95, 115, 255 });
+    draw_rect_border(canvas, bar_x, bar_y, bar_w, bar_h, shs::render::Color{ 80, 95, 115, 255 });
     if (canyon.active && sc.target_lines > 0) {
         char nt[16];
         std::snprintf(nt, sizeof(nt), "%d/%d", sc.lines_cleared, sc.target_lines);
@@ -641,11 +641,11 @@ static void draw_hud(shs::Canvas& canvas, const matrix::MatrixSnapshot& m,
     }
 
     // Lines & Level
-    draw_text(canvas, ox + 14, oy + 48, TXT_LINES, shs::Color{ 40, 220, 240, 255 }, 2);
-    draw_number_bold(canvas, ox + 65, oy + 46, sc.lines_cleared, 3, shs::Color{ 40, 220, 240, 255 });
+    draw_text(canvas, ox + 14, oy + 48, TXT_LINES, shs::render::Color{ 40, 220, 240, 255 }, 2);
+    draw_number_bold(canvas, ox + 65, oy + 46, sc.lines_cleared, 3, shs::render::Color{ 40, 220, 240, 255 });
 
-    draw_text(canvas, ox + 155, oy + 48, TXT_LEVEL, shs::Color{ 255, 140, 35, 255 }, 2);
-    draw_number_bold(canvas, ox + 205, oy + 46, sc.level, 2, shs::Color{ 255, 140, 35, 255 });
+    draw_text(canvas, ox + 155, oy + 48, TXT_LEVEL, shs::render::Color{ 255, 140, 35, 255 }, 2);
+    draw_number_bold(canvas, ox + 205, oy + 46, sc.level, 2, shs::render::Color{ 255, 140, 35, 255 });
 
     // ------------------------------------------------------------------------
     // 3. BLITZ COUNTDOWN PANEL (top-center, large digits)
@@ -656,16 +656,16 @@ static void draw_hud(shs::Canvas& canvas, const matrix::MatrixSnapshot& m,
         format_clock(buf, sizeof(buf), sc.time_left);
         const float t = sc.time_left;
         const float pulse = 0.5f + 0.5f * std::sin(hud.time * 8.0f);
-        shs::Color dig = (t <= 10.0f)
-            ? shs::Color{ 245, (uint8_t)(70 + 90 * pulse), 55, 255 }
-            : (t <= 30.0f) ? shs::Color{ 245, 60, 60, 255 }
-                           : shs::Color{ 255, 180, 40, 255 };
+        shs::render::Color dig = (t <= 10.0f)
+            ? shs::render::Color{ 245, (uint8_t)(70 + 90 * pulse), 55, 255 }
+            : (t <= 30.0f) ? shs::render::Color{ 245, 60, 60, 255 }
+                           : shs::render::Color{ 255, 180, 40, 255 };
         const int pw = 190, ph = 58;
         const int px = (W - pw) / 2, py = 14;
-        draw_rect_fill(canvas, px, py, pw, ph, shs::Color{ 15, 18, 26, 230 });
+        draw_rect_fill(canvas, px, py, pw, ph, shs::render::Color{ 15, 18, 26, 230 });
         draw_rect_border(canvas, px, py, pw, ph,
-                         (t <= 10.0f) ? dig : accent(shs::Color{ 60, 140, 220, 255 }));
-        draw_text(canvas, px + 12, py + 8, TXT_TIME, shs::Color{ 140, 155, 175, 255 }, 2);
+                         (t <= 10.0f) ? dig : accent(shs::render::Color{ 60, 140, 220, 255 }));
+        draw_text(canvas, px + 12, py + 8, TXT_TIME, shs::render::Color{ 140, 155, 175, 255 }, 2);
 
         int dx = px + 12, dy = py + 26;
         for (const char* q = buf; *q; ++q) {
@@ -687,51 +687,51 @@ static void draw_hud(shs::Canvas& canvas, const matrix::MatrixSnapshot& m,
     if (canyon.active) {
         // --- Depth gauge: vertical thermometer of the garbage skyline -------
         const int gx = 20, gy = H - 232, gw = 44, gh = 196;
-        draw_rect_fill(canvas, gx, gy, gw, gh, shs::Color{ 15, 18, 26, 230 });
-        draw_rect_border(canvas, gx, gy, gw, gh, accent(shs::Color{ 96, 66, 44, 255 }));
+        draw_rect_fill(canvas, gx, gy, gw, gh, shs::render::Color{ 15, 18, 26, 230 });
+        draw_rect_border(canvas, gx, gy, gw, gh, accent(shs::render::Color{ 96, 66, 44, 255 }));
         draw_text_centered(canvas, gx + gw / 2, gy - 26, TXT_DEPTH,
-                           shs::Color{ 235, 160, 60, 255 }, 2);
+                           shs::render::Color{ 235, 160, 60, 255 }, 2);
 
         const int ix = gx + 5, iy = gy + 5, iw = gw - 10, ih = gh - 10;
-        draw_rect_fill(canvas, ix, iy, iw, ih, shs::Color{ 35, 40, 52, 255 });
+        draw_rect_fill(canvas, ix, iy, iw, ih, shs::render::Color{ 35, 40, 52, 255 });
 
         // Fill from the bottom proportional to stack height (20 visible rows).
         const float fill01 = glm::clamp((float)stack / (float)matrix::VISIBLE_H, 0.0f, 1.0f);
         const int fh = (int)(fill01 * (float)ih);
         if (fh > 0) {
-            draw_rect_fill(canvas, ix, iy + ih - fh, iw, fh, shs::Color{ 138, 106, 74, 255 });
-            draw_rect_fill(canvas, ix, iy + ih - fh, iw, std::min(4, fh), shs::Color{ 196, 164, 120, 255 });
+            draw_rect_fill(canvas, ix, iy + ih - fh, iw, fh, shs::render::Color{ 138, 106, 74, 255 });
+            draw_rect_fill(canvas, ix, iy + ih - fh, iw, std::min(4, fh), shs::render::Color{ 196, 164, 120, 255 });
         }
 
         // Tick marks every 5 rows + danger hatch in the top quarter.
         for (int k = 5; k < matrix::VISIBLE_H; k += 5) {
             const int ty = iy + ih - (int)((float)k / (float)matrix::VISIBLE_H * (float)ih);
-            draw_rect_fill(canvas, ix, ty, iw, 1, shs::Color{ 80, 95, 115, 255 });
+            draw_rect_fill(canvas, ix, ty, iw, 1, shs::render::Color{ 80, 95, 115, 255 });
         }
-        draw_rect_fill_dithered(canvas, ix, iy, iw, ih / 4, shs::Color{ 150, 30, 30, 200 },
+        draw_rect_fill_dithered(canvas, ix, iy, iw, ih / 4, shs::render::Color{ 150, 30, 30, 200 },
                                 (int)(hud.time * 14.0f));
 
         // Current-depth marker line.
         const int my = iy + ih - fh;
-        draw_rect_fill(canvas, ix - 2, my - 1, iw + 4, 3, shs::Color{ 255, 205, 70, 255 });
+        draw_rect_fill(canvas, ix - 2, my - 1, iw + 4, 3, shs::render::Color{ 255, 205, 70, 255 });
     }
     else if (blitz) {
         int cx = 20, cy = H - 64, cw = 280, ch = 36;
-        draw_rect_fill(canvas, cx, cy, cw, ch, shs::Color{ 15, 18, 26, 230 });
-        draw_rect_border(canvas, cx, cy, cw, ch, accent(shs::Color{ 60, 140, 220, 255 }));
-        draw_text(canvas, cx + 12, cy + 11, TXT_COMBO, shs::Color{ 40, 220, 240, 255 }, 2);
+        draw_rect_fill(canvas, cx, cy, cw, ch, shs::render::Color{ 15, 18, 26, 230 });
+        draw_rect_border(canvas, cx, cy, cw, ch, accent(shs::render::Color{ 60, 140, 220, 255 }));
+        draw_text(canvas, cx + 12, cy + 11, TXT_COMBO, shs::render::Color{ 40, 220, 240, 255 }, 2);
 
         int bx = cx + 100, by = cy + 11, bw2 = cw - 118, bh2 = 14;
-        draw_rect_fill(canvas, bx, by, bw2, bh2, shs::Color{ 35, 40, 52, 255 });
+        draw_rect_fill(canvas, bx, by, bw2, bh2, shs::render::Color{ 35, 40, 52, 255 });
         const float combo_fill = glm::clamp((float)sc.combo_count / 8.0f, 0.0f, 1.0f);
-        shs::Color combo_col = (sc.combo_count >= 4)
-            ? shs::Color{ 255, 200, 60, 255 } : shs::Color{ 40, 220, 240, 255 };
+        shs::render::Color combo_col = (sc.combo_count >= 4)
+            ? shs::render::Color{ 255, 200, 60, 255 } : shs::render::Color{ 40, 220, 240, 255 };
         draw_rect_fill(canvas, bx, by, (int)(combo_fill * (float)bw2), bh2, combo_col);
         for (int tier = 1; tier <= 3; ++tier) {   // ticks at 2/4/6
             int tx = bx + (int)(bw2 * (tier * 2 / 8.0f));
-            draw_rect_fill(canvas, tx, by, 2, bh2, shs::Color{ 80, 95, 115, 255 });
+            draw_rect_fill(canvas, tx, by, 2, bh2, shs::render::Color{ 80, 95, 115, 255 });
         }
-        draw_rect_border(canvas, bx, by, bw2, bh2, shs::Color{ 80, 95, 115, 255 });
+        draw_rect_border(canvas, bx, by, bw2, bh2, shs::render::Color{ 80, 95, 115, 255 });
     }
 
     // ------------------------------------------------------------------------
@@ -741,10 +741,10 @@ static void draw_hud(shs::Canvas& canvas, const matrix::MatrixSnapshot& m,
         char buf[24];
         std::snprintf(buf, sizeof(buf), "%s %d!", TXT_LEVEL, hud.levelup_level);
         const float pulse = 0.5f + 0.5f * std::sin(hud.time * 12.0f);
-        shs::Color bc{ (uint8_t)(220 + 35 * pulse), (uint8_t)(170 + 55 * pulse), 50, 255 };
+        shs::render::Color bc{ (uint8_t)(220 + 35 * pulse), (uint8_t)(170 + 55 * pulse), 50, 255 };
         const int bw3 = text_width_px(buf, 3) + 44;
         const int bx2 = (W - bw3) / 2, by2 = timed ? 84 : 24;
-        draw_rect_fill(canvas, bx2, by2, bw3, 46, shs::Color{ 20, 16, 8, 235 });
+        draw_rect_fill(canvas, bx2, by2, bw3, 46, shs::render::Color{ 20, 16, 8, 235 });
         draw_rect_border(canvas, bx2, by2, bw3, 46, bc);
         draw_text_centered(canvas, W / 2, by2 + 12, buf, bc, 3);
     }
@@ -755,11 +755,11 @@ static void draw_hud(shs::Canvas& canvas, const matrix::MatrixSnapshot& m,
     if (sc.clock_hurry && !m.game_over && !sc.victory && !sc.time_up) {
         const float blink = std::sin(hud.time * 10.0f);
         if (blink > -0.2f) {
-            draw_text_centered(canvas, W / 2, 160, TXT_HURRY, shs::Color{ 245, 55, 55, 255 }, 3);
+            draw_text_centered(canvas, W / 2, 160, TXT_HURRY, shs::render::Color{ 245, 55, 55, 255 }, 3);
         }
         const float bpulse = 0.5f + 0.5f * std::sin(hud.time * 6.0f);
         const uint8_t bb = (uint8_t)(120 + 120 * bpulse);
-        const shs::Color pc{ bb, 25, 25, 255 };
+        const shs::render::Color pc{ bb, 25, 25, 255 };
         const int bw4 = 12;
         const int phase = (int)(hud.time * 30.0f);
         draw_rect_fill_dithered(canvas, 0, 0, W, bw4, pc, phase);
@@ -777,7 +777,7 @@ static void draw_hud(shs::Canvas& canvas, const matrix::MatrixSnapshot& m,
         const int band_w = (int)(14 + 22 * strength);
         for (int i = 0; i < 3; ++i) {
             const uint8_t vb = (uint8_t)((28 + i * 34) * strength * (0.6f + 0.4f * breathe));
-            const shs::Color vc{ vb, 6, 14, 255 };
+            const shs::render::Color vc{ vb, 6, 14, 255 };
             const int off = i * (band_w / 3);
             draw_rect_fill_dithered(canvas, off, off, W - 2 * off, band_w - off, vc, i);                    // top
             draw_rect_fill_dithered(canvas, off, H - band_w + off, W - 2 * off, band_w - off, vc, i + 1);   // bottom
@@ -793,7 +793,7 @@ static void draw_hud(shs::Canvas& canvas, const matrix::MatrixSnapshot& m,
         if (f.life <= 0.0f) continue;
         const float age01 = 1.0f - f.life / f.max_life;
         const int fy = (int)(H * 0.40f - age01 * 52.0f);
-        const shs::Color fc = hud_lerp_color(f.color, shs::Color{ 14, 16, 22, 255 }, age01 * 0.85f);
+        const shs::render::Color fc = hud_lerp_color(f.color, shs::render::Color{ 14, 16, 22, 255 }, age01 * 0.85f);
         draw_text_centered(canvas, W / 2, fy, f.text, fc, 3);
     }
 
@@ -805,13 +805,13 @@ static void draw_hud(shs::Canvas& canvas, const matrix::MatrixSnapshot& m,
         if (blink_on) {
             const int bx0 = W / 2 - 350, bx1 = W / 2 + 350;
             draw_rect_fill_dithered(canvas, bx0, 108, bx1 - bx0, 30,
-                                    shs::Color{ 24, 16, 8, 190 }, (int)(hud.time * 18.0f));
+                                    shs::render::Color{ 24, 16, 8, 190 }, (int)(hud.time * 18.0f));
             for (int sxp = bx0; sxp < bx1; sxp += 26) {
-                draw_line_screen(canvas, sxp,     136, sxp + 28, 108, shs::Color{ 255, 170, 40, 255 });
-                draw_line_screen(canvas, sxp + 1, 136, sxp + 29, 108, shs::Color{ 255, 170, 40, 255 });
-                draw_line_screen(canvas, sxp + 2, 136, sxp + 30, 108, shs::Color{ 255, 170, 40, 255 });
+                draw_line_screen(canvas, sxp,     136, sxp + 28, 108, shs::render::Color{ 255, 170, 40, 255 });
+                draw_line_screen(canvas, sxp + 1, 136, sxp + 29, 108, shs::render::Color{ 255, 170, 40, 255 });
+                draw_line_screen(canvas, sxp + 2, 136, sxp + 30, 108, shs::render::Color{ 255, 170, 40, 255 });
             }
-            draw_rect_border(canvas, bx0, 108, bx1 - bx0, 30, shs::Color{ 255, 170, 40, 255 });
+            draw_rect_border(canvas, bx0, 108, bx1 - bx0, 30, shs::render::Color{ 255, 170, 40, 255 });
         }
     }
 
@@ -819,8 +819,8 @@ static void draw_hud(shs::Canvas& canvas, const matrix::MatrixSnapshot& m,
     // ------------------------------------------------------------------------
     if (hud.dust_timer > 0.0f) {
         const float st = hud.dust_timer / 0.7f;
-        const shs::Color dc = hud_lerp_color(shs::Color{ 14, 16, 22, 255 },
-                                             shs::Color{ 188, 158, 118, 255 },
+        const shs::render::Color dc = hud_lerp_color(shs::render::Color{ 14, 16, 22, 255 },
+                                             shs::render::Color{ 188, 158, 118, 255 },
                                              st * 0.55f);
         const int phase = (int)(hud.time * 24.0f);
         for (int py = 0; py < H; py += 2) {
@@ -835,7 +835,7 @@ static void draw_hud(shs::Canvas& canvas, const matrix::MatrixSnapshot& m,
     if (canyon.active) {
         char sb[24];
         std::snprintf(sb, sizeof(sb), "SEED #%05d", canyon.seed_tag);
-        draw_text(canvas, W - 250, H - 54, sb, shs::Color{ 160, 135, 100, 255 }, 2);
+        draw_text(canvas, W - 250, H - 54, sb, shs::render::Color{ 160, 135, 100, 255 }, 2);
     }
 
     // ------------------------------------------------------------------------
@@ -843,33 +843,33 @@ static void draw_hud(shs::Canvas& canvas, const matrix::MatrixSnapshot& m,
     // ------------------------------------------------------------------------
     if (cyber.active) {
         // Charge bar bottom-left: fills as the next special approaches.
-        static const shs::Color ARMED_COL[4] = {
-            shs::Color{ 120, 130, 150, 255 },   // none
-            shs::Color{ 255, 120,  30, 255 },   // bomb
-            shs::Color{ 255,  60, 200, 255 },   // laser
-            shs::Color{ 140, 230, 255, 255 }    // freeze
+        static const shs::render::Color ARMED_COL[4] = {
+            shs::render::Color{ 120, 130, 150, 255 },   // none
+            shs::render::Color{ 255, 120,  30, 255 },   // bomb
+            shs::render::Color{ 255,  60, 200, 255 },   // laser
+            shs::render::Color{ 140, 230, 255, 255 }    // freeze
         };
-        const shs::Color acol = ARMED_COL[cyber.armed_type & 3];
+        const shs::render::Color acol = ARMED_COL[cyber.armed_type & 3];
         const int cbx = 20, cby = H - 78, cbw = 190, cbh = 12;
         draw_text(canvas, cbx, cby - 20, "SPECIAL", acol, 2);
-        draw_rect_fill(canvas, cbx, cby, cbw, cbh, shs::Color{ 35, 40, 52, 255 });
+        draw_rect_fill(canvas, cbx, cby, cbw, cbh, shs::render::Color{ 35, 40, 52, 255 });
         draw_rect_fill(canvas, cbx, cby, (int)(glm::clamp(cyber.charge, 0.0f, 1.0f) * (float)cbw), cbh, acol);
-        draw_rect_border(canvas, cbx, cby, cbw, cbh, shs::Color{ 80, 95, 115, 255 });
+        draw_rect_border(canvas, cbx, cby, cbw, cbh, shs::render::Color{ 80, 95, 115, 255 });
 
         // Freeze chip top-center while gravity is suspended.
         if (cyber.freeze_left > 0.01f) {
             char fb[16];
             std::snprintf(fb, sizeof(fb), "FREEZE %.1fs", cyber.freeze_left);
-            const shs::Color fcol{ 140, 230, 255, 255 };
+            const shs::render::Color fcol{ 140, 230, 255, 255 };
             const int fw = text_width_px(fb, 2) + 28;
-            draw_rect_fill(canvas, (W - fw) / 2, 14, fw, 30, shs::Color{ 12, 26, 40, 235 });
+            draw_rect_fill(canvas, (W - fw) / 2, 14, fw, 30, shs::render::Color{ 12, 26, 40, 235 });
             draw_rect_border(canvas, (W - fw) / 2, 14, fw, 30, fcol);
             draw_text_centered(canvas, W / 2, 21, fb, fcol, 2);
         }
 
         // Inbound warning under the score card when the NEXT piece is special.
         if (cyber.next_is_special && ((int)(hud.time * 3.0f) & 1)) {
-            const shs::Color wcol = ARMED_COL[(cyber.next_type >= 9 && cyber.next_type <= 11)
+            const shs::render::Color wcol = ARMED_COL[(cyber.next_type >= 9 && cyber.next_type <= 11)
                                               ? (cyber.next_type - 8) : 1];
             draw_text(canvas, W - 250, H - 84, "! SPECIAL !", wcol, 2);
         }
@@ -878,7 +878,7 @@ static void draw_hud(shs::Canvas& canvas, const matrix::MatrixSnapshot& m,
     // 3k. RULING SCREEN FLASH (dithered white wash, fades with hud.flash)
     // ------------------------------------------------------------------------
     if (hud.flash > 0.01f) {
-        const shs::Color fc = fade_white(hud.flash);
+        const shs::render::Color fc = fade_white(hud.flash);
         const int phase = (int)(hud.time * 24.0f);
         for (int py = 0; py < H; py += 2) {
             for (int px = ((py + phase) % 4); px < W; px += 4) {
@@ -890,13 +890,13 @@ static void draw_hud(shs::Canvas& canvas, const matrix::MatrixSnapshot& m,
     // ------------------------------------------------------------------------
     // 4. 3D PLATFORM LABELS (НӨӨЦ / ДАРААГИЙН)
     // ------------------------------------------------------------------------
-    draw_text(canvas, 95, 120, TXT_HOLD, shs::Color{ 80, 200, 255, 240 }, 2);
-    draw_text(canvas, W - 230, 120, TXT_NEXT, shs::Color{ 80, 200, 255, 240 }, 2);
+    draw_text(canvas, 95, 120, TXT_HOLD, shs::render::Color{ 80, 200, 255, 240 }, 2);
+    draw_text(canvas, W - 230, 120, TXT_NEXT, shs::render::Color{ 80, 200, 255, 240 }, 2);
 
     // ------------------------------------------------------------------------
     // 5. BOTTOM CONTROLS FOOTER
     // ------------------------------------------------------------------------
-    draw_text(canvas, (W - 980) / 2, H - 24, TXT_FOOTER, shs::Color{ 140, 155, 175, 220 }, 2);
+    draw_text(canvas, (W - 980) / 2, H - 24, TXT_FOOTER, shs::render::Color{ 140, 155, 175, 220 }, 2);
 
     // ------------------------------------------------------------------------
     // 6. GAME OVER / VICTORY / TIME-UP MODAL OVERLAY (+ RESULTS breakdown)
@@ -905,56 +905,56 @@ static void draw_hud(shs::Canvas& canvas, const matrix::MatrixSnapshot& m,
         const int mh = blitz ? 310 : 200;
         int mw = 520, mx = (W - mw) / 2, my = (H - mh) / 2;
 
-        draw_rect_fill(canvas, mx, my, mw, mh, shs::Color{ 10, 12, 18, 245 });
-        shs::Color bc = sc.victory ? shs::Color{ 45, 240, 110, 255 }
-                      : sc.time_up ? shs::Color{ 255, 180, 40, 255 }
-                                   : shs::Color{ 245, 55, 55, 255 };
+        draw_rect_fill(canvas, mx, my, mw, mh, shs::render::Color{ 10, 12, 18, 245 });
+        shs::render::Color bc = sc.victory ? shs::render::Color{ 45, 240, 110, 255 }
+                      : sc.time_up ? shs::render::Color{ 255, 180, 40, 255 }
+                                   : shs::render::Color{ 245, 55, 55, 255 };
         draw_rect_border(canvas, mx, my, mw, mh, bc);
         draw_rect_border(canvas, mx + 2, my + 2, mw - 4, mh - 4, bc);
 
         if (sc.victory) {
-            draw_text_centered(canvas, W / 2, my + 25, TXT_VICTORY, shs::Color{ 45, 240, 110, 255 }, 2);
+            draw_text_centered(canvas, W / 2, my + 25, TXT_VICTORY, shs::render::Color{ 45, 240, 110, 255 }, 2);
         }
         else if (sc.time_up) {
-            draw_text_centered(canvas, W / 2, my + 25, TXT_TIME_UP, shs::Color{ 255, 180, 40, 255 }, 2);
+            draw_text_centered(canvas, W / 2, my + 25, TXT_TIME_UP, shs::render::Color{ 255, 180, 40, 255 }, 2);
         }
         else {
-            draw_text_centered(canvas, W / 2, my + 25, TXT_GAME_OVER, shs::Color{ 245, 55, 55, 255 }, 2);
+            draw_text_centered(canvas, W / 2, my + 25, TXT_GAME_OVER, shs::render::Color{ 245, 55, 55, 255 }, 2);
         }
 
-        draw_text(canvas, mx + 60, my + 75, TXT_FINAL_SCORE, shs::Color{ 220, 220, 220, 255 }, 2);
-        draw_number_bold(canvas, mx + 300, my + 71, sc.score, 6, shs::Color{ 255, 230, 80, 255 });
+        draw_text(canvas, mx + 60, my + 75, TXT_FINAL_SCORE, shs::render::Color{ 220, 220, 220, 255 }, 2);
+        draw_number_bold(canvas, mx + 300, my + 71, sc.score, 6, shs::render::Color{ 255, 230, 80, 255 });
 
         if (blitz) {
             // RESULTS time breakdown panel (clears vs drops vs time economy)
-            draw_line_screen(canvas, mx + 40, my + 112, mx + mw - 40, my + 112, shs::Color{ 60, 70, 90, 255 });
+            draw_line_screen(canvas, mx + 40, my + 112, mx + mw - 40, my + 112, shs::render::Color{ 60, 70, 90, 255 });
 
-            draw_text(canvas, mx + 45, my + 128, TXT_LINES, shs::Color{ 40, 220, 240, 255 }, 2);
-            draw_number_bold(canvas, mx + 130, my + 124, sc.lines_cleared, 3, shs::Color{ 40, 220, 240, 255 });
-            draw_text(canvas, mx + 270, my + 128, TXT_MAX_COMBO, shs::Color{ 185, 70, 240, 255 }, 2);
-            draw_number_bold(canvas, mx + 420, my + 124, sc.max_combo, 2, shs::Color{ 185, 70, 240, 255 });
+            draw_text(canvas, mx + 45, my + 128, TXT_LINES, shs::render::Color{ 40, 220, 240, 255 }, 2);
+            draw_number_bold(canvas, mx + 130, my + 124, sc.lines_cleared, 3, shs::render::Color{ 40, 220, 240, 255 });
+            draw_text(canvas, mx + 270, my + 128, TXT_MAX_COMBO, shs::render::Color{ 185, 70, 240, 255 }, 2);
+            draw_number_bold(canvas, mx + 420, my + 124, sc.max_combo, 2, shs::render::Color{ 185, 70, 240, 255 });
 
             char tbuf[16];
             format_clock(tbuf, sizeof(tbuf), m.game_time);
-            draw_text(canvas, mx + 45, my + 158, TXT_TIME, shs::Color{ 255, 180, 40, 255 }, 2);
-            draw_text(canvas, mx + 130, my + 158, tbuf, shs::Color{ 255, 180, 40, 255 }, 2);
+            draw_text(canvas, mx + 45, my + 158, TXT_TIME, shs::render::Color{ 255, 180, 40, 255 }, 2);
+            draw_text(canvas, mx + 130, my + 158, tbuf, shs::render::Color{ 255, 180, 40, 255 }, 2);
             char bbuf[16];
             std::snprintf(bbuf, sizeof(bbuf), "+%ds", (int)sc.time_bonus_total);
-            draw_text(canvas, mx + 270, my + 158, TXT_BONUS_TIME, shs::Color{ 45, 240, 110, 255 }, 2);
-            draw_text(canvas, mx + 430, my + 158, bbuf, shs::Color{ 45, 240, 110, 255 }, 2);
+            draw_text(canvas, mx + 270, my + 158, TXT_BONUS_TIME, shs::render::Color{ 45, 240, 110, 255 }, 2);
+            draw_text(canvas, mx + 430, my + 158, bbuf, shs::render::Color{ 45, 240, 110, 255 }, 2);
 
-            draw_text(canvas, mx + 45, my + 188, TXT_CLEAR_SCORE, shs::Color{ 220, 220, 220, 255 }, 2);
-            draw_number_bold(canvas, mx + 210, my + 184, sc.score_clears, 6, shs::Color{ 220, 220, 220, 255 });
-            draw_text(canvas, mx + 45, my + 218, TXT_DROP_SCORE, shs::Color{ 150, 160, 175, 255 }, 2);
-            draw_number_bold(canvas, mx + 210, my + 214, sc.score_drops, 6, shs::Color{ 150, 160, 175, 255 });
+            draw_text(canvas, mx + 45, my + 188, TXT_CLEAR_SCORE, shs::render::Color{ 220, 220, 220, 255 }, 2);
+            draw_number_bold(canvas, mx + 210, my + 184, sc.score_clears, 6, shs::render::Color{ 220, 220, 220, 255 });
+            draw_text(canvas, mx + 45, my + 218, TXT_DROP_SCORE, shs::render::Color{ 150, 160, 175, 255 }, 2);
+            draw_number_bold(canvas, mx + 210, my + 214, sc.score_drops, 6, shs::render::Color{ 150, 160, 175, 255 });
 
             // Victory over a non-final stage: R rolls into the next campaign
             // stage (main consumes it); otherwise the usual retry hint.
             const char* hint = (sc.victory && campaign_has_next) ? TXT_NEXT_STAGE : TXT_RETRY;
-            draw_text_centered(canvas, W / 2, my + 262, hint, shs::Color{ 140, 160, 190, 255 }, 2);
+            draw_text_centered(canvas, W / 2, my + 262, hint, shs::render::Color{ 140, 160, 190, 255 }, 2);
         } else {
             const char* hint = (sc.victory && campaign_has_next) ? TXT_NEXT_STAGE : TXT_RETRY;
-            draw_text_centered(canvas, W / 2, my + 140, hint, shs::Color{ 140, 160, 190, 255 }, 2);
+            draw_text_centered(canvas, W / 2, my + 140, hint, shs::render::Color{ 140, 160, 190, 255 }, 2);
         }
     }
 }
@@ -976,15 +976,15 @@ static void draw_menu_list(shs::Canvas& canvas, int cx, int y0,
     for (int i = 0; i < count; ++i) {
         const int  y   = y0 + i * row_h;
         const bool sel = (i == cursor);
-        const shs::Color col = !items[i].enabled ? shs::Color{ 95, 105, 120, 255 }
-                             : sel               ? shs::Color{ 255, 205, 70, 255 }
-                                                 : shs::Color{ 185, 198, 215, 255 };
+        const shs::render::Color col = !items[i].enabled ? shs::render::Color{ 95, 105, 120, 255 }
+                             : sel               ? shs::render::Color{ 255, 205, 70, 255 }
+                                                 : shs::render::Color{ 185, 198, 215, 255 };
         if (sel) {
             const float pulse = 0.5f + 0.5f * std::sin(anim_time * 6.0f);
             const int   bw    = text_width_px(items[i].label, 2) + 64;
-            draw_rect_fill(canvas, cx - bw / 2, y - 8, bw, 36, shs::Color{ 28, 23, 10, 235 });
+            draw_rect_fill(canvas, cx - bw / 2, y - 8, bw, 36, shs::render::Color{ 28, 23, 10, 235 });
             draw_rect_border(canvas, cx - bw / 2, y - 8, bw, 36,
-                             shs::Color{ (uint8_t)(215 + 40 * pulse),
+                             shs::render::Color{ (uint8_t)(215 + 40 * pulse),
                                          (uint8_t)(165 + 60 * pulse), 50, 255 });
             if (std::sin(anim_time * 8.0f) > -0.3f) {
                 draw_text(canvas, cx - bw / 2 + 14, y, ">", col, 2);
@@ -1006,9 +1006,9 @@ static void draw_title_screen(shs::Canvas& canvas, const session::SessionSnapsho
         { {0,0},{1,0},{2,0},{1,1} },   // T
         { {0,0},{1,0},{2,0},{2,1} },   // L
     };
-    static const shs::Color DRIFT_COL[4] = {
-        shs::Color{ 40, 220, 240, 60 }, shs::Color{ 255, 225, 45, 55 },
-        shs::Color{ 185, 70, 240, 55 }, shs::Color{ 45, 110, 245, 55 },
+    static const shs::render::Color DRIFT_COL[4] = {
+        shs::render::Color{ 40, 220, 240, 60 }, shs::render::Color{ 255, 225, 45, 55 },
+        shs::render::Color{ 185, 70, 240, 55 }, shs::render::Color{ 45, 110, 245, 55 },
     };
     for (int k = 0; k < 10; ++k) {
         const float spd  = 0.020f + 0.013f * (k % 4);
@@ -1028,10 +1028,10 @@ static void draw_title_screen(shs::Canvas& canvas, const session::SessionSnapsho
 
     // Logo + accent bar.
     draw_text_centered(canvas, W / 2, (int)(H * 0.14f), TXT_LOGO,
-                       shs::Color{ 255, 210, 60, 255 }, 8);
+                       shs::render::Color{ 255, 210, 60, 255 }, 8);
     const int lw = text_width_px(TXT_LOGO, 8);
     draw_rect_fill(canvas, W / 2 - lw / 2, (int)(H * 0.14f) + 66, lw, 4,
-                   shs::Color{ 60, 140, 220, 255 });
+                   shs::render::Color{ 60, 140, 220, 255 });
 
     char snd_buf[48];
     std::snprintf(snd_buf, sizeof(snd_buf), "%s: %s", TXT_SOUND,
@@ -1047,7 +1047,7 @@ static void draw_title_screen(shs::Canvas& canvas, const session::SessionSnapsho
     char foot[128];
     std::snprintf(foot, sizeof(foot), "%s   |   %s   |   %s",
                   HINT_NAV, HINT_CONFIRM, HINT_SOUND);
-    draw_text_centered(canvas, W / 2, H - 30, foot, shs::Color{ 130, 145, 165, 220 }, 2);
+    draw_text_centered(canvas, W / 2, H - 30, foot, shs::render::Color{ 130, 145, 165, 220 }, 2);
 }
 
 // LEVEL SELECT: carousel card over the manifest stages.
@@ -1055,55 +1055,55 @@ static void draw_level_select(shs::Canvas& canvas, const session::SessionSnapsho
                               const char* const* names, const char* const* tiers,
                               int count) {
     const int W = canvas.get_width(), H = canvas.get_height();
-    draw_rect_fill_dithered(canvas, 0, 0, W, H, shs::Color{ 8, 10, 15, 140 },
+    draw_rect_fill_dithered(canvas, 0, 0, W, H, shs::render::Color{ 8, 10, 15, 140 },
                             (int)(s.anim_time * 20.0f));
 
     draw_text_centered(canvas, W / 2, (int)(H * 0.16f), TXT_SELECT_LVL,
-                       shs::Color{ 80, 200, 255, 255 }, 4);
+                       shs::render::Color{ 80, 200, 255, 255 }, 4);
 
     const int cw = 660, chh = 260;
     const int cx = (W - cw) / 2, cy = (int)(H * 0.32f);
-    draw_rect_fill(canvas, cx, cy, cw, chh, shs::Color{ 13, 16, 24, 240 });
-    draw_rect_border(canvas, cx, cy, cw, chh, shs::Color{ 60, 140, 220, 255 });
-    draw_rect_border(canvas, cx + 3, cy + 3, cw - 6, chh - 6, shs::Color{ 35, 60, 90, 255 });
+    draw_rect_fill(canvas, cx, cy, cw, chh, shs::render::Color{ 13, 16, 24, 240 });
+    draw_rect_border(canvas, cx, cy, cw, chh, shs::render::Color{ 60, 140, 220, 255 });
+    draw_rect_border(canvas, cx + 3, cy + 3, cw - 6, chh - 6, shs::render::Color{ 35, 60, 90, 255 });
 
     const int idx = ((s.stage_cursor % count) + count) % count;
     char idx_buf[24];
     std::snprintf(idx_buf, sizeof(idx_buf), "%d / %d", idx + 1, count);
 
-    draw_text_centered(canvas, W / 2, cy + 42, names[idx], shs::Color{ 255, 210, 60, 255 }, 4);
-    draw_text_centered(canvas, W / 2, cy + 96, tiers[idx], shs::Color{ 140, 155, 175, 255 }, 2);
+    draw_text_centered(canvas, W / 2, cy + 42, names[idx], shs::render::Color{ 255, 210, 60, 255 }, 4);
+    draw_text_centered(canvas, W / 2, cy + 96, tiers[idx], shs::render::Color{ 140, 155, 175, 255 }, 2);
 
     // Progress dots (one per stage; filled up to the cursor).
     const int dots_w = count * 30;
     for (int i = 0; i < count; ++i) {
         const int dx = W / 2 - dots_w / 2 + i * 30 + 8;
-        const shs::Color dc = (i == idx) ? shs::Color{ 255, 205, 70, 255 }
-                                         : shs::Color{ 70, 85, 105, 255 };
+        const shs::render::Color dc = (i == idx) ? shs::render::Color{ 255, 205, 70, 255 }
+                                         : shs::render::Color{ 70, 85, 105, 255 };
         draw_rect_fill(canvas, dx, cy + 150, 14, 14, dc);
     }
 
     // Side arrows.
-    draw_text_centered(canvas, cx - 44, cy + chh / 2 - 14, "<", shs::Color{ 80, 200, 255, 255 }, 3);
-    draw_text_centered(canvas, cx + cw + 22, cy + chh / 2 - 14, ">", shs::Color{ 80, 200, 255, 255 }, 3);
+    draw_text_centered(canvas, cx - 44, cy + chh / 2 - 14, "<", shs::render::Color{ 80, 200, 255, 255 }, 3);
+    draw_text_centered(canvas, cx + cw + 22, cy + chh / 2 - 14, ">", shs::render::Color{ 80, 200, 255, 255 }, 3);
 
     char foot[128];
     std::snprintf(foot, sizeof(foot), "%s   |   %s   |   %s",
                   HINT_NAV, HINT_CONFIRM, HINT_BACK);
-    draw_text_centered(canvas, W / 2, H - 30, foot, shs::Color{ 130, 145, 165, 220 }, 2);
+    draw_text_centered(canvas, W / 2, H - 30, foot, shs::render::Color{ 130, 145, 165, 220 }, 2);
 }
 
 // PAUSED: dimmed frozen board + pause menu.
 static void draw_pause_overlay(shs::Canvas& canvas, const session::SessionSnapshot& s) {
     const int W = canvas.get_width(), H = canvas.get_height();
-    draw_rect_fill_dithered(canvas, 0, 0, W, H, shs::Color{ 6, 8, 12, 150 },
+    draw_rect_fill_dithered(canvas, 0, 0, W, H, shs::render::Color{ 6, 8, 12, 150 },
                             (int)(s.anim_time * 24.0f));
 
     const int pw = 520, ph = 380;
     const int px = (W - pw) / 2, py = (H - ph) / 2;
-    draw_rect_fill(canvas, px, py, pw, ph, shs::Color{ 12, 14, 21, 245 });
-    draw_rect_border(canvas, px, py, pw, ph, shs::Color{ 60, 140, 220, 255 });
-    draw_text_centered(canvas, W / 2, py + 26, TXT_PAUSED, shs::Color{ 80, 200, 255, 255 }, 3);
+    draw_rect_fill(canvas, px, py, pw, ph, shs::render::Color{ 12, 14, 21, 245 });
+    draw_rect_border(canvas, px, py, pw, ph, shs::render::Color{ 60, 140, 220, 255 });
+    draw_text_centered(canvas, W / 2, py + 26, TXT_PAUSED, shs::render::Color{ 80, 200, 255, 255 }, 3);
 
     char snd_buf[48];
     std::snprintf(snd_buf, sizeof(snd_buf), "%s: %s", TXT_SOUND,
@@ -1122,35 +1122,35 @@ static void draw_pause_overlay(shs::Canvas& canvas, const session::SessionSnapsh
 // RESULTS: end-of-run breakdown + contextual next/retry/select/title menu.
 static void draw_results_screen(shs::Canvas& canvas, const session::SessionSnapshot& s) {
     const int W = canvas.get_width(), H = canvas.get_height();
-    draw_rect_fill_dithered(canvas, 0, 0, W, H, shs::Color{ 8, 10, 15, 150 },
+    draw_rect_fill_dithered(canvas, 0, 0, W, H, shs::render::Color{ 8, 10, 15, 150 },
                             (int)(s.anim_time * 20.0f));
 
     const int pw = 600, ph = 430;
     const int px = (W - pw) / 2, py = (H - ph) / 2;
-    draw_rect_fill(canvas, px, py, pw, ph, shs::Color{ 10, 12, 18, 248 });
-    const shs::Color bc = s.run_victory ? shs::Color{ 45, 240, 110, 255 }
-                        : s.run_time_up ? shs::Color{ 255, 180, 40, 255 }
-                                        : shs::Color{ 245, 55, 55, 255 };
+    draw_rect_fill(canvas, px, py, pw, ph, shs::render::Color{ 10, 12, 18, 248 });
+    const shs::render::Color bc = s.run_victory ? shs::render::Color{ 45, 240, 110, 255 }
+                        : s.run_time_up ? shs::render::Color{ 255, 180, 40, 255 }
+                                        : shs::render::Color{ 245, 55, 55, 255 };
     draw_rect_border(canvas, px, py, pw, ph, bc);
     draw_rect_border(canvas, px + 2, py + 2, pw - 4, ph - 4, bc);
 
-    if      (s.run_victory) draw_text_centered(canvas, W / 2, py + 24, TXT_VICTORY, shs::Color{ 45, 240, 110, 255 }, 2);
-    else if (s.run_time_up) draw_text_centered(canvas, W / 2, py + 24, TXT_TIME_UP,  shs::Color{ 255, 180, 40, 255 }, 2);
-    else                    draw_text_centered(canvas, W / 2, py + 24, TXT_GAME_OVER, shs::Color{ 245, 55, 55, 255 }, 2);
+    if      (s.run_victory) draw_text_centered(canvas, W / 2, py + 24, TXT_VICTORY, shs::render::Color{ 45, 240, 110, 255 }, 2);
+    else if (s.run_time_up) draw_text_centered(canvas, W / 2, py + 24, TXT_TIME_UP,  shs::render::Color{ 255, 180, 40, 255 }, 2);
+    else                    draw_text_centered(canvas, W / 2, py + 24, TXT_GAME_OVER, shs::render::Color{ 245, 55, 55, 255 }, 2);
 
-    draw_text(canvas, px + 60, py + 78, TXT_FINAL_SCORE, shs::Color{ 220, 220, 220, 255 }, 2);
-    draw_number_bold(canvas, px + 320, py + 74, s.final_score, 6, shs::Color{ 255, 230, 80, 255 });
+    draw_text(canvas, px + 60, py + 78, TXT_FINAL_SCORE, shs::render::Color{ 220, 220, 220, 255 }, 2);
+    draw_number_bold(canvas, px + 320, py + 74, s.final_score, 6, shs::render::Color{ 255, 230, 80, 255 });
 
-    draw_text(canvas, px + 60, py + 116, TXT_LINES, shs::Color{ 40, 220, 240, 255 }, 2);
-    draw_number_bold(canvas, px + 320, py + 112, s.final_lines, 3, shs::Color{ 40, 220, 240, 255 });
+    draw_text(canvas, px + 60, py + 116, TXT_LINES, shs::render::Color{ 40, 220, 240, 255 }, 2);
+    draw_number_bold(canvas, px + 320, py + 112, s.final_lines, 3, shs::render::Color{ 40, 220, 240, 255 });
 
-    draw_text(canvas, px + 60, py + 154, TXT_MAX_COMBO, shs::Color{ 185, 70, 240, 255 }, 2);
-    draw_number_bold(canvas, px + 320, py + 150, s.final_max_combo, 2, shs::Color{ 185, 70, 240, 255 });
+    draw_text(canvas, px + 60, py + 154, TXT_MAX_COMBO, shs::render::Color{ 185, 70, 240, 255 }, 2);
+    draw_number_bold(canvas, px + 320, py + 150, s.final_max_combo, 2, shs::render::Color{ 185, 70, 240, 255 });
 
     char tbuf[16];
     format_clock(tbuf, sizeof(tbuf), s.final_seconds);
-    draw_text(canvas, px + 60, py + 192, TXT_TIME, shs::Color{ 255, 180, 40, 255 }, 2);
-    draw_text(canvas, px + 320, py + 192, tbuf, shs::Color{ 255, 180, 40, 255 }, 2);
+    draw_text(canvas, px + 60, py + 192, TXT_TIME, shs::render::Color{ 255, 180, 40, 255 }, 2);
+    draw_text(canvas, px + 320, py + 192, tbuf, shs::render::Color{ 255, 180, 40, 255 }, 2);
 
     const bool has_next = s.run_victory && (s.current_stage + 1 < s.stage_count);
     MenuItem items[session::RESULTS_MENU_BASE + 1] = {
@@ -1175,14 +1175,14 @@ static void draw_encore_hud(shs::Canvas& canvas, const EncoreHudInfo& en,
     // Cinematic letterbox bars during BLACKOUT (and eased by dim).
     if (en.dim > 0.05f) {
         const int bar_h = (int)(H * 0.07f * en.dim);
-        draw_rect_fill(canvas, 0, 0, W, bar_h, shs::Color{ 4, 4, 8, 255 });
-        draw_rect_fill(canvas, 0, H - bar_h, W, bar_h, shs::Color{ 4, 4, 8, 255 });
+        draw_rect_fill(canvas, 0, 0, W, bar_h, shs::render::Color{ 4, 4, 8, 255 });
+        draw_rect_fill(canvas, 0, H - bar_h, W, bar_h, shs::render::Color{ 4, 4, 8, 255 });
     }
 
     // Phase title banner (bottom center, phase-colored).
     static const char* PHASE_NAME[5] = { "", "CALM", "GARBAGE RAIN",
                                          "BLACKOUT", "FINALE" };
-    static const shs::Color PHASE_COL[5] = {
+    static const shs::render::Color PHASE_COL[5] = {
         { 0,0,0,255 },
         { 40, 220, 240, 255 },   // CALM cyan
         { 255, 160, 60, 255 },   // RAIN amber
@@ -1193,7 +1193,7 @@ static void draw_encore_hud(shs::Canvas& canvas, const EncoreHudInfo& en,
         const char* nm = PHASE_NAME[en.phase];
         const int tw = (int)std::strlen(nm) * 14;
         const int bx = W / 2 - tw / 2 - 14, by = H - 64, bw = tw + 28, bh = 34;
-        draw_rect_fill(canvas, bx, by, bw, bh, shs::Color{ 12, 14, 20, 210 });
+        draw_rect_fill(canvas, bx, by, bw, bh, shs::render::Color{ 12, 14, 20, 210 });
         draw_rect_border(canvas, bx, by, bw, bh, PHASE_COL[en.phase]);
         draw_text(canvas, bx + 14, by + 9, nm, PHASE_COL[en.phase], 2);
     }
@@ -1203,17 +1203,17 @@ static void draw_encore_hud(shs::Canvas& canvas, const EncoreHudInfo& en,
     if (en.phase >= 1 && en.phase <= 4) {
         const int mw = 300, mh = 10;
         const int mx = W / 2 - mw / 2, my = 14;
-        draw_rect_fill(canvas, mx, my, mw, mh, shs::Color{ 30, 34, 46, 220 });
+        draw_rect_fill(canvas, mx, my, mw, mh, shs::render::Color{ 30, 34, 46, 220 });
         draw_rect_fill(canvas, mx, my, (int)(glm::clamp(en.intensity,0.0f,1.0f) * (float)mw), mh,
                        PHASE_COL[en.phase]);
-        draw_rect_border(canvas, mx, my, mw, mh, shs::Color{ 80, 95, 115, 255 });
+        draw_rect_border(canvas, mx, my, mw, mh, shs::render::Color{ 80, 95, 115, 255 });
     }
 
     // Garbage-rain warning arrows on both board sides before each volley.
     if (en.rain_warning > 0.0f) {
         const bool blink = (std::fmod(en.rain_warning, 0.5f) > 0.2f);
         if (blink) {
-            const shs::Color warn{ 255, 120, 40, 255 };
+            const shs::render::Color warn{ 255, 120, 40, 255 };
             for (int k = 0; k < 3; ++k) {
                 const int ay = H / 2 - 40 + k * 34;
                 draw_rect_fill(canvas, W / 2 - 330, ay, 26, 18, warn);
@@ -1226,7 +1226,7 @@ static void draw_encore_hud(shs::Canvas& canvas, const EncoreHudInfo& en,
 
     // Victory star rating during CRESCENDO (performance-based projection).
     if (en.phase == 4) {
-        const shs::Color gold{ 255, 210, 60, 255 };
+        const shs::render::Color gold{ 255, 210, 60, 255 };
         for (int k = 0; k < 3; ++k) {
             draw_text(canvas, W / 2 - 40 + k * 32, 40, "*", gold, 3);
         }

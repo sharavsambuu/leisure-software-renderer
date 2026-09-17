@@ -503,7 +503,7 @@ int main(int argc, char* argv[]) {
     }
 
     // --- Renderer state -----------------------------------------------------------
-    shs::Canvas  canvas(CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{ 14, 16, 22, 255 });
+    shs::Canvas  canvas(CANVAS_WIDTH, CANVAS_HEIGHT, shs::render::Color{ 14, 16, 22, 255 });
     shs::ZBuffer z_buffer(CANVAS_WIDTH, CANVAS_HEIGHT, -1.0f, 1.0f);
 
     // Determinism probe: allow forcing single-threaded rasterization.
@@ -722,7 +722,7 @@ int main(int argc, char* argv[]) {
             static_cast<int>(world.next_queue[0]) };
 
         // 6. TILED PARALLEL RASTERIZATION
-        canvas.buffer().clear(shs::Color{ 14, 16, 22, 255 });
+        canvas.buffer().clear(shs::render::Color{ 14, 16, 22, 255 });
         z_buffer.clear();
 
         const int W    = canvas.get_width();

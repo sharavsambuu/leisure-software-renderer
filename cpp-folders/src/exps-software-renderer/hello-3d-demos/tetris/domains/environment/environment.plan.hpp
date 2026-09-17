@@ -49,7 +49,7 @@ namespace tetris::environment {
         // Crowd-silhouette diorama: two staggered rows of dark head-and-
         // shoulder boxes behind the well, bobbing on a sine wave whose
         // amplitude rides crowd_pulse.
-        const shs::Color crowd_dark{ 12, 12, 20, 255 };
+        const shs::render::Color crowd_dark{ 12, 12, 20, 255 };
         for (int i = 0; i < 14; ++i) {
             const float x   = -19.5f + (float)i * 3.0f;
             const float z   = ((i & 1) == 0) ? -11.0f : -13.5f;
@@ -71,7 +71,7 @@ namespace tetris::environment {
                 const uint8_t lv = static_cast<uint8_t>(40.0f + 200.0f * wave);
                 const float ratio_g = glm::clamp(mood_c.g / glm::max(mood_c.r, 0.05f), 0.0f, 2.0f);
                 const float ratio_b = glm::clamp(mood_c.b / glm::max(mood_c.r, 0.05f), 0.0f, 2.0f);
-                const shs::Color wc{ lv,
+                const shs::render::Color wc{ lv,
                     static_cast<uint8_t>(glm::clamp((float)lv * ratio_g, 0.0f, 255.0f)),
                     static_cast<uint8_t>(glm::clamp((float)lv * ratio_b, 0.0f, 255.0f)),
                     255 };
@@ -95,7 +95,7 @@ namespace tetris::environment {
                 mood_c.g * (90.0f + 160.0f * pulse), 30.0f, 255.0f));
             const uint8_t pb = static_cast<uint8_t>(glm::clamp(
                 mood_c.b * (90.0f + 160.0f * pulse), 30.0f, 255.0f));
-            const shs::Color pc{ pr, pg, pb, 255 };
+            const shs::render::Color pc{ pr, pg, pb, 255 };
             spatial_fx::MeshGen::add_box(tris, glm::vec3(rx, -0.82f, rz),
                              glm::vec3(2.6f, 0.16f, 0.5f), pc, pc, pc);
         }
@@ -110,7 +110,7 @@ namespace tetris::environment {
                 const float y  = 20.5f - t * 21.0f;          // top → board
                 const uint8_t lv = static_cast<uint8_t>(
                     28.0f + 70.0f * shaft * (1.0f - t));
-                const shs::Color sc{ lv, lv, (uint8_t)(lv + 12), 255 };
+                const shs::render::Color sc{ lv, lv, (uint8_t)(lv + 12), 255 };
                 spatial_fx::MeshGen::add_box(tris, glm::vec3(0.0f, y, -0.6f),
                                  glm::vec3(w, 3.6f, 0.12f), sc, sc, sc);
             }

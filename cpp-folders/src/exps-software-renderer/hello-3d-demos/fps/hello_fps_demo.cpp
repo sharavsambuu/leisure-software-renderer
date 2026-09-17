@@ -144,7 +144,7 @@ int main(int argc, char* argv[]) {
     }
 
     // --- Renderer state ---------------------------------------------------------
-    shs::Canvas  canvas(CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{ 20, 25, 35, 255 });
+    shs::Canvas  canvas(CANVAS_WIDTH, CANVAS_HEIGHT, shs::render::Color{ 20, 25, 35, 255 });
     shs::ZBuffer z_buffer(CANVAS_WIDTH, CANVAS_HEIGHT, Z_NEAR, Z_FAR);
 
     shs::Job::ThreadedPriorityJobSystem job_system(static_cast<int>(thread_count()));
@@ -250,7 +250,7 @@ int main(int argc, char* argv[]) {
         );
 
         // Tiled multithreaded rasterization
-        canvas.buffer().clear(shs::Color{ 22, 28, 38, 255 });
+        canvas.buffer().clear(shs::render::Color{ 22, 28, 38, 255 });
         z_buffer.clear();
 
         const int W    = canvas.get_width();

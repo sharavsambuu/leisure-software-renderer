@@ -39,10 +39,10 @@ namespace
 
     // Same NDC triangle and flat fragment output as offscreen_pipeline.slang
     // (vs_uploaded positions + fs_main color).
-    const shs::MeshData& parity_triangle()
+    const shs::resources::MeshData& parity_triangle()
     {
-        static const shs::MeshData mesh = [] {
-            shs::MeshData m{};
+        static const shs::resources::MeshData mesh = [] {
+            shs::resources::MeshData m{};
             // Same coordinates as offscreen_pipeline.slang vs_main (the GPU
             // path is attribute-less and uses exactly these).
             m.positions = {
@@ -56,17 +56,17 @@ namespace
         return mesh;
     }
 
-    shs::ShaderProgram parity_program()
+    shs::render::ShaderProgram parity_program()
     {
-        shs::ShaderProgram program{};
-        program.vs = [](const shs::ShaderVertex& v, const shs::ShaderUniforms&) {
-            shs::VertexOut out{};
+        shs::render::ShaderProgram program{};
+        program.vs = [](const shs::render::ShaderVertex& v, const shs::render::ShaderUniforms&) {
+            shs::render::VertexOut out{};
             out.clip = glm::vec4(v.position.x, v.position.y, 0.0f, 1.0f); // direct clip coords
             return out;
         };
-        program.fs = [](const shs::FragmentIn&, const shs::ShaderUniforms&) {
-            shs::FragmentOut out{};
-            out.color = shs::ColorF{1.0f, 0.25f, 0.0f, 1.0f};
+        program.fs = [](const shs::render::FragmentIn&, const shs::render::ShaderUniforms&) {
+            shs::render::FragmentOut out{};
+            out.color = shs::render::ColorF{1.0f, 0.25f, 0.0f, 1.0f};
             return out;
         };
         return program;
@@ -76,11 +76,11 @@ namespace
 int main()
 {
     // --- software reference: same triangle, CPU raster --------------------
-    shs::RT_ColorHDR target(W, H, shs::ColorF{0.0f, 0.0f, 0.0f, 0.0f});
-    shs::ShaderUniforms uniforms{};
-    const auto stats = shs::rasterize_mesh(parity_triangle(), parity_program(), uniforms,
-        shs::RasterizerTarget{&target, nullptr},
-        shs::RasterizerConfig{shs::RasterizerCullMode::None, true});
+    shs::render::RT_ColorHDR target(W, H, shs::render::ColorF{0.0f, 0.0f, 0.0f, 0.0f});
+    shs::render::ShaderUniforms uniforms{};
+    const auto stats = shs::render::rasterize_mesh(parity_triangle(), parity_program(), uniforms,
+        shs::render::RasterizerTarget{&target, nullptr},
+        shs::render::RasterizerConfig{shs::RasterizerCullMode::None, true});
     std::fprintf(stderr, "sw stats: tri_input=%lu tri_after_clip=%lu tri_raster=%lu\n",
         (unsigned long)stats.tri_input, (unsigned long)stats.tri_after_clip,
         (unsigned long)stats.tri_raster);
@@ -88,7 +88,7 @@ int main()
     // Software-side known pixels (independent of Vulkan availability): the
     // triangle interior carries the flat color; the corner stays clear.
     const auto sw_at = [&](int x, int y) {
-        const shs::ColorF& p = target.color.at(x, y);
+        const shs::render::ColorF& p = target.color.at(x, y);
         return (p.r == 1.0f && p.g == 0.25f && p.b == 0.0f);
     };
     int sw_covered = 0;
@@ -116,7 +116,7 @@ int main()
         "not exercised in this configuration\n");
     return 77;
 #else
-    shs::VulkanRenderBackend backend;
+    shs::rhi::VulkanRenderBackend backend;
     if (!backend.initialize_device())
     {
         std::fprintf(stderr, "SKIP: Vulkan device unavailable — GPU/software "
@@ -136,12 +136,12 @@ int main()
         return 77;
     }
 
-    shs::RHIImageDesc desc{};
+    shs::rhi::RHIImageDesc desc{};
     desc.width = W;
     desc.height = H;
     desc.format = shs::RHIFormat::RGBA8_UNorm;
     desc.usage = shs::RHIImageUsage_ColorAttachment | shs::RHIImageUsage_TransferSrc;
-    shs::RHIGraphicsPipelineDesc pd{};
+    shs::rhi::RHIGraphicsPipelineDesc pd{};
     // The offscreen path is attribute-less: the triangle comes from vs_main
     // (SV_VulkanVertexID), so no vertex buffer is bound on the GPU side.
     pd.vs = {shs::RHIShaderStage::Vertex, vs.data(), vs.size() * 4, "vs_main"};
@@ -152,11 +152,11 @@ int main()
     auto prepared = backend.prepare_offscreen(desc, pd);
     CHECK(prepared);
 
-    const shs::RHICmd stream[] = {
-        shs::rhi_cmd_begin_pass({backend.offscreen_target(), 0, true, false}),
-        shs::rhi_cmd_bind_pipeline(*prepared),
-        shs::rhi_cmd_draw({3}),
-        shs::rhi_cmd_end_pass(),
+    const shs::rhi::RHICmd stream[] = {
+        shs::rhi::rhi_cmd_begin_pass({backend.offscreen_target(), 0, true, false}),
+        shs::rhi::rhi_cmd_bind_pipeline(*prepared),
+        shs::rhi::rhi_cmd_draw({3}),
+        shs::rhi::rhi_cmd_end_pass(),
     };
     std::vector<uint8_t> gpu_pixels(size_t(W) * H * 4, 0u);
     CHECK(backend.execute_offscreen(stream, gpu_pixels));
@@ -180,7 +180,7 @@ int main()
                 gpu_miny = std::min(gpu_miny, y);
                 gpu_maxy = std::max(gpu_maxy, y);
             }
-            const shs::ColorF& sw = target.color.at(x, y);
+            const shs::render::ColorF& sw = target.color.at(x, y);
             const bool sw_written = (sw.r != 0.0f || sw.g != 0.0f || sw.b != 0.0f);
             const int sw_c[4] = {
                 int(glm::clamp(sw.r, 0.0f, 1.0f) * 255.0f + 0.5f),

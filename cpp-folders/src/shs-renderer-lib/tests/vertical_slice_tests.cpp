@@ -27,9 +27,9 @@ namespace
     // Deterministic triangle mesh (screen-space sized via the session's
     // projection; the rasterizer's clip->screen mapping is what the
     // known-pixel pins below quantify).
-    shs::MeshData make_triangle()
+    shs::resources::MeshData make_triangle()
     {
-        shs::MeshData mesh{};
+        shs::resources::MeshData mesh{};
         mesh.positions = {
             glm::vec3(-0.5f, -0.5f, 0.0f),
             glm::vec3(0.5f, -0.5f, 0.0f),
@@ -39,9 +39,9 @@ namespace
         return mesh;
     }
 
-    shs::MaterialData make_material(const glm::vec3& color, const char* key)
+    shs::resources::MaterialData make_material(const glm::vec3& color, const char* key)
     {
-        shs::MaterialData material{};
+        shs::resources::MaterialData material{};
         material.name = key;
         material.base_color = color;
         return material;
@@ -49,13 +49,13 @@ namespace
 
     // One recorded input log: move forward + look, then quit. Split across
     // frames so routing, replay and shutdown are all exercised.
-    std::vector<std::vector<shs::RuntimeCommand>> make_recorded_log()
+    std::vector<std::vector<shs::input::RuntimeCommand>> make_recorded_log()
     {
-        std::vector<std::vector<shs::RuntimeCommand>> log(4);
-        log[0].push_back(shs::make_move_local_intent(glm::vec3(0.0f, 0.0f, 1.0f), 2.0f));
-        log[1].push_back(shs::make_look_intent(12.0f, -4.0f, 0.01f));
-        log[2].push_back(shs::make_toggle_light_shafts_intent());
-        log[3].push_back(shs::make_quit_intent());
+        std::vector<std::vector<shs::input::RuntimeCommand>> log(4);
+        log[0].push_back(shs::input::make_move_local_intent(glm::vec3(0.0f, 0.0f, 1.0f), 2.0f));
+        log[1].push_back(shs::input::make_look_intent(12.0f, -4.0f, 0.01f));
+        log[2].push_back(shs::input::make_toggle_light_shafts_intent());
+        log[3].push_back(shs::input::make_quit_intent());
         return log;
     }
 
@@ -68,7 +68,7 @@ namespace
         uint64_t final_digest = 0;
     };
 
-    ReplayRun run_recorded(shs::ResourceRegistry& registry, int width, int height)
+    ReplayRun run_recorded(shs::resources::ResourceRegistry& registry, int width, int height)
     {
         shs::app::VerticalSliceHost host{{width, height}, registry};
         ReplayRun run{};
@@ -91,8 +91,8 @@ int main()
 {
     // --- 1) deterministic headless replay + independent host instances ----
     {
-        shs::ResourceRegistry registry_a{};
-        shs::ResourceRegistry registry_b{};
+        shs::resources::ResourceRegistry registry_a{};
+        shs::resources::ResourceRegistry registry_b{};
         const ReplayRun first = run_recorded(registry_a, 96, 64);
         const ReplayRun second = run_recorded(registry_b, 96, 64);
         CHECK(first.reports.size() == 4);
@@ -106,8 +106,8 @@ int main()
 
     // Two hosts running INTERLEAVED on distinct registries: no cross-talk.
     {
-        shs::ResourceRegistry registry_c{};
-        shs::ResourceRegistry registry_d{};
+        shs::resources::ResourceRegistry registry_c{};
+        shs::resources::ResourceRegistry registry_d{};
         shs::app::VerticalSliceHost host_a{{96, 64}, registry_c};
         shs::app::VerticalSliceHost host_b{{96, 64}, registry_d};
         const auto log = make_recorded_log();
@@ -125,7 +125,7 @@ int main()
 
     // --- 2) resize: targets realloc, aspect re-derives, replay stays stable
     {
-        shs::ResourceRegistry registry{};
+        shs::resources::ResourceRegistry registry{};
         shs::app::VerticalSliceHost host{{96, 64}, registry};
         std::pmr::monotonic_buffer_resource arena{1u << 16};
         const auto moved = host.run_frame({}, {}, {}, 1.0f / 60.0f, arena);
@@ -147,7 +147,7 @@ int main()
     // Capability snapshot with NO backend registered: the initial compile
     // must reject (BackendUnavailable) and no plan is ever installed.
     {
-        shs::ResourceRegistry registry{};
+        shs::resources::ResourceRegistry registry{};
         shs::app::VerticalSliceConfig config{};
         config.width = 64;
         config.height = 64;
@@ -165,14 +165,14 @@ int main()
     // Healthy snapshot: plan installs; a recipe requiring support the
     // snapshot lacks is REJECTED and rendering continues on the kept plan.
     {
-        shs::ResourceRegistry registry{};
+        shs::resources::ResourceRegistry registry{};
         shs::app::VerticalSliceHost host{{64, 64}, registry};
         CHECK(host.path_state().plan_generation == 1); // initial compile landed
         std::pmr::monotonic_buffer_resource arena{1u << 16};
 
         // Candidate that fails compile: occlusion culling REQUIRED, snapshot
         // reports no occlusion-query support.
-        auto unsupported_recipe = shs::make_builtin_render_path_recipe(
+        auto unsupported_recipe = shs::renderpath::make_builtin_render_path_recipe(
             shs::RenderPathPreset::Forward, shs::RenderBackendType::Software, "occ");
         unsupported_recipe.view_culling = shs::RenderPathCullingMode::FrustumAndOcclusion;
         const auto before = host.path_state();
@@ -188,14 +188,14 @@ int main()
 
     // --- 4) asset deletion/recreation: identity + registry generation -----
     {
-        shs::ResourceRegistry registry{};
+        shs::resources::ResourceRegistry registry{};
         const auto mesh_handle = registry.add_mesh(make_triangle(), "tri");
         const auto material_handle =
             registry.add_material(make_material({1.0f, 0.25f, 0.0f}, "red"), "red");
         shs::app::VerticalSliceHost host{{32, 32}, registry};
         auto& object = host.objects().add(
-            shs::SceneObject{"cube", (shs::MeshHandle)mesh_handle,
-                (shs::MaterialHandle)material_handle, {}});
+            shs::scene::SceneObject{"cube", (shs::scene::MeshHandle)mesh_handle,
+                (shs::scene::MaterialHandle)material_handle, {}});
         const uint64_t identity = object.object_id;
         CHECK(identity != 0);
         std::pmr::monotonic_buffer_resource arena{1u << 16};
@@ -212,8 +212,8 @@ int main()
 
         // RECREATE: the name-derived identity is preserved by construction,
         // and the frame is pixel-identical to the pre-deletion frame.
-        auto& recreated = host.objects().add(shs::SceneObject{"cube",
-            (shs::MeshHandle)mesh_handle, (shs::MaterialHandle)material_handle, {}});
+        auto& recreated = host.objects().add(shs::scene::SceneObject{"cube",
+            (shs::scene::MeshHandle)mesh_handle, (shs::scene::MaterialHandle)material_handle, {}});
         CHECK(recreated.object_id == identity);
         const auto again = host.run_frame({}, {}, {}, 1.0f / 60.0f, arena);
         CHECK(again.items_drawn == 1);
@@ -223,10 +223,10 @@ int main()
     // Registry clear(): identity epoch bumps; pre-clear handles go stale
     // (SceneResourceView resolves them to nullptr — the render skips).
     {
-        shs::ResourceRegistry registry{};
+        shs::resources::ResourceRegistry registry{};
         const auto mesh = registry.add_mesh(make_triangle(), "tri");
         shs::app::VerticalSliceHost host{{32, 32}, registry};
-        (void)host.objects().add(shs::SceneObject{"obj", (shs::MeshHandle)mesh, 0, {}});
+        (void)host.objects().add(shs::scene::SceneObject{"obj", (shs::scene::MeshHandle)mesh, 0, {}});
         std::pmr::monotonic_buffer_resource arena{1u << 16};
         auto live = host.run_frame({}, {}, {}, 1.0f / 60.0f, arena);
         CHECK(live.items_drawn == 1);
@@ -241,7 +241,7 @@ int main()
 
     // --- 5) shutdown: routed quit ends the loop; teardown is clean --------
     {
-        shs::ResourceRegistry registry{};
+        shs::resources::ResourceRegistry registry{};
         const auto run = run_recorded(registry, 32, 32);
         CHECK(run.reports.size() == 4);          // quit on the recorded frame
         CHECK(run.reports[3].input.commands_applied == 1);
@@ -251,15 +251,15 @@ int main()
 
     // --- 6) known-pixel software output (backend output pinned exactly) ---
     {
-        shs::ResourceRegistry registry{};
+        shs::resources::ResourceRegistry registry{};
         const auto mesh = registry.add_mesh(make_triangle(), "tri");
         const auto material = registry.add_material(
             make_material({1.0f, 0.25f, 0.0f}, "red"), "red");
         shs::app::VerticalSliceHost host{{32, 32}, registry};
         // Same NDC triangle the offscreen Vulkan harness draws (vs_uploaded
         // positions), flat-shaded through the host program.
-        (void)host.objects().add(shs::SceneObject{"tri",
-            (shs::MeshHandle)mesh, (shs::MaterialHandle)material,
+        (void)host.objects().add(shs::scene::SceneObject{"tri",
+            (shs::scene::MeshHandle)mesh, (shs::scene::MaterialHandle)material,
             {}, /*visible=*/true});
         std::pmr::monotonic_buffer_resource arena{1u << 16};
 
@@ -277,7 +277,7 @@ int main()
         {
             for (int x = 0; x < 32; ++x)
             {
-                const shs::ColorF& pixel = buffer.at(x, y);
+                const shs::render::ColorF& pixel = buffer.at(x, y);
                 if (pixel.r == 1.0f && pixel.g == 0.25f && pixel.b == 0.0f)
                 {
                     covered_any = true;
@@ -292,8 +292,8 @@ int main()
 
         // Byte-exact replay: same scene, same input log, same digest.
         shs::app::VerticalSliceHost twin{{32, 32}, registry};
-        (void)twin.objects().add(shs::SceneObject{"tri",
-            (shs::MeshHandle)mesh, (shs::MaterialHandle)material, {}});
+        (void)twin.objects().add(shs::scene::SceneObject{"tri",
+            (shs::scene::MeshHandle)mesh, (shs::scene::MaterialHandle)material, {}});
         auto twin_report = twin.run_frame({}, {}, {}, 1.0f / 60.0f, arena);
         CHECK(twin_report.pixel_digest == frame.pixel_digest);
     }
@@ -305,7 +305,7 @@ int main()
         // DRAINS every accepted job even when wait_idle() was never called.
         std::atomic<int> completed{0};
         {
-            shs::ThreadPoolJobSystem jobs{2};
+            shs::task::ThreadPoolJobSystem jobs{2};
             for (int i = 0; i < 64; ++i)
             {
                 jobs.enqueue([&completed]() {

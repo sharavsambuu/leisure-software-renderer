@@ -19,13 +19,13 @@ struct MovingCircle {
     float vx, vy;
     int   r;
     int   segments;
-    shs::Color color;
+    shs::render::Color color;
 };
 
-static shs::Color random_color(std::mt19937 &rng)
+static shs::render::Color random_color(std::mt19937 &rng)
 {
     std::uniform_int_distribution<int> dist(0, 255);
-    return shs::Color((uint8_t)dist(rng), (uint8_t)dist(rng), (uint8_t)dist(rng), 255);
+    return shs::render::Color((uint8_t)dist(rng), (uint8_t)dist(rng), (uint8_t)dist(rng), 255);
 }
 
 static float randf(std::mt19937 &rng, float a, float b)

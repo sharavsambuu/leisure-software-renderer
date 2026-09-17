@@ -15,15 +15,20 @@
 #include <glm/vec3.hpp>
 #include "shs/app/context.hpp"
 #include "shs/render/targets/rt_types.hpp"
+#include "shs/render/targets/resource_handles.hpp"
+#include "shs/resources/storage/resource_registry.hpp"
+#include "shs/scene/scene_types.hpp"
 
 namespace shs
 {
 // namespace-cutover: inline compatibility wrapper (step 7)
     inline namespace renderpath
     {
-    struct Scene;
-    class ResourceRegistry;
-    struct RendererResources;
+    // Cross-module types are owner-namespaced since the step-7 cutover;
+    // hoist them so unqualified/old-root spellings still resolve.
+    using ::shs::scene::Scene;
+    using ::shs::resources::ResourceRegistry;
+    using ::shs::render::RendererResources;
 
     struct PassContext
     {

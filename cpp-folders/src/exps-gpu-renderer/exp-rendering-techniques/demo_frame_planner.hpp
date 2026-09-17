@@ -28,9 +28,9 @@ namespace shs::demo
     struct DemoFramePlanInputs
     {
         // Path state (reducer-driven; executor holds the active plan).
-        shs::RenderPathExecutionPlan active_plan{};
+        shs::renderpath::RenderPathExecutionPlan active_plan{};
         bool active_plan_valid = false;
-        shs::TechniqueMode technique_mode = shs::TechniqueMode::Deferred;
+        shs::render::TechniqueMode technique_mode = shs::TechniqueMode::Deferred;
 
         // Feature toggles.
         bool depth_prepass_enabled = false;
@@ -89,7 +89,7 @@ namespace shs::demo
 
     struct DemoFramePlan
     {
-        shs::RenderPathExecutionPlan resolved_plan{};
+        shs::renderpath::RenderPathExecutionPlan resolved_plan{};
         DemoFramePassGates gates{};
         std::pmr::vector<DemoFrameCommand> commands{};
 
@@ -110,25 +110,25 @@ namespace shs::demo
         else
         {
             // Fallback plan from the technique profile (pre-pod behavior).
-            shs::RenderPathExecutionPlan fallback{};
-            fallback.recipe_name = std::string("fallback_") + shs::technique_mode_name(in.technique_mode);
+            shs::renderpath::RenderPathExecutionPlan fallback{};
+            fallback.recipe_name = std::string("fallback_") + shs::render::technique_mode_name(in.technique_mode);
             fallback.backend = shs::RenderBackendType::Vulkan;
             fallback.technique_mode = in.technique_mode;
             fallback.valid = true;
-            const shs::TechniqueProfile profile = shs::make_default_technique_profile(in.technique_mode);
+            const shs::renderpath::TechniqueProfile profile = shs::renderpath::make_default_technique_profile(in.technique_mode);
             fallback.pass_chain.reserve(profile.passes.size());
             for (const auto& p : profile.passes)
             {
-                fallback.pass_chain.push_back(shs::RenderPathCompiledPass{p.id, p.pass_id, p.required});
+                fallback.pass_chain.push_back(shs::renderpath::RenderPathCompiledPass{p.id, p.pass_id, p.required});
             }
             plan.resolved_plan = std::move(fallback);
         }
 
-        const auto plan_has_pass = [&plan](shs::PassId pass_id) -> bool {
+        const auto plan_has_pass = [&plan](shs::renderpath::PassId pass_id) -> bool {
             for (const auto& p : plan.resolved_plan.pass_chain)
             {
                 if (p.pass_id == pass_id) return true;
-                if (shs::parse_pass_id(p.id) == pass_id) return true;
+                if (shs::renderpath::parse_pass_id(p.id) == pass_id) return true;
             }
             return false;
         };

@@ -66,8 +66,8 @@ private:
 
     void init_backend()
     {
-        auto created = shs::create_render_backend(shs::RenderBackendType::Vulkan);
-        vk_ = dynamic_cast<shs::VulkanRenderBackend*>(created.backend.get());
+        auto created = shs::app::create_render_backend(shs::RenderBackendType::Vulkan);
+        vk_ = dynamic_cast<shs::rhi::VulkanRenderBackend*>(created.backend.get());
         keep_.push_back(std::move(created.backend));
         ctx_.register_backend(vk_);
 
@@ -97,7 +97,7 @@ private:
         
         for (uint32_t i = 0; i < image_count; ++i)
         {
-            if (!shs::vma_create_buffer(vk_->allocator(), size, usage, VMA_MEMORY_USAGE_CPU_TO_GPU, 
+            if (!shs::rhi::vma_create_buffer(vk_->allocator(), size, usage, VMA_MEMORY_USAGE_CPU_TO_GPU, 
                 instance_buffers_[i], instance_allocations_[i], VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT))
                 throw std::runtime_error("Failed to create instance buffer via VMA");
         }
@@ -128,7 +128,7 @@ private:
             ici.tiling = VK_IMAGE_TILING_OPTIMAL;
             ici.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
-            if (!shs::vma_create_image(vk_->allocator(), ici, VMA_MEMORY_USAGE_GPU_ONLY, textures_[i], texture_allocs_[i]))
+            if (!shs::rhi::vma_create_image(vk_->allocator(), ici, VMA_MEMORY_USAGE_GPU_ONLY, textures_[i], texture_allocs_[i]))
                 throw std::runtime_error("Failed to create texture via VMA");
 
             VkImageViewCreateInfo iv{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
@@ -196,8 +196,8 @@ private:
         }
 
         // ---- Set 1: Bindless textures (fragment stage) ----
-        shs::vk_create_bindless_descriptor_set_layout(vk_->device(), kMaxTextures, &bindless_layout_);
-        shs::vk_create_bindless_descriptor_pool(vk_->device(), kMaxTextures, &bindless_pool_);
+        shs::rhi::vk_create_bindless_descriptor_set_layout(vk_->device(), kMaxTextures, &bindless_layout_);
+        shs::rhi::vk_create_bindless_descriptor_pool(vk_->device(), kMaxTextures, &bindless_pool_);
 
         VkDescriptorSetVariableDescriptorCountAllocateInfoEXT count_info{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO_EXT};
         uint32_t max_binding = kMaxTextures;
@@ -214,17 +214,17 @@ private:
         // Update bindless set with our 4 textures
         for (uint32_t i = 0; i < 4; ++i)
         {
-            shs::vk_update_bindless_texture(vk_->device(), bindless_set_, i, sampler_, texture_views_[i]);
+            shs::rhi::vk_update_bindless_texture(vk_->device(), bindless_set_, i, sampler_, texture_views_[i]);
         }
     }
 
 
     void create_pipeline()
     {
-        const std::vector<char> vs_code = shs::vk_read_binary_file(SHS_VK_MODERN_VERT_SPV);
-        const std::vector<char> fs_code = shs::vk_read_binary_file(SHS_VK_MODERN_FRAG_SPV);
-        VkShaderModule vs = shs::vk_create_shader_module(vk_->device(), vs_code);
-        VkShaderModule fs = shs::vk_create_shader_module(vk_->device(), fs_code);
+        const std::vector<char> vs_code = shs::rhi::vk_read_binary_file(SHS_VK_MODERN_VERT_SPV);
+        const std::vector<char> fs_code = shs::rhi::vk_read_binary_file(SHS_VK_MODERN_FRAG_SPV);
+        VkShaderModule vs = shs::rhi::vk_create_shader_module(vk_->device(), vs_code);
+        VkShaderModule fs = shs::rhi::vk_create_shader_module(vk_->device(), fs_code);
 
         VkPipelineShaderStageCreateInfo stages[2]{};
         stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -314,10 +314,10 @@ private:
     void main_loop()
     {
         bool running = true;
-        shs::RuntimeInputLatch input_latch{};
-        std::vector<shs::RuntimeInputEvent> pending_input_events{};
-        shs::RuntimeState runtime_state{};
-        std::vector<shs::RuntimeCommand> runtime_actions{};
+        shs::input::RuntimeInputLatch input_latch{};
+        std::vector<shs::input::RuntimeInputEvent> pending_input_events{};
+        shs::app::RuntimeState runtime_state{};
+        std::vector<shs::input::RuntimeCommand> runtime_actions{};
         while (running)
         {
             SDL_Event e;
@@ -325,11 +325,11 @@ private:
             {
                 if (e.type == SDL_QUIT)
                 {
-                    pending_input_events.push_back(shs::make_quit_input_event());
+                    pending_input_events.push_back(shs::input::make_quit_input_event());
                 }
                 if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE)
                 {
-                    pending_input_events.push_back(shs::make_quit_input_event());
+                    pending_input_events.push_back(shs::input::make_quit_input_event());
                 }
                 if (e.type == SDL_WINDOWEVENT && e.window.event == SDL_WINDOWEVENT_RESIZED)
                     vk_->request_resize(e.window.data1, e.window.data2);
@@ -338,7 +338,7 @@ private:
             pending_input_events.clear();
 
             runtime_actions.clear();
-            shs::InputState runtime_input{};
+            shs::input::InputState runtime_input{};
             runtime_input.quit = input_latch.quit_requested;
             shs::emit_human_actions(runtime_input, runtime_actions, 0.0f, 1.0f, 0.0f);
             runtime_state = shs::runtime_state_gateway(runtime_state, runtime_actions, 0.0f);
@@ -354,7 +354,7 @@ private:
         SDL_Vulkan_GetDrawableSize(win_, &w, &h);
         if (w <= 0 || h <= 0) return;
 
-        shs::RenderBackendFrameInfo frame{};
+        shs::rhi::RenderBackendFrameInfo frame{};
         frame.frame_index = ctx_.frame_index;
         frame.width = w;
         frame.height = h;
@@ -377,12 +377,12 @@ private:
         VkClearColorValue clear = {{0.05f, 0.05f, 0.07f, 1.0f}};
         vk_->begin_rendering(cmd, fi.view, fi.depth_view, fi.extent, clear, 1.0f, true);
         
-        shs::vk_cmd_set_viewport_scissor(cmd, fi.extent.width, fi.extent.height, true);
+        shs::rhi::vk_cmd_set_viewport_scissor(cmd, fi.extent.width, fi.extent.height, true);
 
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_);
         
         // Update Push Constants
-        glm::mat4 projection = shs::perspective_lh_no(
+        glm::mat4 projection = shs::camera::perspective_lh_no(
             glm::radians(45.0f),
             (float)fi.extent.width / (float)fi.extent.height,
             0.1f,
@@ -416,10 +416,10 @@ private:
             if (vk_->allocator() != VK_NULL_HANDLE)
             {
                 for (size_t i = 0; i < instance_buffers_.size(); ++i)
-                    shs::vma_destroy_buffer(vk_->allocator(), instance_buffers_[i], instance_allocations_[i]);
+                    shs::rhi::vma_destroy_buffer(vk_->allocator(), instance_buffers_[i], instance_allocations_[i]);
                 for (int i = 0; i < 4; ++i)
                 {
-                    shs::vma_destroy_image(vk_->allocator(), textures_[i], texture_allocs_[i]);
+                    shs::rhi::vma_destroy_image(vk_->allocator(), textures_[i], texture_allocs_[i]);
                 }
             }
 
@@ -443,9 +443,9 @@ private:
 
     bool sdl_ready_ = false;
     SDL_Window* win_ = nullptr;
-    shs::Context ctx_;
-    std::vector<std::unique_ptr<shs::IRenderBackend>> keep_;
-    shs::VulkanRenderBackend* vk_ = nullptr;
+    shs::app::Context ctx_;
+    std::vector<std::unique_ptr<shs::rhi::IRenderBackend>> keep_;
+    shs::rhi::VulkanRenderBackend* vk_ = nullptr;
     
     std::vector<VkBuffer> instance_buffers_;
     std::vector<VmaAllocation> instance_allocations_;

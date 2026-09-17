@@ -29,26 +29,26 @@
 namespace
 {
     // Software-backend capability snapshot (same as renderpath_tests).
-    shs::RenderPathCapabilitySet make_sw_caps()
+    shs::renderpath::RenderPathCapabilitySet make_sw_caps()
     {
-        shs::BackendCapabilities backend_caps{};
-        return shs::make_render_path_capability_set(
+        shs::rhi::BackendCapabilities backend_caps{};
+        return shs::renderpath::make_render_path_capability_set(
             shs::RenderBackendType::Software, backend_caps);
     }
 
     // Valid forward-lit software recipe (same as renderpath_tests).
-    shs::RenderPathRecipe make_forward_recipe(const char* name)
+    shs::renderpath::RenderPathRecipe make_forward_recipe(const char* name)
     {
-        shs::RenderPathRecipe recipe{};
+        shs::renderpath::RenderPathRecipe recipe{};
         recipe.name = name;
         recipe.backend = shs::RenderBackendType::Software;
         recipe.render_technique = shs::RenderPathRenderingTechnique::ForwardLit;
         recipe.technique_mode = shs::TechniqueMode::Forward;
         recipe.view_culling = shs::RenderPathCullingMode::Frustum;
         recipe.pass_chain = {
-            shs::make_render_path_pass_entry(shs::PassId::ShadowMap, true),
-            shs::make_render_path_pass_entry(shs::PassId::PBRForward, true),
-            shs::make_render_path_pass_entry(shs::PassId::Tonemap, true)
+            shs::renderpath::make_render_path_pass_entry(shs::PassId::ShadowMap, true),
+            shs::renderpath::make_render_path_pass_entry(shs::PassId::PBRForward, true),
+            shs::renderpath::make_render_path_pass_entry(shs::PassId::Tonemap, true)
         };
         return recipe;
     }
@@ -56,8 +56,8 @@ namespace
     // Install the forward recipe through the gateway (gen 0 -> 1).
     void install_forward_plan(
         shs::renderpath::RenderPathPodState& state,
-        const shs::RenderPathCompiler& compiler,
-        const shs::RenderPathCapabilitySet& caps)
+        const shs::renderpath::RenderPathCompiler& compiler,
+        const shs::renderpath::RenderPathCapabilitySet& caps)
     {
         std::pmr::monotonic_buffer_resource arena{4096};
         std::pmr::vector<shs::renderpath::RenderPathEvent> events{&arena};
@@ -119,12 +119,12 @@ namespace
     // the remaining commands (per-command absorption).
     bool test_rejection_preservation_continues_batch()
     {
-        shs::RenderPathCompiler compiler{};
-        const shs::RenderPathCapabilitySet caps = make_sw_caps(); // no occlusion
+        shs::renderpath::RenderPathCompiler compiler{};
+        const shs::renderpath::RenderPathCapabilitySet caps = make_sw_caps(); // no occlusion
 
         shs::renderpath::RenderPathPodState state{};
         install_forward_plan(state, compiler, caps);
-        const shs::RenderPathExecutionPlan plan_before = state.plan;
+        const shs::renderpath::RenderPathExecutionPlan plan_before = state.plan;
         const uint32_t generation_before = state.plan_generation;
         if (generation_before == 0) return false;
 
@@ -148,7 +148,7 @@ namespace
         // Rejection preserves the previous plan wrt the rejected swap. The
         // FOLLOWING toggle legitimately mirrors into plan.runtime_state
         // (gen != 0), so the expected plan is plan_before + that mirror.
-        shs::RenderPathExecutionPlan plan_expected = plan_before;
+        shs::renderpath::RenderPathExecutionPlan plan_expected = plan_before;
         shs::renderpath::apply_runtime_toggle(
             plan_expected.runtime_state,
             shs::renderpath::RuntimeToggle::ShadowOcclusion, true);
@@ -182,8 +182,8 @@ namespace
     // batch reproduces the full log.
     bool test_partial_batch_event_alloc_failure()
     {
-        shs::RenderPathCompiler compiler{};
-        const shs::RenderPathCapabilitySet caps = make_sw_caps();
+        shs::renderpath::RenderPathCompiler compiler{};
+        const shs::renderpath::RenderPathCapabilitySet caps = make_sw_caps();
 
         shs::renderpath::RenderPathPodState reference_state{};
         const std::vector<shs::renderpath::RenderPathCommand> commands =
@@ -225,7 +225,7 @@ namespace
         // State mutations persist (no rollback): a command mutates state
         // BEFORE emitting, so the failing third command's mutation landed
         // even though its event did not — state and log diverge here.
-        shs::RenderPathRuntimeState prefix_expected{};
+        shs::renderpath::RenderPathRuntimeState prefix_expected{};
         prefix_expected.shadow_occlusion_enabled = true;
         prefix_expected.debug_aabb = true;
         prefix_expected.lit_mode = false;
@@ -249,7 +249,7 @@ namespace
             // first three commands (the failing third mutated state, the
             // fourth never ran), so its state is a strict prefix of the
             // rerun's final state — shadows still at its default true.
-            shs::RenderPathRuntimeState failed_prefix_expected =
+            shs::renderpath::RenderPathRuntimeState failed_prefix_expected =
                 rerun_state.recipe.runtime_defaults;
             failed_prefix_expected.enable_shadows = true;
             if (!(state.recipe.runtime_defaults == failed_prefix_expected))
@@ -268,8 +268,8 @@ namespace
     // across disjoint arenas.
     bool test_arena_lifetimes_replay_parity()
     {
-        shs::RenderPathCompiler compiler{};
-        const shs::RenderPathCapabilitySet caps = make_sw_caps();
+        shs::renderpath::RenderPathCompiler compiler{};
+        const shs::renderpath::RenderPathCapabilitySet caps = make_sw_caps();
         const std::vector<shs::renderpath::RenderPathCommand> batch_a = {
             shs::renderpath::SelectPathPresetIntent{make_forward_recipe("forward_sw")}
         };
@@ -330,8 +330,8 @@ namespace
     // arenas are reentrant and reproduce the single-thread reference.
     bool test_concurrent_gateway_batches()
     {
-        shs::RenderPathCompiler compiler{};
-        const shs::RenderPathCapabilitySet caps = make_sw_caps();
+        shs::renderpath::RenderPathCompiler compiler{};
+        const shs::renderpath::RenderPathCapabilitySet caps = make_sw_caps();
         const std::vector<shs::renderpath::RenderPathCommand> commands =
             make_toggle_batch();
 
@@ -381,7 +381,7 @@ namespace
         // (a) wait_idle() observes the whole queue.
         std::atomic<int> counter{0};
         {
-            shs::ThreadPoolJobSystem system{4};
+            shs::task::ThreadPoolJobSystem system{4};
             for (int i = 0; i < 64; ++i)
             {
                 system.enqueue([&counter]() { counter.fetch_add(1); });
@@ -394,7 +394,7 @@ namespace
         {
             std::atomic<int> concurrent_counter{0};
             {
-                shs::ThreadPoolJobSystem system{4};
+                shs::task::ThreadPoolJobSystem system{4};
                 auto submit = [&system, &concurrent_counter]()
                 {
                     for (int i = 0; i < 32; ++i)
@@ -417,7 +417,7 @@ namespace
         // started all run by the time the scope ends.
         int drained = 0;
         {
-            shs::ThreadPoolJobSystem system{2};
+            shs::task::ThreadPoolJobSystem system{2};
             for (int i = 0; i < 50; ++i)
             {
                 system.enqueue([&drained]() { drained += 1; });

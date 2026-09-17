@@ -107,10 +107,10 @@ static const float MB_KNEE_PIXELS  = 18.0f;
 // SHADOW MAP BUFFER (Depth only)
 // ==========================================
 
-// Using standardized shs::ShadowMap, shs::MotionBuffer, shs::RT_ColorDepthVelocity
+// Using standardized shs::ShadowMap, shs::MotionBuffer, shs::render::RT_ColorDepthVelocity
 //using ShadowMap           = shs::ShadowMap;
 //using MotionBuffer        = shs::MotionBuffer;
-//using RT_ColorDepthMotion = shs::RT_ColorDepthVelocity;
+//using RT_ColorDepthMotion = shs::render::RT_ColorDepthVelocity;
 
 // ==========================================
 // CAMERA + VIEWER
@@ -322,7 +322,7 @@ struct Uniforms
     glm::vec3 camera_pos;
 
     // Материал
-    shs::Color base_color;
+    shs::render::Color base_color;
     const shs::Texture2D *albedo = nullptr;
     bool use_texture = false;
 
@@ -443,7 +443,7 @@ static inline float shadow_factor_pcf_2x2(
 // FRAGMENT SHADER (Blinn-Phong + Texture + Shadow + Skybox IBL)
 // ==========================================
 
-static shs::Color fragment_shader_full(const VaryingsFull& in, const Uniforms& u)
+static shs::render::Color fragment_shader_full(const VaryingsFull& in, const Uniforms& u)
 {
     glm::vec3 N = glm::normalize(in.normal);
     glm::vec3 L = glm::normalize(-u.light_dir_world);
@@ -464,7 +464,7 @@ static shs::Color fragment_shader_full(const VaryingsFull& in, const Uniforms& u
     // BaseColor
     glm::vec3 baseColor;
     if (u.use_texture && u.albedo && u.albedo->valid()) {
-        shs::Color tc = shs::sample_nearest(*u.albedo, in.uv);
+        shs::render::Color tc = shs::sample_nearest(*u.albedo, in.uv);
         baseColor = shs::color_to_rgb01(tc);
     } else {
         baseColor = shs::color_to_rgb01(u.base_color);
@@ -703,12 +703,12 @@ static inline glm::vec2 clip_to_screen_xy(const glm::vec4& clip, int w, int h)
 // ======================================================
 
 static void draw_triangle_tile_color_depth_motion_shadow(
-    shs::RT_ColorDepthMotion& rt,
+    shs::render::RT_ColorDepthMotion& rt,
     const std::vector<glm::vec3>& tri_verts,
     const std::vector<glm::vec3>& tri_norms,
     const std::vector<glm::vec2>& tri_uvs,
     std::function<VaryingsFull(const glm::vec3&, const glm::vec3&, const glm::vec2&)> vs,
-    std::function<shs::Color(const VaryingsFull&)> fs,
+    std::function<shs::render::Color(const VaryingsFull&)> fs,
     glm::ivec2 tile_min, glm::ivec2 tile_max)
 {
     int W = rt.color.get_width();
@@ -979,7 +979,7 @@ static void combined_motion_blur_pass(
                 int x1 = std::min(x0 + TILE_SIZE_X, W);
                 int y1 = std::min(y0 + TILE_SIZE_Y, H);
 
-                auto sample = [&](int sx, int sy) -> shs::Color {
+                auto sample = [&](int sx, int sy) -> shs::render::Color {
                     sx = shs::Math::clamp(sx, 0, W - 1);
                     sy = shs::Math::clamp(sy, 0, H - 1);
                     return src.get_color_at(sx, sy);
@@ -1030,7 +1030,7 @@ static void combined_motion_blur_pass(
                             int sy = shs::Math::clamp((int)std::round(p.y), 0, H - 1);
 
                             float wgt = 1.0f - std::abs(a);
-                            shs::Color c = sample(sx, sy);
+                            shs::render::Color c = sample(sx, sy);
 
                             r += wgt * float(c.r);
                             g += wgt * float(c.g);
@@ -1040,7 +1040,7 @@ static void combined_motion_blur_pass(
 
                         if (wsum < 0.0001f) wsum = 1.0f;
 
-                        dst.draw_pixel(x, y, shs::Color{
+                        dst.draw_pixel(x, y, shs::render::Color{
                             (uint8_t)shs::Math::clamp((int)(r / wsum), 0, 255),
                             (uint8_t)shs::Math::clamp((int)(g / wsum), 0, 255),
                             (uint8_t)shs::Math::clamp((int)(b / wsum), 0, 255),
@@ -1109,14 +1109,14 @@ public:
     RendererSystem(DemoScene* scene, shs::Job::ThreadedPriorityJobSystem* job_sys)
         : scene(scene), job_system(job_sys)
     {
-        rt = new shs::RT_ColorDepthMotion(
+        rt = new shs::render::RT_ColorDepthMotion(
             CANVAS_WIDTH, CANVAS_HEIGHT,
             scene->viewer->camera->z_near,
             scene->viewer->camera->z_far,
-            shs::Color{20,20,25,255}
+            shs::render::Color{20,20,25,255}
         );
 
-        mb_out = new shs::Canvas(CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{20,20,25,255});
+        mb_out = new shs::Canvas(CANVAS_WIDTH, CANVAS_HEIGHT, shs::render::Color{20,20,25,255});
 
         shadow = new shs::ShadowMap(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
 
@@ -1253,7 +1253,7 @@ public:
         // -----------------------
         // PASS1: Camera render -> RT_ColorDepthMotion (shadow + skybox IBL)
         // -----------------------
-        rt->clear(shs::Color{20,20,25,255});
+        rt->clear(shs::render::Color{20,20,25,255});
 
         // Skybox background fill (PASS1 эхлэхээс өмнө)
         if (scene->sky) {
@@ -1289,7 +1289,7 @@ public:
                             u.light_vp        = light_vp;
                             u.light_dir_world = LIGHT_DIR_WORLD;
                             u.camera_pos      = scene->viewer->position;
-                            u.base_color      = shs::Color{ 120, 122, 128, 255 }; // саарал шал
+                            u.base_color      = shs::render::Color{ 120, 122, 128, 255 }; // саарал шал
                             u.albedo          = nullptr;
                             u.use_texture     = false;
                             u.shadow          = shadow;
@@ -1352,7 +1352,7 @@ public:
                                 u.light_vp        = light_vp;
                                 u.light_dir_world = LIGHT_DIR_WORLD;
                                 u.camera_pos      = scene->viewer->position;
-                                u.base_color      = shs::Color{200,200,200,255};
+                                u.base_color      = shs::render::Color{200,200,200,255};
                                 u.albedo          = car->albedo;
                                 u.use_texture     = (car->albedo && car->albedo->valid());
                                 u.shadow          = shadow;
@@ -1404,7 +1404,7 @@ public:
                                 u.light_vp        = light_vp;
                                 u.light_dir_world = LIGHT_DIR_WORLD;
                                 u.camera_pos      = scene->viewer->position;
-                                u.base_color      = shs::Color{ 180, 150, 95, 255 };
+                                u.base_color      = shs::render::Color{ 180, 150, 95, 255 };
                                 u.albedo          = nullptr;
                                 u.use_texture     = false;
                                 u.shadow          = shadow;
@@ -1509,7 +1509,7 @@ private:
     DemoScene* scene;
     shs::Job::ThreadedPriorityJobSystem* job_system;
 
-    shs::RT_ColorDepthMotion* rt;
+    shs::render::RT_ColorDepthMotion* rt;
     shs::Canvas* mb_out;
 
     shs::ShadowMap* shadow;
@@ -1553,7 +1553,7 @@ class SystemProcessor
 public:
     SystemProcessor(DemoScene* scene, shs::Job::ThreadedPriorityJobSystem* job_sys)
     {
-        command_processor = new shs::CommandProcessor();
+        command_processor = new shs::input::CommandProcessor();
         logic_system      = new LogicSystem(scene);
         renderer_system   = new RendererSystem(scene, job_sys);
     }
@@ -1578,7 +1578,7 @@ public:
 
     shs::Canvas& output() { return renderer_system->output(); }
 
-    shs::CommandProcessor* command_processor;
+    shs::input::CommandProcessor* command_processor;
     LogicSystem*           logic_system;
     RendererSystem*        renderer_system;
 };
@@ -1601,7 +1601,7 @@ int main(int argc, char* argv[])
     SDL_CreateWindowAndRenderer(WINDOW_WIDTH, WINDOW_HEIGHT, 0, &window, &renderer);
 
     // Present canvas
-    shs::Canvas* screen_canvas  = new shs::Canvas(CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{20,20,25,255});
+    shs::Canvas* screen_canvas  = new shs::Canvas(CANVAS_WIDTH, CANVAS_HEIGHT, shs::render::Color{20,20,25,255});
     SDL_Surface* screen_surface = screen_canvas->create_sdl_surface();
     SDL_Texture* screen_texture = SDL_CreateTextureFromSurface(renderer, screen_surface);
 

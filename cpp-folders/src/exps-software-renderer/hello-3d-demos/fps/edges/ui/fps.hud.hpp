@@ -20,7 +20,7 @@
 namespace fps::ui {
 
     // --- Primitives -----------------------------------------------------------
-    inline void draw_line_screen_space(shs::Canvas& canvas, int x0, int y0, int x1, int y1, shs::Color color) {
+    inline void draw_line_screen_space(shs::Canvas& canvas, int x0, int y0, int x1, int y1, shs::render::Color color) {
         int dx  = std::abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
         int dy  = -std::abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
         int err = dx + dy, e2;
@@ -33,7 +33,7 @@ namespace fps::ui {
         }
     }
 
-    inline void draw_rect_fill_screen(shs::Canvas& canvas, int x, int y, int w, int h, shs::Color col) {
+    inline void draw_rect_fill_screen(shs::Canvas& canvas, int x, int y, int w, int h, shs::render::Color col) {
         const int x0 = std::max(0, x);
         const int y0 = std::max(0, y);
         const int x1 = std::min(canvas.get_width() - 1, x + w);
@@ -45,7 +45,7 @@ namespace fps::ui {
         }
     }
 
-    inline void draw_rect_border_screen(shs::Canvas& canvas, int x, int y, int w, int h, shs::Color col) {
+    inline void draw_rect_border_screen(shs::Canvas& canvas, int x, int y, int w, int h, shs::render::Color col) {
         const int x1 = std::min(canvas.get_width() - 1, x + w);
         const int y1 = std::min(canvas.get_height() - 1, y + h);
         for (int px = std::max(0, x); px <= x1; ++px) {
@@ -58,7 +58,7 @@ namespace fps::ui {
         }
     }
 
-    inline void draw_digit_screen(shs::Canvas& canvas, int x, int y, int d, int w, int h, shs::Color col) {
+    inline void draw_digit_screen(shs::Canvas& canvas, int x, int y, int d, int w, int h, shs::render::Color col) {
         static constexpr uint8_t segs[10] = {
             0b00111111, 0b00000110, 0b01011011, 0b01001111, 0b01100110,
             0b01101101, 0b01111101, 0b00000111, 0b01111111, 0b01101111
@@ -80,7 +80,7 @@ namespace fps::ui {
         if (mask & (1 << 6)) line(x    , mid_y, x + w, mid_y);
     }
 
-    inline void draw_number_screen(shs::Canvas& canvas, int x, int y, int val, int digits, shs::Color col) {
+    inline void draw_number_screen(shs::Canvas& canvas, int x, int y, int val, int digits, shs::render::Color col) {
         constexpr int w   = 10;
         constexpr int h   = 18;
         constexpr int gap = 5;
@@ -114,15 +114,15 @@ namespace fps::ui {
             const int bx = static_cast<int>(sc.x) - bar_w / 2;
             const int by = static_cast<int>(sc.y) - 10;
 
-            draw_rect_fill_screen(canvas, bx - 1, by - 1, bar_w + 2, bar_h + 2, shs::Color{ 10, 12, 16, 230 });
-            draw_rect_fill_screen(canvas, bx, by, bar_w, bar_h, shs::Color{ 80, 20, 20, 255 });
+            draw_rect_fill_screen(canvas, bx - 1, by - 1, bar_w + 2, bar_h + 2, shs::render::Color{ 10, 12, 16, 230 });
+            draw_rect_fill_screen(canvas, bx, by, bar_w, bar_h, shs::render::Color{ 80, 20, 20, 255 });
 
             const float hp_pct = glm::clamp(static_cast<float>(bots.hp[i]) / 100.0f, 0.0f, 1.0f);
             const int   fill_w = static_cast<int>(hp_pct * static_cast<float>(bar_w));
 
-            const shs::Color hp_col = (bots.hit_flash_time[i] > 0.0f) ? shs::Color{ 255, 255, 255, 255 }
-                                    : (hp_pct > 0.5f)                 ? shs::Color{ 240, 70, 50, 255 }
-                                                                      : shs::Color{ 255, 255, 255, 255 };
+            const shs::render::Color hp_col = (bots.hit_flash_time[i] > 0.0f) ? shs::render::Color{ 255, 255, 255, 255 }
+                                    : (hp_pct > 0.5f)                 ? shs::render::Color{ 240, 70, 50, 255 }
+                                                                      : shs::render::Color{ 255, 255, 255, 255 };
 
             draw_rect_fill_screen(canvas, bx, by, fill_w, bar_h, hp_col);
         }
@@ -140,7 +140,7 @@ namespace fps::ui {
                 const glm::vec3 s1 = shs::Canvas::clip_to_screen(c_end, W, H);
                 draw_line_screen_space(canvas, static_cast<int>(s0.x), static_cast<int>(s0.y),
                                        static_cast<int>(s1.x), static_cast<int>(s1.y),
-                                       shs::Color{ 255, 230, 100, 255 });
+                                       shs::render::Color{ 255, 230, 100, 255 });
             }
         }
     }
@@ -154,7 +154,7 @@ namespace fps::ui {
         const int cy = H / 2;
 
         if (player.damage_flash > 0.0f) {
-            const shs::Color red_border{ 255, 30, 30, 200 };
+            const shs::render::Color red_border{ 255, 30, 30, 200 };
             for (int i = 0; i < 8; ++i) {
                 draw_rect_border_screen(canvas, i, i, W - 1 - i * 2, H - 1 - i * 2, red_border);
             }
@@ -163,9 +163,9 @@ namespace fps::ui {
         // Score panel (top-right)
         const int sc_x = W - 180;
         const int sc_y = 25;
-        draw_rect_fill_screen(canvas, sc_x - 10, sc_y - 8, 165, 40, shs::Color{ 15, 18, 25, 230 });
-        draw_rect_border_screen(canvas, sc_x - 10, sc_y - 8, 165, 40, shs::Color{ 90, 100, 120, 255 });
-        draw_number_screen(canvas, sc_x, sc_y + 3, score, 6, shs::Color{ 255, 215, 60, 255 });
+        draw_rect_fill_screen(canvas, sc_x - 10, sc_y - 8, 165, 40, shs::render::Color{ 15, 18, 25, 230 });
+        draw_rect_border_screen(canvas, sc_x - 10, sc_y - 8, 165, 40, shs::render::Color{ 90, 100, 120, 255 });
+        draw_number_screen(canvas, sc_x, sc_y + 3, score, 6, shs::render::Color{ 255, 215, 60, 255 });
 
         // HP bar (bottom-left)
         const int hp_x = 35;
@@ -173,18 +173,18 @@ namespace fps::ui {
         constexpr int hp_w = 220;
         constexpr int hp_h = 18;
 
-        draw_rect_fill_screen(canvas, hp_x - 4, hp_y - 4, hp_w + 8, hp_h + 8, shs::Color{ 15, 18, 25, 230 });
-        draw_rect_border_screen(canvas, hp_x - 4, hp_y - 4, hp_w + 8, hp_h + 8, shs::Color{ 90, 100, 120, 255 });
-        draw_rect_fill_screen(canvas, hp_x, hp_y, hp_w, hp_h, shs::Color{ 45, 20, 20, 255 });
+        draw_rect_fill_screen(canvas, hp_x - 4, hp_y - 4, hp_w + 8, hp_h + 8, shs::render::Color{ 15, 18, 25, 230 });
+        draw_rect_border_screen(canvas, hp_x - 4, hp_y - 4, hp_w + 8, hp_h + 8, shs::render::Color{ 90, 100, 120, 255 });
+        draw_rect_fill_screen(canvas, hp_x, hp_y, hp_w, hp_h, shs::render::Color{ 45, 20, 20, 255 });
 
         const float hp_ratio = glm::clamp(static_cast<float>(player.hp) / 100.0f, 0.0f, 1.0f);
         const int   fill_w   = static_cast<int>(hp_ratio * static_cast<float>(hp_w));
-        const shs::Color hp_fill = (player.hp > 35) ? shs::Color{ 45, 220, 95, 255 } : shs::Color{ 240, 40, 40, 255 };
+        const shs::render::Color hp_fill = (player.hp > 35) ? shs::render::Color{ 45, 220, 95, 255 } : shs::render::Color{ 240, 40, 40, 255 };
         draw_rect_fill_screen(canvas, hp_x, hp_y, fill_w, hp_h, hp_fill);
         draw_number_screen(canvas, hp_x + hp_w + 14, hp_y, player.hp, 3, hp_fill);
 
         // Crosshair + hitmarker
-        const shs::Color ch_color = (hitmarker_timer > 0.0f) ? shs::Color{ 255, 50, 50, 255 } : shs::Color{ 255, 255, 255, 220 };
+        const shs::render::Color ch_color = (hitmarker_timer > 0.0f) ? shs::render::Color{ 255, 50, 50, 255 } : shs::render::Color{ 255, 255, 255, 220 };
         constexpr int ch_size = 7;
         constexpr int ch_gap  = 3;
         draw_line_screen_space(canvas, cx - ch_size - ch_gap, cy, cx - ch_gap, cy, ch_color);
@@ -193,7 +193,7 @@ namespace fps::ui {
         draw_line_screen_space(canvas, cx, cy + ch_gap, cx, cy + ch_size + ch_gap, ch_color);
 
         if (hitmarker_timer > 0.0f) {
-            const shs::Color hm_col{ 255, 60, 60, 255 };
+            const shs::render::Color hm_col{ 255, 60, 60, 255 };
             constexpr int s = 5;
             draw_line_screen_space(canvas, cx - s, cy - s, cx - 2, cy - 2, hm_col);
             draw_line_screen_space(canvas, cx + 2, cy + 2, cx + s, cy + s, hm_col);

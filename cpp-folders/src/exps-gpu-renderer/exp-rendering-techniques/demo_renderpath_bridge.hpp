@@ -26,7 +26,7 @@
 namespace shs::demo
 {
     // Demo TechniqueMode -> pod rendering technique.
-    inline shs::renderpath::RenderPathRenderingTechnique technique_for_mode(shs::TechniqueMode mode)
+    inline shs::renderpath::RenderPathRenderingTechnique technique_for_mode(shs::render::TechniqueMode mode)
     {
         switch (mode)
         {
@@ -41,7 +41,7 @@ namespace shs::demo
     }
 
     // Pod rendering technique -> demo TechniqueMode.
-    inline shs::TechniqueMode mode_for_technique(shs::renderpath::RenderPathRenderingTechnique technique)
+    inline shs::render::TechniqueMode mode_for_technique(shs::renderpath::RenderPathRenderingTechnique technique)
     {
         switch (technique)
         {
@@ -56,7 +56,7 @@ namespace shs::demo
     }
 
     // Hot-swap cycle order for the technique axis: Forward -> Forward+ -> Deferred -> Forward.
-    inline shs::TechniqueMode next_demo_technique_mode(shs::TechniqueMode mode)
+    inline shs::render::TechniqueMode next_demo_technique_mode(shs::render::TechniqueMode mode)
     {
         switch (mode)
         {
@@ -72,7 +72,7 @@ namespace shs::demo
     // demo-owned executor registry, which is edge-side (not pure).
     inline std::optional<shs::renderpath::RenderPathCommand> map_action_to_renderpath_command(
         DemoInputAction action,
-        shs::TechniqueMode current_mode)
+        shs::render::TechniqueMode current_mode)
     {
         switch (action)
         {

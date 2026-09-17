@@ -27,13 +27,13 @@ namespace
     }
 
 #if defined(SHS_CONTRACTS_ENFORCED)
-    shs::contract_kind g_kind{};
+    shs::core::contract_kind g_kind{};
     const char* g_expr = nullptr;
     const char* g_file = nullptr;
     int g_line = 0;
     int g_calls = 0;
 
-    void capture_handler(shs::contract_kind kind, const char* expr, const char* file, int line) noexcept
+    void capture_handler(shs::core::contract_kind kind, const char* expr, const char* file, int line) noexcept
     {
         ++g_calls;
         g_kind = kind;
@@ -53,7 +53,7 @@ namespace
     // location (C1.2 DoD) — and nothing else observable changes.
     bool test_violation_reports_kind_expression_location()
     {
-        shs::set_contract_violation_handler(&capture_handler);
+        shs::core::set_contract_violation_handler(&capture_handler);
 
         (void)guarded_pre(-1);
         const bool pre_ok = g_calls == 1
@@ -72,7 +72,7 @@ namespace
             && g_kind == shs::contract_kind::assertion
             && std::string{g_expr} == "x != 42";
 
-        shs::set_contract_violation_handler(nullptr); // restore the default
+        shs::core::set_contract_violation_handler(nullptr); // restore the default
         return pre_ok && post_ok && assert_ok;
     }
 
@@ -87,8 +87,8 @@ namespace
 
     bool test_default_handler_restored()
     {
-        shs::set_contract_violation_handler(nullptr);
-        return shs::contract_violation_handler_instance == &shs::contract_violation_default;
+        shs::core::set_contract_violation_handler(nullptr);
+        return shs::core::contract_violation_handler_instance == &shs::core::contract_violation_default;
     }
 #endif
 } // namespace

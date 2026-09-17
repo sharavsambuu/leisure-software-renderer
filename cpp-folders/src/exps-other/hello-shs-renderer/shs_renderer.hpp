@@ -338,7 +338,7 @@ namespace shs
         }
     };
 
-    using ColorBuffer = Buffer<shs::Color>;
+    using ColorBuffer = Buffer<shs::render::Color>;
     using DepthBuffer = Buffer<float>;
 
     // ==========================================
@@ -350,14 +350,14 @@ namespace shs
     }
     struct Texture2D {
         int w = 0, h = 0;
-        shs::Buffer<shs::Color> texels;
+        shs::Buffer<shs::render::Color> texels;
         Texture2D() {}
-        Texture2D(int width, int height, shs::Color clear = {0,0,0,0})
+        Texture2D(int width, int height, shs::render::Color clear = {0,0,0,0})
             : w(width), h(height), texels(width, height, clear) {}
         inline int width()  const { return w; }
         inline int height() const { return h; }
         inline bool valid() const { return (w > 0 && h > 0 && texels.data.size() > 0); }
-        inline shs::Color get(int x, int y) const {
+        inline shs::render::Color get(int x, int y) const {
             if (!texels.in_bounds(x,y)) return {0,0,0,0};
             return texels.at(x,y);
         }
@@ -453,13 +453,13 @@ namespace shs
             float ty = fy - float(y0);
 
             // 4 хөрш пикселийг унших (sRGB)
-            shs::Color c00 = tex.get(x0, y0);
-            shs::Color c10 = tex.get(x1, y0);
-            shs::Color c01 = tex.get(x0, y1);
-            shs::Color c11 = tex.get(x1, y1);
+            shs::render::Color c00 = tex.get(x0, y0);
+            shs::render::Color c10 = tex.get(x1, y0);
+            shs::render::Color c01 = tex.get(x0, y1);
+            shs::render::Color c11 = tex.get(x1, y1);
 
             // sRGB -> Linear 
-            auto to_lin = [](const shs::Color& c) {
+            auto to_lin = [](const shs::render::Color& c) {
                 glm::vec3 s = glm::vec3(c.r, c.g, c.b) / 255.0f;
                 return srgb_to_linear(s);
             };
@@ -755,10 +755,10 @@ namespace shs
     public:
         Canvas(int width, int height)
             : width_(width), height_(height),
-              color_(width, height, shs::Color{0, 0, 0, 255})
+              color_(width, height, shs::render::Color{0, 0, 0, 255})
         {}
 
-        Canvas(int width, int height, shs::Color bg_color)
+        Canvas(int width, int height, shs::render::Color bg_color)
             : width_(width), height_(height),
               color_(width, height, bg_color)
         {}
@@ -768,28 +768,28 @@ namespace shs
         int get_width() const { return width_; }
         int get_height() const { return height_; }
 
-        shs::Color get_color_at(int x, int y) {
+        shs::render::Color get_color_at(int x, int y) {
             if (!color_.in_bounds(x,y)) return {0,0,0,0};
             return color_.at(x,y);
         }
 
-        shs::Color get_color_at(int x, int y) const {
+        shs::render::Color get_color_at(int x, int y) const {
             if (!color_.in_bounds(x,y)) return {0,0,0,0};
             return color_.at(x,y);
         }
 
 
-        inline void draw_pixel(int x, int y, shs::Color color)
+        inline void draw_pixel(int x, int y, shs::render::Color color)
         {
             if (color_.in_bounds(x,y))
                 color_.at(x,y) = color;
         }
 
-        static void draw_pixel(shs::Canvas &canvas, int x, int y, shs::Color color) {
+        static void draw_pixel(shs::Canvas &canvas, int x, int y, shs::render::Color color) {
             canvas.draw_pixel(x, y, color);
         }
 
-        inline void draw_pixel_screen_space(int x_screen, int y_screen, shs::Color color)
+        inline void draw_pixel_screen_space(int x_screen, int y_screen, shs::render::Color color)
         {
             int y_canvas = (height_ - 1) - y_screen;
             draw_pixel(x_screen, y_canvas, color);
@@ -841,7 +841,7 @@ namespace shs
                 int sdl_y = (h - 1 - y);
                 uint32_t* row = (uint32_t*)(target_pixels + sdl_y * pitch);
                 for (int x = 0; x < w; ++x) {
-                    shs::Color c = canvas->get_color_at(x, y);
+                    shs::render::Color c = canvas->get_color_at(x, y);
                     row[x] = SDL_MapRGBA(surface->format, c.r, c.g, c.b, c.a);
                 }
             }
@@ -856,7 +856,7 @@ namespace shs
             #endif
         }
 
-        static void fill_pixel(shs::Canvas &canvas, int x, int y, int w, int h, shs::Color color)
+        static void fill_pixel(shs::Canvas &canvas, int x, int y, int w, int h, shs::render::Color color)
         {
             for (int i = x; i < x + w; ++i) {
                 for (int j = y; j < y + h; ++j) {
@@ -874,7 +874,7 @@ namespace shs
             }
         }
 
-        static void draw_line(shs::Canvas &canvas, int x0, int y0, int x1, int y1, shs::Color color)
+        static void draw_line(shs::Canvas &canvas, int x0, int y0, int x1, int y1, shs::render::Color color)
         {
             int dx =  std::abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
             int dy = -std::abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
@@ -888,7 +888,7 @@ namespace shs
             }
         }
 
-        static void draw_circle_poly(shs::Canvas &canvas, int cx, int cy, int r, int segments, shs::Color color)
+        static void draw_circle_poly(shs::Canvas &canvas, int cx, int cy, int r, int segments, shs::render::Color color)
         {
             for (int i = 0; i < segments; i++) {
                 float theta1 = 2.0f * 3.1415926f * float(i) / float(segments);
@@ -901,7 +901,7 @@ namespace shs
             }
         }
 
-        static void draw_triangle(shs::Canvas &canvas, const std::vector<glm::vec2> &vertices, shs::Color color)
+        static void draw_triangle(shs::Canvas &canvas, const std::vector<glm::vec2> &vertices, shs::render::Color color)
         {
             if (vertices.size() < 3) return;
             draw_line(canvas, (int)vertices[0].x, (int)vertices[0].y, (int)vertices[1].x, (int)vertices[1].y, color);
@@ -909,7 +909,7 @@ namespace shs
             draw_line(canvas, (int)vertices[2].x, (int)vertices[2].y, (int)vertices[0].x, (int)vertices[0].y, color);
         }
 
-        static void draw_triangle_color_approximation(shs::Canvas &canvas, const std::vector<glm::vec2> &vertices, const std::vector<shs::Color> &colors)
+        static void draw_triangle_color_approximation(shs::Canvas &canvas, const std::vector<glm::vec2> &vertices, const std::vector<shs::render::Color> &colors)
         {
             if (vertices.size() < 3 || colors.empty()) return;
             draw_triangle(canvas, vertices, colors[0]);
@@ -925,7 +925,7 @@ namespace shs
             if (vertices_screen.size() < 3 || normals_view.size() < 3) return;
             glm::vec3 face_normal = glm::normalize(normals_view[0] + normals_view[1] + normals_view[2]);
             float intensity = std::max(0.1f, glm::dot(face_normal, -light_dir_view));
-            shs::Color color = shs::rgb01_to_color(glm::vec3(intensity));
+            shs::render::Color color = shs::rgb01_to_color(glm::vec3(intensity));
 
             int min_x = (int)std::floor(std::min({vertices_screen[0].x, vertices_screen[1].x, vertices_screen[2].x}));
             int max_x = (int)std::ceil(std::max({vertices_screen[0].x, vertices_screen[1].x, vertices_screen[2].x}));
@@ -966,10 +966,10 @@ namespace shs
     struct RT_Color {
         shs::Canvas color;
 
-        RT_Color(int w, int h, shs::Color clear = {0,0,0,255})
+        RT_Color(int w, int h, shs::render::Color clear = {0,0,0,255})
             : color(w, h, clear) {}
 
-        inline void clear(shs::Color c) {
+        inline void clear(shs::render::Color c) {
             color.buffer().clear(c);
         }
     };
@@ -978,11 +978,11 @@ namespace shs
         shs::Canvas  color;
         shs::ZBuffer depth;
 
-        RT_ColorDepth(int w, int h, float zn, float zf, shs::Color clear = {0,0,0,255})
+        RT_ColorDepth(int w, int h, float zn, float zf, shs::render::Color clear = {0,0,0,255})
             : color(w, h, clear),
             depth(w, h, zn, zf) {}
 
-        inline void clear(shs::Color c) {
+        inline void clear(shs::render::Color c) {
             color.buffer().clear(c);
             depth.clear();
         }
@@ -994,13 +994,13 @@ namespace shs
         shs::Buffer<glm::vec2> velocity; // Canvas-space velocity (pixels, +Y up)
         shs::Buffer<glm::vec2>& motion;
 
-        RT_ColorDepthVelocity(int w, int h, float zn, float zf, shs::Color clear = {0,0,0,255})
+        RT_ColorDepthVelocity(int w, int h, float zn, float zf, shs::render::Color clear = {0,0,0,255})
             : color(w, h, clear),
             depth(w, h, zn, zf),
             velocity(w, h, glm::vec2(0.0f)),
             motion(velocity) {}
 
-        inline void clear(shs::Color c) {
+        inline void clear(shs::render::Color c) {
             color.buffer().clear(c);
             depth.clear();
             velocity.clear(glm::vec2(0.0f));
@@ -1008,8 +1008,8 @@ namespace shs
     };
 
     // RENDER TARGET (Color + Depth багцалсан үндсэн төрөл)
-    using RenderTarget        = shs::RT_ColorDepth; 
-    using RT_ColorDepthMotion = shs::RT_ColorDepthVelocity;
+    using RenderTarget        = shs::render::RT_ColorDepth; 
+    using RT_ColorDepthMotion = shs::render::RT_ColorDepthVelocity;
 
     /*
     // SDL_image ашиглан зураг уншиж Texture2D болгох
@@ -1032,7 +1032,7 @@ namespace shs
         int w = converted->w;
         int h = converted->h;
 
-        shs::Texture2D tex(w, h, shs::Color{0,0,0,0});
+        shs::Texture2D tex(w, h, shs::render::Color{0,0,0,0});
 
         uint8_t *src_pixels = (uint8_t*)converted->pixels;
         int pitch = converted->pitch;
@@ -1044,7 +1044,7 @@ namespace shs
             for (int x = 0; x < w; ++x) {
                 uint8_t r,g,b,a;
                 SDL_GetRGBA(row[x], converted->format, &r, &g, &b, &a);
-                tex.texels.at(x, ty) = shs::Color{r,g,b,a};
+                tex.texels.at(x, ty) = shs::render::Color{r,g,b,a};
             }
         }
 
@@ -1071,7 +1071,7 @@ namespace shs
         int w = converted->w;
         int h = converted->h;
 
-        shs::Texture2D tex(w, h, shs::Color{ 0,0,0,0 });
+        shs::Texture2D tex(w, h, shs::render::Color{ 0,0,0,0 });
 
         uint8_t* src_pixels = (uint8_t*)converted->pixels;
         int pitch = converted->pitch;
@@ -1086,8 +1086,8 @@ namespace shs
 
                 // renderer/OS оос хамаарч R болон B-ийг солих хэрэг гарч магад
                 // зураг цэнхэр маягтай харагдаад байвал -> {r, g, b, a} ээс {b, g, r, a}-рүү Swap
-                //tex.texels.at(x, ty) = shs::Color{ b, g, r, a };
-                tex.texels.at(x, ty) = shs::Color{ r, g, b, a };
+                //tex.texels.at(x, ty) = shs::render::Color{ b, g, r, a };
+                tex.texels.at(x, ty) = shs::render::Color{ r, g, b, a };
             }
         }
 
@@ -1103,18 +1103,18 @@ namespace shs
     }
 
     // Альфа холилтын функц (Alpha blend)
-    static inline shs::Color alpha_blend(const shs::Color &dst, const shs::Color &src, uint8_t opacity)
+    static inline shs::render::Color alpha_blend(const shs::render::Color &dst, const shs::render::Color &src, uint8_t opacity)
     {
         // final_alpha = src.a * opacity / 255
         uint32_t a = (uint32_t)src.a * (uint32_t)opacity;
         uint32_t fa = a / 255; // 0..255
 
         if (fa == 0) return dst;
-        if (fa == 255) return shs::Color{src.r, src.g, src.b, 255};
+        if (fa == 255) return shs::render::Color{src.r, src.g, src.b, 255};
 
         uint32_t inv = 255 - fa;
 
-        shs::Color out;
+        shs::render::Color out;
         out.r = (uint8_t)((src.r * fa + dst.r * inv) / 255);
         out.g = (uint8_t)((src.g * fa + dst.g * inv) / 255);
         out.b = (uint8_t)((src.b * fa + dst.b * inv) / 255);
@@ -1188,16 +1188,16 @@ namespace shs
                 if (sx < src_x) sx = src_x;
                 if (sx >= src_x + src_w) sx = src_x + src_w - 1;
 
-                shs::Color sc = src.texels.at(sx, sy);
+                shs::render::Color sc = src.texels.at(sx, sy);
                 if (blend_mode == shs::Tex::BLEND_NONE || sc.a == 255) {
                     if (opacity == 255) dst.draw_pixel(x, y, sc);
                     else {
-                        shs::Color dc = dst.get_color_at(x, y);
-                        shs::Color s2 = sc; s2.a = (uint8_t)((uint32_t)sc.a * (uint32_t)opacity / 255);
+                        shs::render::Color dc = dst.get_color_at(x, y);
+                        shs::render::Color s2 = sc; s2.a = (uint8_t)((uint32_t)sc.a * (uint32_t)opacity / 255);
                         dst.draw_pixel(x, y, alpha_blend(dc, s2, 255));
                     }
                 } else {
-                    shs::Color dc = dst.get_color_at(x, y);
+                    shs::render::Color dc = dst.get_color_at(x, y);
                     dst.draw_pixel(x, y, alpha_blend(dc, sc, opacity));
                 }
             }

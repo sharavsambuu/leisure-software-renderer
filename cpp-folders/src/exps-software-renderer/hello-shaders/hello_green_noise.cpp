@@ -24,7 +24,7 @@
 // Энэ тоог багасгавал үсэг жижиг, ихэсгэвэл том болно.
 #define FONT_SCALE         16.0f 
 
-shs::Color fragment_shader(glm::vec2 u_uv, float u_time)
+shs::render::Color fragment_shader(glm::vec2 u_uv, float u_time)
 {
     glm::vec2 i = u_uv;
     
@@ -117,7 +117,7 @@ int main(int argc, char* argv[])
                             // shader-луу илгээнэ. Ингэснээр Matrix-ийн "нүднүүд" томорно.
                             glm::vec2 uv = { float(x) / FONT_SCALE, float(y) / FONT_SCALE };
                             
-                            shs::Color shader_output = fragment_shader(uv, time_accumulator);
+                            shs::render::Color shader_output = fragment_shader(uv, time_accumulator);
                             
                             // Multithreading ашиглаж байгаа ч pixel coordinate бүр давхцахгүй тул
                             // lock хийх шаардлагагүй, шууд бичих нь хурдан.

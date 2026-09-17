@@ -11,7 +11,7 @@
 // Links only shs::renderer-values + glm.
 namespace
 {
-    auto run_gateway = [](shs::FrameParams& s,
+    auto run_gateway = [](shs::render::FrameParams& s,
                              std::span<const shs::frame::FrameCommand> a,
                              const shs::frame::FrameContext& in,
                              std::pmr::vector<shs::frame::FrameEvent>& e)
@@ -22,12 +22,12 @@ namespace
     // Identity: no commands exist, so any state survives any (empty) log.
     bool test_identity_stable()
     {
-        shs::FrameParams s0{};
+        shs::render::FrameParams s0{};
         s0.w = 640;
         s0.h = 480;
         s0.exposure = 1.25f;
         s0.technique.mode = shs::TechniqueMode::Deferred;
-        return shs::pod_test::empty_log_is_stable<shs::FrameParams, shs::frame::FrameCommand,
+        return shs::pod_test::empty_log_is_stable<shs::render::FrameParams, shs::frame::FrameCommand,
             shs::frame::FrameContext, shs::frame::FrameEvent>(
             run_gateway, s0, shs::frame::FrameContext{});
     }
@@ -35,9 +35,9 @@ namespace
     // Replay over the empty vocabulary is trivially deterministic (kit smoke).
     bool test_replay_deterministic()
     {
-        const shs::FrameParams s0{};
+        const shs::render::FrameParams s0{};
         const std::vector<shs::frame::FrameCommand> none{};
-        return shs::pod_test::replay_is_deterministic<shs::FrameParams, shs::frame::FrameCommand,
+        return shs::pod_test::replay_is_deterministic<shs::render::FrameParams, shs::frame::FrameCommand,
             shs::frame::FrameContext, shs::frame::FrameEvent>(
             run_gateway, s0,
             std::span<const shs::frame::FrameCommand>{none.data(), none.size()},
@@ -47,7 +47,7 @@ namespace
     // Step counts monostate inputs, not mutations or emitted facts.
     bool test_identity_step_summary()
     {
-        shs::FrameParams initial{};
+        shs::render::FrameParams initial{};
         initial.w = 640;
         initial.h = 480;
         initial.exposure = 1.25f;

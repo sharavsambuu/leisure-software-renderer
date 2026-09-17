@@ -21,7 +21,7 @@
 #define CONCURRENCY_COUNT  8   
 #define NUM_OCTAVES        5
 
-shs::Color fragment_shader(glm::vec2 uniform_uv, float uniform_time)
+shs::render::Color fragment_shader(glm::vec2 uniform_uv, float uniform_time)
 {
     glm::vec2 st = (uniform_uv/glm::vec2(CANVAS_WIDTH, CANVAS_HEIGHT))*3.0f;
     st += float(glm::abs(glm::sin(uniform_time*0.1f)*3.0f))*st;
@@ -126,7 +126,7 @@ int main(int argc, char* argv[])
                     for (int x = 0; x < CANVAS_WIDTH; x++) {
                         
                         glm::vec2 uv = {float(x), float(y)};
-                        shs::Color color = fragment_shader(uv, time_accumulator);
+                        shs::render::Color color = fragment_shader(uv, time_accumulator);
                         
                         // Mutex хэрэггүй. Thread бүр өөр өөр мөр (Y) дээр бичиж байгаа.
                         main_canvas->draw_pixel(x, y, color);

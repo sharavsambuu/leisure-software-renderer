@@ -42,7 +42,8 @@
         "vector"
       ],
       "tracked_consumers": [
-        "cpp-folders/src/shs-renderer-lib/include/shs/execution/rhi/backend/backend_factory.hpp"
+        "cpp-folders/src/shs-renderer-lib/include/shs/execution/rhi/backend/backend_factory.hpp",
+        "cpp-folders/src/shs-renderer-lib/tests/namespace_cutover_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -134,6 +135,7 @@
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/planning/render_path_interfaces.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/scene/storage/system_processors.hpp",
         "cpp-folders/src/shs-renderer-lib/tests/core_tests.cpp",
+        "cpp-folders/src/shs-renderer-lib/tests/namespace_cutover_tests.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/vk_driver_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
@@ -229,6 +231,7 @@
         "cpp-folders/src/shs-renderer-lib/include/shs/app/vertical_slice_host.hpp",
         "cpp-folders/src/shs-renderer-lib/tests/core_tests.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/input_tests.cpp",
+        "cpp-folders/src/shs-renderer-lib/tests/namespace_cutover_tests.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/session_orchestration_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
@@ -455,6 +458,7 @@
         "cpp-folders/src/shs-renderer-lib/include/shs/camera/camera.contract.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/camera/follow_camera.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/domains/camera/camera_rig.hpp",
+        "cpp-folders/src/shs-renderer-lib/tests/namespace_cutover_tests.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/session_orchestration_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
@@ -1161,7 +1165,9 @@
         "shs/geometry/aabb.hpp"
       ],
       "external_dependencies": [],
-      "tracked_consumers": [],
+      "tracked_consumers": [
+        "cpp-folders/src/shs-renderer-lib/tests/namespace_cutover_tests.cpp"
+      ],
       "build_target": "review-values-vs-aggregate"
     },
     {
@@ -4154,7 +4160,8 @@
         "cpp-folders/src/shs-renderer-lib/include/shs/geometry/geometry.contract.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/geometry/scene_shape.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/geometry/volumes.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/passes/pass_shadow_map.hpp"
+        "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/passes/pass_shadow_map.hpp",
+        "cpp-folders/src/shs-renderer-lib/tests/namespace_cutover_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -6114,7 +6121,8 @@
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/planning/render_path_presets.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/planning/render_path_recipe.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/rhi/core/backend.hpp"
+        "cpp-folders/src/shs-renderer-lib/include/shs/rhi/core/backend.hpp",
+        "cpp-folders/src/shs-renderer-lib/tests/namespace_cutover_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -6643,7 +6651,8 @@
       ],
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/include/shs/domains/gfx/resource_handles.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/render/targets/gfx.contract.hpp"
+        "cpp-folders/src/shs-renderer-lib/include/shs/render/targets/gfx.contract.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/passes/pass_context.hpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -6924,11 +6933,17 @@
         "glm/mat4x4.hpp",
         "glm/vec3.hpp",
         "shs/app/context.hpp",
-        "shs/render/targets/rt_types.hpp"
+        "shs/render/targets/resource_handles.hpp",
+        "shs/render/targets/rt_types.hpp",
+        "shs/resources/storage/resource_registry.hpp",
+        "shs/scene/scene_types.hpp"
       ],
       "internal_dependencies": [
         "shs/app/context.hpp",
-        "shs/render/targets/rt_types.hpp"
+        "shs/render/targets/resource_handles.hpp",
+        "shs/render/targets/rt_types.hpp",
+        "shs/resources/storage/resource_registry.hpp",
+        "shs/scene/scene_types.hpp"
       ],
       "external_dependencies": [
         "cstdint",
@@ -8709,6 +8724,7 @@
         "cpp-folders/src/shs-renderer-lib/include/shs/domains/resources/edge/resource_registry.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/geometry/adapters/jolt/jolt_renderable.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/pass_adapters.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/passes/pass_context.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/passes/pass_pbr_forward.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/passes/pass_shadow_map.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/resources/adapters/asset_manager.hpp",
@@ -8822,7 +8838,8 @@
         "cpp-folders/src/shs-renderer-lib/include/shs/rhi/opengl/gl_backend.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/rhi/software/sw_backend.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/rhi/vulkan/runtime/vk_backend.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/rhi/vulkan/value/vk_backend.hpp"
+        "cpp-folders/src/shs-renderer-lib/include/shs/rhi/vulkan/value/vk_backend.hpp",
+        "cpp-folders/src/shs-renderer-lib/tests/namespace_cutover_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -10456,6 +10473,7 @@
         "cpp-folders/src/shs-renderer-lib/include/shs/app/camera_sync.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/app/session_settings_sync.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/domains/scene/scene_types.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/passes/pass_context.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/passes/pass_light_shafts.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/passes/pass_pbr_forward.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/passes/pass_shadow_map.hpp",

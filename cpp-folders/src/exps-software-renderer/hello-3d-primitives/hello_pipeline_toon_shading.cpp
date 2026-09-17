@@ -38,7 +38,7 @@ struct Uniforms {
     glm::mat4 model;        
     glm::vec3 light_dir;    
     glm::vec3 camera_pos;   
-    shs::Color color;       
+    shs::render::Color color;       
 };
 
 // VERTEX SHADER
@@ -53,7 +53,7 @@ shs::Varyings toon_vertex_shader(const glm::vec3& aPos, const glm::vec3& aNormal
 }
 
 // FRAGMENT SHADER (Toon)
-shs::Color toon_fragment_shader(const shs::Varyings& in, const Uniforms& u)
+shs::render::Color toon_fragment_shader(const shs::Varyings& in, const Uniforms& u)
 {
     glm::vec3 norm     = glm::normalize(in.normal);
     glm::vec3 lightDir = glm::normalize(-u.light_dir); 
@@ -81,7 +81,7 @@ shs::Color toon_fragment_shader(const shs::Varyings& in, const Uniforms& u)
 
     result = glm::clamp(result, 0.0f, 1.0f);
 
-    return shs::Color{
+    return shs::render::Color{
         (uint8_t)(result.r * 255),
         (uint8_t)(result.g * 255),
         (uint8_t)(result.b * 255),
@@ -101,21 +101,21 @@ using ModelGeometry = shs::ModelGeometry;
 
 class MonkeyObject : public shs::AbstractObject3D {
 public:
-    MonkeyObject(glm::vec3 pos, glm::vec3 scl, shs::Color col) : position(pos), scale(scl), color(col), rotation_angle(-30.0f) { geometry = new ModelGeometry("./assets/obj/monkey/monkey.rawobj"); }
+    MonkeyObject(glm::vec3 pos, glm::vec3 scl, shs::render::Color col) : position(pos), scale(scl), color(col), rotation_angle(-30.0f) { geometry = new ModelGeometry("./assets/obj/monkey/monkey.rawobj"); }
     ~MonkeyObject() { delete geometry; }
     glm::mat4 get_world_matrix() override {
         return glm::translate(glm::mat4(1.0f), position) * glm::rotate(glm::mat4(1.0f), glm::radians(rotation_angle), glm::vec3(0,1,0)) * glm::scale(glm::mat4(1.0f), scale);
     }
     void update(float dt) override { (void)dt; }
     void render() override {}
-    ModelGeometry *geometry; glm::vec3 scale, position; shs::Color color; float rotation_angle;
+    ModelGeometry *geometry; glm::vec3 scale, position; shs::render::Color color; float rotation_angle;
 };
 
 class HelloScene : public shs::AbstractSceneState {
 public:
     HelloScene(shs::Canvas *cvs, Viewer *vwr) : canvas(cvs), viewer(vwr) {
         light_direction = glm::normalize(glm::vec3(-1.0f, -0.4f, 1.0f));
-        scene_objects.push_back(new MonkeyObject(glm::vec3(0,0,10), glm::vec3(4), shs::Color{60,100,200,255}));
+        scene_objects.push_back(new MonkeyObject(glm::vec3(0,0,10), glm::vec3(4), shs::render::Color{60,100,200,255}));
     }
     ~HelloScene() { for(auto *o : scene_objects) delete o; }
     void process() override {}
@@ -147,7 +147,7 @@ public:
         const std::vector<glm::vec3> &vertices,    
         const std::vector<glm::vec3> &normals,     
         std::function<shs::Varyings(const glm::vec3&, const glm::vec3&)> vertex_shader,
-        std::function<shs::Color(const shs::Varyings&)> fragment_shader,
+        std::function<shs::render::Color(const shs::Varyings&)> fragment_shader,
         glm::ivec2 tile_min, glm::ivec2 tile_max)
     {
         shs::Varyings vout[3];
@@ -275,14 +275,14 @@ private: HelloScene *scene;
 class SystemProcessor {
 public:
     SystemProcessor(HelloScene *scene, shs::Job::ThreadedPriorityJobSystem *job_sys) {
-        command_processor = new shs::CommandProcessor();
+        command_processor = new shs::input::CommandProcessor();
         renderer_system = new RendererSystem(scene, job_sys);
         logic_system = new LogicSystem(scene);
     }
     ~SystemProcessor() { delete command_processor; delete renderer_system; delete logic_system; }
     void process(float dt) { command_processor->process(); logic_system->process(dt); }
     void render(float dt) { renderer_system->process(dt); }
-    shs::CommandProcessor *command_processor; LogicSystem *logic_system; RendererSystem *renderer_system;
+    shs::input::CommandProcessor *command_processor; LogicSystem *logic_system; RendererSystem *renderer_system;
 };
 
 int main(int argc, char* argv[]) {

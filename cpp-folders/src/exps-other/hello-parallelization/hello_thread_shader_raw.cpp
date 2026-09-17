@@ -26,7 +26,7 @@
 #define EXECUTOR_POOL_SIZE 8    // Thread-ийн тоо
 #define NUM_OCTAVES        5
 
-shs::Color fragment_shader(glm::vec2 uniform_uv, float uniform_time)
+shs::render::Color fragment_shader(glm::vec2 uniform_uv, float uniform_time)
 {
     glm::vec2 st = (uniform_uv/glm::vec2(CANVAS_WIDTH, CANVAS_HEIGHT))*3.0f;
     st += float(glm::abs(glm::sin(uniform_time*0.1f)*3.0f))*st;
@@ -131,7 +131,7 @@ int main(int argc, char* argv[])
                 for (int y = start_y; y < end_y; y++) {
                     for (int x = 0; x < CANVAS_WIDTH; x++) {
                         glm::vec2 uv = {float(x), float(y)};
-                        shs::Color shader_output = fragment_shader(uv, time_accumulator);
+                        shs::render::Color shader_output = fragment_shader(uv, time_accumulator);
                         
                         // Thread бүр өөр Y координат дээр ажиллаж байгаа тул 
                         // санах ойн давхцал (Race Condition) үүсэхгүй.

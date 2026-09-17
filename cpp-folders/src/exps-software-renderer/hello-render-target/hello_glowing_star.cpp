@@ -54,7 +54,7 @@ static const float     STAR_WOBBLE_SPD  = 0.2f;
 static const float     STAR_ROT_DEG_SPD = 25.0f;
 
 // Golden base color
-static const shs::Color STAR_COLOR = shs::Color{ 255, 215, 100, 255 };
+static const shs::render::Color STAR_COLOR = shs::render::Color{ 255, 215, 100, 255 };
 
 // ===============================
 // MOTION BLUR CONFIG
@@ -113,21 +113,21 @@ static inline float smoothstep01(float t)
     return t * t * (3.0f - 2.0f * t);
 }
 
-static inline shs::Color color_from_rgbaf(float r, float g, float b, float a)
+static inline shs::render::Color color_from_rgbaf(float r, float g, float b, float a)
 {
     r = std::min(255.0f, std::max(0.0f, r));
     g = std::min(255.0f, std::max(0.0f, g));
     b = std::min(255.0f, std::max(0.0f, b));
     a = std::min(255.0f, std::max(0.0f, a));
-    return shs::Color{ (uint8_t)r, (uint8_t)g, (uint8_t)b, (uint8_t)a };
+    return shs::render::Color{ (uint8_t)r, (uint8_t)g, (uint8_t)b, (uint8_t)a };
 }
 
-static inline shs::Color lerp_color(const shs::Color& a, const shs::Color& b, float t)
+static inline shs::render::Color lerp_color(const shs::render::Color& a, const shs::render::Color& b, float t)
 {
     t = clampf(t, 0.0f, 1.0f);
     float ia = 1.0f - t;
 
-    return shs::Color{
+    return shs::render::Color{
         (uint8_t)(ia * a.r + t * b.r),
         (uint8_t)(ia * a.g + t * b.g),
         (uint8_t)(ia * a.b + t * b.b),
@@ -135,7 +135,7 @@ static inline shs::Color lerp_color(const shs::Color& a, const shs::Color& b, fl
     };
 }
 
-static inline float luma_from_color(const shs::Color& c)
+static inline float luma_from_color(const shs::render::Color& c)
 {
     float r = float(c.r) / 255.0f;
     float g = float(c.g) / 255.0f;
@@ -143,9 +143,9 @@ static inline float luma_from_color(const shs::Color& c)
     return 0.299f * r + 0.587f * g + 0.114f * b;
 }
 
-static inline shs::Color add_color_clamped(const shs::Color& a, const shs::Color& b)
+static inline shs::render::Color add_color_clamped(const shs::render::Color& a, const shs::render::Color& b)
 {
-    return shs::Color{
+    return shs::render::Color{
         (uint8_t)clampi(int(a.r) + int(b.r), 0, 255),
         (uint8_t)clampi(int(a.g) + int(b.g), 0, 255),
         (uint8_t)clampi(int(a.b) + int(b.b), 0, 255),
@@ -153,9 +153,9 @@ static inline shs::Color add_color_clamped(const shs::Color& a, const shs::Color
     };
 }
 
-static inline shs::Color mul_color(const shs::Color& c, float k)
+static inline shs::render::Color mul_color(const shs::render::Color& c, float k)
 {
-    return shs::Color{
+    return shs::render::Color{
         (uint8_t)clampi(int(float(c.r) * k), 0, 255),
         (uint8_t)clampi(int(float(c.g) * k), 0, 255),
         (uint8_t)clampi(int(float(c.b) * k), 0, 255),
@@ -233,7 +233,7 @@ struct Uniforms {
     glm::mat4  view;
     glm::vec3  light_dir;
     glm::vec3  camera_pos;
-    shs::Color color;
+    shs::render::Color color;
 };
 
 struct VaryingsStar
@@ -247,7 +247,7 @@ struct VaryingsStar
 
 struct FragOut
 {
-    shs::Color color;
+    shs::render::Color color;
     float      spec01; // 0..1 (for glow/flare)
 };
 
@@ -297,7 +297,7 @@ static FragOut star_fragment_shader(const VaryingsStar& in, const Uniforms& u)
     result = glm::clamp(result, 0.0f, 1.0f);
 
     FragOut out;
-    out.color = shs::Color{
+    out.color = shs::render::Color{
         (uint8_t)(result.r * 255),
         (uint8_t)(result.g * 255),
         (uint8_t)(result.b * 255),
@@ -313,7 +313,7 @@ static FragOut star_fragment_shader(const VaryingsStar& in, const Uniforms& u)
 
 struct RT_ColorDepthVelocitySpec
 {
-    RT_ColorDepthVelocitySpec(int W, int H, float zn, float zf, shs::Color clear_col)
+    RT_ColorDepthVelocitySpec(int W, int H, float zn, float zf, shs::render::Color clear_col)
         : color(W, H, clear_col),
           depth(W, H, zn, zf),
           velocity(W, H, glm::vec2(0.0f)),
@@ -323,7 +323,7 @@ struct RT_ColorDepthVelocitySpec
         clear(clear_col);
     }
 
-    inline void clear(shs::Color c)
+    inline void clear(shs::render::Color c)
     {
         color.buffer().clear(c);
         depth.clear();
@@ -492,7 +492,7 @@ static void motion_blur_pass(
                             int sy = clampi((int)std::round(p.y), 0, H - 1);
 
                             float wgt = 1.0f - std::abs(a); // center heavier
-                            shs::Color c = src.get_color_at(sx, sy);
+                            shs::render::Color c = src.get_color_at(sx, sy);
 
                             r += wgt * float(c.r);
                             g += wgt * float(c.g);
@@ -501,7 +501,7 @@ static void motion_blur_pass(
                         }
 
                         if (wsum < 0.0001f) wsum = 1.0f;
-                        dst.draw_pixel(x, y, shs::Color{
+                        dst.draw_pixel(x, y, shs::render::Color{
                             (uint8_t)clampi((int)(r / wsum), 0, 255),
                             (uint8_t)clampi((int)(g / wsum), 0, 255),
                             (uint8_t)clampi((int)(b / wsum), 0, 255),
@@ -553,7 +553,7 @@ static void gaussian_blur_pass(
                 int x1 = std::min(x0 + TILE_SIZE_X, W);
                 int y1 = std::min(y0 + TILE_SIZE_Y, H);
 
-                auto sample = [&](int sx, int sy) -> shs::Color {
+                auto sample = [&](int sx, int sy) -> shs::render::Color {
                     sx = clampi(sx, 0, W - 1);
                     sy = clampi(sy, 0, H - 1);
                     return src.get_color_at(sx, sy);
@@ -565,22 +565,22 @@ static void gaussian_blur_pass(
                         float r = 0, g = 0, b = 0, a = 0;
 
                         if (horizontal) {
-                            shs::Color c0 = sample(x - 2, y);
-                            shs::Color c1 = sample(x - 1, y);
-                            shs::Color c2 = sample(x,     y);
-                            shs::Color c3 = sample(x + 1, y);
-                            shs::Color c4 = sample(x + 2, y);
+                            shs::render::Color c0 = sample(x - 2, y);
+                            shs::render::Color c1 = sample(x - 1, y);
+                            shs::render::Color c2 = sample(x,     y);
+                            shs::render::Color c3 = sample(x + 1, y);
+                            shs::render::Color c4 = sample(x + 2, y);
 
                             r = w0*c0.r + w1*c1.r + w2*c2.r + w1*c3.r + w0*c4.r;
                             g = w0*c0.g + w1*c1.g + w2*c2.g + w1*c3.g + w0*c4.g;
                             b = w0*c0.b + w1*c1.b + w2*c2.b + w1*c3.b + w0*c4.b;
                             a = w0*c0.a + w1*c1.a + w2*c2.a + w1*c3.a + w0*c4.a;
                         } else {
-                            shs::Color c0 = sample(x, y - 2);
-                            shs::Color c1 = sample(x, y - 1);
-                            shs::Color c2 = sample(x, y);
-                            shs::Color c3 = sample(x, y + 1);
-                            shs::Color c4 = sample(x, y + 2);
+                            shs::render::Color c0 = sample(x, y - 2);
+                            shs::render::Color c1 = sample(x, y - 1);
+                            shs::render::Color c2 = sample(x, y);
+                            shs::render::Color c3 = sample(x, y + 1);
+                            shs::render::Color c4 = sample(x, y + 2);
 
                             r = w0*c0.r + w1*c1.r + w2*c2.r + w1*c3.r + w0*c4.r;
                             g = w0*c0.g + w1*c1.g + w2*c2.g + w1*c3.g + w0*c4.g;
@@ -677,8 +677,8 @@ static void dof_composite_pass(
                         float t   = smoothstep01(coc);
                         t = clampf(t * max_blur, 0.0f, 1.0f);
 
-                        shs::Color c_sharp = sharp.get_color_at(x, y);
-                        shs::Color c_blur  = blur.get_color_at(x, y);
+                        shs::render::Color c_sharp = sharp.get_color_at(x, y);
+                        shs::render::Color c_blur  = blur.get_color_at(x, y);
 
                         out.draw_pixel(x, y, lerp_color(c_sharp, c_blur, t));
                     }
@@ -780,8 +780,8 @@ static void additive_composite_pass(
 
                 for (int y = y0; y < y1; y++) {
                     for (int x = x0; x < x1; x++) {
-                        shs::Color a = base.get_color_at(x, y);
-                        shs::Color b = mul_color(add.get_color_at(x, y), add_strength);
+                        shs::render::Color a = base.get_color_at(x, y);
+                        shs::render::Color b = mul_color(add.get_color_at(x, y), add_strength);
                         out.draw_pixel(x, y, add_color_clamped(a, b));
                     }
                 }
@@ -816,7 +816,7 @@ static void pseudo_lens_flare_pass(
 
     wg.reset();
 
-    auto sample = [&](float fx, float fy) -> shs::Color {
+    auto sample = [&](float fx, float fy) -> shs::render::Color {
         int sx = clampi((int)std::round(fx), 0, W - 1);
         int sy = clampi((int)std::round(fy), 0, H - 1);
         return bright.get_color_at(sx, sy);
@@ -864,9 +864,9 @@ static void pseudo_lens_flare_pass(
                             glm::vec2 dir(0.0f);
                             if (dist > 1e-4f) dir = glm::vec2(dx, dy) / dist;
 
-                            shs::Color cR = sample(sx + dir.x * chroma_shift_px, sy + dir.y * chroma_shift_px);
-                            shs::Color cG = sample(sx, sy);
-                            shs::Color cB = sample(sx - dir.x * chroma_shift_px, sy - dir.y * chroma_shift_px);
+                            shs::render::Color cR = sample(sx + dir.x * chroma_shift_px, sy + dir.y * chroma_shift_px);
+                            shs::render::Color cG = sample(sx, sy);
+                            shs::render::Color cB = sample(sx - dir.x * chroma_shift_px, sy - dir.y * chroma_shift_px);
 
                             float w = (0.45f + 0.55f * (1.0f - float(i) / float(FLARE_GHOSTS)));
                             rr += w * float(cR.r);
@@ -880,7 +880,7 @@ static void pseudo_lens_flare_pass(
                             float sx = cx - dx * halo_scale;
                             float sy = cy - dy * halo_scale;
 
-                            shs::Color hC = sample(sx, sy);
+                            shs::render::Color hC = sample(sx, sy);
 
                             // Ring-ish weight (stronger mid radius)
                             float ring = std::exp(-8.0f * (nd - 0.35f) * (nd - 0.35f));
@@ -1035,7 +1035,7 @@ public:
     {
         (void)delta_time;
 
-        rt->clear(shs::Color{20, 20, 25, 255});
+        rt->clear(shs::render::Color{20, 20, 25, 255});
 
         glm::mat4 view = viewer->camera->view_matrix;
         glm::mat4 proj = viewer->camera->projection_matrix;
@@ -1097,7 +1097,7 @@ class SystemProcessor
 public:
     SystemProcessor(Viewer* viewer, GlowingStarObject* star, shs::Job::ThreadedPriorityJobSystem* job_sys, RT_ColorDepthVelocitySpec* rt)
     {
-        command_processor = new shs::CommandProcessor();
+        command_processor = new shs::input::CommandProcessor();
         logic_system      = new LogicSystem(viewer, star);
         renderer_system   = new RendererSystem(viewer, star, job_sys, rt);
     }
@@ -1120,7 +1120,7 @@ public:
         renderer_system->process(delta_time);
     }
 
-    shs::CommandProcessor* command_processor;
+    shs::input::CommandProcessor* command_processor;
     LogicSystem*           logic_system;
     RendererSystem*        renderer_system;
 };
@@ -1149,28 +1149,28 @@ int main(int argc, char* argv[])
     GlowingStarObject *star = new GlowingStarObject();
 
     // RT (Pass 0)
-    RT_ColorDepthVelocitySpec rt_scene(CANVAS_WIDTH, CANVAS_HEIGHT, viewer->camera->z_near, viewer->camera->z_far, shs::Color{20,20,25,255});
+    RT_ColorDepthVelocitySpec rt_scene(CANVAS_WIDTH, CANVAS_HEIGHT, viewer->camera->z_near, viewer->camera->z_far, shs::render::Color{20,20,25,255});
 
     // Pass 1 output (motion blur)
-    shs::Canvas mb_out(CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{20,20,25,255});
+    shs::Canvas mb_out(CANVAS_WIDTH, CANVAS_HEIGHT, shs::render::Color{20,20,25,255});
 
     // DOF buffers
-    shs::Canvas sharp_copy(CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{20,20,25,255});
-    shs::Canvas blur_ping (CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{20,20,25,255});
-    shs::Canvas blur_pong (CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{20,20,25,255});
-    shs::Canvas dof_out   (CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{20,20,25,255});
+    shs::Canvas sharp_copy(CANVAS_WIDTH, CANVAS_HEIGHT, shs::render::Color{20,20,25,255});
+    shs::Canvas blur_ping (CANVAS_WIDTH, CANVAS_HEIGHT, shs::render::Color{20,20,25,255});
+    shs::Canvas blur_pong (CANVAS_WIDTH, CANVAS_HEIGHT, shs::render::Color{20,20,25,255});
+    shs::Canvas dof_out   (CANVAS_WIDTH, CANVAS_HEIGHT, shs::render::Color{20,20,25,255});
 
     // Bloom buffers
-    shs::Canvas bright_spec(CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{0,0,0,255});
-    shs::Canvas bloom_ping (CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{0,0,0,255});
-    shs::Canvas bloom_pong (CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{0,0,0,255});
-    shs::Canvas bloom_out  (CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{0,0,0,255});
+    shs::Canvas bright_spec(CANVAS_WIDTH, CANVAS_HEIGHT, shs::render::Color{0,0,0,255});
+    shs::Canvas bloom_ping (CANVAS_WIDTH, CANVAS_HEIGHT, shs::render::Color{0,0,0,255});
+    shs::Canvas bloom_pong (CANVAS_WIDTH, CANVAS_HEIGHT, shs::render::Color{0,0,0,255});
+    shs::Canvas bloom_out  (CANVAS_WIDTH, CANVAS_HEIGHT, shs::render::Color{0,0,0,255});
 
     // Flare buffers
-    shs::Canvas flare_out(CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{0,0,0,255});
+    shs::Canvas flare_out(CANVAS_WIDTH, CANVAS_HEIGHT, shs::render::Color{0,0,0,255});
 
     // Final composite
-    shs::Canvas final_out(CANVAS_WIDTH, CANVAS_HEIGHT, shs::Color{20,20,25,255});
+    shs::Canvas final_out(CANVAS_WIDTH, CANVAS_HEIGHT, shs::render::Color{20,20,25,255});
 
     SystemProcessor *sys = new SystemProcessor(viewer, star, job_system, &rt_scene);
 
@@ -1283,7 +1283,7 @@ int main(int argc, char* argv[])
         }
         else
         {
-            bloom_out.buffer().clear(shs::Color{0,0,0,255});
+            bloom_out.buffer().clear(shs::render::Color{0,0,0,255});
         }
 
         // Pass 4: Pseudo lens flare driven by bloom_out (already bright-only)
@@ -1301,7 +1301,7 @@ int main(int argc, char* argv[])
         }
         else
         {
-            flare_out.buffer().clear(shs::Color{0,0,0,255});
+            flare_out.buffer().clear(shs::render::Color{0,0,0,255});
         }
 
         // Composite: dof_out + bloom_out + flare_out

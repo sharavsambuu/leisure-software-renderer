@@ -36,7 +36,7 @@ using tetris::progression::ProgressionEventType;
                 glm::vec3 vel(((float)(fx_rand(fx.rng_state) % 100) / 50.0f - 1.0f) * 2.0f,
                               1.0f + (float)(fx_rand(fx.rng_state) % 100) / 60.0f,
                               -0.5f);
-                fx.particles.add(p, vel, shs::Color{ 255, 190, 80, 255 }, 0.35f);
+                fx.particles.add(p, vel, shs::render::Color{ 255, 190, 80, 255 }, 0.35f);
             }
         }
     }
@@ -44,11 +44,11 @@ using tetris::progression::ProgressionEventType;
     // --- L3 dig-feel recipes (Garbage Canyon) --------------------------------
 
     // Canyon rubble palette: dust browns + grays.
-    static const shs::Color RUBBLE_PAL[4] = {
-        shs::Color{ 138, 106,  74, 255 },   // mud brown
-        shs::Color{ 170, 140, 100, 255 },   // dust tan
-        shs::Color{ 128, 118, 108, 255 },   // gray rock
-        shs::Color{ 196, 164, 120, 255 }    // pale sand
+    static const shs::render::Color RUBBLE_PAL[4] = {
+        shs::render::Color{ 138, 106,  74, 255 },   // mud brown
+        shs::render::Color{ 170, 140, 100, 255 },   // dust tan
+        shs::render::Color{ 128, 118, 108, 255 },   // gray rock
+        shs::render::Color{ 196, 164, 120, 255 }    // pale sand
     };
 
     // Dust bursts + rubble debris scaled to the cleared garbage mass; screen
@@ -123,13 +123,13 @@ using tetris::progression::ProgressionEventType;
             const float spd = 2.5f + (float)(fx_rand(fx.rng_state) % 100) / 22.0f;
             glm::vec3 vel(std::cos(ang) * spd, std::sin(ang) * spd * 0.8f,
                           -1.0f - (float)(fx_rand(fx.rng_state) % 100) / 60.0f);
-            shs::Color c = (i % 7 == 0) ? shs::Color{ 255, 245, 200, 255 }
-                         : (i % 3 == 0) ? shs::Color{ 255, 210, 70, 255 }
-                                        : shs::Color{ 255, 120, 30, 255 };
+            shs::render::Color c = (i % 7 == 0) ? shs::render::Color{ 255, 245, 200, 255 }
+                         : (i % 3 == 0) ? shs::render::Color{ 255, 210, 70, 255 }
+                                        : shs::render::Color{ 255, 120, 30, 255 };
             fx.particles.add(ev.world_position, vel, c, 0.9f);
         }
         fx.rings.add(ev.world_position, 0.4f, 14.0f,
-                     shs::Color{ 255, 160, 60, 255 }, 0.55f);
+                     shs::render::Color{ 255, 160, 60, 255 }, 0.55f);
         fx.camera_shake = std::max(fx.camera_shake, 0.75f);
         fx.screen_flash = std::max(fx.screen_flash, 0.55f);
     }
@@ -145,8 +145,8 @@ using tetris::progression::ProgressionEventType;
                 const float dir = (col >= ev.lock_x) ? 1.0f : -1.0f;
                 glm::vec3 vel(dir * (9.0f + (float)(fx_rand(fx.rng_state) % 100) / 18.0f),
                               (float)(fx_rand(fx.rng_state) % 30) / 30.0f - 0.05f, 0.0f);
-                shs::Color c = (k == 0) ? shs::Color{ 255, 240, 250, 255 }
-                                        : shs::Color{ 255,  60, 200, 255 };
+                shs::render::Color c = (k == 0) ? shs::render::Color{ 255, 240, 250, 255 }
+                                        : shs::render::Color{ 255,  60, 200, 255 };
                 fx.particles.add(p, vel, c, 0.45f);
             }
         }
@@ -163,21 +163,21 @@ using tetris::progression::ProgressionEventType;
                         (float)(fx_rand(fx.rng_state) % 100) / 50.0f - 1.0f);
             glm::vec3 vel((float)(fx_rand(fx.rng_state) % 20) / 20.0f - 0.5f,
                           -0.8f - (float)(fx_rand(fx.rng_state) % 40) / 40.0f, 0.0f);
-            shs::Color c = (i % 4 == 0) ? shs::Color{ 230, 250, 255, 255 }
-                                        : shs::Color{ 140, 230, 255, 255 };
+            shs::render::Color c = (i % 4 == 0) ? shs::render::Color{ 230, 250, 255, 255 }
+                                        : shs::render::Color{ 140, 230, 255, 255 };
             fx.particles.add(p, vel, c, 1.8f);
         }
         fx.rings.add(glm::vec3(0.0f, 9.5f, 0.4f), 1.0f, 10.0f,
-                     shs::Color{ 140, 230, 255, 255 }, 0.9f);
+                     shs::render::Color{ 140, 230, 255, 255 }, 0.9f);
     }
 
     // Golden confetti/firework burst on the victory crescendo ("photo finish").
     static inline void victory_fireworks(FxState& fx) {
-        static const shs::Color GOLD[] = {
-            shs::Color{ 255, 215,  80, 255 },
-            shs::Color{ 255, 170,  40, 255 },
-            shs::Color{ 255, 240, 180, 255 },
-            shs::Color{ 255, 225,  45, 255 }
+        static const shs::render::Color GOLD[] = {
+            shs::render::Color{ 255, 215,  80, 255 },
+            shs::render::Color{ 255, 170,  40, 255 },
+            shs::render::Color{ 255, 240, 180, 255 },
+            shs::render::Color{ 255, 225,  45, 255 }
         };
         for (int i = 0; i < 140; ++i) {
             glm::vec3 p((float)(fx_rand(fx.rng_state) % 200) / 10.0f - 10.0f,
@@ -245,7 +245,7 @@ using tetris::progression::ProgressionEventType;
                             ((float)(fx_rand(fx.rng_state) % 100) / 50.0f - 1.0f),
                             2.0f + ((float)(fx_rand(fx.rng_state) % 100) / 60.0f),
                             -1.0f - ((float)(fx_rand(fx.rng_state) % 100) / 80.0f));
-                        fx.particles.add(p, vel, shs::Color{ 120, 100, 80, 255 }, 0.9f);
+                        fx.particles.add(p, vel, shs::render::Color{ 120, 100, 80, 255 }, 0.9f);
                     }
                 }
                 break;
@@ -265,9 +265,9 @@ using tetris::progression::ProgressionEventType;
                             -2.5f - ((float)(fx_rand(fx.rng_state) % 100) / 40.0f)
                         );
                         // Gold flecks mixed into tetris bursts
-                        shs::Color pc = (tetris && (col & 1) == 0)
-                            ? shs::Color{ 255, 210, 70, 255 }
-                            : shs::Color{ 40, 220, 240, 255 };
+                        shs::render::Color pc = (tetris && (col & 1) == 0)
+                            ? shs::render::Color{ 255, 210, 70, 255 }
+                            : shs::render::Color{ 40, 220, 240, 255 };
                         fx.particles.add(p, vel, pc, 1.2f);
                     }
                 }
@@ -292,7 +292,7 @@ using tetris::progression::ProgressionEventType;
             case ProgressionEventType::CLOCK_TICK:
                 // Threshold shockwave ring from the board every 30-second tick.
                 fx.rings.add(glm::vec3(0.0f, 9.5f, 0.4f), 1.0f, 16.0f,
-                             shs::Color{ 120, 220, 255, 255 }, 0.8f);
+                             shs::render::Color{ 120, 220, 255, 255 }, 0.8f);
                 break;
             case ProgressionEventType::OBJECTIVE_COMPLETED:
                 victory_fireworks(fx);

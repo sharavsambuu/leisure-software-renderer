@@ -72,11 +72,11 @@ struct Uniforms {
     glm::mat4  view;
     glm::vec3  light_dir;
     glm::vec3  camera_pos;
-    shs::Color color;
+    shs::render::Color color;
     glm::vec2  viewport_size;
 };
 
-using FragOutput = std::pair<shs::Color, glm::vec2>;
+using FragOutput = std::pair<shs::render::Color, glm::vec2>;
 
 static inline int clampi(int v, int lo, int hi)
 {
@@ -92,24 +92,24 @@ static inline float clampf(float v, float lo, float hi)
     return v;
 }
 
-static inline shs::Color color_from_rgbaf(float r, float g, float b, float a)
+static inline shs::render::Color color_from_rgbaf(float r, float g, float b, float a)
 {
     r = std::min(255.0f, std::max(0.0f, r));
     g = std::min(255.0f, std::max(0.0f, g));
     b = std::min(255.0f, std::max(0.0f, b));
     a = std::min(255.0f, std::max(0.0f, a));
-    return shs::Color{ (uint8_t)r, (uint8_t)g, (uint8_t)b, (uint8_t)a };
+    return shs::render::Color{ (uint8_t)r, (uint8_t)g, (uint8_t)b, (uint8_t)a };
 }
 
-static inline shs::Color monkey_color_from_i(int i)
+static inline shs::render::Color monkey_color_from_i(int i)
 {
     const int m = i % 6;
-    if (m == 0) return shs::Color{  60, 100, 200, 255 };
-    if (m == 1) return shs::Color{ 200,  90,  80, 255 };
-    if (m == 2) return shs::Color{  80, 200, 120, 255 };
-    if (m == 3) return shs::Color{ 210, 180,  80, 255 };
-    if (m == 4) return shs::Color{ 180,  90, 210, 255 };
-    return             shs::Color{  80, 180, 200, 255 };
+    if (m == 0) return shs::render::Color{  60, 100, 200, 255 };
+    if (m == 1) return shs::render::Color{ 200,  90,  80, 255 };
+    if (m == 2) return shs::render::Color{  80, 200, 120, 255 };
+    if (m == 3) return shs::render::Color{ 210, 180,  80, 255 };
+    if (m == 4) return shs::render::Color{ 180,  90, 210, 255 };
+    return             shs::render::Color{  80, 180, 200, 255 };
 }
 
 /*
@@ -160,7 +160,7 @@ static FragOutput velocity_fragment_shader(const shs::Varyings& in, const Unifor
 
     result = glm::clamp(result, 0.0f, 1.0f);
 
-    shs::Color final_color = {
+    shs::render::Color final_color = {
         (uint8_t)(result.r * 255),
         (uint8_t)(result.g * 255),
         (uint8_t)(result.b * 255),
@@ -256,7 +256,7 @@ public:
 class MonkeyObject : public shs::AbstractObject3D
 {
 public:
-    MonkeyObject(ModelGeometry* shared_geom, glm::vec3 base_position, glm::vec3 scale, shs::Color color, bool rotate_enabled, float rotate_speed_deg, int idx)
+    MonkeyObject(ModelGeometry* shared_geom, glm::vec3 base_position, glm::vec3 scale, shs::render::Color color, bool rotate_enabled, float rotate_speed_deg, int idx)
     {
         this->geometry          = shared_geom;
         this->scale             = scale;
@@ -320,7 +320,7 @@ public:
     glm::vec3      position;
     glm::vec3      prev_position;
 
-    shs::Color     color;
+    shs::render::Color     color;
 
     bool  rotate_enabled;
     float rotate_speed_deg;
@@ -389,7 +389,7 @@ public:
 // ==========================================
 
 static void draw_triangle_velocity_tile(
-    shs::RT_ColorDepthVelocity &rt,
+    shs::render::RT_ColorDepthVelocity &rt,
     const std::vector<glm::vec3> &vertices,
     const std::vector<glm::vec3> &normals,
     std::function<shs::Varyings(const glm::vec3&, const glm::vec3&)> vertex_shader,
@@ -459,7 +459,7 @@ static void draw_triangle_velocity_tile(
 // ==========================================
 
 static void post_process_motion_blur(
-    const shs::RT_ColorDepthVelocity& src,
+    const shs::render::RT_ColorDepthVelocity& src,
     shs::Canvas& dst,
     shs::Job::ThreadedPriorityJobSystem* job_system,
     shs::Job::WaitGroup& wait_group,
@@ -526,7 +526,7 @@ static void post_process_motion_blur(
 
                             if (std::abs(zs - z0) > DEPTH_REJECT_EPS) continue;
 
-                            shs::Color c = col.at(sx, sy);
+                            shs::render::Color c = col.at(sx, sy);
                             r += (float)c.r;
                             g += (float)c.g;
                             b += (float)c.b;
@@ -558,7 +558,7 @@ static void post_process_motion_blur(
 class RendererSystem : public shs::AbstractSystem
 {
 public:
-    RendererSystem(HelloScene *scene, shs::Job::ThreadedPriorityJobSystem *job_sys, shs::RT_ColorDepthVelocity *target)
+    RendererSystem(HelloScene *scene, shs::Job::ThreadedPriorityJobSystem *job_sys, shs::render::RT_ColorDepthVelocity *target)
         : scene(scene), job_system(job_sys), target(target)
     {}
 
@@ -566,7 +566,7 @@ public:
     {
         (void)delta_time;
 
-        this->target->clear(shs::Color{20, 20, 25, 255});
+        this->target->clear(shs::render::Color{20, 20, 25, 255});
 
         glm::mat4 view = this->scene->viewer->camera->view_matrix;
         glm::mat4 proj = this->scene->viewer->camera->projection_matrix;
@@ -643,7 +643,7 @@ public:
 private:
     HelloScene                          *scene;
     shs::Job::ThreadedPriorityJobSystem *job_system;
-    shs::RT_ColorDepthVelocity          *target;
+    shs::render::RT_ColorDepthVelocity          *target;
     shs::Job::WaitGroup                  wait_group;
 
     glm::mat4 prev_view_matrix = glm::mat4(1.0f);
@@ -670,9 +670,9 @@ private:
 class SystemProcessor
 {
 public:
-    SystemProcessor(HelloScene *scene, shs::Job::ThreadedPriorityJobSystem *job_sys, shs::RT_ColorDepthVelocity *target)
+    SystemProcessor(HelloScene *scene, shs::Job::ThreadedPriorityJobSystem *job_sys, shs::render::RT_ColorDepthVelocity *target)
     {
-        this->command_processor = new shs::CommandProcessor();
+        this->command_processor = new shs::input::CommandProcessor();
         this->renderer_system   = new RendererSystem(scene, job_sys, target);
         this->logic_system      = new LogicSystem(scene);
     }
@@ -694,7 +694,7 @@ public:
 
     inline void set_prev_view(glm::mat4 m) { renderer_system->set_prev_view(m); }
 
-    shs::CommandProcessor *command_processor;
+    shs::input::CommandProcessor *command_processor;
     LogicSystem           *logic_system;
     RendererSystem        *renderer_system;
 };
@@ -718,7 +718,7 @@ int main(int argc, char* argv[])
     Viewer     *viewer      = new Viewer(glm::vec3(0.0f, 5.0f, -26.0f), 50.0f);
     HelloScene *hello_scene = new HelloScene(viewer);
 
-    shs::RT_ColorDepthVelocity rt_scene(CANVAS_WIDTH, CANVAS_HEIGHT, viewer->camera->z_near, viewer->camera->z_far, shs::Color{20,20,25,255});
+    shs::render::RT_ColorDepthVelocity rt_scene(CANVAS_WIDTH, CANVAS_HEIGHT, viewer->camera->z_near, viewer->camera->z_far, shs::render::Color{20,20,25,255});
     shs::Canvas post_canvas(CANVAS_WIDTH, CANVAS_HEIGHT);
 
     SystemProcessor *sys = new SystemProcessor(hello_scene, job_system, &rt_scene);

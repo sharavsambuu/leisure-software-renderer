@@ -37,19 +37,19 @@
 // ---------------------------------------------------------------------------
 // 1. Same-entity checks: old root spellings vs owner-namespace spellings.
 // ---------------------------------------------------------------------------
-static_assert(std::is_same_v<shs::AABB, shs::geometry::AABB>,
+static_assert(std::is_same_v<shs::geometry::AABB, shs::geometry::AABB>,
     "root AABB spelling must denote shs::geometry::AABB");
-static_assert(std::is_same_v<shs::RenderBackendType, shs::render::RenderBackendType>,
+static_assert(std::is_same_v<shs::render::RenderBackendType, shs::render::RenderBackendType>,
     "root RenderBackendType spelling must denote shs::render::RenderBackendType");
-static_assert(std::is_same_v<shs::IRenderBackend, shs::rhi::IRenderBackend>,
+static_assert(std::is_same_v<shs::rhi::IRenderBackend, shs::rhi::IRenderBackend>,
     "root IRenderBackend spelling must denote shs::rhi::IRenderBackend");
-static_assert(std::is_same_v<shs::Context, shs::app::Context>,
+static_assert(std::is_same_v<shs::app::Context, shs::app::Context>,
     "root Context spelling must denote the app-owned shs::app::Context");
-static_assert(std::is_same_v<shs::RuntimeState, shs::app::SessionState>,
+static_assert(std::is_same_v<shs::app::RuntimeState, shs::app::SessionState>,
     "root RuntimeState alias must denote shs::app::SessionState");
 static_assert(std::is_same_v<shs::app::RuntimeState, shs::app::SessionState>,
     "app-namespaced RuntimeState alias must denote shs::app::SessionState");
-static_assert(std::is_same_v<shs::CameraRig, shs::camera::CameraRig>,
+static_assert(std::is_same_v<shs::camera::CameraRig, shs::camera::CameraRig>,
     "root CameraRig spelling must denote shs::camera::CameraRig");
 
 namespace cutover_adl_probe
@@ -73,7 +73,7 @@ int main()
     // -----------------------------------------------------------------
     {
         // Old root spelling, enum overload.
-        const auto via_root_enum = shs::create_render_backend(shs::RenderBackendType::Software);
+        const auto via_root_enum = shs::app::create_render_backend(shs::RenderBackendType::Software);
         // New owner spelling, string overload (exercises the to_lower_ascii
         // parse path inside the same owner namespace).
         const auto via_app_text = shs::app::create_render_backend("SOFTWARE");
@@ -102,7 +102,7 @@ int main()
     //    string<->id mapping must be unchanged by the namespace move.
     // -----------------------------------------------------------------
     {
-        static_assert(std::is_same_v<std::underlying_type_t<shs::RenderBackendType>, std::uint8_t>,
+        static_assert(std::is_same_v<std::underlying_type_t<shs::render::RenderBackendType>, std::uint8_t>,
             "RenderBackendType underlying type must stay uint8_t");
         static_assert(static_cast<std::uint8_t>(shs::RenderBackendType::Software) == 0,
             "Software id drifted");
@@ -111,7 +111,7 @@ int main()
         static_assert(static_cast<std::uint8_t>(shs::RenderBackendType::Vulkan) == 2,
             "Vulkan id drifted");
 
-        const shs::RenderBackendType ids[] = {
+        const shs::render::RenderBackendType ids[] = {
             shs::RenderBackendType::Software,
             shs::RenderBackendType::OpenGL,
             shs::RenderBackendType::Vulkan,
@@ -120,7 +120,7 @@ int main()
         for (int i = 0; i < 3; ++i)
         {
             // Old spelling for the name mapping, new spelling for the parse.
-            const char* named = shs::render_backend_type_name(ids[i]);
+            const char* named = shs::render::render_backend_type_name(ids[i]);
             const auto parsed = shs::app::parse_render_backend_type(
                 names[i], shs::render::RenderBackendType::Software);
             ok = std::string(named) == names[i] && ok;
@@ -139,16 +139,16 @@ int main()
     // -----------------------------------------------------------------
     {
         shs::camera::CameraRig rig{};
-        shs::CameraRig& same_rig = rig; // old spelling binds to the same type
+        shs::camera::CameraRig& same_rig = rig; // old spelling binds to the same type
         static_cast<void>(same_rig);
 
-        shs::RuntimeState state{};
+        shs::app::RuntimeState state{};
         shs::app::SessionState& same_state = state;
         static_cast<void>(same_state);
 
         shs::geometry::AABB box{};
         box.expand(glm::vec3(1.0f, 2.0f, 3.0f));
-        shs::AABB& same_box = box;
+        shs::geometry::AABB& same_box = box;
         ok = same_box.center().x == 1.0f && same_box.center().y == 2.0f && ok;
     }
 

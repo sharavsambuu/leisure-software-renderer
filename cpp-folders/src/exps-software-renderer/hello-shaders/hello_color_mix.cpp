@@ -22,7 +22,7 @@
 * - https://thebookofshaders.com/06/
 */
 
-shs::Color fragment_shader(std::array<double, 2> uniform_uv, double uniform_time)
+shs::render::Color fragment_shader(std::array<double, 2> uniform_uv, double uniform_time)
 {
     glm::vec3 color_a = {0.149, 0.141, 0.912};
     glm::vec3 color_b = {1.000, 0.833, 0.224};
@@ -104,7 +104,7 @@ int main(int argc, char* argv[])
                     for (int x = start_x; x < end_x; x++) {
                         for (int y = start_y; y < end_y; y++) {
                             std::array<double, 2> uv = {float(x), float(y)};
-                            shs::Color shader_output = fragment_shader(uv, time_accumulator);
+                            shs::render::Color shader_output = fragment_shader(uv, time_accumulator);
                             {
                                 //std::lock_guard<std::mutex> lock(canvas_mutex);
                                 shs::Canvas::draw_pixel(*main_canvas, x, y, shader_output);

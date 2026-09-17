@@ -21,7 +21,7 @@ namespace
 
     bool test_format_mapping()
     {
-        using shs::RHIFormat;
+        using shs::rhi::RHIFormat;
         if (shs::vk_format_of(RHIFormat::RGBA8_UNorm) != VK_FORMAT_R8G8B8A8_UNORM) return false;
         if (shs::vk_format_of(RHIFormat::BGRA8_UNorm) != VK_FORMAT_B8G8R8A8_UNORM) return false;
         if (shs::vk_format_of(RHIFormat::RGBA16F) != VK_FORMAT_R16G16B16A16_SFLOAT) return false;
@@ -76,24 +76,24 @@ namespace
 
     bool test_desc_hash_stability()
     {
-        shs::RHIBufferDesc a{};
+        shs::rhi::RHIBufferDesc a{};
         a.size_bytes = 1024;
         a.usage = shs::RHIBufferUsage_Vertex | shs::RHIBufferUsage_TransferDst;
         a.memory = shs::RHIMemoryClass::GPUOnly;
 
         if (shs::hash_buffer_desc(a) != shs::hash_buffer_desc(a)) return false;
 
-        shs::RHIBufferDesc b = a;
+        shs::rhi::RHIBufferDesc b = a;
         b.usage |= shs::RHIBufferUsage_Storage;
         if (shs::hash_buffer_desc(a) == shs::hash_buffer_desc(b)) return false;
 
-        shs::RHIBufferDesc c = a;
+        shs::rhi::RHIBufferDesc c = a;
         c.memory = shs::RHIMemoryClass::CPUVisible;
         if (shs::hash_buffer_desc(a) == shs::hash_buffer_desc(c)) return false;
 
-        shs::RHIImageDesc i1{};
+        shs::rhi::RHIImageDesc i1{};
         i1.width = 64; i1.height = 64; i1.format = shs::RHIFormat::RGBA8_UNorm;
-        shs::RHIImageDesc i2 = i1;
+        shs::rhi::RHIImageDesc i2 = i1;
         if (shs::hash_image_desc(i1) != shs::hash_image_desc(i2)) return false;
         i2.layers = 6;
         if (shs::hash_image_desc(i1) == shs::hash_image_desc(i2)) return false;
@@ -105,19 +105,19 @@ namespace
         static const uint32_t code_a[] = {0x07230203, 0x00010000, 0x0008000a, 0xdeadbeef};
         static const uint32_t code_b[] = {0x07230203, 0x00010000, 0x0008000a, 0xfeedface};
 
-        shs::RHIShaderModuleDesc m1{};
+        shs::rhi::RHIShaderModuleDesc m1{};
         m1.stage = shs::RHIShaderStage::Vertex;
         m1.bytecode = code_a;
         m1.bytecode_size = sizeof(code_a);
-        shs::RHIShaderModuleDesc m2 = m1;
-        if (shs::hash_shader_module_desc(m1) != shs::hash_shader_module_desc(m2)) return false;
+        shs::rhi::RHIShaderModuleDesc m2 = m1;
+        if (shs::rhi::hash_shader_module_desc(m1) != shs::rhi::hash_shader_module_desc(m2)) return false;
 
         m2.bytecode = code_b; // same size, different content
-        if (shs::hash_shader_module_desc(m1) == shs::hash_shader_module_desc(m2)) return false;
+        if (shs::rhi::hash_shader_module_desc(m1) == shs::rhi::hash_shader_module_desc(m2)) return false;
 
         m2.bytecode = code_a;
         m2.stage = shs::RHIShaderStage::Fragment;
-        if (shs::hash_shader_module_desc(m1) == shs::hash_shader_module_desc(m2)) return false;
+        if (shs::rhi::hash_shader_module_desc(m1) == shs::rhi::hash_shader_module_desc(m2)) return false;
         return true;
     }
 
@@ -125,26 +125,26 @@ namespace
 
     bool test_resource_registry_dedupe()
     {
-        shs::VulkanResourceRegistry reg;
+        shs::rhi::VulkanResourceRegistry reg;
 
-        shs::RHIBufferDesc d{};
+        shs::rhi::RHIBufferDesc d{};
         d.size_bytes = 4096;
         d.usage = shs::RHIBufferUsage_Vertex | shs::RHIBufferUsage_Index;
         d.memory = shs::RHIMemoryClass::GPUOnly;
 
         uint32_t creates = 0;
-        const uint64_t id1 = reg.intern_buffer(d, [&](uint64_t, const shs::RHIBufferDesc&) {
+        const uint64_t id1 = reg.intern_buffer(d, [&](uint64_t, const shs::rhi::RHIBufferDesc&) {
             creates++;
             return true;
         });
-        const uint64_t id2 = reg.intern_buffer(d, [&](uint64_t, const shs::RHIBufferDesc&) {
+        const uint64_t id2 = reg.intern_buffer(d, [&](uint64_t, const shs::rhi::RHIBufferDesc&) {
             creates++;
             return true;
         });
         if (id1 == 0 || id1 != id2) return false;   // identical desc → identical stable ID
         if (creates != 1) return false;             // explicit cache: one creation call
 
-        const shs::VulkanResourceStats& st = reg.stats();
+        const shs::rhi::VulkanResourceStats& st = reg.stats();
         if (st.create_calls != 1 || st.cache_hits != 1) return false;
         if (reg.find_buffer(id1) == nullptr) return false;
         if (reg.find_buffer(shs::VulkanResourceRegistry::kBufferIdBase + 99) != nullptr) return false;
@@ -153,26 +153,26 @@ namespace
 
     bool test_resource_registry_failure_semantics()
     {
-        shs::VulkanResourceRegistry reg;
-        shs::RHIBufferDesc d{};
+        shs::rhi::VulkanResourceRegistry reg;
+        shs::rhi::RHIBufferDesc d{};
         d.size_bytes = 128;
         d.usage = shs::RHIBufferUsage_Uniform;
 
-        const uint64_t failed = reg.intern_buffer(d, [](uint64_t, const shs::RHIBufferDesc&) {
+        const uint64_t failed = reg.intern_buffer(d, [](uint64_t, const shs::rhi::RHIBufferDesc&) {
             return false; // device creation failure path
         });
         if (failed != 0) return false;                   // no ID on failure
         if (reg.stats().create_calls != 0) return false; // no create counted
 
         // Retry after failure succeeds and mints a fresh ID.
-        const uint64_t ok = reg.intern_buffer(d, [](uint64_t, const shs::RHIBufferDesc&) { return true; });
+        const uint64_t ok = reg.intern_buffer(d, [](uint64_t, const shs::rhi::RHIBufferDesc&) { return true; });
         if (ok == 0 || reg.find_buffer(ok) == nullptr) return false;
 
         // Image namespace is separate from buffer namespace.
-        shs::RHIImageDesc img{};
+        shs::rhi::RHIImageDesc img{};
         img.width = 8; img.height = 8; img.format = shs::RHIFormat::RGBA8_UNorm;
         img.usage = shs::RHIImageUsage_ColorAttachment;
-        const uint64_t iid = reg.intern_image(img, [](uint64_t, const shs::RHIImageDesc&) { return true; });
+        const uint64_t iid = reg.intern_image(img, [](uint64_t, const shs::rhi::RHIImageDesc&) { return true; });
         if (iid == 0 || reg.find_image(iid) == nullptr) return false;
         if ((iid >> 56) != (shs::VulkanResourceRegistry::kImageIdBase >> 56)) return false;
         return true;
@@ -185,7 +185,7 @@ namespace
         static const uint32_t vs_code[] = {0x07230203, 0x1};
         static const uint32_t fs_code[] = {0x07230203, 0x2};
 
-        shs::RHIGraphicsPipelineDesc d{};
+        shs::rhi::RHIGraphicsPipelineDesc d{};
         d.vs.stage = shs::RHIShaderStage::Vertex;
         d.vs.bytecode = vs_code;
         d.vs.bytecode_size = sizeof(vs_code);
@@ -194,27 +194,27 @@ namespace
         d.fs.bytecode_size = sizeof(fs_code);
         d.rt.color_format = shs::RHIFormat::BGRA8_UNorm;
 
-        shs::VulkanPipelineCache cache;
+        shs::rhi::VulkanPipelineCache cache;
         uint32_t creates = 0;
-        const uint64_t p1 = cache.intern_graphics(d, [&](uint64_t, const shs::RHIGraphicsPipelineDesc&) {
+        const uint64_t p1 = cache.intern_graphics(d, [&](uint64_t, const shs::rhi::RHIGraphicsPipelineDesc&) {
             creates++;
             return true;
         });
-        const uint64_t p2 = cache.intern_graphics(d, [&](uint64_t, const shs::RHIGraphicsPipelineDesc&) {
+        const uint64_t p2 = cache.intern_graphics(d, [&](uint64_t, const shs::rhi::RHIGraphicsPipelineDesc&) {
             creates++;
             return true;
         });
         if (p1 == 0 || p1 != p2 || creates != 1) return false;
         if (cache.stats().cache_hits != 1) return false;
 
-        const shs::VulkanPipelineRecord* record = cache.find_graphics(p1);
+        const shs::rhi::VulkanPipelineRecord* record = cache.find_graphics(p1);
         if (!record || record->id != p1 ||
             record->desc_hash != shs::hash_graphics_pipeline_desc(d)) return false;
 
         // A state field change must produce a distinct slot (no accidental reuse).
-        shs::RHIGraphicsPipelineDesc d2 = d;
+        shs::rhi::RHIGraphicsPipelineDesc d2 = d;
         d2.depth.enable_write = !d2.depth.enable_write;
-        const uint64_t p3 = cache.intern_graphics(d2, [](uint64_t, const shs::RHIGraphicsPipelineDesc&) { return true; });
+        const uint64_t p3 = cache.intern_graphics(d2, [](uint64_t, const shs::rhi::RHIGraphicsPipelineDesc&) { return true; });
         if (p3 == 0 || p3 == p1) return false;
         record = cache.find_graphics(p3);
         if (!record || record->id != p3 ||
@@ -226,23 +226,23 @@ namespace
         auto failed_desc = d;
         failed_desc.blend.enable = !failed_desc.blend.enable;
         uint64_t failed_id = 0;
-        if (cache.intern_graphics(failed_desc, [&](uint64_t id, const shs::RHIGraphicsPipelineDesc&) {
+        if (cache.intern_graphics(failed_desc, [&](uint64_t id, const shs::rhi::RHIGraphicsPipelineDesc&) {
                 failed_id = id;
                 return false;
             }) != 0) return false;
         if (failed_id == 0 || cache.find_graphics(failed_id)) return false;
-        const uint64_t retried = cache.intern_graphics(failed_desc, [](uint64_t, const shs::RHIGraphicsPipelineDesc&) { return true; });
+        const uint64_t retried = cache.intern_graphics(failed_desc, [](uint64_t, const shs::rhi::RHIGraphicsPipelineDesc&) { return true; });
         record = cache.find_graphics(retried);
         if (!record || record->id != retried || cache.find_graphics(failed_id)) return false;
 
         // Shader modules intern independently and dedupe by content hash.
         uint32_t module_creates = 0;
-        const shs::RHIShaderModuleDesc vs = d.vs;
-        const uint64_t m1 = cache.intern_shader_module(vs, [&](uint64_t, const shs::RHIShaderModuleDesc&) {
+        const shs::rhi::RHIShaderModuleDesc vs = d.vs;
+        const uint64_t m1 = cache.intern_shader_module(vs, [&](uint64_t, const shs::rhi::RHIShaderModuleDesc&) {
             module_creates++;
             return true;
         });
-        const uint64_t m2 = cache.intern_shader_module(vs, [&](uint64_t, const shs::RHIShaderModuleDesc&) {
+        const uint64_t m2 = cache.intern_shader_module(vs, [&](uint64_t, const shs::rhi::RHIShaderModuleDesc&) {
             module_creates++;
             return true;
         });
@@ -257,33 +257,33 @@ namespace
         std::vector<uint32_t> calls{};
         std::vector<uint64_t> ids{};
 
-        void begin_pass(const shs::RHICmdBeginPassDesc& d) { calls.push_back(1); ids.push_back(d.color_target); }
-        void end_pass(const shs::RHICmdEndPassDesc&) { calls.push_back(2); ids.push_back(0); }
-        void bind_pipeline(const shs::RHICmdBindPipelineDesc& d) { calls.push_back(3); ids.push_back(d.pipeline); }
-        void bind_vertex_buffer(const shs::RHICmdBindVertexBufferDesc& d) { calls.push_back(4); ids.push_back(d.buffer); }
-        void bind_index_buffer(const shs::RHICmdBindIndexBufferDesc& d) { calls.push_back(5); ids.push_back(d.buffer); }
-        void draw_indexed(const shs::RHICmdDrawIndexedDesc& d) { calls.push_back(6); ids.push_back(d.index_count); }
-        void dispatch(const shs::RHICmdDispatchDesc& d) { calls.push_back(7); ids.push_back(d.group_x); }
-        void barrier(const shs::RHICmdBarrierDesc& d) { calls.push_back(8); ids.push_back((uint64_t)d.memory.src_stage); }
+        void begin_pass(const shs::rhi::RHICmdBeginPassDesc& d) { calls.push_back(1); ids.push_back(d.color_target); }
+        void end_pass(const shs::rhi::RHICmdEndPassDesc&) { calls.push_back(2); ids.push_back(0); }
+        void bind_pipeline(const shs::rhi::RHICmdBindPipelineDesc& d) { calls.push_back(3); ids.push_back(d.pipeline); }
+        void bind_vertex_buffer(const shs::rhi::RHICmdBindVertexBufferDesc& d) { calls.push_back(4); ids.push_back(d.buffer); }
+        void bind_index_buffer(const shs::rhi::RHICmdBindIndexBufferDesc& d) { calls.push_back(5); ids.push_back(d.buffer); }
+        void draw_indexed(const shs::rhi::RHICmdDrawIndexedDesc& d) { calls.push_back(6); ids.push_back(d.index_count); }
+        void dispatch(const shs::rhi::RHICmdDispatchDesc& d) { calls.push_back(7); ids.push_back(d.group_x); }
+        void barrier(const shs::rhi::RHICmdBarrierDesc& d) { calls.push_back(8); ids.push_back((uint64_t)d.memory.src_stage); }
     };
 
     bool test_command_stream_translation()
     {
-        std::vector<shs::RHICmd> stream;
-        shs::RHICmdBeginPassDesc bp{};
+        std::vector<shs::rhi::RHICmd> stream;
+        shs::rhi::RHICmdBeginPassDesc bp{};
         bp.color_target = 0x53ull;
         bp.clear_color = true;
-        stream.push_back(shs::rhi_cmd_begin_pass(bp));
-        stream.push_back(shs::rhi_cmd_bind_pipeline(0x47ull));
-        stream.push_back(shs::rhi_cmd_bind_vertex_buffer(0x52ull, 0));
-        stream.push_back(shs::rhi_cmd_bind_index_buffer(0x52ull, 16, true));
-        shs::RHICmdDrawIndexedDesc di{};
+        stream.push_back(shs::rhi::rhi_cmd_begin_pass(bp));
+        stream.push_back(shs::rhi::rhi_cmd_bind_pipeline(0x47ull));
+        stream.push_back(shs::rhi::rhi_cmd_bind_vertex_buffer(0x52ull, 0));
+        stream.push_back(shs::rhi::rhi_cmd_bind_index_buffer(0x52ull, 16, true));
+        shs::rhi::RHICmdDrawIndexedDesc di{};
         di.index_count = 3;
-        stream.push_back(shs::rhi_cmd_draw_indexed(di));
-        stream.push_back(shs::rhi_cmd_end_pass());
+        stream.push_back(shs::rhi::rhi_cmd_draw_indexed(di));
+        stream.push_back(shs::rhi::rhi_cmd_end_pass());
 
         SpySink sink;
-        if (!shs::record_commands(std::span<const shs::RHICmd>(stream.data(), stream.size()), sink)) return false;
+        if (!shs::rhi::record_commands(std::span<const shs::rhi::RHICmd>(stream.data(), stream.size()), sink)) return false;
 
         if (sink.calls.size() != 6) return false;
         const uint32_t expected[] = {1, 3, 4, 5, 6, 2};
@@ -298,18 +298,18 @@ namespace
 
     bool test_command_stream_dispatch_and_barrier()
     {
-        std::vector<shs::RHICmd> stream;
-        stream.push_back(shs::rhi_cmd_bind_pipeline(67));
-        stream.push_back(shs::rhi_cmd_dispatch(4, 4, 1));
-        shs::RHIMemoryBarrierDesc mb{};
+        std::vector<shs::rhi::RHICmd> stream;
+        stream.push_back(shs::rhi::rhi_cmd_bind_pipeline(67));
+        stream.push_back(shs::rhi::rhi_cmd_dispatch(4, 4, 1));
+        shs::rhi::RHIMemoryBarrierDesc mb{};
         mb.src_stage = shs::RHIPipelineStage::ComputeShader;
         mb.dst_stage = shs::RHIPipelineStage::FragmentShader;
         mb.src_access = shs::RHIAccess::Write;
         mb.dst_access = shs::RHIAccess::Read;
-        stream.push_back(shs::rhi_cmd_barrier(mb));
+        stream.push_back(shs::rhi::rhi_cmd_barrier(mb));
 
         SpySink sink;
-        if (!shs::record_commands(std::span<const shs::RHICmd>(stream.data(), stream.size()), sink)) return false;
+        if (!shs::rhi::record_commands(std::span<const shs::rhi::RHICmd>(stream.data(), stream.size()), sink)) return false;
         if (sink.calls != std::vector<uint32_t>{3, 7, 8}) return false;
         if (sink.ids[0] != 67 || sink.ids[1] != 4) return false;
         if (sink.ids[2] != (uint64_t)shs::RHIPipelineStage::ComputeShader) return false;
@@ -318,15 +318,15 @@ namespace
 
     bool test_nested_pass_rejected_before_recording()
     {
-        const shs::RHICmd stream[] = {
-            shs::rhi_cmd_barrier({}),
-            shs::rhi_cmd_begin_pass({}),
-            shs::rhi_cmd_begin_pass({}),
-            shs::rhi_cmd_end_pass(),
-            shs::rhi_cmd_end_pass()
+        const shs::rhi::RHICmd stream[] = {
+            shs::rhi::rhi_cmd_barrier({}),
+            shs::rhi::rhi_cmd_begin_pass({}),
+            shs::rhi::rhi_cmd_begin_pass({}),
+            shs::rhi::rhi_cmd_end_pass(),
+            shs::rhi::rhi_cmd_end_pass()
         };
         SpySink sink;
-        const auto result = shs::record_commands(stream, sink);
+        const auto result = shs::rhi::record_commands(stream, sink);
         return !result && result.error().code == shs::VulkanRecordingError::InvalidRecordingOrder &&
                result.error().command_index == 2 && sink.calls.empty();
     }
@@ -335,20 +335,20 @@ namespace
     {
         struct RejectingSink : SpySink
         {
-            std::expected<void, shs::VulkanRecordingError> bind_pipeline(
-                const shs::RHICmdBindPipelineDesc&)
+            std::expected<void, shs::rhi::VulkanRecordingError> bind_pipeline(
+                const shs::rhi::RHICmdBindPipelineDesc&)
             {
                 calls.push_back(3);
                 return std::unexpected(shs::VulkanRecordingError::UnsupportedCommand);
             }
         };
-        const shs::RHICmd stream[] = {
-            shs::rhi_cmd_begin_pass({}),
-            shs::rhi_cmd_bind_pipeline(47),
-            shs::rhi_cmd_end_pass()
+        const shs::rhi::RHICmd stream[] = {
+            shs::rhi::rhi_cmd_begin_pass({}),
+            shs::rhi::rhi_cmd_bind_pipeline(47),
+            shs::rhi::rhi_cmd_end_pass()
         };
         RejectingSink sink;
-        const auto result = shs::record_commands(stream, sink);
+        const auto result = shs::rhi::record_commands(stream, sink);
         if (result || result.error().code != shs::VulkanRecordingError::UnsupportedCommand ||
             result.error().command_index != 1 ||
             result.error().stage != shs::VulkanRecordingStage::Recording ||
@@ -358,17 +358,17 @@ namespace
 
     bool test_recorder_unsupported_commands()
     {
-        shs::VulkanBufferPool buffers{std::pmr::get_default_resource()};
-        shs::VulkanImagePool images{std::pmr::get_default_resource()};
-        shs::VulkanCommandRecorder recorder{VK_NULL_HANDLE, VK_NULL_HANDLE, buffers, images};
+        shs::rhi::VulkanBufferPool buffers{std::pmr::get_default_resource()};
+        shs::rhi::VulkanImagePool images{std::pmr::get_default_resource()};
+        shs::rhi::VulkanCommandRecorder recorder{VK_NULL_HANDLE, VK_NULL_HANDLE, buffers, images};
         // Unsupported operations reject before touching Vulkan, even when called directly.
-        const std::expected<void, shs::VulkanRecordingError> results[] = {
+        const std::expected<void, shs::rhi::VulkanRecordingError> results[] = {
             recorder.begin_pass({}), recorder.end_pass({}), recorder.bind_pipeline({47}),
             recorder.draw_indexed({}), recorder.dispatch({})
         };
         for (const auto& result : results)
             if (result || result.error() != shs::VulkanRecordingError::UnsupportedCommand) return false;
-        const auto empty = shs::record_commands({}, recorder);
+        const auto empty = shs::rhi::record_commands({}, recorder);
         if (empty || empty.error().code != shs::VulkanRecordingError::DeviceUnavailable ||
             empty.error().command_index != SIZE_MAX ||
             empty.error().stage != shs::VulkanRecordingStage::Prerequisite) return false;
@@ -548,14 +548,14 @@ namespace
 
     bool test_compute_pipeline_lookup()
     {
-        shs::VulkanPipelineCache cache;
-        shs::RHIComputePipelineDesc desc{};
+        shs::rhi::VulkanPipelineCache cache;
+        shs::rhi::RHIComputePipelineDesc desc{};
         const auto create = [](auto, const auto&) { return true; };
         const auto first = cache.intern_compute(desc, create);
         if (!first || !cache.find_compute(first) || cache.find_compute(first)->id != first ||
             cache.intern_compute(desc, create) != first || cache.find_graphics(first) ||
             cache.find_compute(0) || cache.find_compute(UINT64_MAX)) return false;
-        shs::VulkanPipelineCache retry;
+        shs::rhi::VulkanPipelineCache retry;
         if (retry.intern_compute(desc, [](auto, const auto&) { return false; }) != 0 ||
             retry.find_compute(shs::VulkanPipelineCache::kComputePipelineIdBase + 1)) return false;
         const auto second = retry.intern_compute(desc, create);
@@ -566,7 +566,7 @@ namespace
 
     bool test_frame_sync_slots()
     {
-        shs::VulkanFrameSync sync;
+        shs::rhi::VulkanFrameSync sync;
         sync.configure(2);
 
         (void)sync.begin_frame(0);
@@ -588,7 +588,7 @@ namespace
 
     bool test_frame_sync_triple_buffer()
     {
-        shs::VulkanFrameSync sync;
+        shs::rhi::VulkanFrameSync sync;
         sync.configure(3);
         for (uint64_t f = 0; f < 3; ++f)
         {
@@ -606,17 +606,17 @@ namespace
 
     bool test_backend_headless_contract()
     {
-        shs::VulkanRenderBackend backend;
+        shs::rhi::VulkanRenderBackend backend;
         if (backend.type() != shs::RenderBackendType::Vulkan) return false;
         if (backend.device_ready()) return false; // no device by default
 
-        const shs::BackendCapabilities caps = backend.capabilities();
+        const shs::rhi::BackendCapabilities caps = backend.capabilities();
         if (!caps.supports_offscreen) return false;
         if (caps.limits.max_frames_in_flight != 2) return false;
 
         // Headless mode: GPU entry points no-op, frame bookkeeping works.
-        shs::Context ctx{};
-        shs::RenderBackendFrameInfo frame{};
+        shs::app::Context ctx{};
+        shs::rhi::RenderBackendFrameInfo frame{};
         frame.frame_index = 0;
         frame.width = 64;
         frame.height = 64;
@@ -624,10 +624,10 @@ namespace
         backend.end_frame(ctx, frame);
         if (backend.frame_sync_stats().begin_frames != 1) return false;
 
-        std::vector<shs::RHICmd> stream;
-        stream.push_back(shs::rhi_cmd_bind_pipeline(0x47ull));
+        std::vector<shs::rhi::RHICmd> stream;
+        stream.push_back(shs::rhi::rhi_cmd_bind_pipeline(0x47ull));
         const auto recorded = backend.record_frame_commands(
-            std::span<const shs::RHICmd>(stream.data(), stream.size()));
+            std::span<const shs::rhi::RHICmd>(stream.data(), stream.size()));
         if (recorded || recorded.error().code != shs::VulkanRecordingError::DeviceUnavailable ||
             recorded.error().command_index != SIZE_MAX) return false;
         // Even an empty stream must not disguise an unavailable execution edge.
@@ -641,13 +641,13 @@ namespace
 
     bool test_backend_create_info_purity()
     {
-        shs::RHIBufferDesc bd{};
+        shs::rhi::RHIBufferDesc bd{};
         bd.size_bytes = 256;
         bd.usage = shs::RHIBufferUsage_Vertex;
         const VkBufferCreateInfo bci = shs::vk_buffer_create_info(bd);
         if (bci.size != 256 || bci.usage != VK_BUFFER_USAGE_VERTEX_BUFFER_BIT) return false;
 
-        shs::RHIImageDesc id{};
+        shs::rhi::RHIImageDesc id{};
         id.width = 32; id.height = 16; id.format = shs::RHIFormat::RGBA8_UNorm;
         id.usage = shs::RHIImageUsage_ColorAttachment | shs::RHIImageUsage_Sampled;
         const VkImageCreateInfo ici = shs::vk_image_create_info(id);
@@ -655,19 +655,19 @@ namespace
         if (ici.format != VK_FORMAT_R8G8B8A8_UNORM) return false;
         if (ici.mipLevels != 1 || ici.arrayLayers != 1) return false;
 
-        shs::RHISamplerDesc sd{};
+        shs::rhi::RHISamplerDesc sd{};
         const VkSamplerCreateInfo sci = shs::vk_sampler_create_info(sd);
         if (sci.magFilter != VK_FILTER_LINEAR || sci.addressModeU != VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE) return false;
 
-        shs::RHIRasterStateDesc rs{};
+        shs::rhi::RHIRasterStateDesc rs{};
         const VkPipelineRasterizationStateCreateInfo rci = shs::vk_raster_state(rs);
         if (rci.cullMode != VK_CULL_MODE_BACK_BIT || rci.frontFace != VK_FRONT_FACE_COUNTER_CLOCKWISE) return false;
 
-        shs::RHIDepthStateDesc ds{};
+        shs::rhi::RHIDepthStateDesc ds{};
         const VkPipelineDepthStencilStateCreateInfo dci = shs::vk_depth_state(ds);
         if (dci.depthTestEnable != VK_TRUE || dci.depthWriteEnable != VK_TRUE) return false;
 
-        shs::RHIBlendStateDesc bs{};
+        shs::rhi::RHIBlendStateDesc bs{};
         VkPipelineColorBlendAttachmentState att{};
         const VkPipelineColorBlendStateCreateInfo bsci = shs::vk_blend_state(bs, att);
         if (bsci.attachmentCount != 1 || att.blendEnable != VK_FALSE) return false;

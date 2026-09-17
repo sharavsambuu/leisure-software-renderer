@@ -13,9 +13,9 @@ namespace
     // Null handle is invalid; any nonzero id is valid (generation-free).
     bool test_handle_validity()
     {
-        const shs::RTHandle null{};
+        const shs::render::RTHandle null{};
         if (null.valid()) return false;
-        shs::RTHandle h{};
+        shs::render::RTHandle h{};
         h.id = 41;
         if (!h.valid()) return false;
         return true;
@@ -24,7 +24,7 @@ namespace
     // Pixel buffers clear uniformly and address row-major.
     bool test_pixel_buffer()
     {
-        shs::PixelBuffer2D<shs::Color> buf(4, 2, shs::Color{9, 8, 7, 255});
+        shs::render::PixelBuffer2D<shs::render::Color> buf(4, 2, shs::render::Color{9, 8, 7, 255});
         if (buf.w != 4 || buf.h != 2) return false;
         if (buf.at(3, 1).r != 9 || buf.at(0, 0).b != 7) return false;
         buf.at(1, 0).g = 200;

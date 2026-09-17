@@ -302,7 +302,7 @@ struct WorkerPool
 struct GpuPassTimestampSample
 {
     std::string pass_id{};
-    shs::PassId pass_kind = shs::PassId::Unknown;
+    shs::renderpath::PassId pass_kind = shs::PassId::Unknown;
     uint32_t begin_query = UINT32_MAX;
     uint32_t end_query = UINT32_MAX;
     bool success = false;
@@ -443,9 +443,9 @@ struct CompositionParityEntry
 {
     size_t index = 0u;
     std::string name{};
-    shs::RenderPathPreset path_preset = shs::RenderPathPreset::Forward;
-    shs::RenderTechniquePreset technique_preset = shs::RenderTechniquePreset::PBR;
-    shs::RenderCompositionPostStackPreset post_stack = shs::RenderCompositionPostStackPreset::Default;
+    shs::renderpath::RenderPathPreset path_preset = shs::RenderPathPreset::Forward;
+    shs::renderpath::RenderTechniquePreset technique_preset = shs::RenderTechniquePreset::PBR;
+    shs::renderpath::RenderCompositionPostStackPreset post_stack = shs::RenderCompositionPostStackPreset::Default;
 
     bool vk_plan_valid = false;
     bool vk_resource_valid = false;
@@ -482,7 +482,7 @@ struct CompositionParityEntry
 struct LocalShadowCaster
 {
     uint32_t light_index = 0;
-    shs::ShadowTechnique technique = shs::ShadowTechnique::None;
+    shs::lighting::ShadowTechnique technique = shs::ShadowTechnique::None;
     uint32_t layer_base = 0;
     glm::vec3 position_ws{0.0f};
     float range = 1.0f;
@@ -531,8 +531,8 @@ struct FreeCamera
             pitch = std::clamp(pitch, -glm::half_pi<float>() + 0.01f, glm::half_pi<float>() - 0.01f);
         }
 
-        const glm::vec3 fwd = shs::forward_from_yaw_pitch(yaw, pitch);
-        const glm::vec3 right = shs::right_from_forward(fwd);
+        const glm::vec3 fwd = shs::camera::forward_from_yaw_pitch(yaw, pitch);
+        const glm::vec3 right = shs::camera::right_from_forward(fwd);
         const glm::vec3 up(0.0f, 1.0f, 0.0f);
         const float speed = move_speed * (boost ? 2.0f : 1.0f);
         if (move_forward) pos += fwd * speed * dt;
@@ -545,7 +545,7 @@ struct FreeCamera
 
     glm::mat4 view_matrix() const
     {
-        return shs::look_at_lh(pos, pos + shs::forward_from_yaw_pitch(yaw, pitch), glm::vec3(0.0f, 1.0f, 0.0f));
+        return shs::camera::look_at_lh(pos, pos + shs::camera::forward_from_yaw_pitch(yaw, pitch), glm::vec3(0.0f, 1.0f, 0.0f));
     }
 };
 
@@ -588,9 +588,9 @@ enum class FramebufferDebugPreset : uint8_t
     DoFFactor = 14
 };
 
-const char* lighting_technique_name(shs::RenderTechniquePreset tech)
+const char* lighting_technique_name(shs::renderpath::RenderTechniquePreset tech)
 {
-    return shs::render_technique_preset_name(tech);
+    return shs::renderpath::render_technique_preset_name(tech);
 }
 
 const char* vulkan_culler_backend_name(VulkanCullerBackend backend)
@@ -676,7 +676,7 @@ uint32_t semantic_debug_mode_for_framebuffer_preset(FramebufferDebugPreset prese
     return 0u;
 }
 
-uint32_t semantic_debug_mode_for_semantic(shs::PassSemantic semantic)
+uint32_t semantic_debug_mode_for_semantic(shs::renderpath::PassSemantic semantic)
 {
     // Shared with fp_stress_scene.frag semantic debug switch.
     switch (semantic)
@@ -713,9 +713,9 @@ uint32_t semantic_debug_mode_for_semantic(shs::PassSemantic semantic)
     return 0u;
 }
 
-shs::RenderPathPassEntry make_custom_render_path_pass_entry(const char* id, bool required)
+shs::renderpath::RenderPathPassEntry make_custom_render_path_pass_entry(const char* id, bool required)
 {
-    shs::RenderPathPassEntry out{};
+    shs::renderpath::RenderPathPassEntry out{};
     out.id = id ? id : "";
     out.pass_id = shs::PassId::Unknown;
     out.required = required;
@@ -734,10 +734,10 @@ void basis_from_axis(
     glm::vec3& out_y,
     glm::vec3& out_z)
 {
-    out_y = shs::normalize_or(axis_y, glm::vec3(0.0f, 1.0f, 0.0f));
+    out_y = shs::geometry::normalize_or(axis_y, glm::vec3(0.0f, 1.0f, 0.0f));
     const glm::vec3 up_hint = safe_perp_axis(out_y);
-    out_x = shs::normalize_or(glm::cross(up_hint, out_y), glm::vec3(1.0f, 0.0f, 0.0f));
-    out_z = shs::normalize_or(glm::cross(out_y, out_x), glm::vec3(0.0f, 0.0f, 1.0f));
+    out_x = shs::geometry::normalize_or(glm::cross(up_hint, out_y), glm::vec3(1.0f, 0.0f, 0.0f));
+    out_z = shs::geometry::normalize_or(glm::cross(out_y, out_x), glm::vec3(0.0f, 0.0f, 1.0f));
 }
 
 glm::mat4 model_from_basis_and_scale(
@@ -755,13 +755,13 @@ glm::mat4 model_from_basis_and_scale(
     return m;
 }
 
-bool profile_has_pass(const shs::TechniqueProfile& profile, shs::PassId pass_id)
+bool profile_has_pass(const shs::renderpath::TechniqueProfile& profile, shs::renderpath::PassId pass_id)
 {
-    if (!shs::pass_id_is_standard(pass_id)) return false;
+    if (!shs::renderpath::pass_id_is_standard(pass_id)) return false;
     for (const auto& p : profile.passes)
     {
         if (p.pass_id == pass_id) return true;
-        if (shs::parse_pass_id(p.id) == pass_id) return true;
+        if (shs::renderpath::parse_pass_id(p.id) == pass_id) return true;
     }
     return false;
 }
@@ -785,8 +785,8 @@ public:
     {
         headless_software_mode_ = true;
 
-        shs::RenderBackendCreateResult created =
-            shs::create_render_backend(shs::RenderBackendType::Software);
+        shs::app::RenderBackendCreateResult created =
+            shs::app::create_render_backend(shs::RenderBackendType::Software);
         if (!created.note.empty()) std::fprintf(stderr, "[shs] %s\n", created.note.c_str());
         if (!created.backend) throw std::runtime_error("Software backend create failed (headless mode)");
 
@@ -808,7 +808,7 @@ public:
         // harness covers the full path x technique surface.
         if (composition_cycle_order_.empty())
         {
-            composition_cycle_order_ = shs::make_default_render_composition_recipes();
+            composition_cycle_order_ = shs::renderpath::make_default_render_composition_recipes();
         }
 
         phase_i_config_.enabled = true;
@@ -818,7 +818,7 @@ public:
         std::fprintf(
             stderr,
             "[shs] GPU-free run complete (backend=%s, compositions=%zu). See %s\n",
-            shs::render_backend_type_name(shs::RenderBackendType::Software),
+            shs::render::render_backend_type_name(shs::RenderBackendType::Software),
             composition_cycle_order_.size(),
             phase_i_config_.output_path.c_str());
     }
@@ -837,8 +837,8 @@ public:
         const char* backend_env = std::getenv("SHS_RENDER_BACKEND");
         if (parse_env_bool(std::getenv("SHS_DEMO_HEADLESS"), false) ||
             (backend_env != nullptr && backend_env[0] != '\0' &&
-             shs::to_lower_ascii(backend_env) != "vulkan" &&
-             shs::to_lower_ascii(backend_env) != "vk"))
+             shs::app::to_lower_ascii(backend_env) != "vulkan" &&
+             shs::app::to_lower_ascii(backend_env) != "vk"))
         {
             run_headless_software_mode();
             return;
@@ -879,7 +879,7 @@ public:
         destroy_ao_target();
         destroy_post_color_target(post_target_a_);
         destroy_post_color_target(post_target_b_);
-        shs::vk_destroy_render_path_temporal_resources(vk_->device(), temporal_resources_);
+        shs::rhi::vk_destroy_render_path_temporal_resources(vk_->device(), temporal_resources_);
         destroy_layered_depth_target(sun_shadow_target_);
         destroy_layered_depth_target(local_shadow_target_);
 
@@ -1020,18 +1020,18 @@ private:
         out.reserve(composition_cycle_order_.size());
         if (composition_cycle_order_.empty()) return out;
 
-        const shs::RenderPathCompiler compiler{};
-        shs::BackendCapabilities software_caps{};
+        const shs::renderpath::RenderPathCompiler compiler{};
+        shs::rhi::BackendCapabilities software_caps{};
         software_caps.supports_offscreen = true;
         software_caps.supports_present = false;
-        const shs::RenderPathCapabilitySet software_capset =
-            shs::make_render_path_capability_set(shs::RenderBackendType::Software, software_caps);
+        const shs::renderpath::RenderPathCapabilitySet software_capset =
+            shs::renderpath::make_render_path_capability_set(shs::RenderBackendType::Software, software_caps);
 
         for (size_t i = 0; i < composition_cycle_order_.size(); ++i)
         {
-            const shs::RenderCompositionRecipe& c = composition_cycle_order_[i];
-            const shs::RenderCompositionResolved resolved =
-                shs::resolve_builtin_render_composition_recipe(
+            const shs::renderpath::RenderCompositionRecipe& c = composition_cycle_order_[i];
+            const shs::renderpath::RenderCompositionResolved resolved =
+                shs::renderpath::resolve_builtin_render_composition_recipe(
                     c,
                     shs::RenderBackendType::Vulkan,
                     "render_path_vk",
@@ -1044,29 +1044,29 @@ private:
             entry.technique_preset = c.technique_preset;
             entry.post_stack = c.post_stack;
 
-            const shs::RenderPathExecutionPlan vk_plan =
+            const shs::renderpath::RenderPathExecutionPlan vk_plan =
                 compiler.compile(resolved.path_recipe, ctx_, &pass_contract_registry_);
             entry.vk_plan_valid = vk_plan.valid;
             entry.vk_pass_count = vk_plan.pass_chain.size();
             if (!vk_plan.errors.empty()) entry.vk_plan_error = vk_plan.errors.front();
             if (!vk_plan.warnings.empty()) entry.vk_warning = vk_plan.warnings.front();
-            entry.has_ssao = shs::render_path_plan_has_pass(vk_plan, shs::PassId::SSAO);
-            entry.has_taa = shs::render_path_plan_has_pass(vk_plan, shs::PassId::TAA);
-            entry.has_motion = shs::render_path_plan_has_pass(vk_plan, shs::PassId::MotionBlur);
-            entry.has_dof = shs::render_path_plan_has_pass(vk_plan, shs::PassId::DepthOfField);
+            entry.has_ssao = shs::renderpath::render_path_plan_has_pass(vk_plan, shs::PassId::SSAO);
+            entry.has_taa = shs::renderpath::render_path_plan_has_pass(vk_plan, shs::PassId::TAA);
+            entry.has_motion = shs::renderpath::render_path_plan_has_pass(vk_plan, shs::PassId::MotionBlur);
+            entry.has_dof = shs::renderpath::render_path_plan_has_pass(vk_plan, shs::PassId::DepthOfField);
 
             if (include_resource_validation)
             {
-                const shs::RenderPathResourcePlan vk_resource_plan =
-                    shs::compile_render_path_resource_plan(vk_plan, resolved.path_recipe, &pass_contract_registry_);
-                const shs::RenderPathBarrierPlan vk_barrier_plan =
-                    shs::compile_render_path_barrier_plan(vk_plan, vk_resource_plan, &pass_contract_registry_);
+                const shs::renderpath::RenderPathResourcePlan vk_resource_plan =
+                    shs::renderpath::compile_render_path_resource_plan(vk_plan, resolved.path_recipe, &pass_contract_registry_);
+                const shs::renderpath::RenderPathBarrierPlan vk_barrier_plan =
+                    shs::renderpath::compile_render_path_barrier_plan(vk_plan, vk_resource_plan, &pass_contract_registry_);
                 entry.vk_resource_valid = vk_resource_plan.valid;
                 entry.vk_barrier_valid = vk_barrier_plan.valid;
                 entry.vk_barrier_edges = vk_barrier_plan.edges.size();
-                entry.vk_layout_transitions = shs::render_path_barrier_layout_transition_count(vk_barrier_plan);
+                entry.vk_layout_transitions = shs::renderpath::render_path_barrier_layout_transition_count(vk_barrier_plan);
                 entry.vk_alias_classes = vk_barrier_plan.alias_classes.size();
-                entry.vk_alias_slots = shs::render_path_alias_slot_count(vk_barrier_plan);
+                entry.vk_alias_slots = shs::renderpath::render_path_alias_slot_count(vk_barrier_plan);
                 if (!vk_resource_plan.errors.empty()) entry.vk_resource_error = vk_resource_plan.errors.front();
                 if (!vk_barrier_plan.errors.empty()) entry.vk_barrier_error = vk_barrier_plan.errors.front();
             }
@@ -1077,10 +1077,10 @@ private:
             }
             entry.vk_valid = entry.vk_plan_valid && entry.vk_resource_valid && entry.vk_barrier_valid;
 
-            shs::RenderPathRecipe sw_recipe = resolved.path_recipe;
+            shs::renderpath::RenderPathRecipe sw_recipe = resolved.path_recipe;
             sw_recipe.backend = shs::RenderBackendType::Software;
             sw_recipe.name = c.name + "__path_sw";
-            const shs::RenderPathExecutionPlan sw_plan =
+            const shs::renderpath::RenderPathExecutionPlan sw_plan =
                 compiler.compile(sw_recipe, software_capset, &pass_contract_registry_sw_);
             entry.sw_plan_valid = sw_plan.valid;
             entry.sw_pass_count = sw_plan.pass_chain.size();
@@ -1089,10 +1089,10 @@ private:
 
             if (include_resource_validation)
             {
-                const shs::RenderPathResourcePlan sw_resource_plan =
-                    shs::compile_render_path_resource_plan(sw_plan, sw_recipe, &pass_contract_registry_sw_);
-                const shs::RenderPathBarrierPlan sw_barrier_plan =
-                    shs::compile_render_path_barrier_plan(sw_plan, sw_resource_plan, &pass_contract_registry_sw_);
+                const shs::renderpath::RenderPathResourcePlan sw_resource_plan =
+                    shs::renderpath::compile_render_path_resource_plan(sw_plan, sw_recipe, &pass_contract_registry_sw_);
+                const shs::renderpath::RenderPathBarrierPlan sw_barrier_plan =
+                    shs::renderpath::compile_render_path_barrier_plan(sw_plan, sw_resource_plan, &pass_contract_registry_sw_);
                 entry.sw_resource_valid = sw_resource_plan.valid;
                 entry.sw_barrier_valid = sw_barrier_plan.valid;
                 if (!sw_resource_plan.errors.empty()) entry.sw_resource_error = sw_resource_plan.errors.front();
@@ -1130,9 +1130,9 @@ private:
                 "  [%02zu] %-42s path:%-17s technique:%-7s post:%-8s bk[vk:%-7s sw:%-7s] pass[v:%2zu s:%2zu] post[s:%c t:%c m:%c d:%c] br:%zu lay:%u al:%zu/%u%s\n",
                 e.index,
                 e.name.c_str(),
-                shs::render_path_preset_name(e.path_preset),
-                shs::render_technique_preset_name(e.technique_preset),
-                shs::render_composition_post_stack_preset_name(e.post_stack),
+                shs::renderpath::render_path_preset_name(e.path_preset),
+                shs::renderpath::render_technique_preset_name(e.technique_preset),
+                shs::renderpath::render_composition_post_stack_preset_name(e.post_stack),
                 e.vk_valid ? "ok" : "invalid",
                 e.sw_valid ? "ok" : "invalid",
                 e.vk_pass_count,
@@ -1205,12 +1205,12 @@ private:
         return out;
     }
 
-    static uint64_t hash_ldr_color_buffer(const shs::RT_ColorLDR& ldr)
+    static uint64_t hash_ldr_color_buffer(const shs::render::RT_ColorLDR& ldr)
     {
         static constexpr uint64_t kFNVOffset = 1469598103934665603ull;
         static constexpr uint64_t kFNVPrime = 1099511628211ull;
         uint64_t h = kFNVOffset;
-        for (const shs::Color& px : ldr.color.data)
+        for (const shs::render::Color& px : ldr.color.data)
         {
             h ^= static_cast<uint64_t>(px.r); h *= kFNVPrime;
             h ^= static_cast<uint64_t>(px.g); h *= kFNVPrime;
@@ -1221,8 +1221,8 @@ private:
     }
 
     PhaseISoftwareRuntimeSample run_phase_i_software_runtime_sample(
-        const shs::RenderPathRecipe& sw_recipe,
-        shs::RenderTechniquePreset technique_preset) const
+        const shs::renderpath::RenderPathRecipe& sw_recipe,
+        shs::renderpath::RenderTechniquePreset technique_preset) const
     {
         PhaseISoftwareRuntimeSample out{};
         out.attempted = true;
@@ -1233,15 +1233,15 @@ private:
         const uint32_t sample_frames = std::max(1u, phase_i_config_.runtime_sample_frames);
         const uint32_t total_frames = warmup_frames + sample_frames;
 
-        auto backend_result = shs::create_render_backend("software");
+        auto backend_result = shs::app::create_render_backend("software");
         if (!backend_result.backend)
         {
             out.error = "software backend create failed";
             return out;
         }
 
-        shs::Context sw_ctx{};
-        std::vector<std::unique_ptr<shs::IRenderBackend>> keepalive{};
+        shs::app::Context sw_ctx{};
+        std::vector<std::unique_ptr<shs::rhi::IRenderBackend>> keepalive{};
         keepalive.reserve(1u + backend_result.auxiliary_backends.size());
         keepalive.push_back(std::move(backend_result.backend));
         for (auto& aux : backend_result.auxiliary_backends)
@@ -1259,26 +1259,26 @@ private:
             if (keepalive[i]) sw_ctx.register_backend(keepalive[i].get());
         }
 
-        shs::ResourceRegistry resources{};
-        shs::RTRegistry rtr{};
-        shs::PluggablePipeline pipeline{};
+        shs::resources::ResourceRegistry resources{};
+        shs::render::RTRegistry rtr{};
+        shs::renderpath::PluggablePipeline pipeline{};
         pipeline.set_strict_graph_validation(true);
 
-        shs::RT_ShadowDepth shadow_rt{256, 256};
-        shs::RT_ColorHDR hdr_rt{static_cast<int>(w), static_cast<int>(h)};
-        shs::RT_ColorDepthMotion motion_rt{static_cast<int>(w), static_cast<int>(h), kDemoNearZ, kDemoFarZ};
-        shs::RT_ColorLDR ldr_rt{static_cast<int>(w), static_cast<int>(h)};
-        shs::RT_ColorLDR shafts_tmp_rt{static_cast<int>(w), static_cast<int>(h)};
-        shs::RT_ColorLDR motion_blur_tmp_rt{static_cast<int>(w), static_cast<int>(h)};
+        shs::render::RT_ShadowDepth shadow_rt{256, 256};
+        shs::render::RT_ColorHDR hdr_rt{static_cast<int>(w), static_cast<int>(h)};
+        shs::render::RT_ColorDepthMotion motion_rt{static_cast<int>(w), static_cast<int>(h), kDemoNearZ, kDemoFarZ};
+        shs::render::RT_ColorLDR ldr_rt{static_cast<int>(w), static_cast<int>(h)};
+        shs::render::RT_ColorLDR shafts_tmp_rt{static_cast<int>(w), static_cast<int>(h)};
+        shs::render::RT_ColorLDR motion_blur_tmp_rt{static_cast<int>(w), static_cast<int>(h)};
 
-        const shs::RT_Shadow rt_shadow_h = rtr.reg<shs::RT_Shadow>(&shadow_rt);
-        const shs::RTHandle rt_hdr_h = rtr.reg<shs::RTHandle>(&hdr_rt);
-        const shs::RT_Motion rt_motion_h = rtr.reg<shs::RT_Motion>(&motion_rt);
-        const shs::RTHandle rt_ldr_h = rtr.reg<shs::RTHandle>(&ldr_rt);
-        const shs::RTHandle rt_shafts_tmp_h = rtr.reg<shs::RTHandle>(&shafts_tmp_rt);
-        const shs::RTHandle rt_motion_blur_tmp_h = rtr.reg<shs::RTHandle>(&motion_blur_tmp_rt);
+        const shs::render::RT_Shadow rt_shadow_h = rtr.reg<shs::render::RT_Shadow>(&shadow_rt);
+        const shs::render::RTHandle rt_hdr_h = rtr.reg<shs::render::RTHandle>(&hdr_rt);
+        const shs::render::RT_Motion rt_motion_h = rtr.reg<shs::render::RT_Motion>(&motion_rt);
+        const shs::render::RTHandle rt_ldr_h = rtr.reg<shs::render::RTHandle>(&ldr_rt);
+        const shs::render::RTHandle rt_shafts_tmp_h = rtr.reg<shs::render::RTHandle>(&shafts_tmp_rt);
+        const shs::render::RTHandle rt_motion_blur_tmp_h = rtr.reg<shs::render::RTHandle>(&motion_blur_tmp_rt);
 
-        const shs::PassFactoryRegistry pass_registry = shs::make_standard_pass_factory_registry(
+        const shs::renderpath::PassFactoryRegistry pass_registry = shs::renderpath::make_standard_pass_factory_registry(
             rt_shadow_h,
             rt_hdr_h,
             rt_motion_h,
@@ -1286,13 +1286,13 @@ private:
             rt_shafts_tmp_h,
             rt_motion_blur_tmp_h);
 
-        const shs::RenderPathCompiler compiler{};
-        shs::BackendCapabilities software_caps{};
+        const shs::renderpath::RenderPathCompiler compiler{};
+        shs::rhi::BackendCapabilities software_caps{};
         software_caps.supports_offscreen = true;
         software_caps.supports_present = false;
-        const shs::RenderPathCapabilitySet software_capset =
-            shs::make_render_path_capability_set(shs::RenderBackendType::Software, software_caps);
-        const shs::RenderPathExecutionPlan sw_plan =
+        const shs::renderpath::RenderPathCapabilitySet software_capset =
+            shs::renderpath::make_render_path_capability_set(shs::RenderBackendType::Software, software_caps);
+        const shs::renderpath::RenderPathExecutionPlan sw_plan =
             compiler.compile(sw_recipe, software_capset, &pass_registry);
         if (!sw_plan.valid)
         {
@@ -1308,7 +1308,7 @@ private:
             return out;
         }
 
-        shs::Scene scene{};
+        shs::scene::Scene scene{};
         scene.resources = &resources;
         scene.cam.pos = glm::vec3(0.0f, 2.2f, 6.5f);
         scene.cam.target = glm::vec3(0.0f, 0.6f, 0.0f);
@@ -1316,8 +1316,8 @@ private:
         scene.cam.znear = kDemoNearZ;
         scene.cam.zfar = kDemoFarZ;
         scene.cam.fov_y_radians = glm::radians(60.0f);
-        scene.cam.view = shs::look_at_lh(scene.cam.pos, scene.cam.target, scene.cam.up);
-        scene.cam.proj = shs::perspective_lh_no(
+        scene.cam.view = shs::camera::look_at_lh(scene.cam.pos, scene.cam.target, scene.cam.up);
+        scene.cam.proj = shs::camera::perspective_lh_no(
             scene.cam.fov_y_radians,
             static_cast<float>(w) / static_cast<float>(h),
             scene.cam.znear,
@@ -1328,7 +1328,7 @@ private:
         scene.sun.color = glm::vec3(1.0f, 0.97f, 0.92f);
         scene.sun.intensity = 2.0f;
 
-        shs::FrameParams fp{};
+        shs::render::FrameParams fp{};
         fp.w = static_cast<int>(w);
         fp.h = static_cast<int>(h);
         fp.dt = 1.0f / 60.0f;
@@ -1336,15 +1336,15 @@ private:
         fp.debug_view = shs::DebugViewMode::Final;
         fp.cull_mode = shs::CullMode::Back;
         fp.technique.mode = sw_recipe.technique_mode;
-        fp.technique.active_modes_mask = shs::technique_mode_mask_all();
+        fp.technique.active_modes_mask = shs::render::technique_mode_mask_all();
         fp.pass.shadow.enable = sw_recipe.runtime_defaults.enable_shadows;
         fp.enable_shadows = fp.pass.shadow.enable;
         fp.hybrid.allow_cross_backend_passes = false;
         fp.hybrid.strict_backend_availability = true;
         fp.hybrid.emulate_vulkan_runtime = false;
-        const shs::RenderTechniqueRecipe tech_recipe =
-            shs::make_builtin_render_technique_recipe(technique_preset, "phase_i_sw_runtime");
-        shs::apply_render_technique_recipe_to_frame_params(tech_recipe, fp);
+        const shs::renderpath::RenderTechniqueRecipe tech_recipe =
+            shs::renderpath::make_builtin_render_technique_recipe(technique_preset, "phase_i_sw_runtime");
+        shs::renderpath::apply_render_technique_recipe_to_frame_params(tech_recipe, fp);
 
         double sampled_frame_ms_sum = 0.0;
         uint32_t sampled_count = 0u;
@@ -1535,14 +1535,14 @@ private:
                 e.sw_plan_valid &&
                 e.index < composition_cycle_order_.size())
             {
-                const shs::RenderCompositionRecipe& c = composition_cycle_order_[e.index];
-                const shs::RenderCompositionResolved sw_resolved =
-                    shs::resolve_builtin_render_composition_recipe(
+                const shs::renderpath::RenderCompositionRecipe& c = composition_cycle_order_[e.index];
+                const shs::renderpath::RenderCompositionResolved sw_resolved =
+                    shs::renderpath::resolve_builtin_render_composition_recipe(
                         c,
                         shs::RenderBackendType::Software,
                         "render_path_sw",
                         "render_tech_sw");
-                shs::RenderPathRecipe sw_recipe = sw_resolved.path_recipe;
+                shs::renderpath::RenderPathRecipe sw_recipe = sw_resolved.path_recipe;
                 sw_recipe.backend = shs::RenderBackendType::Software;
                 sw_recipe.name = c.name + "__phase_i_runtime_sw";
                 e.sw_runtime = run_phase_i_software_runtime_sample(sw_recipe, c.technique_preset);
@@ -1559,9 +1559,9 @@ private:
             out << "\"event\":\"phase_i_composition\",";
             out << "\"index\":" << e.index << ",";
             out << "\"composition\":\"" << json_escape(e.name) << "\",";
-            out << "\"path\":\"" << shs::render_path_preset_name(e.path_preset) << "\",";
-            out << "\"technique\":\"" << shs::render_technique_preset_name(e.technique_preset) << "\",";
-            out << "\"post_stack\":\"" << shs::render_composition_post_stack_preset_name(e.post_stack) << "\",";
+            out << "\"path\":\"" << shs::renderpath::render_path_preset_name(e.path_preset) << "\",";
+            out << "\"technique\":\"" << shs::renderpath::render_technique_preset_name(e.technique_preset) << "\",";
+            out << "\"post_stack\":\"" << shs::renderpath::render_composition_post_stack_preset_name(e.post_stack) << "\",";
             out << "\"vk_valid\":" << (e.vk_valid ? "true" : "false") << ",";
             out << "\"vk_plan_valid\":" << (e.vk_plan_valid ? "true" : "false") << ",";
             out << "\"vk_resource_valid\":" << (e.vk_resource_valid ? "true" : "false") << ",";
@@ -1724,7 +1724,7 @@ private:
         phase_g_metrics_stream_.flush();
     }
 
-    void phase_g_emit_cycle_event(const shs::RenderCompositionRecipe& c, float frame_ms, float ema_ms)
+    void phase_g_emit_cycle_event(const shs::renderpath::RenderCompositionRecipe& c, float frame_ms, float ema_ms)
     {
         std::string line = "{";
         line += "\"event\":\"phase_g_cycle\",";
@@ -1732,9 +1732,9 @@ private:
         line += "\"frame\":" + std::to_string(phase_g_state_.frame_counter) + ",";
         line += "\"elapsed_sec\":" + std::to_string(phase_g_state_.elapsed_sec) + ",";
         line += "\"composition\":\"" + c.name + "\",";
-        line += "\"path\":\"" + std::string(shs::render_path_preset_name(c.path_preset)) + "\",";
-        line += "\"technique\":\"" + std::string(shs::render_technique_preset_name(c.technique_preset)) + "\",";
-        line += "\"post_stack\":\"" + std::string(shs::render_composition_post_stack_preset_name(c.post_stack)) + "\",";
+        line += "\"path\":\"" + std::string(shs::renderpath::render_path_preset_name(c.path_preset)) + "\",";
+        line += "\"technique\":\"" + std::string(shs::renderpath::render_technique_preset_name(c.technique_preset)) + "\",";
+        line += "\"post_stack\":\"" + std::string(shs::renderpath::render_composition_post_stack_preset_name(c.post_stack)) + "\",";
         line += "\"frame_ms\":" + std::to_string(frame_ms) + ",";
         line += "\"ema_ms\":" + std::to_string(ema_ms) + ",";
         line += "\"rebuild_target\":" + std::to_string(render_target_rebuild_count_) + ",";
@@ -1852,7 +1852,7 @@ private:
         }
 
         // Add Modern-Extreme coverage variant
-        shs::RenderCompositionRecipe extreme{};
+        shs::renderpath::RenderCompositionRecipe extreme{};
         extreme.name = "composition_modern_extreme";
         extreme.path_preset = shs::RenderPathPreset::ClusteredForward;
         extreme.technique_preset = shs::RenderTechniquePreset::PBR;
@@ -1993,9 +1993,9 @@ private:
     }
 
     size_t find_composition_index_exact(
-        shs::RenderPathPreset path_preset,
-        shs::RenderTechniquePreset technique_preset,
-        shs::RenderCompositionPostStackPreset post_stack,
+        shs::renderpath::RenderPathPreset path_preset,
+        shs::renderpath::RenderTechniquePreset technique_preset,
+        shs::renderpath::RenderCompositionPostStackPreset post_stack,
         bool* found = nullptr) const
     {
         for (size_t i = 0; i < composition_cycle_order_.size(); ++i)
@@ -2025,11 +2025,11 @@ private:
         std::vector<size_t> out{};
         out.reserve(composition_cycle_order_.size());
 
-        const auto& path_order = shs::default_render_path_preset_order();
-        const auto& tech_order = shs::default_render_technique_preset_order();
-        for (const shs::RenderPathPreset path : path_order)
+        const auto& path_order = shs::renderpath::default_render_path_preset_order();
+        const auto& tech_order = shs::renderpath::default_render_technique_preset_order();
+        for (const shs::renderpath::RenderPathPreset path : path_order)
         {
-            for (const shs::RenderTechniquePreset tech : tech_order)
+            for (const shs::renderpath::RenderTechniquePreset tech : tech_order)
             {
                 bool found = false;
                 const size_t idx = find_composition_index_exact(
@@ -2046,9 +2046,9 @@ private:
 
         if (phase_f_config_.include_post_variants)
         {
-            const auto append_if_present = [&](shs::RenderPathPreset path,
-                                               shs::RenderTechniquePreset tech,
-                                               shs::RenderCompositionPostStackPreset post) {
+            const auto append_if_present = [&](shs::renderpath::RenderPathPreset path,
+                                               shs::renderpath::RenderTechniquePreset tech,
+                                               shs::renderpath::RenderCompositionPostStackPreset post) {
                 bool found = false;
                 const size_t idx = find_composition_index_exact(path, tech, post, &found);
                 if (found && std::find(out.begin(), out.end(), idx) == out.end())
@@ -2103,7 +2103,7 @@ private:
         phase_f_metrics_stream_.flush();
     }
 
-    std::string phase_f_snapshot_path_for_entry(size_t entry_slot, const shs::RenderCompositionRecipe& composition) const
+    std::string phase_f_snapshot_path_for_entry(size_t entry_slot, const shs::renderpath::RenderCompositionRecipe& composition) const
     {
         const std::string safe_name = sanitize_file_component(composition.name);
         return phase_f_config_.snapshot_dir + "/"
@@ -2171,7 +2171,7 @@ private:
             return;
         }
         phase_f_begin_entry(next, next_index);
-        const shs::RenderCompositionRecipe& c = composition_cycle_order_[next_index];
+        const shs::renderpath::RenderCompositionRecipe& c = composition_cycle_order_[next_index];
         std::fprintf(
             stderr,
             "[phase-f] Entry %zu/%zu warmup:%u sample:%u | %s\n",
@@ -2185,7 +2185,7 @@ private:
     void phase_f_emit_sample_result(float ema_ms)
     {
         if (phase_f_active_composition_index_ >= composition_cycle_order_.size()) return;
-        const shs::RenderCompositionRecipe& c = composition_cycle_order_[phase_f_active_composition_index_];
+        const shs::renderpath::RenderCompositionRecipe& c = composition_cycle_order_[phase_f_active_composition_index_];
         const uint32_t sampled = std::max(1u, phase_f_accumulator_.sampled_frames);
         const double avg_frame_ms = safe_div(phase_f_accumulator_.frame_ms_sum, sampled);
         const double avg_dispatch_ms = safe_div(phase_f_accumulator_.dispatch_cpu_ms_sum, sampled);
@@ -2200,9 +2200,9 @@ private:
         line += "\"event\":\"composition_sample\",";
         line += "\"entry\":" + std::to_string(phase_f_active_entry_slot_ + 1u) + ",";
         line += "\"composition\":\"" + c.name + "\",";
-        line += "\"path\":\"" + std::string(shs::render_path_preset_name(c.path_preset)) + "\",";
-        line += "\"technique\":\"" + std::string(shs::render_technique_preset_name(c.technique_preset)) + "\",";
-        line += "\"post_stack\":\"" + std::string(shs::render_composition_post_stack_preset_name(c.post_stack)) + "\",";
+        line += "\"path\":\"" + std::string(shs::renderpath::render_path_preset_name(c.path_preset)) + "\",";
+        line += "\"technique\":\"" + std::string(shs::renderpath::render_technique_preset_name(c.technique_preset)) + "\",";
+        line += "\"post_stack\":\"" + std::string(shs::renderpath::render_composition_post_stack_preset_name(c.post_stack)) + "\",";
         line += "\"sampled_frames\":" + std::to_string(sampled) + ",";
         line += "\"ema_frame_ms\":" + std::to_string(ema_ms) + ",";
         line += "\"avg_frame_ms\":" + std::to_string(avg_frame_ms) + ",";
@@ -2282,7 +2282,7 @@ private:
 
                 if (phase_f_config_.capture_snapshots)
                 {
-                    const shs::RenderCompositionRecipe& c = composition_cycle_order_[phase_f_active_composition_index_];
+                    const shs::renderpath::RenderCompositionRecipe& c = composition_cycle_order_[phase_f_active_composition_index_];
                     phase_f_snapshot_path_ = phase_f_snapshot_path_for_entry(phase_f_active_entry_slot_, c);
                     phase_f_snapshot_request_armed_ = true;
                     phase_f_snapshot_completed_ = false;
@@ -2355,7 +2355,7 @@ private:
             return;
         }
         phase_f_begin_entry(0u, first_index);
-        const shs::RenderCompositionRecipe& c = composition_cycle_order_[first_index];
+        const shs::renderpath::RenderCompositionRecipe& c = composition_cycle_order_[first_index];
         std::fprintf(
             stderr,
             "[phase-f] Started benchmark (%zu entries) -> %s | warmup:%u sample:%u\n",
@@ -2394,7 +2394,7 @@ private:
     void init_backend()
     {
 #ifdef SHS_HAS_VULKAN
-        shs::RenderBackendCreateResult created = shs::create_render_backend(shs::RenderBackendType::Vulkan);
+        shs::app::RenderBackendCreateResult created = shs::app::create_render_backend(shs::RenderBackendType::Vulkan);
         if (!created.note.empty()) std::fprintf(stderr, "[shs] %s\n", created.note.c_str());
         if (!created.backend) throw std::runtime_error("Backend factory did not return a backend");
 
@@ -2413,7 +2413,7 @@ private:
             throw std::runtime_error("Vulkan backend is not active");
         }
 
-        vk_ = dynamic_cast<shs::VulkanRenderBackend*>(ctx_.backend(shs::RenderBackendType::Vulkan));
+        vk_ = dynamic_cast<shs::rhi::VulkanRenderBackend*>(ctx_.backend(shs::RenderBackendType::Vulkan));
         if (!vk_)
         {
             throw std::runtime_error("Failed to acquire Vulkan backend instance");
@@ -2448,12 +2448,12 @@ private:
     {
         const unsigned hc = std::max(1u, std::thread::hardware_concurrency());
         worker_count_ = std::clamp<uint32_t>(hc, 1u, 8u);
-        jobs_ = std::make_unique<shs::ThreadPoolJobSystem>(worker_count_);
+        jobs_ = std::make_unique<shs::task::ThreadPoolJobSystem>(worker_count_);
     }
 
-    static shs::AABB compute_local_aabb_from_positions(const std::vector<glm::vec3>& positions)
+    static shs::geometry::AABB compute_local_aabb_from_positions(const std::vector<glm::vec3>& positions)
     {
-        shs::AABB out{};
+        shs::geometry::AABB out{};
         if (positions.empty())
         {
             out.minv = glm::vec3(-0.5f);
@@ -2464,9 +2464,9 @@ private:
         return out;
     }
 
-    static shs::AABB compute_local_aabb_from_vertices(const std::vector<Vertex>& vertices)
+    static shs::geometry::AABB compute_local_aabb_from_vertices(const std::vector<Vertex>& vertices)
     {
-        shs::AABB out{};
+        shs::geometry::AABB out{};
         if (vertices.empty())
         {
             out.minv = glm::vec3(-0.5f);
@@ -2530,11 +2530,11 @@ private:
         }
     }
 
-    static shs::DebugMesh make_debug_mesh_from_vertex_index_data(
+    static shs::geometry::DebugMesh make_debug_mesh_from_vertex_index_data(
         const std::vector<Vertex>& verts,
         const std::vector<uint32_t>& indices)
     {
-        shs::DebugMesh mesh{};
+        shs::geometry::DebugMesh mesh{};
         mesh.vertices.reserve(verts.size());
         for (const Vertex& v : verts)
         {
@@ -2560,7 +2560,7 @@ private:
         return out;
     }
 
-    static std::vector<Vertex> make_vertices_with_normals_from_debug_mesh(const shs::DebugMesh& mesh)
+    static std::vector<Vertex> make_vertices_with_normals_from_debug_mesh(const shs::geometry::DebugMesh& mesh)
     {
         std::vector<Vertex> verts(mesh.vertices.size());
         for (size_t i = 0; i < mesh.vertices.size(); ++i)
@@ -2598,7 +2598,7 @@ private:
         return verts;
     }
 
-    const shs::AABB& local_aabb_for_mesh(Instance::MeshKind kind) const
+    const shs::geometry::AABB& local_aabb_for_mesh(Instance::MeshKind kind) const
     {
         switch (kind)
         {
@@ -2611,7 +2611,7 @@ private:
         }
     }
 
-    const shs::Sphere& local_bound_for_mesh(Instance::MeshKind kind) const
+    const shs::geometry::Sphere& local_bound_for_mesh(Instance::MeshKind kind) const
     {
         switch (kind)
         {
@@ -2637,7 +2637,7 @@ private:
         }
     }
 
-    const shs::DebugMesh& occluder_mesh_for_mesh(Instance::MeshKind kind) const
+    const shs::geometry::DebugMesh& occluder_mesh_for_mesh(Instance::MeshKind kind) const
     {
         switch (kind)
         {
@@ -2693,22 +2693,22 @@ private:
 
     void init_scene_data()
     {
-        shs::ResourceRegistry resources{};
-        const shs::MeshAssetHandle sphere_h = shs::import_sphere_primitive(resources, shs::SphereDesc{0.5f, 18, 12}, "fplus_sphere");
-        const shs::MeshAssetHandle cone_h = shs::import_cone_primitive(resources, shs::ConeDesc{1.0f, 1.0f, 20, 1, false}, "fplus_light_cone");
-        const shs::MeshAssetHandle box_h = shs::import_box_primitive(resources, shs::BoxDesc{glm::vec3(1.0f), 1, 1, 1}, "fplus_light_box");
+        shs::resources::ResourceRegistry resources{};
+        const shs::resources::MeshAssetHandle sphere_h = shs::resources::import_sphere_primitive(resources, shs::geometry::SphereDesc{0.5f, 18, 12}, "fplus_sphere");
+        const shs::resources::MeshAssetHandle cone_h = shs::resources::import_cone_primitive(resources, shs::geometry::ConeDesc{1.0f, 1.0f, 20, 1, false}, "fplus_light_cone");
+        const shs::resources::MeshAssetHandle box_h = shs::resources::import_box_primitive(resources, shs::geometry::BoxDesc{glm::vec3(1.0f), 1, 1, 1}, "fplus_light_box");
 
-        const shs::MeshData* sphere_mesh = resources.get_mesh(sphere_h);
+        const shs::resources::MeshData* sphere_mesh = resources.get_mesh(sphere_h);
         if (!sphere_mesh || sphere_mesh->empty())
         {
             throw std::runtime_error("Failed to generate sphere primitive mesh");
         }
-        const shs::MeshData* cone_mesh = resources.get_mesh(cone_h);
+        const shs::resources::MeshData* cone_mesh = resources.get_mesh(cone_h);
         if (!cone_mesh || cone_mesh->empty())
         {
             throw std::runtime_error("Failed to generate cone primitive mesh");
         }
-        const shs::MeshData* box_mesh = resources.get_mesh(box_h);
+        const shs::resources::MeshData* box_mesh = resources.get_mesh(box_h);
         if (!box_mesh || box_mesh->empty())
         {
             throw std::runtime_error("Failed to generate box primitive mesh");
@@ -2716,8 +2716,8 @@ private:
 
         const JPH::ShapeRefC capsule_debug_shape = shs::jolt::make_capsule(0.92f, 0.42f);
         const JPH::ShapeRefC cylinder_debug_shape = shs::jolt::make_cylinder(0.90f, 0.46f);
-        const shs::DebugMesh capsule_debug_mesh = shs::debug_mesh_from_shape(*capsule_debug_shape, JPH::Mat44::sIdentity());
-        const shs::DebugMesh cylinder_debug_mesh = shs::debug_mesh_from_shape(*cylinder_debug_shape, JPH::Mat44::sIdentity());
+        const shs::geometry::DebugMesh capsule_debug_mesh = shs::geometry::debug_mesh_from_shape(*capsule_debug_shape, JPH::Mat44::sIdentity());
+        const shs::geometry::DebugMesh cylinder_debug_mesh = shs::geometry::debug_mesh_from_shape(*cylinder_debug_shape, JPH::Mat44::sIdentity());
         if (capsule_debug_mesh.vertices.empty() || capsule_debug_mesh.indices.empty())
         {
             throw std::runtime_error("Failed to build capsule debug mesh");
@@ -2734,11 +2734,11 @@ private:
         box_local_aabb_ = compute_local_aabb_from_positions(box_mesh->positions);
         capsule_local_aabb_ = compute_local_aabb_from_positions(capsule_debug_mesh.vertices);
         cylinder_local_aabb_ = compute_local_aabb_from_positions(cylinder_debug_mesh.vertices);
-        sphere_local_bound_ = shs::sphere_from_aabb(sphere_local_aabb_);
-        cone_local_bound_ = shs::sphere_from_aabb(cone_local_aabb_);
-        box_local_bound_ = shs::sphere_from_aabb(box_local_aabb_);
-        capsule_local_bound_ = shs::sphere_from_aabb(capsule_local_aabb_);
-        cylinder_local_bound_ = shs::sphere_from_aabb(cylinder_local_aabb_);
+        sphere_local_bound_ = shs::geometry::sphere_from_aabb(sphere_local_aabb_);
+        cone_local_bound_ = shs::geometry::sphere_from_aabb(cone_local_aabb_);
+        box_local_bound_ = shs::geometry::sphere_from_aabb(box_local_aabb_);
+        capsule_local_bound_ = shs::geometry::sphere_from_aabb(capsule_local_aabb_);
+        cylinder_local_bound_ = shs::geometry::sphere_from_aabb(cylinder_local_aabb_);
         sphere_shape_jolt_ = shs::jolt::make_sphere(sphere_local_bound_.radius);
         box_shape_jolt_ = shs::jolt::make_box(box_local_aabb_.extent());
         cone_shape_jolt_ = shs::jolt::make_convex_hull(cone_mesh->positions);
@@ -2873,7 +2873,7 @@ private:
 
         // Build a stable world-space caster bounds for sun shadow fitting.
         // This avoids per-frame shadow frustum jitter from animation/camera culling.
-        shadow_scene_static_aabb_ = shs::transform_aabb(floor_local_aabb_, floor_model_);
+        shadow_scene_static_aabb_ = shs::geometry::transform_aabb(floor_local_aabb_, floor_model_);
         constexpr float kMaxBobAmplitude = 0.18f;
         for (const Instance& inst : instances_)
         {
@@ -2945,7 +2945,7 @@ private:
                     l.type = shs::LightType::RectArea;
                     l.attenuation_model = shs::LightAttenuationModel::Smooth;
                     l.shape_params = glm::vec4(area_extent(rng), area_extent(rng), 0.0f, 0.0f);
-                    l.rect_right_ws = shs::normalize_or(glm::vec3(right_rand(rng), 0.0f, right_rand(rng)), glm::vec3(1.0f, 0.0f, 0.0f));
+                    l.rect_right_ws = shs::geometry::normalize_or(glm::vec3(right_rand(rng), 0.0f, right_rand(rng)), glm::vec3(1.0f, 0.0f, 0.0f));
                     l.intensity *= 0.85f;
                     l.color = glm::mix(l.color, glm::vec3(0.98f, 0.44f, 0.80f), 0.64f);
                     break;
@@ -2958,7 +2958,7 @@ private:
                     l.color = glm::mix(l.color, glm::vec3(0.36f, 1.0f, 0.58f), 0.60f);
                     break;
             }
-            l.direction_ws = shs::normalize_or(glm::vec3(axis_rand(rng), -0.85f, axis_rand(rng)), glm::vec3(0.0f, -1.0f, 0.0f));
+            l.direction_ws = shs::geometry::normalize_or(glm::vec3(axis_rand(rng), -0.85f, axis_rand(rng)), glm::vec3(0.0f, -1.0f, 0.0f));
             light_anim_.push_back(l);
         }
         light_set_.points.reserve(kMaxLights);
@@ -2966,7 +2966,7 @@ private:
         light_set_.rect_areas.reserve(kMaxLights / 2u);
         light_set_.tube_areas.reserve(kMaxLights / 2u);
 
-        shadow_settings_ = shs::make_default_shadow_composition_settings();
+        shadow_settings_ = shs::lighting::make_default_shadow_composition_settings();
         shadow_settings_.quality.directional_resolution = kSunShadowMapSize;
         shadow_settings_.quality.local_resolution = kLocalShadowMapSize;
         shadow_settings_.quality.point_resolution = kLocalShadowMapSize;
@@ -3311,8 +3311,8 @@ private:
     }
 
     uint32_t begin_gpu_pass_timestamp(
-        shs::VkRenderPathPassExecutionContext<shs::VulkanRenderBackend::FrameInfo>& ctx,
-        const shs::RenderPathCompiledPass& pass)
+        shs::renderpath::VkRenderPathPassExecutionContext<shs::VulkanRenderBackend::FrameInfo>& ctx,
+        const shs::renderpath::RenderPathCompiledPass& pass)
     {
         if (!gpu_pass_timestamp_recording_active_) return UINT32_MAX;
         if (!ctx.fi) return UINT32_MAX;
@@ -3324,7 +3324,7 @@ private:
         GpuPassTimestampFrameState& frame_state = gpu_pass_timestamp_frames_[ctx.frame_slot];
         GpuPassTimestampSample sample{};
         sample.pass_id = pass.id;
-        sample.pass_kind = shs::pass_id_is_standard(pass.pass_id) ? pass.pass_id : shs::parse_pass_id(pass.id);
+        sample.pass_kind = shs::renderpath::pass_id_is_standard(pass.pass_id) ? pass.pass_id : shs::renderpath::parse_pass_id(pass.id);
         sample.begin_query = gpu_pass_query_cursor_++;
         vkCmdWriteTimestamp(
             ctx.fi->cmd,
@@ -3336,7 +3336,7 @@ private:
     }
 
     void end_gpu_pass_timestamp(
-        shs::VkRenderPathPassExecutionContext<shs::VulkanRenderBackend::FrameInfo>& ctx,
+        shs::renderpath::VkRenderPathPassExecutionContext<shs::VulkanRenderBackend::FrameInfo>& ctx,
         uint32_t sample_index,
         bool success)
     {
@@ -3384,8 +3384,8 @@ private:
 
     template <typename THandler>
     bool execute_profiled_pass_handler(
-        shs::VkRenderPathPassExecutionContext<shs::VulkanRenderBackend::FrameInfo>& ctx,
-        const shs::RenderPathCompiledPass& pass,
+        shs::renderpath::VkRenderPathPassExecutionContext<shs::VulkanRenderBackend::FrameInfo>& ctx,
+        const shs::renderpath::RenderPathCompiledPass& pass,
         THandler&& handler)
     {
         const uint32_t token = begin_gpu_pass_timestamp(ctx, pass);
@@ -3404,7 +3404,7 @@ private:
         bool map_memory)
     {
         destroy_buffer(out);
-        if (!shs::vk_create_buffer(
+        if (!shs::rhi::vk_create_buffer(
                 vk_->device(),
                 vk_->physical_device(),
                 size,
@@ -3421,7 +3421,7 @@ private:
         {
             if (vkMapMemory(vk_->device(), out.memory, 0, size, 0, &out.mapped) != VK_SUCCESS)
             {
-                shs::vk_destroy_buffer(vk_->device(), out.buffer, out.memory);
+                shs::rhi::vk_destroy_buffer(vk_->device(), out.buffer, out.memory);
                 throw std::runtime_error("vkMapMemory failed");
             }
         }
@@ -3435,7 +3435,7 @@ private:
             vkUnmapMemory(vk_->device(), b.memory);
             b.mapped = nullptr;
         }
-        shs::vk_destroy_buffer(vk_->device(), b.buffer, b.memory);
+        shs::rhi::vk_destroy_buffer(vk_->device(), b.buffer, b.memory);
         b.size = 0;
     }
 
@@ -3800,7 +3800,7 @@ private:
         VkMemoryAllocateInfo mai{};
         mai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         mai.allocationSize = req.size;
-        mai.memoryTypeIndex = shs::vk_find_memory_type(
+        mai.memoryTypeIndex = shs::rhi::vk_find_memory_type(
             vk_->physical_device(),
             req.memoryTypeBits,
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
@@ -3963,7 +3963,7 @@ private:
         VkMemoryAllocateInfo mai{};
         mai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         mai.allocationSize = req.size;
-        mai.memoryTypeIndex = shs::vk_find_memory_type(
+        mai.memoryTypeIndex = shs::rhi::vk_find_memory_type(
             vk_->physical_device(),
             req.memoryTypeBits,
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
@@ -4099,7 +4099,7 @@ private:
             VkMemoryAllocateInfo mai{};
             mai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
             mai.allocationSize = req.size;
-            mai.memoryTypeIndex = shs::vk_find_memory_type(
+            mai.memoryTypeIndex = shs::rhi::vk_find_memory_type(
                 vk_->physical_device(),
                 req.memoryTypeBits,
                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
@@ -4262,7 +4262,7 @@ private:
         VkMemoryAllocateInfo mai{};
         mai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         mai.allocationSize = req.size;
-        mai.memoryTypeIndex = shs::vk_find_memory_type(
+        mai.memoryTypeIndex = shs::rhi::vk_find_memory_type(
             vk_->physical_device(),
             req.memoryTypeBits,
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
@@ -4431,7 +4431,7 @@ private:
         VkMemoryAllocateInfo mai{};
         mai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         mai.allocationSize = req.size;
-        mai.memoryTypeIndex = shs::vk_find_memory_type(
+        mai.memoryTypeIndex = shs::rhi::vk_find_memory_type(
             vk_->physical_device(),
             req.memoryTypeBits,
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
@@ -4570,11 +4570,11 @@ private:
             VK_IMAGE_VIEW_TYPE_2D_ARRAY);
     }
 
-    void create_or_resize_tile_buffers(const shs::RenderPathLightGridRuntimeLayout& layout)
+    void create_or_resize_tile_buffers(const shs::renderpath::RenderPathLightGridRuntimeLayout& layout)
     {
         const VkMemoryPropertyFlags host_flags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-        const shs::RenderPathLightGridBufferSizes sizes =
-            shs::make_render_path_light_grid_buffer_sizes(layout, kMaxLightsPerTile);
+        const shs::renderpath::RenderPathLightGridBufferSizes sizes =
+            shs::renderpath::make_render_path_light_grid_buffer_sizes(layout, kMaxLightsPerTile);
         const VkDeviceSize counts_size = static_cast<VkDeviceSize>(sizes.counts_bytes);
         const VkDeviceSize indices_size = static_cast<VkDeviceSize>(sizes.indices_bytes);
         const VkDeviceSize depth_ranges_size = static_cast<VkDeviceSize>(sizes.depth_ranges_bytes);
@@ -4614,7 +4614,7 @@ private:
 
         if (global_set_layout_ == VK_NULL_HANDLE)
         {
-            if (!shs::vk_create_render_path_global_descriptor_set_layout(vk_->device(), &global_set_layout_))
+            if (!shs::rhi::vk_create_render_path_global_descriptor_set_layout(vk_->device(), &global_set_layout_))
             {
                 throw std::runtime_error("vkCreateDescriptorSetLayout failed (render-path global)");
             }
@@ -4622,7 +4622,7 @@ private:
 
         if (descriptor_pool_ == VK_NULL_HANDLE)
         {
-            if (!shs::vk_create_render_path_global_descriptor_pool(
+            if (!shs::rhi::vk_create_render_path_global_descriptor_pool(
                     vk_->device(),
                     static_cast<uint32_t>(kWorkerPoolRingSize),
                     &descriptor_pool_))
@@ -4634,7 +4634,7 @@ private:
         if (frame_resources_.at_slot(0).global_set == VK_NULL_HANDLE)
         {
             std::array<VkDescriptorSet, kWorkerPoolRingSize> sets{};
-            if (!shs::vk_allocate_descriptor_set_ring<kWorkerPoolRingSize>(
+            if (!shs::rhi::vk_allocate_descriptor_set_ring<kWorkerPoolRingSize>(
                     vk_->device(),
                     descriptor_pool_,
                     global_set_layout_,
@@ -4717,7 +4717,7 @@ private:
         {
             if (fr.global_set == VK_NULL_HANDLE) continue;
 
-            shs::VkRenderPathGlobalDescriptorFrameData frame_desc{};
+            shs::rhi::VkRenderPathGlobalDescriptorFrameData frame_desc{};
             frame_desc.dst_set = fr.global_set;
             frame_desc.camera_buffer = fr.camera_buffer.buffer;
             frame_desc.camera_range = sizeof(CameraUBO);
@@ -4737,7 +4737,7 @@ private:
             frame_desc.local_shadow_view = local_shadow_target_.sampled_view;
             frame_desc.point_shadow_view = local_shadow_target_.sampled_view;
 
-            if (!shs::vk_update_render_path_global_descriptor_set(vk_->device(), frame_desc))
+            if (!shs::rhi::vk_update_render_path_global_descriptor_set(vk_->device(), frame_desc))
             {
                 throw std::runtime_error("vkUpdateDescriptorSets failed (render-path global)");
             }
@@ -4765,7 +4765,7 @@ private:
             return;
         }
 
-        const VkImageView history_view = shs::vk_render_path_history_color_view(temporal_resources_);
+        const VkImageView history_view = shs::rhi::vk_render_path_history_color_view(temporal_resources_);
         const VkImageView history_fallback_view =
             (history_view != VK_NULL_HANDLE) ? history_view : post_target_a_.view;
 
@@ -4812,7 +4812,7 @@ private:
     }
 
     VkDescriptorSet post_source_descriptor_set_from_context(
-        const shs::VkRenderPathPassExecutionContext<shs::VulkanRenderBackend::FrameInfo>& ctx) const
+        const shs::renderpath::VkRenderPathPassExecutionContext<shs::VulkanRenderBackend::FrameInfo>& ctx) const
     {
         if (ctx.post_color_source == 1u) return deferred_post_a_set_;
         if (ctx.post_color_source == 2u) return deferred_post_b_set_;
@@ -4820,7 +4820,7 @@ private:
     }
 
     VkImageView post_source_view_from_context(
-        const shs::VkRenderPathPassExecutionContext<shs::VulkanRenderBackend::FrameInfo>& ctx) const
+        const shs::renderpath::VkRenderPathPassExecutionContext<shs::VulkanRenderBackend::FrameInfo>& ctx) const
     {
         if (ctx.post_color_source == 1u) return post_target_a_.view;
         if (ctx.post_color_source == 2u) return post_target_b_.view;
@@ -4878,29 +4878,29 @@ private:
 
         destroy_pipelines();
 
-        const std::vector<char> shadow_vs_code = shs::vk_read_binary_file(SHS_VK_FP_SHADOW_VERT_SPV);
-        const std::vector<char> scene_vs_code = shs::vk_read_binary_file(SHS_VK_FP_SCENE_VERT_SPV);
-        const std::vector<char> scene_fs_code = shs::vk_read_binary_file(SHS_VK_FP_SCENE_FRAG_SPV);
-        const std::vector<char> gbuffer_fs_code = shs::vk_read_binary_file(SHS_VK_FP_GBUFFER_FRAG_SPV);
-        const std::vector<char> deferred_vs_code = shs::vk_read_binary_file(SHS_VK_FP_DEFERRED_VERT_SPV);
-        const std::vector<char> ssao_fs_code = shs::vk_read_binary_file(SHS_VK_FP_SSAO_FRAG_SPV);
-        const std::vector<char> deferred_fs_code = shs::vk_read_binary_file(SHS_VK_FP_DEFERRED_FRAG_SPV);
-        const std::vector<char> motion_blur_fs_code = shs::vk_read_binary_file(SHS_VK_FP_MOTION_BLUR_FRAG_SPV);
-        const std::vector<char> dof_fs_code = shs::vk_read_binary_file(SHS_VK_FP_DOF_FRAG_SPV);
-        const std::vector<char> depth_reduce_cs_code = shs::vk_read_binary_file(SHS_VK_FP_DEPTH_REDUCE_COMP_SPV);
-        const std::vector<char> cull_cs_code = shs::vk_read_binary_file(SHS_VK_FP_LIGHT_CULL_COMP_SPV);
+        const std::vector<char> shadow_vs_code = shs::rhi::vk_read_binary_file(SHS_VK_FP_SHADOW_VERT_SPV);
+        const std::vector<char> scene_vs_code = shs::rhi::vk_read_binary_file(SHS_VK_FP_SCENE_VERT_SPV);
+        const std::vector<char> scene_fs_code = shs::rhi::vk_read_binary_file(SHS_VK_FP_SCENE_FRAG_SPV);
+        const std::vector<char> gbuffer_fs_code = shs::rhi::vk_read_binary_file(SHS_VK_FP_GBUFFER_FRAG_SPV);
+        const std::vector<char> deferred_vs_code = shs::rhi::vk_read_binary_file(SHS_VK_FP_DEFERRED_VERT_SPV);
+        const std::vector<char> ssao_fs_code = shs::rhi::vk_read_binary_file(SHS_VK_FP_SSAO_FRAG_SPV);
+        const std::vector<char> deferred_fs_code = shs::rhi::vk_read_binary_file(SHS_VK_FP_DEFERRED_FRAG_SPV);
+        const std::vector<char> motion_blur_fs_code = shs::rhi::vk_read_binary_file(SHS_VK_FP_MOTION_BLUR_FRAG_SPV);
+        const std::vector<char> dof_fs_code = shs::rhi::vk_read_binary_file(SHS_VK_FP_DOF_FRAG_SPV);
+        const std::vector<char> depth_reduce_cs_code = shs::rhi::vk_read_binary_file(SHS_VK_FP_DEPTH_REDUCE_COMP_SPV);
+        const std::vector<char> cull_cs_code = shs::rhi::vk_read_binary_file(SHS_VK_FP_LIGHT_CULL_COMP_SPV);
 
-        VkShaderModule shadow_vs = shs::vk_create_shader_module(vk_->device(), shadow_vs_code);
-        VkShaderModule scene_vs = shs::vk_create_shader_module(vk_->device(), scene_vs_code);
-        VkShaderModule scene_fs = shs::vk_create_shader_module(vk_->device(), scene_fs_code);
-        VkShaderModule gbuffer_fs = shs::vk_create_shader_module(vk_->device(), gbuffer_fs_code);
-        VkShaderModule deferred_vs = shs::vk_create_shader_module(vk_->device(), deferred_vs_code);
-        VkShaderModule ssao_fs = shs::vk_create_shader_module(vk_->device(), ssao_fs_code);
-        VkShaderModule deferred_fs = shs::vk_create_shader_module(vk_->device(), deferred_fs_code);
-        VkShaderModule motion_blur_fs = shs::vk_create_shader_module(vk_->device(), motion_blur_fs_code);
-        VkShaderModule dof_fs = shs::vk_create_shader_module(vk_->device(), dof_fs_code);
-        VkShaderModule depth_reduce_cs = shs::vk_create_shader_module(vk_->device(), depth_reduce_cs_code);
-        VkShaderModule cull_cs = shs::vk_create_shader_module(vk_->device(), cull_cs_code);
+        VkShaderModule shadow_vs = shs::rhi::vk_create_shader_module(vk_->device(), shadow_vs_code);
+        VkShaderModule scene_vs = shs::rhi::vk_create_shader_module(vk_->device(), scene_vs_code);
+        VkShaderModule scene_fs = shs::rhi::vk_create_shader_module(vk_->device(), scene_fs_code);
+        VkShaderModule gbuffer_fs = shs::rhi::vk_create_shader_module(vk_->device(), gbuffer_fs_code);
+        VkShaderModule deferred_vs = shs::rhi::vk_create_shader_module(vk_->device(), deferred_vs_code);
+        VkShaderModule ssao_fs = shs::rhi::vk_create_shader_module(vk_->device(), ssao_fs_code);
+        VkShaderModule deferred_fs = shs::rhi::vk_create_shader_module(vk_->device(), deferred_fs_code);
+        VkShaderModule motion_blur_fs = shs::rhi::vk_create_shader_module(vk_->device(), motion_blur_fs_code);
+        VkShaderModule dof_fs = shs::rhi::vk_create_shader_module(vk_->device(), dof_fs_code);
+        VkShaderModule depth_reduce_cs = shs::rhi::vk_create_shader_module(vk_->device(), depth_reduce_cs_code);
+        VkShaderModule cull_cs = shs::rhi::vk_create_shader_module(vk_->device(), cull_cs_code);
 
         const auto cleanup_modules = [&]() {
             if (shadow_vs != VK_NULL_HANDLE) vkDestroyShaderModule(vk_->device(), shadow_vs, nullptr);
@@ -5348,9 +5348,9 @@ private:
 
 #endif // SHS_HAS_VULKAN
 
-    shs::RenderPathLightGridRuntimeLayout make_active_light_grid_runtime_layout(uint32_t frame_w, uint32_t frame_h) const
+    shs::renderpath::RenderPathLightGridRuntimeLayout make_active_light_grid_runtime_layout(uint32_t frame_w, uint32_t frame_h) const
     {
-        return shs::make_render_path_light_grid_runtime_layout(
+        return shs::renderpath::make_render_path_light_grid_runtime_layout(
             render_path_executor_.active_plan(),
             render_path_executor_.active_recipe(),
             render_path_executor_.active_resource_plan(),
@@ -5365,7 +5365,7 @@ private:
 
         const VkFormat swapchain_fmt = vk_->swapchain_format();
 
-        const shs::RenderPathLightGridRuntimeLayout desired_layout =
+        const shs::renderpath::RenderPathLightGridRuntimeLayout desired_layout =
             make_active_light_grid_runtime_layout(w, h);
 
         const bool extent_matches =
@@ -5382,14 +5382,14 @@ private:
         const bool format_matches =
             post_target_a_.format == swapchain_fmt &&
             post_target_b_.format == swapchain_fmt;
-        const bool temporal_matches = shs::vk_render_path_temporal_resources_allocation_equal(
+        const bool temporal_matches = shs::rhi::vk_render_path_temporal_resources_allocation_equal(
             temporal_resources_,
             render_path_executor_.active_resource_plan(),
             w,
             h,
             swapchain_fmt);
         const bool light_grid_matches =
-            shs::light_grid_runtime_layout_allocation_equal(light_grid_layout_, desired_layout);
+            shs::renderpath::light_grid_runtime_layout_allocation_equal(light_grid_layout_, desired_layout);
 
         if (extent_matches &&
             format_matches &&
@@ -5409,7 +5409,7 @@ private:
         create_ao_target(w, h);
         create_post_color_target(post_target_a_, w, h, swapchain_fmt);
         create_post_color_target(post_target_b_, w, h, swapchain_fmt);
-        if (!shs::vk_ensure_render_path_temporal_resources(
+        if (!shs::rhi::vk_ensure_render_path_temporal_resources(
                 vk_->device(),
                 vk_->physical_device(),
                 render_path_executor_.active_resource_plan(),
@@ -5435,7 +5435,7 @@ private:
 
     void refresh_active_composition_recipe()
     {
-        const shs::RenderPathPreset active_path = shs::render_path_preset_for_mode(active_technique_);
+        const shs::renderpath::RenderPathPreset active_path = shs::renderpath::render_path_preset_for_mode(active_technique_);
         if (!composition_cycle_order_.empty())
         {
             size_t any_match = composition_cycle_order_.size();
@@ -5460,7 +5460,7 @@ private:
                 return;
             }
         }
-        active_composition_recipe_ = shs::make_builtin_render_composition_recipe(
+        active_composition_recipe_ = shs::renderpath::make_builtin_render_composition_recipe(
             active_path,
             render_technique_preset_,
             "composition_vk");
@@ -5468,8 +5468,8 @@ private:
 
     void apply_composition_post_stack_state()
     {
-        const shs::RenderCompositionPostStackState stack =
-            shs::resolve_render_composition_post_stack_state(
+        const shs::renderpath::RenderCompositionPostStackState stack =
+            shs::renderpath::resolve_render_composition_post_stack_state(
                 active_composition_recipe_.path_preset,
                 active_composition_recipe_.post_stack);
         composition_ssao_enabled_ = stack.enable_ssao;
@@ -5499,14 +5499,14 @@ private:
     }
 
     void apply_render_technique_preset(
-        shs::RenderTechniquePreset preset,
+        shs::renderpath::RenderTechniquePreset preset,
         bool refresh_composition = true)
     {
         render_technique_preset_ = preset;
-        render_technique_recipe_ = shs::make_builtin_render_technique_recipe(
+        render_technique_recipe_ = shs::renderpath::make_builtin_render_technique_recipe(
             render_technique_preset_,
             "render_tech_vk");
-        shading_variant_ = shs::render_technique_shader_variant(render_technique_preset_);
+        shading_variant_ = shs::renderpath::render_technique_shader_variant(render_technique_preset_);
         tonemap_exposure_ = render_technique_recipe_.tonemap_exposure;
         tonemap_gamma_ = render_technique_recipe_.tonemap_gamma;
         if (refresh_composition)
@@ -5516,8 +5516,8 @@ private:
     }
 
     size_t find_composition_index(
-        shs::RenderPathPreset path_preset,
-        shs::RenderTechniquePreset technique_preset) const
+        shs::renderpath::RenderPathPreset path_preset,
+        shs::renderpath::RenderTechniquePreset technique_preset) const
     {
         for (size_t i = 0; i < composition_cycle_order_.size(); ++i)
         {
@@ -5530,10 +5530,10 @@ private:
         return 0u;
     }
 
-    void apply_render_composition_resolved(const shs::RenderCompositionResolved& resolved)
+    void apply_render_composition_resolved(const shs::renderpath::RenderCompositionResolved& resolved)
     {
         apply_render_technique_preset(resolved.composition.technique_preset, false);
-        const shs::RenderPathResolvedState resolved_path_state =
+        const shs::renderpath::RenderPathResolvedState resolved_path_state =
             render_path_executor_.resolve_recipe(resolved.path_recipe, ctx_, &pass_contract_registry_);
         const bool plan_valid = render_path_executor_.apply_resolved(resolved_path_state);
         (void)consume_active_render_path_apply_result(plan_valid);
@@ -5544,11 +5544,11 @@ private:
     {
         if (composition_cycle_order_.empty()) return false;
         active_composition_index_ = index % composition_cycle_order_.size();
-        const shs::RenderCompositionRecipe& composition = composition_cycle_order_[active_composition_index_];
+        const shs::renderpath::RenderCompositionRecipe& composition = composition_cycle_order_[active_composition_index_];
 
         apply_render_technique_preset(composition.technique_preset, false);
-        shs::RenderCompositionResolved resolved =
-            shs::resolve_builtin_render_composition_recipe(
+        shs::renderpath::RenderCompositionResolved resolved =
+            shs::renderpath::resolve_builtin_render_composition_recipe(
                 composition,
                 shs::RenderBackendType::Vulkan,
                 "render_path_vk",
@@ -5562,7 +5562,7 @@ private:
             resolved.path_recipe.view_culling = shs::RenderPathCullingMode::FrustumAndOcclusion;
             resolved.path_recipe.name = "path_clustered_forward_modern_extreme";
         }
-        const shs::RenderPathResolvedState resolved_path_state =
+        const shs::renderpath::RenderPathResolvedState resolved_path_state =
             render_path_executor_.resolve_recipe(resolved.path_recipe, ctx_, &pass_contract_registry_);
         const bool plan_valid = render_path_executor_.apply_resolved(resolved_path_state);
         const bool ok = consume_active_render_path_apply_result(plan_valid);
@@ -5579,7 +5579,7 @@ private:
         return ok;
     }
 
-    void apply_technique_profile(shs::TechniqueMode mode, const shs::TechniqueProfile& profile)
+    void apply_technique_profile(shs::render::TechniqueMode mode, const shs::renderpath::TechniqueProfile& profile)
     {
         active_technique_ = mode;
 
@@ -5588,7 +5588,7 @@ private:
             profile_has_pass(profile, shs::PassId::LightCulling) ||
             profile_has_pass(profile, shs::PassId::ClusterLightAssign);
 
-        shs::LightCullingMode mode_hint = shs::default_light_culling_mode_for_mode(mode);
+        shs::lighting::LightCullingMode mode_hint = shs::renderpath::default_light_culling_mode_for_mode(mode);
         if (!enable_light_culling_)
         {
             mode_hint = shs::LightCullingMode::None;
@@ -5618,7 +5618,7 @@ private:
         if (!path_has_taa_pass_)
         {
 #ifdef SHS_HAS_VULKAN
-            shs::vk_render_path_invalidate_history_color(temporal_resources_);
+            shs::rhi::vk_render_path_invalidate_history_color(temporal_resources_);
 #endif
         }
 
@@ -5629,31 +5629,31 @@ private:
         apply_composition_post_stack_state();
     }
 
-    void apply_technique_mode(shs::TechniqueMode mode)
+    void apply_technique_mode(shs::render::TechniqueMode mode)
     {
-        const shs::TechniqueProfile profile = shs::make_default_technique_profile(mode);
+        const shs::renderpath::TechniqueProfile profile = shs::renderpath::make_default_technique_profile(mode);
         apply_technique_profile(mode, profile);
     }
 
     void init_render_path_registry()
     {
         pass_contract_registry_ =
-            shs::make_standard_pass_contract_registry_for_backend(shs::RenderBackendType::Vulkan);
+            shs::renderpath::make_standard_pass_contract_registry_for_backend(shs::RenderBackendType::Vulkan);
         pass_contract_registry_sw_ =
-            shs::make_standard_pass_contract_registry_for_backend(shs::RenderBackendType::Software);
+            shs::renderpath::make_standard_pass_contract_registry_for_backend(shs::RenderBackendType::Software);
 
-        auto register_custom_contracts = [](shs::PassFactoryRegistry& registry, shs::RenderBackendType backend) {
+        auto register_custom_contracts = [](shs::renderpath::PassFactoryRegistry& registry, shs::render::RenderBackendType backend) {
             const uint32_t backend_mask = shs::PassFactoryRegistry::backend_bit(backend);
 
-            shs::TechniquePassContract ssao_forward_contract{};
+            shs::renderpath::TechniquePassContract ssao_forward_contract{};
             ssao_forward_contract.role = shs::TechniquePassRole::PostProcess;
-            ssao_forward_contract.supported_modes_mask = shs::technique_mode_bit(shs::TechniqueMode::Forward);
+            ssao_forward_contract.supported_modes_mask = shs::render::technique_mode_bit(shs::TechniqueMode::Forward);
             ssao_forward_contract.requires_depth_prepass = true;
             ssao_forward_contract.semantics = {
-                shs::read_semantic(shs::PassSemantic::Depth, shs::ContractDomain::Any, "depth"),
-                shs::write_semantic(shs::PassSemantic::AmbientOcclusion, shs::ContractDomain::Any, "ao")
+                shs::renderpath::read_semantic(shs::PassSemantic::Depth, shs::ContractDomain::Any, "depth"),
+                shs::renderpath::write_semantic(shs::PassSemantic::AmbientOcclusion, shs::ContractDomain::Any, "ao")
             };
-            registry.register_factory(kCustomPassSsaoForward, []() -> std::unique_ptr<shs::IRenderPass> {
+            registry.register_factory(kCustomPassSsaoForward, []() -> std::unique_ptr<shs::renderpath::IRenderPass> {
                 return nullptr;
             });
             registry.register_descriptor(
@@ -5662,13 +5662,13 @@ private:
                 backend_mask,
                 true);
 
-            shs::TechniquePassContract fxaa_contract{};
+            shs::renderpath::TechniquePassContract fxaa_contract{};
             fxaa_contract.role = shs::TechniquePassRole::PostProcess;
-            fxaa_contract.supported_modes_mask = shs::technique_mode_bit(shs::TechniqueMode::Forward);
+            fxaa_contract.supported_modes_mask = shs::render::technique_mode_bit(shs::TechniqueMode::Forward);
             fxaa_contract.semantics = {
-                shs::read_write_semantic(shs::PassSemantic::ColorLDR, shs::ContractDomain::Any, "ldr")
+                shs::renderpath::read_write_semantic(shs::PassSemantic::ColorLDR, shs::ContractDomain::Any, "ldr")
             };
-            registry.register_factory(kCustomPassFxaa, []() -> std::unique_ptr<shs::IRenderPass> {
+            registry.register_factory(kCustomPassFxaa, []() -> std::unique_ptr<shs::renderpath::IRenderPass> {
                 return nullptr;
             });
             registry.register_descriptor(
@@ -5689,7 +5689,7 @@ private:
         {
             const uint32_t sw_backend_mask =
                 shs::PassFactoryRegistry::backend_bit(shs::RenderBackendType::Software);
-            const shs::PassId standard_pass_ids[] = {
+            const shs::renderpath::PassId standard_pass_ids[] = {
                 shs::PassId::ShadowMap,
                 shs::PassId::DepthPrepass,
                 shs::PassId::LightCulling,
@@ -5707,10 +5707,10 @@ private:
                 shs::PassId::DepthOfField,
                 shs::PassId::TAA
             };
-            for (const shs::PassId pass_id : standard_pass_ids)
+            for (const shs::renderpath::PassId pass_id : standard_pass_ids)
             {
-                shs::TechniquePassContract contract{};
-                if (!shs::lookup_standard_pass_contract(pass_id, contract)) continue;
+                shs::renderpath::TechniquePassContract contract{};
+                if (!shs::renderpath::lookup_standard_pass_contract(pass_id, contract)) continue;
                 pass_contract_registry_sw_.register_descriptor(
                     pass_id, contract, sw_backend_mask, true);
             }
@@ -5741,7 +5741,7 @@ private:
 
     void refresh_semantic_debug_targets()
     {
-        semantic_debug_targets_ = shs::collect_render_path_visual_debug_semantics(
+        semantic_debug_targets_ = shs::renderpath::collect_render_path_visual_debug_semantics(
             render_path_executor_.active_resource_plan());
         if (semantic_debug_targets_.empty())
         {
@@ -5804,7 +5804,7 @@ private:
 
         const char* state = semantic_debug_enabled_ ? "ON" : "OFF";
         const char* semantic_name = semantic_debug_enabled_
-            ? shs::pass_semantic_name(active_semantic_debug_)
+            ? shs::renderpath::pass_semantic_name(active_semantic_debug_)
             : "none";
         std::fprintf(stderr, "[render-path][debug] Semantic debug: %s (%s)\n", state, semantic_name);
     }
@@ -5933,8 +5933,8 @@ private:
 
     bool consume_active_render_path_apply_result(bool plan_valid)
     {
-        const shs::RenderPathExecutionPlan& plan = render_path_executor_.active_plan();
-        const shs::RenderPathRecipe& recipe = render_path_executor_.active_recipe();
+        const shs::renderpath::RenderPathExecutionPlan& plan = render_path_executor_.active_plan();
+        const shs::renderpath::RenderPathRecipe& recipe = render_path_executor_.active_recipe();
 
         // Keep the renderpath pod mirror in sync with whatever the executor
         // actually applied (accepted swaps and fallbacks both land here).
@@ -5942,8 +5942,8 @@ private:
         render_path_pod_.plan =
             render_path_compiler_.compile(recipe, render_path_caps_, &pass_contract_registry_);
         render_path_pod_.has_plan = render_path_pod_.plan.valid;
-        const shs::RenderPathResourcePlan& resource_plan = render_path_executor_.active_resource_plan();
-        const shs::RenderPathBarrierPlan& barrier_plan = render_path_executor_.active_barrier_plan();
+        const shs::renderpath::RenderPathResourcePlan& resource_plan = render_path_executor_.active_resource_plan();
+        const shs::renderpath::RenderPathBarrierPlan& barrier_plan = render_path_executor_.active_barrier_plan();
 
         for (const auto& w : plan.warnings)
         {
@@ -5974,19 +5974,19 @@ private:
 
         light_tile_size_ = std::max(1u, recipe.light_tile_size);
         cluster_z_slices_ = std::max(1u, recipe.cluster_z_slices);
-        if (const auto* grid = shs::find_render_path_resource_by_semantic(resource_plan, shs::PassSemantic::LightGrid))
+        if (const auto* grid = shs::renderpath::find_render_path_resource_by_semantic(resource_plan, shs::PassSemantic::LightGrid))
         {
             light_tile_size_ = std::max(1u, grid->tile_size);
         }
-        if (const auto* clusters = shs::find_render_path_resource_by_semantic(resource_plan, shs::PassSemantic::LightClusters))
+        if (const auto* clusters = shs::renderpath::find_render_path_resource_by_semantic(resource_plan, shs::PassSemantic::LightClusters))
         {
             cluster_z_slices_ = std::max(1u, clusters->layers);
         }
         barrier_edge_count_ = static_cast<uint32_t>(barrier_plan.edges.size());
-        barrier_memory_edge_count_ = shs::render_path_barrier_memory_edge_count(barrier_plan);
-        barrier_layout_edge_count_ = shs::render_path_barrier_layout_transition_count(barrier_plan);
+        barrier_memory_edge_count_ = shs::renderpath::render_path_barrier_memory_edge_count(barrier_plan);
+        barrier_layout_edge_count_ = shs::renderpath::render_path_barrier_layout_transition_count(barrier_plan);
         barrier_alias_class_count_ = static_cast<uint32_t>(barrier_plan.alias_classes.size());
-        barrier_alias_slot_count_ = shs::render_path_alias_slot_count(barrier_plan);
+        barrier_alias_slot_count_ = shs::renderpath::render_path_alias_slot_count(barrier_plan);
 
         if (!plan_valid)
         {
@@ -5998,7 +5998,7 @@ private:
             return false;
         }
 
-        const shs::TechniqueProfile profile = shs::make_technique_profile(plan);
+        const shs::renderpath::TechniqueProfile profile = shs::renderpath::make_technique_profile(plan);
         apply_technique_profile(plan.technique_mode, profile);
         enable_scene_occlusion_ = plan.runtime_state.view_occlusion_enabled;
         enable_light_occlusion_ = plan.runtime_state.shadow_occlusion_enabled;
@@ -6036,7 +6036,7 @@ private:
                 pending_resolved_render_paths_.back().recipe});
     }
 
-    void request_technique_mode(shs::TechniqueMode mode)
+    void request_technique_mode(shs::render::TechniqueMode mode)
     {
         pending_renderpath_commands_.push_back(
             shs::renderpath::SetRenderingTechniqueIntent{
@@ -6074,7 +6074,7 @@ private:
                         last_swap_rejected = false;
                         if (command_is_path && !pending_resolved_render_paths_.empty())
                         {
-                            const shs::RenderPathResolvedState resolved =
+                            const shs::renderpath::RenderPathResolvedState resolved =
                                 std::move(pending_resolved_render_paths_.front());
                             pending_resolved_render_paths_.pop_front();
                             const bool plan_valid = render_path_executor_.apply_resolved(resolved);
@@ -6129,7 +6129,7 @@ private:
     void cycle_lighting_technique()
     {
         apply_render_technique_preset(
-            shs::next_render_technique_preset(render_technique_preset_));
+            shs::renderpath::next_render_technique_preset(render_technique_preset_));
         technique_switch_accum_sec_ = 0.0f;
     }
 
@@ -6144,13 +6144,13 @@ private:
         
         // Explicitly setup demo-local forward chain with working shadow + SSAO side-path:
         // ShadowMap -> DepthPrepass -> GBuffer -> SSAO -> SceneForward -> Tonemap -> LightCulling -> FXAA
-        shs::RenderCompositionRecipe recipe{};
+        shs::renderpath::RenderCompositionRecipe recipe{};
         recipe.name = "forward_shadow_ssao_scene_tonemap_lightcull_fxaa";
         recipe.path_preset = shs::RenderPathPreset::Forward;
         recipe.technique_preset = shs::RenderTechniquePreset::PBR;
         recipe.post_stack = shs::RenderCompositionPostStackPreset::Default;
 
-        shs::RenderCompositionResolved resolved = shs::resolve_builtin_render_composition_recipe(
+        shs::renderpath::RenderCompositionResolved resolved = shs::renderpath::resolve_builtin_render_composition_recipe(
             recipe,
             shs::RenderBackendType::Vulkan,
             "path_vk",
@@ -6161,13 +6161,13 @@ private:
 
         // Requested pass order.
         resolved.path_recipe.pass_chain = {
-            shs::make_render_path_pass_entry(shs::PassId::ShadowMap, true),
-            shs::make_render_path_pass_entry(shs::PassId::DepthPrepass, true),
-            shs::make_render_path_pass_entry(shs::PassId::GBuffer, true),
-            shs::make_render_path_pass_entry(shs::PassId::SSAO, true),
-            shs::make_render_path_pass_entry(shs::PassId::PBRForward, true),
-            shs::make_render_path_pass_entry(shs::PassId::Tonemap, true),
-            shs::make_render_path_pass_entry(shs::PassId::LightCulling, true),
+            shs::renderpath::make_render_path_pass_entry(shs::PassId::ShadowMap, true),
+            shs::renderpath::make_render_path_pass_entry(shs::PassId::DepthPrepass, true),
+            shs::renderpath::make_render_path_pass_entry(shs::PassId::GBuffer, true),
+            shs::renderpath::make_render_path_pass_entry(shs::PassId::SSAO, true),
+            shs::renderpath::make_render_path_pass_entry(shs::PassId::PBRForward, true),
+            shs::renderpath::make_render_path_pass_entry(shs::PassId::Tonemap, true),
+            shs::renderpath::make_render_path_pass_entry(shs::PassId::LightCulling, true),
             make_custom_render_path_pass_entry(kCustomPassFxaa, true)
         };
 
@@ -6175,7 +6175,7 @@ private:
 
         // Renderpath pod init (Run 1 / P3 task 2): capability snapshot + the
         // initial recipe/plan, so intent dispatch validates against reality.
-        render_path_caps_ = shs::make_render_path_capability_set(ctx_, shs::RenderBackendType::Vulkan);
+        render_path_caps_ = shs::renderpath::make_render_path_capability_set(ctx_, shs::RenderBackendType::Vulkan);
         render_path_pod_.recipe = resolved.path_recipe;
         render_path_pod_.plan = render_path_compiler_.compile(
             resolved.path_recipe, render_path_caps_, &pass_contract_registry_);
@@ -6250,7 +6250,7 @@ private:
         }
         for (size_t i = 0; i < instances_.size(); ++i)
         {
-            shs::SceneShape shape{};
+            shs::geometry::SceneShape shape{};
             shape.shape = cull_shape_for_mesh(instances_[i].mesh_kind);
             shape.transform = shs::jolt::to_jph(instance_models_[i]);
             shape.stable_id = static_cast<uint32_t>(i);
@@ -6258,7 +6258,7 @@ private:
         }
     }
 
-    void update_visibility_from_cell(const shs::CullingCell& cell)
+    void update_visibility_from_cell(const shs::geometry::CullingCell& cell)
     {
         if (instance_visible_mask_.size() != instances_.size())
         {
@@ -6270,14 +6270,14 @@ private:
             rebuild_instance_cull_shapes();
         }
 
-        const shs::CullResult instance_cull = shs::cull_vs_cell(std::span<const shs::SceneShape>{instance_cull_shapes_}, cell);
+        const shs::geometry::CullResult instance_cull = shs::geometry::cull_vs_cell(std::span<const shs::geometry::SceneShape>{instance_cull_shapes_}, cell);
         frustum_visible_instance_indices_.clear();
         frustum_visible_instance_indices_.reserve(instances_.size());
         uint32_t visible_instances = 0;
         const size_t cull_count = std::min(instance_visible_mask_.size(), instance_cull.classes.size());
         for (size_t i = 0; i < cull_count; ++i)
         {
-            const bool visible = shs::cull_class_is_visible(instance_cull.classes[i], true);
+            const bool visible = shs::geometry::cull_class_is_visible(instance_cull.classes[i], true);
             instance_visible_mask_[i] = visible ? 1u : 0u;
             if (visible)
             {
@@ -6291,9 +6291,9 @@ private:
         }
         visible_instance_count_ = visible_instances;
 
-        const shs::AABB floor_ws = shs::transform_aabb(floor_local_aabb_, floor_model_);
-        const shs::CullClass floor_class = shs::classify_aabb_vs_cell(floor_ws, cell);
-        floor_visible_ = shs::cull_class_is_visible(floor_class, true);
+        const shs::geometry::AABB floor_ws = shs::geometry::transform_aabb(floor_local_aabb_, floor_model_);
+        const shs::geometry::CullClass floor_class = shs::geometry::classify_aabb_vs_cell(floor_ws, cell);
+        floor_visible_ = shs::geometry::cull_class_is_visible(floor_class, true);
     }
 
     void apply_scene_software_occlusion()
@@ -6320,8 +6320,8 @@ private:
             [&](uint32_t a, uint32_t b)
             {
                 if (a >= instance_models_.size() || b >= instance_models_.size()) return a < b;
-                const shs::AABB aa = shs::transform_aabb(local_aabb_for_mesh(instances_[a].mesh_kind), instance_models_[a]);
-                const shs::AABB bb = shs::transform_aabb(local_aabb_for_mesh(instances_[b].mesh_kind), instance_models_[b]);
+                const shs::geometry::AABB aa = shs::geometry::transform_aabb(local_aabb_for_mesh(instances_[a].mesh_kind), instance_models_[a]);
+                const shs::geometry::AABB bb = shs::geometry::transform_aabb(local_aabb_for_mesh(instances_[b].mesh_kind), instance_models_[b]);
                 const float da = shs::culling_sw::view_depth_of_aabb_center(aa, camera_ubo_.view);
                 const float db = shs::culling_sw::view_depth_of_aabb_center(bb, camera_ubo_.view);
                 return da < db;
@@ -6331,7 +6331,7 @@ private:
         for (const uint32_t idx : sorted)
         {
             if (idx >= instance_models_.size() || idx >= instance_visible_mask_.size()) continue;
-            const shs::AABB world_box = shs::transform_aabb(local_aabb_for_mesh(instances_[idx].mesh_kind), instance_models_[idx]);
+            const shs::geometry::AABB world_box = shs::geometry::transform_aabb(local_aabb_for_mesh(instances_[idx].mesh_kind), instance_models_[idx]);
             const shs::culling_sw::ScreenRectDepth rect = shs::culling_sw::project_aabb_to_screen_rect(
                 world_box,
                 camera_ubo_.view_proj,
@@ -6412,11 +6412,11 @@ private:
         for (size_t i = 0; i < instance_visible_mask_.size() && i < instance_models_.size(); ++i)
         {
             if (instance_visible_mask_[i] == 0u) continue;
-            visible_object_aabbs_.push_back(shs::transform_aabb(local_aabb_for_mesh(instances_[i].mesh_kind), instance_models_[i]));
+            visible_object_aabbs_.push_back(shs::geometry::transform_aabb(local_aabb_for_mesh(instances_[i].mesh_kind), instance_models_[i]));
         }
         if (floor_visible_)
         {
-            visible_object_aabbs_.push_back(shs::transform_aabb(floor_local_aabb_, floor_model_));
+            visible_object_aabbs_.push_back(shs::geometry::transform_aabb(floor_local_aabb_, floor_model_));
         }
     }
 
@@ -6427,31 +6427,31 @@ private:
 
         if (light_object_cull_mode_ == shs::LightObjectCullMode::SphereAabb)
         {
-            shs::Sphere s{};
+            shs::geometry::Sphere s{};
             s.center = glm::vec3(packed.cull_sphere);
             s.radius = std::max(packed.cull_sphere.w, 0.0f);
-            for (const shs::AABB& obj : visible_object_aabbs_)
+            for (const shs::geometry::AABB& obj : visible_object_aabbs_)
             {
-                if (shs::intersect_sphere_aabb(s, obj)) return true;
+                if (shs::lighting::intersect_sphere_aabb(s, obj)) return true;
             }
             return false;
         }
 
-        shs::AABB light_box{};
+        shs::geometry::AABB light_box{};
         light_box.minv = glm::vec3(packed.cull_aabb_min);
         light_box.maxv = glm::vec3(packed.cull_aabb_max);
-        for (const shs::AABB& obj : visible_object_aabbs_)
+        for (const shs::geometry::AABB& obj : visible_object_aabbs_)
         {
-            if (shs::intersect_aabb_aabb(light_box, obj)) return true;
+            if (shs::lighting::intersect_aabb_aabb(light_box, obj)) return true;
         }
         return false;
     }
 
-    static shs::InputState make_runtime_input_state_from_latch(
-        const shs::RuntimeInputLatch& latch,
+    static shs::input::InputState make_runtime_input_state_from_latch(
+        const shs::input::RuntimeInputLatch& latch,
         bool pending_quit_action)
     {
-        shs::InputState input{};
+        shs::input::InputState input{};
         input.forward = latch.forward;
         input.backward = latch.backward;
         input.left = latch.left;
@@ -6485,7 +6485,7 @@ private:
         }
 
         const float aspect = (h > 0) ? (static_cast<float>(w) / static_cast<float>(h)) : 1.0f;
-        const shs::InputState input = make_runtime_input_state_from_latch(input_latch_, pending_quit_action_);
+        const shs::input::InputState input = make_runtime_input_state_from_latch(input_latch_, pending_quit_action_);
         pending_quit_action_ = false;
         runtime_actions_.clear();
         shs::emit_human_actions(input, runtime_actions_, camera_.move_speed, 2.0f, camera_.look_speed);
@@ -6494,11 +6494,11 @@ private:
         camera_.pos = runtime_state_.camera.pos;
         camera_.yaw = runtime_state_.camera.yaw;
         camera_.pitch = runtime_state_.camera.pitch;
-        input_latch_ = shs::clear_runtime_input_frame_deltas(input_latch_);
+        input_latch_ = shs::input::clear_runtime_input_frame_deltas(input_latch_);
 
         const glm::vec3 cam_pos = camera_.pos;
         camera_ubo_.view = camera_.view_matrix();
-        const glm::mat4 base_proj = shs::perspective_lh_no(glm::radians(62.0f), aspect, kDemoNearZ, kDemoFarZ);
+        const glm::mat4 base_proj = shs::camera::perspective_lh_no(glm::radians(62.0f), aspect, kDemoNearZ, kDemoFarZ);
         temporal_state_.frame_index = ctx_.frame_index;
         temporal_state_.previous_view_proj = temporal_state_.current_view_proj;
         const bool temporal_active =
@@ -6510,12 +6510,12 @@ private:
             false;
 #endif
         temporal_state_.jitter_ndc = (temporal_settings_.jitter_enabled && temporal_active)
-            ? shs::compute_taa_jitter_ndc(temporal_state_.frame_index, w, h, temporal_settings_.jitter_scale)
+            ? shs::renderpath::compute_taa_jitter_ndc(temporal_state_.frame_index, w, h, temporal_settings_.jitter_scale)
             : glm::vec2(0.0f);
         temporal_state_.jitter_pixels = glm::vec2(
             0.5f * temporal_state_.jitter_ndc.x * static_cast<float>(w),
             0.5f * temporal_state_.jitter_ndc.y * static_cast<float>(h));
-        camera_ubo_.proj = shs::add_projection_jitter_ndc(base_proj, temporal_state_.jitter_ndc);
+        camera_ubo_.proj = shs::renderpath::add_projection_jitter_ndc(base_proj, temporal_state_.jitter_ndc);
         camera_ubo_.view_proj = camera_ubo_.proj * camera_ubo_.view;
         temporal_state_.current_view_proj = camera_ubo_.view_proj;
         camera_ubo_.camera_pos_time = glm::vec4(cam_pos, t);
@@ -6537,7 +6537,7 @@ private:
         camera_ubo_.temporal_params = glm::vec4(
             temporal_active ? 1.0f : 0.0f,
 #ifdef SHS_HAS_VULKAN
-            (temporal_active && shs::vk_render_path_history_color_valid(temporal_resources_)) ? 1.0f : 0.0f,
+            (temporal_active && shs::rhi::vk_render_path_history_color_valid(temporal_resources_)) ? 1.0f : 0.0f,
 #else
             (temporal_active && false) ? 1.0f : 0.0f,
 #endif
@@ -6571,7 +6571,7 @@ private:
         }
 
         rebuild_instance_cull_shapes();
-        const shs::CullingCell camera_cell = shs::extract_frustum_cell(
+        const shs::geometry::CullingCell camera_cell = shs::geometry::extract_frustum_cell(
             camera_ubo_.view_proj,
             shs::CullingCellKind::CameraFrustumPerspective);
         update_visibility_from_cell(camera_cell);
@@ -6579,9 +6579,9 @@ private:
         build_light_occlusion_depth_from_scene();
         refresh_visible_object_bounds_for_light_prefilter();
 
-        shs::AABB shadow_scene_aabb = shadow_scene_static_bounds_ready_
+        shs::geometry::AABB shadow_scene_aabb = shadow_scene_static_bounds_ready_
             ? shadow_scene_static_aabb_
-            : shs::AABB{};
+            : shs::geometry::AABB{};
         if (!shadow_scene_static_bounds_ready_)
         {
             shadow_scene_aabb.expand(glm::vec3(-1.0f));
@@ -6589,7 +6589,7 @@ private:
         }
 
         const glm::vec3 sun_dir = glm::normalize(glm::vec3(camera_ubo_.sun_dir_intensity));
-        const shs::LightCamera sun_cam = shs::build_dir_light_camera_aabb(
+        const shs::camera::LightCamera sun_cam = shs::camera::build_dir_light_camera_aabb(
             sun_dir,
             shadow_scene_aabb,
             14.0f,
@@ -6602,7 +6602,7 @@ private:
         local_shadow_casters_.clear();
 
         const auto build_local_shadow_vp = [&](const glm::vec3& pos_ws, const glm::vec3& dir_ws, float fov_rad, float range) -> glm::mat4 {
-            const glm::vec3 dir = shs::normalize_or(dir_ws, glm::vec3(0.0f, -1.0f, 0.0f));
+            const glm::vec3 dir = shs::geometry::normalize_or(dir_ws, glm::vec3(0.0f, -1.0f, 0.0f));
             glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
             if (std::abs(glm::dot(dir, up)) > 0.95f) up = glm::vec3(0.0f, 0.0f, 1.0f);
             const glm::mat4 v = glm::lookAtLH(pos_ws, pos_ws + dir, up);
@@ -6619,8 +6619,8 @@ private:
         uint32_t used_rect_shadow = 0;
         uint32_t used_tube_shadow = 0;
 
-        const auto light_in_frustum = [&](const shs::Sphere& bounds) -> bool {
-            shs::Sphere s = bounds;
+        const auto light_in_frustum = [&](const shs::geometry::Sphere& bounds) -> bool {
+            shs::geometry::Sphere s = bounds;
             if (culling_mode_ == shs::LightCullingMode::TiledDepthRange)
             {
                 // Keep tiled-depth conservative enough to avoid edge popping,
@@ -6633,16 +6633,16 @@ private:
                 // when culling animated/orbiting lights against the camera frustum.
                 s.radius = std::max(s.radius * 1.08f, s.radius + 0.25f);
             }
-            shs::Sphere light_bounds = s; // Copy
+            shs::geometry::Sphere light_bounds = s; // Copy
             light_bounds.radius = std::max(light_bounds.radius, 0.0f); // Ensure valid
-            const shs::CullClass light_class = shs::classify_sphere_vs_cell(light_bounds, camera_cell);
-            return shs::cull_class_is_visible(light_class, true);
+            const shs::geometry::CullClass light_class = shs::geometry::classify_sphere_vs_cell(light_bounds, camera_cell);
+            return shs::geometry::cull_class_is_visible(light_class, true);
         };
 
-        const auto light_in_occlusion = [&](const shs::Sphere& bounds) -> bool {
+        const auto light_in_occlusion = [&](const shs::geometry::Sphere& bounds) -> bool {
             if (!enable_light_occlusion_) return true;
             if (light_occlusion_depth_.empty()) return true;
-            const shs::AABB light_box = shs::aabb_from_sphere(bounds);
+            const shs::geometry::AABB light_box = shs::lighting::aabb_from_sphere(bounds);
             const shs::culling_sw::ScreenRectDepth rect = shs::culling_sw::project_aabb_to_screen_rect(
                 light_box,
                 camera_ubo_.view_proj,
@@ -6711,7 +6711,7 @@ private:
             {
                 case shs::LightType::Spot:
                 {
-                    shs::SpotLight l{};
+                    shs::lighting::SpotLight l{};
                     l.common.position_ws = p;
                     l.common.range = tuned_range;
                     l.common.color = la.color;
@@ -6724,7 +6724,7 @@ private:
                     l.direction_ws = la.direction_ws;
                     l.inner_angle_rad = la.spot_inner_outer.x;
                     l.outer_angle_rad = la.spot_inner_outer.y;
-                    const shs::Sphere light_bounds = shs::spot_light_culling_sphere(l);
+                    const shs::geometry::Sphere light_bounds = shs::lighting::spot_light_culling_sphere(l);
                     if (!light_in_frustum(light_bounds))
                     {
                         ++light_frustum_rejected_;
@@ -6735,7 +6735,7 @@ private:
                         ++light_occlusion_rejected_;
                         break;
                     }
-                    const shs::CullingLightGPU packed = shs::make_spot_culling_light(l);
+                    const shs::CullingLightGPU packed = shs::lighting::make_spot_culling_light(l);
                     if (!passes_light_object_prefilter(packed))
                     {
                         ++light_prefilter_rejected_;
@@ -6775,7 +6775,7 @@ private:
                         local_shadow_casters_.push_back(caster);
                     }
                     light_set_.spots.push_back(l);
-                    gpu_lights_[light_index] = shs::make_spot_culling_light(l);
+                    gpu_lights_[light_index] = shs::lighting::make_spot_culling_light(l);
                     {
                         LightVolumeDebugDraw d{};
                         d.mesh = DebugVolumeMeshKind::Cone;
@@ -6793,7 +6793,7 @@ private:
                 }
                 case shs::LightType::RectArea:
                 {
-                    shs::RectAreaLight l{};
+                    shs::lighting::RectAreaLight l{};
                     l.common.position_ws = p;
                     l.common.range = tuned_range;
                     l.common.color = la.color;
@@ -6806,7 +6806,7 @@ private:
                     l.direction_ws = la.direction_ws;
                     l.right_ws = la.rect_right_ws;
                     l.half_extents = glm::vec2(la.shape_params.x, la.shape_params.y);
-                    const shs::Sphere light_bounds = shs::rect_area_light_culling_sphere(l);
+                    const shs::geometry::Sphere light_bounds = shs::lighting::rect_area_light_culling_sphere(l);
                     if (!light_in_frustum(light_bounds))
                     {
                         ++light_frustum_rejected_;
@@ -6817,7 +6817,7 @@ private:
                         ++light_occlusion_rejected_;
                         break;
                     }
-                    const shs::CullingLightGPU packed = shs::make_rect_area_culling_light(l);
+                    const shs::CullingLightGPU packed = shs::lighting::make_rect_area_culling_light(l);
                     if (!passes_light_object_prefilter(packed))
                     {
                         ++light_prefilter_rejected_;
@@ -6860,7 +6860,7 @@ private:
                         local_shadow_casters_.push_back(caster);
                     }
                     light_set_.rect_areas.push_back(l);
-                    gpu_lights_[light_index] = shs::make_rect_area_culling_light(l);
+                    gpu_lights_[light_index] = shs::lighting::make_rect_area_culling_light(l);
                     {
                         LightVolumeDebugDraw d{};
                         d.mesh = DebugVolumeMeshKind::Box;
@@ -6880,7 +6880,7 @@ private:
                 }
                 case shs::LightType::TubeArea:
                 {
-                    shs::TubeAreaLight l{};
+                    shs::lighting::TubeAreaLight l{};
                     l.common.position_ws = p;
                     l.common.range = tuned_range;
                     l.common.color = la.color;
@@ -6893,7 +6893,7 @@ private:
                     l.axis_ws = la.direction_ws;
                     l.half_length = la.shape_params.x;
                     l.radius = la.shape_params.y;
-                    const shs::Sphere light_bounds = shs::tube_area_light_culling_sphere(l);
+                    const shs::geometry::Sphere light_bounds = shs::lighting::tube_area_light_culling_sphere(l);
                     if (!light_in_frustum(light_bounds))
                     {
                         ++light_frustum_rejected_;
@@ -6904,7 +6904,7 @@ private:
                         ++light_occlusion_rejected_;
                         break;
                     }
-                    const shs::CullingLightGPU packed = shs::make_tube_area_culling_light(l);
+                    const shs::CullingLightGPU packed = shs::lighting::make_tube_area_culling_light(l);
                     if (!passes_light_object_prefilter(packed))
                     {
                         ++light_prefilter_rejected_;
@@ -6919,7 +6919,7 @@ private:
                         ++used_tube_shadow;
                         const uint32_t layer = used_spot_shadow++;
                         l.common.flags |= shs::LightFlagAffectsShadows;
-                        const glm::vec3 dir = shs::normalize_or(l.axis_ws, glm::vec3(1.0f, 0.0f, 0.0f));
+                        const glm::vec3 dir = shs::geometry::normalize_or(l.axis_ws, glm::vec3(1.0f, 0.0f, 0.0f));
                         const float proxy_fov = glm::radians(70.0f);
                         ShadowLightGPU sh{};
                         sh.light_view_proj = build_local_shadow_vp(l.common.position_ws, dir, proxy_fov, l.common.range);
@@ -6948,7 +6948,7 @@ private:
                         local_shadow_casters_.push_back(caster);
                     }
                     light_set_.tube_areas.push_back(l);
-                    gpu_lights_[light_index] = shs::make_tube_area_culling_light(l);
+                    gpu_lights_[light_index] = shs::lighting::make_tube_area_culling_light(l);
                     {
                         LightVolumeDebugDraw d{};
                         d.mesh = DebugVolumeMeshKind::Box;
@@ -6967,7 +6967,7 @@ private:
                 case shs::LightType::Point:
                 default:
                 {
-                    shs::PointLight l{};
+                    shs::lighting::PointLight l{};
                     l.common.position_ws = p;
                     l.common.range = tuned_range;
                     l.common.color = la.color;
@@ -6977,7 +6977,7 @@ private:
                     l.common.attenuation_bias = la.attenuation_bias;
                     l.common.attenuation_cutoff = la.attenuation_cutoff;
                     l.common.flags = shs::LightFlagsDefault;
-                    const shs::Sphere light_bounds = shs::point_light_culling_sphere(l);
+                    const shs::geometry::Sphere light_bounds = shs::lighting::point_light_culling_sphere(l);
                     if (!light_in_frustum(light_bounds))
                     {
                         ++light_frustum_rejected_;
@@ -6988,7 +6988,7 @@ private:
                         ++light_occlusion_rejected_;
                         break;
                     }
-                    const shs::CullingLightGPU packed = shs::make_point_culling_light(l);
+                    const shs::CullingLightGPU packed = shs::lighting::make_point_culling_light(l);
                     if (!passes_light_object_prefilter(packed))
                     {
                         ++light_prefilter_rejected_;
@@ -7026,7 +7026,7 @@ private:
                         local_shadow_casters_.push_back(caster);
                     }
                     light_set_.points.push_back(l);
-                    gpu_lights_[light_index] = shs::make_point_culling_light(l);
+                    gpu_lights_[light_index] = shs::lighting::make_point_culling_light(l);
                     {
                         LightVolumeDebugDraw d{};
                         d.mesh = DebugVolumeMeshKind::Sphere;
@@ -7159,7 +7159,7 @@ private:
 
     void set_viewport_scissor(VkCommandBuffer cmd, uint32_t w, uint32_t h, bool flip_y)
     {
-        shs::vk_cmd_set_viewport_scissor(cmd, w, h, flip_y);
+        shs::rhi::vk_cmd_set_viewport_scissor(cmd, w, h, flip_y);
     }
 
     void begin_render_pass_shadow(
@@ -7211,7 +7211,7 @@ private:
         {
             return glm::mat4(1.0f);
         }
-        const glm::vec3 dir = shs::normalize_or(caster.direction_ws, glm::vec3(0.0f, -1.0f, 0.0f));
+        const glm::vec3 dir = shs::geometry::normalize_or(caster.direction_ws, glm::vec3(0.0f, -1.0f, 0.0f));
         glm::vec3 up(0.0f, 1.0f, 0.0f);
         if (std::abs(glm::dot(dir, up)) > 0.95f) up = glm::vec3(0.0f, 0.0f, 1.0f);
         const glm::mat4 v = glm::lookAtLH(caster.position_ws, caster.position_ws + dir, up);
@@ -7223,19 +7223,19 @@ private:
         return p * v;
     }
 
-    void draw_shadow_scene(VkCommandBuffer cmd, const glm::mat4& light_view_proj, shs::CullingCellKind cell_kind)
+    void draw_shadow_scene(VkCommandBuffer cmd, const glm::mat4& light_view_proj, shs::geometry::CullingCellKind cell_kind)
     {
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadow_pipeline_);
-        const shs::CullingCell shadow_cell = shs::extract_frustum_cell(light_view_proj, cell_kind);
+        const shs::geometry::CullingCell shadow_cell = shs::geometry::extract_frustum_cell(light_view_proj, cell_kind);
         if (instance_cull_shapes_.size() != instances_.size())
         {
             rebuild_instance_cull_shapes();
         }
         
         const VkDeviceSize vb_off = 0;
-        const shs::AABB floor_ws = shs::transform_aabb(floor_local_aabb_, floor_model_);
-        const bool floor_in_shadow_cell = shs::cull_class_is_visible(
-            shs::classify_aabb_vs_cell(floor_ws, shadow_cell),
+        const shs::geometry::AABB floor_ws = shs::geometry::transform_aabb(floor_local_aabb_, floor_model_);
+        const bool floor_in_shadow_cell = shs::geometry::cull_class_is_visible(
+            shs::geometry::classify_aabb_vs_cell(floor_ws, shadow_cell),
             true);
 
         if (floor_in_shadow_cell && !floor_indices_.empty() && floor_vertex_buffer_.buffer != VK_NULL_HANDLE)
@@ -7249,7 +7249,7 @@ private:
             vkCmdDrawIndexed(cmd, static_cast<uint32_t>(floor_indices_.size()), 1, 0, 0, 0);
         }
 
-        const shs::CullResult shadow_cull = shs::cull_vs_cell(std::span<const shs::SceneShape>{instance_cull_shapes_}, shadow_cell);
+        const shs::geometry::CullResult shadow_cull = shs::geometry::cull_vs_cell(std::span<const shs::geometry::SceneShape>{instance_cull_shapes_}, shadow_cell);
         for (size_t idx : shadow_cull.visible_indices)
         {
             if (idx >= instance_models_.size()) continue;
@@ -7322,7 +7322,7 @@ private:
         float range,
         float outer_angle_rad) const
     {
-        const glm::vec3 dir = shs::normalize_or(dir_ws, glm::vec3(0.0f, -1.0f, 0.0f));
+        const glm::vec3 dir = shs::geometry::normalize_or(dir_ws, glm::vec3(0.0f, -1.0f, 0.0f));
         const float h = std::max(range, 0.25f);
         const float base_radius =
             std::tan(std::max(outer_angle_rad, glm::radians(3.0f))) * h;
@@ -7344,11 +7344,11 @@ private:
         float half_y,
         float extent_z) const
     {
-        glm::vec3 fwd = shs::normalize_or(dir_ws, glm::vec3(0.0f, -1.0f, 0.0f));
+        glm::vec3 fwd = shs::geometry::normalize_or(dir_ws, glm::vec3(0.0f, -1.0f, 0.0f));
         glm::vec3 right = right_ws - fwd * glm::dot(right_ws, fwd);
-        right = shs::normalize_or(right, glm::vec3(1.0f, 0.0f, 0.0f));
-        glm::vec3 up = shs::normalize_or(glm::cross(fwd, right), glm::vec3(0.0f, 1.0f, 0.0f));
-        right = shs::normalize_or(glm::cross(up, fwd), right);
+        right = shs::geometry::normalize_or(right, glm::vec3(1.0f, 0.0f, 0.0f));
+        glm::vec3 up = shs::geometry::normalize_or(glm::cross(fwd, right), glm::vec3(0.0f, 1.0f, 0.0f));
+        right = shs::geometry::normalize_or(glm::cross(up, fwd), right);
 
         // RectArea bounds are BoxShape with half-extents (hx + r, hy + r, r)
         // Source box mesh is centered and unit-sized, so scale by 2x half-extents.
@@ -7364,10 +7364,10 @@ private:
         float half_length,
         float radius) const
     {
-        glm::vec3 axis = shs::normalize_or(axis_ws, glm::vec3(1.0f, 0.0f, 0.0f));
+        glm::vec3 axis = shs::geometry::normalize_or(axis_ws, glm::vec3(1.0f, 0.0f, 0.0f));
         glm::vec3 up_hint = safe_perp_axis(axis);
-        glm::vec3 up = shs::normalize_or(glm::cross(axis, up_hint), glm::vec3(0.0f, 1.0f, 0.0f));
-        glm::vec3 side = shs::normalize_or(glm::cross(up, axis), glm::vec3(0.0f, 0.0f, 1.0f));
+        glm::vec3 up = shs::geometry::normalize_or(glm::cross(axis, up_hint), glm::vec3(0.0f, 1.0f, 0.0f));
+        glm::vec3 side = shs::geometry::normalize_or(glm::cross(up, axis), glm::vec3(0.0f, 0.0f, 1.0f));
 
         // TubeArea bounds is a CapsuleShape, length = 2*half_length + 2*radius, width = 2*radius.
         // We debug draw it using a Box that encapsulates the capsule bounds exactly.
@@ -7470,7 +7470,7 @@ private:
         for (size_t i = 0; i < count && aabb_debug_draws_.size() < 512u; ++i)
         {
             if (instance_visible_mask_[i] == 0u) continue;
-            const shs::AABB world = shs::transform_aabb(
+            const shs::geometry::AABB world = shs::geometry::transform_aabb(
                 local_aabb_for_mesh(instances_[i].mesh_kind),
                 instance_models_[i]);
             const glm::vec3 world_ext = world.extent();
@@ -7601,7 +7601,7 @@ private:
 
         std::vector<VkCommandBuffer> tmp(workers, VK_NULL_HANDLE);
         std::atomic<bool> ok{true};
-        shs::WaitGroup wg{};
+        shs::task::WaitGroup wg{};
 
         const uint32_t n = static_cast<uint32_t>(instances_.size());
         const uint32_t batch = (n + workers - 1) / workers;
@@ -7750,18 +7750,18 @@ private:
     }
 
 #endif // SHS_HAS_VULKAN
-    shs::PassId resolve_compiled_pass_kind(const shs::RenderPathCompiledPass& pass) const
+    shs::renderpath::PassId resolve_compiled_pass_kind(const shs::renderpath::RenderPathCompiledPass& pass) const
     {
-        return shs::pass_id_is_standard(pass.pass_id) ? pass.pass_id : shs::parse_pass_id(pass.id);
+        return shs::renderpath::pass_id_is_standard(pass.pass_id) ? pass.pass_id : shs::renderpath::parse_pass_id(pass.id);
     }
 
 #ifdef SHS_HAS_VULKAN
-    bool emit_graph_barrier_from_edge(VkCommandBuffer cmd, const shs::RenderPathBarrierEdge& edge)
+    bool emit_graph_barrier_from_edge(VkCommandBuffer cmd, const shs::renderpath::RenderPathBarrierEdge& edge)
     {
         if (cmd == VK_NULL_HANDLE) return false;
         if (!edge.requires_memory_barrier) return false;
-        const shs::VkRenderPathBarrierTemplate barrier =
-            shs::vk_make_render_path_barrier_template(edge);
+        const shs::rhi::VkRenderPathBarrierTemplate barrier =
+            shs::rhi::vk_make_render_path_barrier_template(edge);
         if (!barrier.valid) return false;
         cmd_memory_barrier(
             cmd,
@@ -7775,15 +7775,15 @@ private:
 
     bool emit_graph_barriers_for_semantics(
         VkCommandBuffer cmd,
-        shs::PassId from_pass_kind,
-        std::initializer_list<shs::PassSemantic> semantics,
-        shs::PassId to_pass_kind = shs::PassId::Unknown)
+        shs::renderpath::PassId from_pass_kind,
+        std::initializer_list<shs::renderpath::PassSemantic> semantics,
+        shs::renderpath::PassId to_pass_kind = shs::PassId::Unknown)
     {
-        const shs::RenderPathBarrierPlan& plan = render_path_executor_.active_barrier_plan();
+        const shs::renderpath::RenderPathBarrierPlan& plan = render_path_executor_.active_barrier_plan();
         bool emitted_any = false;
-        for (const shs::PassSemantic semantic : semantics)
+        for (const shs::renderpath::PassSemantic semantic : semantics)
         {
-            const shs::RenderPathBarrierEdge* edge = shs::find_render_path_barrier_edge(
+            const shs::renderpath::RenderPathBarrierEdge* edge = shs::renderpath::find_render_path_barrier_edge(
                 plan,
                 semantic,
                 from_pass_kind,
@@ -7799,8 +7799,8 @@ private:
 
     bool emit_graph_barrier_depth_to_light_culling(VkCommandBuffer cmd)
     {
-        const shs::RenderPathBarrierPlan& plan = render_path_executor_.active_barrier_plan();
-        const shs::RenderPathBarrierEdge* edge = shs::find_render_path_barrier_edge(
+        const shs::renderpath::RenderPathBarrierPlan& plan = render_path_executor_.active_barrier_plan();
+        const shs::renderpath::RenderPathBarrierEdge* edge = shs::renderpath::find_render_path_barrier_edge(
             plan,
             shs::PassSemantic::Depth,
             shs::PassId::Unknown,
@@ -7848,9 +7848,9 @@ private:
         return false;
     }
 
-    bool emit_graph_barrier_deferred_to_consumer(VkCommandBuffer cmd, shs::PassId deferred_pass_kind)
+    bool emit_graph_barrier_deferred_to_consumer(VkCommandBuffer cmd, shs::renderpath::PassId deferred_pass_kind)
     {
-        if (!shs::pass_id_is_standard(deferred_pass_kind))
+        if (!shs::renderpath::pass_id_is_standard(deferred_pass_kind))
         {
             ++frame_graph_barrier_fallback_count_;
             return false;
@@ -7884,15 +7884,15 @@ private:
 
     bool emit_graph_barrier_light_culling_to_consumer(VkCommandBuffer cmd)
     {
-        const shs::RenderPathBarrierPlan& plan = render_path_executor_.active_barrier_plan();
-        const shs::RenderPathBarrierEdge* edge = shs::find_render_path_barrier_edge(
+        const shs::renderpath::RenderPathBarrierPlan& plan = render_path_executor_.active_barrier_plan();
+        const shs::renderpath::RenderPathBarrierEdge* edge = shs::renderpath::find_render_path_barrier_edge(
             plan,
             shs::PassSemantic::LightGrid,
             shs::PassId::LightCulling,
             shs::PassId::Unknown);
         if (!edge)
         {
-            edge = shs::find_render_path_barrier_edge(
+            edge = shs::renderpath::find_render_path_barrier_edge(
                 plan,
                 shs::PassSemantic::LightIndexList,
                 shs::PassId::LightCulling,
@@ -7914,11 +7914,11 @@ private:
     bool supports_swapchain_history_copy() const
     {
         if (!vk_) return false;
-        return shs::vk_render_path_supports_swapchain_history_copy(vk_->swapchain_usage_flags());
+        return shs::rhi::vk_render_path_supports_swapchain_history_copy(vk_->swapchain_usage_flags());
     }
 
     bool prepare_post_source_from_scene_color(
-        shs::VkRenderPathPassExecutionContext<shs::VulkanRenderBackend::FrameInfo>& ctx)
+        shs::renderpath::VkRenderPathPassExecutionContext<shs::VulkanRenderBackend::FrameInfo>& ctx)
     {
         if (!ctx.fi) return false;
         if (ctx.post_color_valid) return true;
@@ -7956,7 +7956,7 @@ private:
             post_src_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
         }
 
-        if (!shs::vk_render_path_record_swapchain_copy_to_shader_read_image(
+        if (!shs::rhi::vk_render_path_record_swapchain_copy_to_shader_read_image(
                 *vk_,
                 ctx.fi->cmd,
                 swapchain_image,
@@ -7978,7 +7978,7 @@ private:
 
     void ensure_history_color_shader_read_layout(VkCommandBuffer cmd)
     {
-        shs::vk_render_path_ensure_history_color_shader_read_layout(*vk_, cmd, temporal_resources_);
+        shs::rhi::vk_render_path_ensure_history_color_shader_read_layout(*vk_, cmd, temporal_resources_);
     }
 
     void record_history_color_copy(VkCommandBuffer cmd, const shs::VulkanRenderBackend::FrameInfo& fi)
@@ -7996,10 +7996,10 @@ private:
             }
             return;
         }
-        if (shs::vk_render_path_history_color_view(temporal_resources_) == VK_NULL_HANDLE) return;
+        if (shs::rhi::vk_render_path_history_color_view(temporal_resources_) == VK_NULL_HANDLE) return;
         const VkImage swapchain_image = vk_->swapchain_image(fi.image_index);
         if (swapchain_image == VK_NULL_HANDLE) return;
-        (void)shs::vk_render_path_record_history_color_copy(
+        (void)shs::rhi::vk_render_path_record_history_color_copy(
             *vk_,
             cmd,
             swapchain_image,
@@ -8078,7 +8078,7 @@ private:
             return false;
         }
 
-        if (!shs::vk_render_path_record_swapchain_copy_to_host_buffer(
+        if (!shs::rhi::vk_render_path_record_swapchain_copy_to_host_buffer(
                 *vk_,
                 cmd,
                 swapchain_image,
@@ -8168,7 +8168,7 @@ private:
     }
 
     using FramePassExecutionContext =
-        shs::VkRenderPathPassExecutionContext<shs::VulkanRenderBackend::FrameInfo>;
+        shs::renderpath::VkRenderPathPassExecutionContext<shs::VulkanRenderBackend::FrameInfo>;
 #endif // SHS_HAS_VULKAN
 
 #ifdef SHS_HAS_VULKAN
@@ -8193,9 +8193,9 @@ private:
 #endif // SHS_HAS_VULKAN
 
 #ifdef SHS_HAS_VULKAN
-    bool execute_pass_shadow_map(FramePassExecutionContext& ctx, const shs::RenderPathCompiledPass& pass)
+    bool execute_pass_shadow_map(FramePassExecutionContext& ctx, const shs::renderpath::RenderPathCompiledPass& pass)
     {
-        return shs::vk_execute_shadow_map_pass(
+        return shs::renderpath::vk_execute_shadow_map_pass(
             ctx,
             pass,
             [this](VkCommandBuffer cmd) {
@@ -8211,9 +8211,9 @@ private:
             });
     }
 
-    bool execute_pass_depth_prepass(FramePassExecutionContext& ctx, const shs::RenderPathCompiledPass& pass)
+    bool execute_pass_depth_prepass(FramePassExecutionContext& ctx, const shs::renderpath::RenderPathCompiledPass& pass)
     {
-        return shs::vk_execute_depth_prepass_pass(
+        return shs::renderpath::vk_execute_depth_prepass_pass(
             ctx,
             pass,
             depth_target_.render_pass,
@@ -8234,12 +8234,12 @@ private:
             });
     }
 
-    bool execute_pass_light_culling(FramePassExecutionContext& ctx, const shs::RenderPathCompiledPass& pass)
+    bool execute_pass_light_culling(FramePassExecutionContext& ctx, const shs::renderpath::RenderPathCompiledPass& pass)
     {
         const bool use_depth_range_reduction = (culling_mode_ == shs::LightCullingMode::TiledDepthRange);
         const uint32_t dispatch_z = (culling_mode_ == shs::LightCullingMode::Clustered) ? cluster_z_slices_ : 1u;
 
-        return shs::vk_execute_light_culling_pass(
+        return shs::renderpath::vk_execute_light_culling_pass(
             ctx,
             pass,
             use_depth_range_reduction,
@@ -8300,9 +8300,9 @@ private:
             });
     }
 
-    bool execute_pass_scene(FramePassExecutionContext& ctx, const shs::RenderPathCompiledPass& pass)
+    bool execute_pass_scene(FramePassExecutionContext& ctx, const shs::renderpath::RenderPathCompiledPass& pass)
     {
-        return shs::vk_execute_scene_pass(
+        return shs::renderpath::vk_execute_scene_pass(
             ctx,
             pass,
             [this]() {
@@ -8325,7 +8325,7 @@ private:
             });
     }
 
-    bool execute_pass_gbuffer(FramePassExecutionContext& ctx, const shs::RenderPathCompiledPass& pass)
+    bool execute_pass_gbuffer(FramePassExecutionContext& ctx, const shs::renderpath::RenderPathCompiledPass& pass)
     {
         const bool gbuffer_ready =
             gbuffer_target_.render_pass != VK_NULL_HANDLE &&
@@ -8333,7 +8333,7 @@ private:
             gbuffer_pipeline_ != VK_NULL_HANDLE &&
             gbuffer_pipeline_layout_ != VK_NULL_HANDLE;
 
-        return shs::vk_execute_gbuffer_pass(
+        return shs::renderpath::vk_execute_gbuffer_pass(
             ctx,
             pass,
             gbuffer_ready,
@@ -8371,7 +8371,7 @@ private:
             });
     }
 
-    bool execute_pass_ssao(FramePassExecutionContext& ctx, const shs::RenderPathCompiledPass& pass)
+    bool execute_pass_ssao(FramePassExecutionContext& ctx, const shs::renderpath::RenderPathCompiledPass& pass)
     {
         (void)pass;
         if (!ctx.fi) return false;
@@ -8437,7 +8437,7 @@ private:
         return true;
     }
 
-    bool execute_pass_ssao_forward(FramePassExecutionContext& ctx, const shs::RenderPathCompiledPass& pass)
+    bool execute_pass_ssao_forward(FramePassExecutionContext& ctx, const shs::renderpath::RenderPathCompiledPass& pass)
     {
         (void)pass;
         if (!ctx.fi) return false;
@@ -8470,11 +8470,11 @@ private:
         return true;
     }
 
-    bool execute_pass_deferred_lighting(FramePassExecutionContext& ctx, const shs::RenderPathCompiledPass& pass)
+    bool execute_pass_deferred_lighting(FramePassExecutionContext& ctx, const shs::renderpath::RenderPathCompiledPass& pass)
     {
         if (!ctx.fi) return false;
         if (ctx.deferred_lighting_pass_executed) return true;
-        const shs::PassId deferred_pass_kind = resolve_compiled_pass_kind(pass);
+        const shs::renderpath::PassId deferred_pass_kind = resolve_compiled_pass_kind(pass);
 
         const bool chain_post =
             ctx.has_motion_blur_pass ||
@@ -8566,7 +8566,7 @@ private:
         return true;
     }
 
-    bool execute_pass_motion_blur(FramePassExecutionContext& ctx, const shs::RenderPathCompiledPass& pass)
+    bool execute_pass_motion_blur(FramePassExecutionContext& ctx, const shs::renderpath::RenderPathCompiledPass& pass)
     {
         (void)pass;
         if (!ctx.fi) return false;
@@ -8652,7 +8652,7 @@ private:
         return true;
     }
 
-    bool execute_pass_depth_of_field(FramePassExecutionContext& ctx, const shs::RenderPathCompiledPass& pass)
+    bool execute_pass_depth_of_field(FramePassExecutionContext& ctx, const shs::renderpath::RenderPathCompiledPass& pass)
     {
         (void)pass;
         if (!ctx.fi) return false;
@@ -8709,7 +8709,7 @@ private:
         return true;
     }
 
-    bool execute_pass_taa(FramePassExecutionContext& ctx, const shs::RenderPathCompiledPass& pass)
+    bool execute_pass_taa(FramePassExecutionContext& ctx, const shs::renderpath::RenderPathCompiledPass& pass)
     {
         (void)pass;
         if (!active_taa_pass_enabled()) return true;
@@ -8717,7 +8717,7 @@ private:
         return true;
     }
 
-    bool execute_pass_fxaa(FramePassExecutionContext& ctx, const shs::RenderPathCompiledPass& pass)
+    bool execute_pass_fxaa(FramePassExecutionContext& ctx, const shs::renderpath::RenderPathCompiledPass& pass)
     {
         (void)ctx;
         (void)pass;
@@ -8731,7 +8731,7 @@ private:
         return true;
     }
 
-    bool execute_pass_noop(FramePassExecutionContext& ctx, const shs::RenderPathCompiledPass& pass)
+    bool execute_pass_noop(FramePassExecutionContext& ctx, const shs::renderpath::RenderPathCompiledPass& pass)
     {
         (void)ctx;
         (void)pass;
@@ -8743,60 +8743,60 @@ private:
         const auto wrap = [this](auto&& fn) {
             return [this, fn = std::forward<decltype(fn)>(fn)](
                        FramePassExecutionContext& c,
-                       const shs::RenderPathCompiledPass& p) mutable {
+                       const shs::renderpath::RenderPathCompiledPass& p) mutable {
                 return execute_profiled_pass_handler(c, p, fn);
             };
         };
 
-        shs::StandardRenderPathPassHandlers<FramePassExecutionContext> handlers{};
-        handlers.shadow_map = wrap([this](FramePassExecutionContext& c, const shs::RenderPathCompiledPass& p) {
+        shs::renderpath::StandardRenderPathPassHandlers<FramePassExecutionContext> handlers{};
+        handlers.shadow_map = wrap([this](FramePassExecutionContext& c, const shs::renderpath::RenderPathCompiledPass& p) {
             return execute_pass_shadow_map(c, p);
         });
-        handlers.depth_prepass = wrap([this](FramePassExecutionContext& c, const shs::RenderPathCompiledPass& p) {
+        handlers.depth_prepass = wrap([this](FramePassExecutionContext& c, const shs::renderpath::RenderPathCompiledPass& p) {
             return execute_pass_depth_prepass(c, p);
         });
-        handlers.light_culling = wrap([this](FramePassExecutionContext& c, const shs::RenderPathCompiledPass& p) {
+        handlers.light_culling = wrap([this](FramePassExecutionContext& c, const shs::renderpath::RenderPathCompiledPass& p) {
             return execute_pass_light_culling(c, p);
         });
-        handlers.cluster_build = wrap([this](FramePassExecutionContext& c, const shs::RenderPathCompiledPass& p) {
+        handlers.cluster_build = wrap([this](FramePassExecutionContext& c, const shs::renderpath::RenderPathCompiledPass& p) {
             return execute_pass_noop(c, p);
         });
-        handlers.scene_forward = wrap([this](FramePassExecutionContext& c, const shs::RenderPathCompiledPass& p) {
+        handlers.scene_forward = wrap([this](FramePassExecutionContext& c, const shs::renderpath::RenderPathCompiledPass& p) {
             return execute_pass_scene(c, p);
         });
-        handlers.gbuffer = wrap([this](FramePassExecutionContext& c, const shs::RenderPathCompiledPass& p) {
+        handlers.gbuffer = wrap([this](FramePassExecutionContext& c, const shs::renderpath::RenderPathCompiledPass& p) {
             return execute_pass_gbuffer(c, p);
         });
-        handlers.ssao = wrap([this](FramePassExecutionContext& c, const shs::RenderPathCompiledPass& p) {
+        handlers.ssao = wrap([this](FramePassExecutionContext& c, const shs::renderpath::RenderPathCompiledPass& p) {
             return execute_pass_ssao(c, p);
         });
-        handlers.deferred_lighting = wrap([this](FramePassExecutionContext& c, const shs::RenderPathCompiledPass& p) {
+        handlers.deferred_lighting = wrap([this](FramePassExecutionContext& c, const shs::renderpath::RenderPathCompiledPass& p) {
             return execute_pass_deferred_lighting(c, p);
         });
-        handlers.tonemap = wrap([this](FramePassExecutionContext& c, const shs::RenderPathCompiledPass& p) {
+        handlers.tonemap = wrap([this](FramePassExecutionContext& c, const shs::renderpath::RenderPathCompiledPass& p) {
             return execute_pass_noop(c, p);
         });
-        handlers.taa = wrap([this](FramePassExecutionContext& c, const shs::RenderPathCompiledPass& p) {
+        handlers.taa = wrap([this](FramePassExecutionContext& c, const shs::renderpath::RenderPathCompiledPass& p) {
             return execute_pass_taa(c, p);
         });
-        handlers.motion_blur = wrap([this](FramePassExecutionContext& c, const shs::RenderPathCompiledPass& p) {
+        handlers.motion_blur = wrap([this](FramePassExecutionContext& c, const shs::renderpath::RenderPathCompiledPass& p) {
             return execute_pass_motion_blur(c, p);
         });
-        handlers.depth_of_field = wrap([this](FramePassExecutionContext& c, const shs::RenderPathCompiledPass& p) {
+        handlers.depth_of_field = wrap([this](FramePassExecutionContext& c, const shs::renderpath::RenderPathCompiledPass& p) {
             return execute_pass_depth_of_field(c, p);
         });
-        handlers.fallback_noop = wrap([this](FramePassExecutionContext& c, const shs::RenderPathCompiledPass& p) {
+        handlers.fallback_noop = wrap([this](FramePassExecutionContext& c, const shs::renderpath::RenderPathCompiledPass& p) {
             return execute_pass_noop(c, p);
         });
 
-        const bool ok = shs::register_standard_render_path_handlers(frame_pass_dispatcher_, handlers);
+        const bool ok = shs::renderpath::register_standard_render_path_handlers(frame_pass_dispatcher_, handlers);
         if (!ok)
         {
             std::fprintf(stderr, "[render-path][dispatch][error] Failed to register standard pass handlers.\n");
         }
         if (!frame_pass_dispatcher_.register_handler(
                 kCustomPassSsaoForward,
-                wrap([this](FramePassExecutionContext& c, const shs::RenderPathCompiledPass& p) {
+                wrap([this](FramePassExecutionContext& c, const shs::renderpath::RenderPathCompiledPass& p) {
                     return execute_pass_ssao_forward(c, p);
                 })))
         {
@@ -8804,7 +8804,7 @@ private:
         }
         if (!frame_pass_dispatcher_.register_handler(
                 kCustomPassFxaa,
-                wrap([this](FramePassExecutionContext& c, const shs::RenderPathCompiledPass& p) {
+                wrap([this](FramePassExecutionContext& c, const shs::renderpath::RenderPathCompiledPass& p) {
                     return execute_pass_fxaa(c, p);
                 })))
         {
@@ -8825,7 +8825,7 @@ private:
             return;
         }
 
-        shs::RenderBackendFrameInfo frame{};
+        shs::rhi::RenderBackendFrameInfo frame{};
         frame.frame_index = ctx_.frame_index;
         frame.width = dw;
         frame.height = dh;
@@ -8836,7 +8836,7 @@ private:
             SDL_Delay(2);
             return;
         }
-        const uint32_t frame_slot = shs::vk_frame_slot(frame.frame_index, kWorkerPoolRingSize);
+        const uint32_t frame_slot = shs::rhi::vk_frame_slot(frame.frame_index, kWorkerPoolRingSize);
         const VkDescriptorSet global_set = frame_resources_.at_slot(frame_slot).global_set;
         if (global_set == VK_NULL_HANDLE)
         {
@@ -8915,7 +8915,7 @@ private:
         pass_ctx.post_color_valid = false;
         pass_ctx.post_color_source = 0u;
 
-        shs::RenderPathPassDispatchResult dispatch_result{};
+        shs::renderpath::RenderPathPassDispatchResult dispatch_result{};
         for (size_t command_index = 0; command_index < frame_plan.commands.size(); ++command_index)
         {
             if (const auto* secondaries = std::get_if<shs::demo::DemoCmdRecordSecondaries>(
@@ -9062,9 +9062,9 @@ private:
     void update_window_title(float avg_ms)
     {
         const char* light_tech_name = lighting_technique_name(render_technique_preset_);
-        const shs::RenderPathRecipe& active_recipe = render_path_executor_.active_recipe();
+        const shs::renderpath::RenderPathRecipe& active_recipe = render_path_executor_.active_recipe();
         const char* recipe_name = active_recipe.name.empty() ? "n/a" : active_recipe.name.c_str();
-        const char* cull_name = shs::light_culling_mode_name(culling_mode_);
+        const char* cull_name = shs::lighting::light_culling_mode_name(culling_mode_);
         const char* culler_backend = vulkan_culler_backend_name(vulkan_culler_backend_);
         const uint32_t visible_draws = visible_instance_count_ + (floor_visible_ ? 1u : 0u);
         const uint32_t total_draws = static_cast<uint32_t>(instances_.size()) + 1u;
@@ -9157,44 +9157,44 @@ private:
             switch (e.key.keysym.sym)
             {
                 case SDLK_w:
-                    shs::append_runtime_input_event(
+                    shs::input::append_runtime_input_event(
                         pending_input_events_,
                         shs::RuntimeInputEventType::SetForward,
                         down);
                     break;
                 case SDLK_s:
-                    shs::append_runtime_input_event(
+                    shs::input::append_runtime_input_event(
                         pending_input_events_,
                         shs::RuntimeInputEventType::SetBackward,
                         down);
                     break;
                 case SDLK_a:
-                    shs::append_runtime_input_event(
+                    shs::input::append_runtime_input_event(
                         pending_input_events_,
                         shs::RuntimeInputEventType::SetLeft,
                         down);
                     break;
                 case SDLK_d:
-                    shs::append_runtime_input_event(
+                    shs::input::append_runtime_input_event(
                         pending_input_events_,
                         shs::RuntimeInputEventType::SetRight,
                         down);
                     break;
                 case SDLK_q:
-                    shs::append_runtime_input_event(
+                    shs::input::append_runtime_input_event(
                         pending_input_events_,
                         shs::RuntimeInputEventType::SetDescend,
                         down);
                     break;
                 case SDLK_e:
-                    shs::append_runtime_input_event(
+                    shs::input::append_runtime_input_event(
                         pending_input_events_,
                         shs::RuntimeInputEventType::SetAscend,
                         down);
                     break;
                 case SDLK_LSHIFT:
                 case SDLK_RSHIFT:
-                    shs::append_runtime_input_event(
+                    shs::input::append_runtime_input_event(
                         pending_input_events_,
                         shs::RuntimeInputEventType::SetBoost,
                         down);
@@ -9209,14 +9209,14 @@ private:
             const bool down = (e.type == SDL_MOUSEBUTTONDOWN);
             if (e.button.button == SDL_BUTTON_LEFT)
             {
-                shs::append_runtime_input_event(
+                shs::input::append_runtime_input_event(
                     pending_input_events_,
                     shs::RuntimeInputEventType::SetLeftMouseDown,
                     down);
             }
             if (e.button.button == SDL_BUTTON_RIGHT)
             {
-                shs::append_runtime_input_event(
+                shs::input::append_runtime_input_event(
                     pending_input_events_,
                     shs::RuntimeInputEventType::SetRightMouseDown,
                     down);
@@ -9226,7 +9226,7 @@ private:
         if (e.type == SDL_MOUSEMOTION)
         {
             pending_input_events_.push_back(
-                shs::make_mouse_delta_input_event(
+                shs::input::make_mouse_delta_input_event(
                     static_cast<float>(e.motion.xrel),
                     static_cast<float>(e.motion.yrel)));
         }
@@ -9254,7 +9254,7 @@ private:
         runtime_state_.camera.yaw = camera_.yaw;
         runtime_state_.camera.pitch = camera_.pitch;
         runtime_state_.quit_requested = false;
-        input_latch_ = shs::RuntimeInputLatch{};
+        input_latch_ = shs::input::RuntimeInputLatch{};
         pending_input_events_.clear();
 
         using clock = std::chrono::steady_clock;
@@ -9289,7 +9289,7 @@ private:
             {
                 relative_mouse_mode_ = look_drag;
                 SDL_SetRelativeMouseMode(relative_mouse_mode_ ? SDL_TRUE : SDL_FALSE);
-                input_latch_ = shs::clear_runtime_input_frame_deltas(input_latch_);
+                input_latch_ = shs::input::clear_runtime_input_frame_deltas(input_latch_);
             }
 
             auto now = clock::now();
@@ -9444,7 +9444,7 @@ private:
 
     struct LightAnim
     {
-        shs::LightType type = shs::LightType::Point;
+        shs::lighting::LightType type = shs::LightType::Point;
         float angle0 = 0.0f;
         float orbit_radius = 6.0f;
         float height = 2.6f;
@@ -9453,7 +9453,7 @@ private:
         float phase = 0.0f;
         glm::vec3 color{1.0f};
         float intensity = 6.0f;
-        shs::LightAttenuationModel attenuation_model = shs::LightAttenuationModel::Smooth;
+        shs::lighting::LightAttenuationModel attenuation_model = shs::LightAttenuationModel::Smooth;
         float attenuation_power = 1.0f;
         float attenuation_bias = 0.05f;
         float attenuation_cutoff = 0.0f;
@@ -9472,13 +9472,13 @@ private:
     bool sdl_ready_ = false;
     SDL_Window* win_ = nullptr;
 
-    shs::Context ctx_{};
-    std::vector<std::unique_ptr<shs::IRenderBackend>> keep_{};
+    shs::app::Context ctx_{};
+    std::vector<std::unique_ptr<shs::rhi::IRenderBackend>> keep_{};
 #ifdef SHS_HAS_VULKAN
-    shs::VulkanRenderBackend* vk_ = nullptr;
+    shs::rhi::VulkanRenderBackend* vk_ = nullptr;
 #endif // SHS_HAS_VULKAN
 
-    std::unique_ptr<shs::ThreadPoolJobSystem> jobs_{};
+    std::unique_ptr<shs::task::ThreadPoolJobSystem> jobs_{};
     uint32_t worker_count_ = 1;
 #ifdef SHS_HAS_VULKAN
     std::vector<WorkerPool> worker_pools_{};
@@ -9503,39 +9503,39 @@ private:
     std::vector<glm::mat4> instance_models_{};
     std::vector<uint8_t> instance_visible_mask_{};
     std::vector<uint32_t> frustum_visible_instance_indices_{};
-    std::vector<shs::SceneShape> instance_cull_shapes_{};
+    std::vector<shs::geometry::SceneShape> instance_cull_shapes_{};
     JPH::ShapeRefC sphere_shape_jolt_{};
     JPH::ShapeRefC box_shape_jolt_{};
     JPH::ShapeRefC cone_shape_jolt_{};
     JPH::ShapeRefC capsule_shape_jolt_{};
     JPH::ShapeRefC cylinder_shape_jolt_{};
     std::vector<LightAnim> light_anim_{};
-    shs::LightSet light_set_{};
+    shs::lighting::LightSet light_set_{};
     std::vector<shs::CullingLightGPU> gpu_lights_{};
     std::vector<ShadowLightGPU> shadow_lights_gpu_{};
     std::vector<LocalShadowCaster> local_shadow_casters_{};
-    std::vector<shs::AABB> visible_object_aabbs_{};
-    shs::DebugMesh sphere_occluder_mesh_{};
-    shs::DebugMesh cone_occluder_mesh_{};
-    shs::DebugMesh box_occluder_mesh_{};
-    shs::DebugMesh capsule_occluder_mesh_{};
-    shs::DebugMesh cylinder_occluder_mesh_{};
-    shs::DebugMesh floor_occluder_mesh_{};
+    std::vector<shs::geometry::AABB> visible_object_aabbs_{};
+    shs::geometry::DebugMesh sphere_occluder_mesh_{};
+    shs::geometry::DebugMesh cone_occluder_mesh_{};
+    shs::geometry::DebugMesh box_occluder_mesh_{};
+    shs::geometry::DebugMesh capsule_occluder_mesh_{};
+    shs::geometry::DebugMesh cylinder_occluder_mesh_{};
+    shs::geometry::DebugMesh floor_occluder_mesh_{};
     std::vector<float> scene_occlusion_depth_{};
     std::vector<float> light_occlusion_depth_{};
     glm::mat4 sun_shadow_view_proj_{1.0f};
-    shs::AABB sphere_local_aabb_{};
-    shs::AABB cone_local_aabb_{};
-    shs::AABB box_local_aabb_{};
-    shs::AABB capsule_local_aabb_{};
-    shs::AABB cylinder_local_aabb_{};
-    shs::Sphere sphere_local_bound_{};
-    shs::Sphere cone_local_bound_{};
-    shs::Sphere box_local_bound_{};
-    shs::Sphere capsule_local_bound_{};
-    shs::Sphere cylinder_local_bound_{};
-    shs::AABB floor_local_aabb_{};
-    shs::AABB shadow_scene_static_aabb_{};
+    shs::geometry::AABB sphere_local_aabb_{};
+    shs::geometry::AABB cone_local_aabb_{};
+    shs::geometry::AABB box_local_aabb_{};
+    shs::geometry::AABB capsule_local_aabb_{};
+    shs::geometry::AABB cylinder_local_aabb_{};
+    shs::geometry::Sphere sphere_local_bound_{};
+    shs::geometry::Sphere cone_local_bound_{};
+    shs::geometry::Sphere box_local_bound_{};
+    shs::geometry::Sphere capsule_local_bound_{};
+    shs::geometry::Sphere cylinder_local_bound_{};
+    shs::geometry::AABB floor_local_aabb_{};
+    shs::geometry::AABB shadow_scene_static_aabb_{};
     bool shadow_scene_static_bounds_ready_ = false;
     glm::mat4 floor_model_{1.0f};
     glm::vec4 floor_material_color_{1.0f};
@@ -9557,7 +9557,7 @@ private:
     GpuBuffer capsule_index_buffer_{};
     GpuBuffer cylinder_vertex_buffer_{};
     GpuBuffer cylinder_index_buffer_{};
-    shs::VkFrameRing<FrameResources, kWorkerPoolRingSize> frame_resources_{};
+    shs::rhi::VkFrameRing<FrameResources, kWorkerPoolRingSize> frame_resources_{};
 #endif // SHS_HAS_VULKAN
 
     CameraUBO camera_ubo_{};
@@ -9567,7 +9567,7 @@ private:
     AmbientOcclusionTarget ao_target_{};
     PostColorTarget post_target_a_{};
     PostColorTarget post_target_b_{};
-    shs::VkRenderPathTemporalResources temporal_resources_{};
+    shs::rhi::VkRenderPathTemporalResources temporal_resources_{};
     VkImageLayout post_target_a_layout_ = VK_IMAGE_LAYOUT_UNDEFINED;
     VkImageLayout post_target_b_layout_ = VK_IMAGE_LAYOUT_UNDEFINED;
     bool post_color_copy_support_warning_emitted_ = false;
@@ -9632,16 +9632,16 @@ private:
     std::vector<LightVolumeDebugDraw> aabb_debug_draws_{};
     bool enable_scene_occlusion_ = false;
     bool enable_light_occlusion_ = false;
-    shs::LightObjectCullMode light_object_cull_mode_ = shs::LightObjectCullMode::None;
+    shs::lighting::LightObjectCullMode light_object_cull_mode_ = shs::LightObjectCullMode::None;
     uint32_t light_frustum_rejected_ = 0;
     uint32_t light_occlusion_rejected_ = 0;
     uint32_t light_prefilter_rejected_ = 0;
     bool use_forward_plus_ = true;
-    shs::LightCullingMode culling_mode_ = shs::LightCullingMode::Tiled;
+    shs::lighting::LightCullingMode culling_mode_ = shs::LightCullingMode::Tiled;
     uint32_t light_tile_size_ = kDefaultTileSize;
     uint32_t cluster_z_slices_ = kDefaultClusterZSlices;
-    shs::RenderPathLightGridRuntimeLayout light_grid_layout_{};
-    shs::ShadowCompositionSettings shadow_settings_ = shs::make_default_shadow_composition_settings();
+    shs::renderpath::RenderPathLightGridRuntimeLayout light_grid_layout_{};
+    shs::lighting::ShadowCompositionSettings shadow_settings_ = shs::lighting::make_default_shadow_composition_settings();
     VulkanCullerBackend vulkan_culler_backend_ = VulkanCullerBackend::GpuCompute;
     bool profile_depth_prepass_enabled_ = true;
     bool enable_depth_prepass_ = true;
@@ -9657,9 +9657,9 @@ private:
     bool deferred_emulation_warning_emitted_ = false;
     FramebufferDebugPreset framebuffer_debug_preset_ = FramebufferDebugPreset::FinalComposite;
     bool semantic_debug_enabled_ = false;
-    shs::PassSemantic active_semantic_debug_ = shs::PassSemantic::Unknown;
+    shs::renderpath::PassSemantic active_semantic_debug_ = shs::PassSemantic::Unknown;
     size_t semantic_debug_index_ = 0u;
-    std::vector<shs::PassSemantic> semantic_debug_targets_{};
+    std::vector<shs::renderpath::PassSemantic> semantic_debug_targets_{};
     uint64_t cull_debug_total_refs_ = 0;
     uint32_t cull_debug_non_empty_lists_ = 0;
     uint32_t cull_debug_list_count_ = 0;
@@ -9671,21 +9671,21 @@ private:
     uint32_t barrier_alias_slot_count_ = 0u;
     uint32_t frame_graph_barrier_edges_emitted_ = 0u;
     uint32_t frame_graph_barrier_fallback_count_ = 0u;
-    shs::RenderPathExecutor render_path_executor_{};
+    shs::renderpath::RenderPathExecutor render_path_executor_{};
     // Renderpath pod (Run 1 / P3 task 2): intent queue + pure reducer state.
-    shs::RenderPathCompiler render_path_compiler_{};
-    shs::RenderPathCapabilitySet render_path_caps_{};
+    shs::renderpath::RenderPathCompiler render_path_compiler_{};
+    shs::renderpath::RenderPathCapabilitySet render_path_caps_{};
     shs::renderpath::RenderPathPodState render_path_pod_{};
     std::vector<shs::renderpath::RenderPathCommand> pending_renderpath_commands_{};
     // Reducer-driven hot-swap count (debug overlay): successful
     // reducer-approved plan applies after startup (Run 1 / P3 task 4).
     uint32_t renderpath_hot_swaps_ = 0u;
-    std::deque<shs::RenderPathResolvedState> pending_resolved_render_paths_{};
+    std::deque<shs::renderpath::RenderPathResolvedState> pending_resolved_render_paths_{};
     std::pmr::vector<shs::renderpath::RenderPathEvent> renderpath_events_{};
-    shs::PassFactoryRegistry pass_contract_registry_{};
-    shs::PassFactoryRegistry pass_contract_registry_sw_{};
+    shs::renderpath::PassFactoryRegistry pass_contract_registry_{};
+    shs::renderpath::PassFactoryRegistry pass_contract_registry_sw_{};
 #ifdef SHS_HAS_VULKAN
-    shs::RenderPathPassDispatcher<FramePassExecutionContext> frame_pass_dispatcher_{};
+    shs::renderpath::RenderPathPassDispatcher<FramePassExecutionContext> frame_pass_dispatcher_{};
 #endif // SHS_HAS_VULKAN
 
     // Frame-plan arena (Run 1 / P3 task 3): the pure planner builds its
@@ -9743,20 +9743,20 @@ private:
     std::ofstream phase_g_metrics_stream_{};
     PhaseGSoakState phase_g_state_{};
     PhaseIParityConfig phase_i_config_{};
-    shs::RenderTechniquePreset render_technique_preset_ = shs::RenderTechniquePreset::PBR;
-    shs::RenderTechniqueRecipe render_technique_recipe_ = shs::make_builtin_render_technique_recipe(
+    shs::renderpath::RenderTechniquePreset render_technique_preset_ = shs::RenderTechniquePreset::PBR;
+    shs::renderpath::RenderTechniqueRecipe render_technique_recipe_ = shs::renderpath::make_builtin_render_technique_recipe(
         shs::RenderTechniquePreset::PBR,
         "render_tech_vk");
-    shs::RenderCompositionRecipe active_composition_recipe_ = shs::make_builtin_render_composition_recipe(
+    shs::renderpath::RenderCompositionRecipe active_composition_recipe_ = shs::renderpath::make_builtin_render_composition_recipe(
         shs::RenderPathPreset::Deferred,
         shs::RenderTechniquePreset::PBR,
         "composition_vk");
-    std::vector<shs::RenderCompositionRecipe> composition_cycle_order_{};
+    std::vector<shs::renderpath::RenderCompositionRecipe> composition_cycle_order_{};
     size_t active_composition_index_ = 0u;
-    uint32_t shading_variant_ = shs::render_technique_shader_variant(shs::RenderTechniquePreset::PBR);
+    uint32_t shading_variant_ = shs::renderpath::render_technique_shader_variant(shs::RenderTechniquePreset::PBR);
     float tonemap_exposure_ = 1.40f;
     float tonemap_gamma_ = 2.20f;
-    shs::TechniqueMode active_technique_ = shs::TechniqueMode::Deferred;
+    shs::render::TechniqueMode active_technique_ = shs::TechniqueMode::Deferred;
     bool path_has_ssao_pass_ = false;
     bool path_has_taa_pass_ = false;
     bool path_has_motion_blur_pass_ = false;
@@ -9765,21 +9765,21 @@ private:
     bool composition_taa_enabled_ = true;
     bool composition_motion_blur_enabled_ = true;
     bool composition_depth_of_field_enabled_ = true;
-    shs::RenderPathTemporalSettings temporal_settings_{};
-    shs::RenderPathTemporalFrameState temporal_state_{};
+    shs::renderpath::RenderPathTemporalSettings temporal_settings_{};
+    shs::renderpath::RenderPathTemporalFrameState temporal_state_{};
     bool ssao_forward_placeholder_note_emitted_ = false;
     bool fxaa_placeholder_note_emitted_ = false;
     float technique_switch_accum_sec_ = 0.0f;
     bool auto_cycle_technique_ = false;
     bool use_multithread_recording_ = false;
     FreeCamera camera_{};
-    shs::RuntimeInputLatch input_latch_{};
-    std::vector<shs::RuntimeInputEvent> pending_input_events_{};
+    shs::input::RuntimeInputLatch input_latch_{};
+    std::vector<shs::input::RuntimeInputEvent> pending_input_events_{};
     bool relative_mouse_mode_ = false;
     bool pending_quit_action_ = false;
     std::vector<shs::demo::DemoInputAction> pending_keydown_actions_{};
-    shs::RuntimeState runtime_state_{};
-    std::vector<shs::RuntimeCommand> runtime_actions_{};
+    shs::app::RuntimeState runtime_state_{};
+    std::vector<shs::input::RuntimeCommand> runtime_actions_{};
     float time_sec_ = 0.0f;
 };
 }

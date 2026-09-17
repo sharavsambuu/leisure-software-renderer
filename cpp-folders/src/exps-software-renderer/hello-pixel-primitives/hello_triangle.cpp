@@ -105,12 +105,12 @@ public:
 
     }
 
-    void set_color(shs::Color new_color)
+    void set_color(shs::render::Color new_color)
     {
         this->color = new_color;
     }
 
-    shs::Color color{0, 255, 0, 255};
+    shs::render::Color color{0, 255, 0, 255};
     float      speed          = 0.5f;
     float      angle_radian   = 0.0f;
     glm::vec2  velocity       = glm::vec2(0.0f);

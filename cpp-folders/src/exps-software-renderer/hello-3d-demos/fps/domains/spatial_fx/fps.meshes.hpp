@@ -32,7 +32,7 @@ namespace fps::spatial_fx {
                 const float x0 = -S + static_cast<float>(ix) * TSZ;
                 const float x1 = x0 + TSZ;
 
-                const shs::Color c = ((ix + iz) % 2 == 0) ? lvl.floor_dark : lvl.floor_light;
+                const shs::render::Color c = ((ix + iz) % 2 == 0) ? lvl.floor_dark : lvl.floor_light;
 
                 const glm::vec3 p00(x0, 0.0f, z0);
                 const glm::vec3 p10(x1, 0.0f, z0);
@@ -72,10 +72,10 @@ namespace fps::spatial_fx {
     inline std::vector<LowPolyTriangle> build_bot_mesh(bool hit_flash) {
         std::vector<LowPolyTriangle> tris;
 
-        const shs::Color armor  = hit_flash ? shs::Color{ 255, 255, 255, 255 } : shs::Color{ 60 , 120, 190, 255 };
-        const shs::Color joints = hit_flash ? shs::Color{ 255, 200, 200, 255 } : shs::Color{ 40 , 45 , 50 , 255 };
-        const shs::Color visor  = hit_flash ? shs::Color{ 255, 255, 255, 255 } : shs::Color{ 240, 60 , 50 , 255 };
-        const shs::Color metal  = hit_flash ? shs::Color{ 255, 255, 255, 255 } : shs::Color{ 160, 170, 180, 255 };
+        const shs::render::Color armor  = hit_flash ? shs::render::Color{ 255, 255, 255, 255 } : shs::render::Color{ 60 , 120, 190, 255 };
+        const shs::render::Color joints = hit_flash ? shs::render::Color{ 255, 200, 200, 255 } : shs::render::Color{ 40 , 45 , 50 , 255 };
+        const shs::render::Color visor  = hit_flash ? shs::render::Color{ 255, 255, 255, 255 } : shs::render::Color{ 240, 60 , 50 , 255 };
+        const shs::render::Color metal  = hit_flash ? shs::render::Color{ 255, 255, 255, 255 } : shs::render::Color{ 160, 170, 180, 255 };
 
         MeshBuilder::add_box(tris, glm::vec3( 0    , 0.95f,  0    ), glm::vec3(0.65f, 0.70f, 0.38f), armor, armor, joints);
         MeshBuilder::add_box(tris, glm::vec3( 0    , 1.55f,  0    ), glm::vec3(0.42f, 0.42f, 0.42f), armor, metal, joints);
@@ -95,10 +95,10 @@ namespace fps::spatial_fx {
     inline std::vector<LowPolyTriangle> build_gun_mesh() {
         std::vector<LowPolyTriangle> tris;
 
-        const shs::Color metal_dark = shs::Color{ 45 , 48 , 55 , 255 };
-        const shs::Color metal_body = shs::Color{ 80 , 85 , 95 , 255 };
-        const shs::Color grip_wood  = shs::Color{ 130, 75 , 45 , 255 };
-        const shs::Color glow_cyan  = shs::Color{ 40 , 220, 240, 255 };
+        const shs::render::Color metal_dark = shs::render::Color{ 45 , 48 , 55 , 255 };
+        const shs::render::Color metal_body = shs::render::Color{ 80 , 85 , 95 , 255 };
+        const shs::render::Color grip_wood  = shs::render::Color{ 130, 75 , 45 , 255 };
+        const shs::render::Color glow_cyan  = shs::render::Color{ 40 , 220, 240, 255 };
 
         MeshBuilder::add_box(tris, glm::vec3(0, -0.15f, -0.05f), glm::vec3(0.08f, 0.25f, 0.12f), grip_wood , grip_wood , grip_wood );
         MeshBuilder::add_box(tris, glm::vec3(0,  0.02f,  0.08f), glm::vec3(0.10f, 0.12f, 0.35f), metal_body, metal_dark, metal_dark);
@@ -111,8 +111,8 @@ namespace fps::spatial_fx {
     // --- Muzzle flash star -----------------------------------------------------
     inline std::vector<LowPolyTriangle> build_muzzle_flash() {
         std::vector<LowPolyTriangle> tris;
-        const shs::Color c_bright = shs::Color{ 255, 240, 150, 255 };
-        const shs::Color c_orange = shs::Color{ 255, 120, 30, 255 };
+        const shs::render::Color c_bright = shs::render::Color{ 255, 240, 150, 255 };
+        const shs::render::Color c_orange = shs::render::Color{ 255, 120, 30, 255 };
 
         auto add_spike = [&](glm::vec3 dir, float len, float w) {
             const glm::vec3 side = glm::normalize(glm::cross(dir, glm::vec3(0, 1, 0))) * w;
@@ -133,8 +133,8 @@ namespace fps::spatial_fx {
     // --- Projectile bolt ---------------------------------------------------------
     inline std::vector<LowPolyTriangle> build_projectile_mesh() {
         std::vector<LowPolyTriangle> tris;
-        const shs::Color plasma_core   = shs::Color{ 255, 60, 40, 255 };
-        const shs::Color plasma_orange = shs::Color{ 255, 180, 50, 255 };
+        const shs::render::Color plasma_core   = shs::render::Color{ 255, 60, 40, 255 };
+        const shs::render::Color plasma_orange = shs::render::Color{ 255, 180, 50, 255 };
         MeshBuilder::add_box(tris, glm::vec3(0), glm::vec3(0.20f, 0.20f, 0.35f), plasma_orange, plasma_core, plasma_core);
         return tris;
     }

@@ -163,7 +163,7 @@ inline glm::vec3 paint_background(glm::vec2 uv) {
 }
 
 // Main Fragment Shader
-shs::Color fragment_shader(glm::vec2 u_uv, float u_time)
+shs::render::Color fragment_shader(glm::vec2 u_uv, float u_time)
 {
     glm::vec2 resolution(float(CANVAS_WIDTH), float(CANVAS_HEIGHT));
 
@@ -277,7 +277,7 @@ int main(int argc, char* argv[])
                     for (int x = start_x; x < end_x; x++) {
                         for (int y = start_y; y < end_y; y++) {
                             glm::vec2 uv = {float(x), float(y)};
-                            shs::Color shader_output = fragment_shader(uv, time_accumulator);
+                            shs::render::Color shader_output = fragment_shader(uv, time_accumulator);
                             shs::Canvas::draw_pixel(*main_canvas, x, y, shader_output);
                         }
                     }

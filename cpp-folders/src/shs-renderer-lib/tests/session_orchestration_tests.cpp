@@ -31,7 +31,7 @@ namespace
     using shs::app::SessionState;
 
     auto run_orchestrator = [](shs::app::SessionState& s,
-        std::span<const shs::RuntimeCommand> a,
+        std::span<const shs::input::RuntimeCommand> a,
         const shs::input::InputContext& in,
         std::pmr::vector<shs::input::InputEvent>& e)
     {
@@ -48,7 +48,7 @@ namespace
     // must preserve bit-for-bit).
     struct ReferenceState
     {
-        shs::CameraRig camera{};
+        shs::camera::CameraRig camera{};
         bool enable_light_shafts = true;
         bool quit_requested = false;
         bool bot_enabled = false;
@@ -56,15 +56,15 @@ namespace
 
     ReferenceState reference_apply(
         ReferenceState s,
-        std::span<const shs::RuntimeCommand> commands,
+        std::span<const shs::input::RuntimeCommand> commands,
         float dt,
         std::vector<shs::input::InputEvent>& events)
     {
-        for (const shs::RuntimeCommand& command : commands)
+        for (const shs::input::RuntimeCommand& command : commands)
         {
             std::visit([&](const auto& cmd) {
                 using T = std::decay_t<decltype(cmd)>;
-                if constexpr (std::is_same_v<T, shs::MoveLocalIntent>)
+                if constexpr (std::is_same_v<T, shs::input::MoveLocalIntent>)
                 {
                     const glm::vec3 fwd = s.camera.forward();
                     const glm::vec3 right = s.camera.right();
@@ -73,7 +73,7 @@ namespace
                     s.camera.pos += world_delta * (cmd.meters_per_sec * dt);
                     events.push_back(shs::input::CameraTranslatedEvent{world_delta * (cmd.meters_per_sec * dt)});
                 }
-                else if constexpr (std::is_same_v<T, shs::LookIntent>)
+                else if constexpr (std::is_same_v<T, shs::input::LookIntent>)
                 {
                     const float old_pitch = s.camera.pitch;
                     s.camera.yaw += cmd.dx * cmd.sensitivity;
@@ -83,19 +83,19 @@ namespace
                     events.push_back(shs::input::CameraRotatedEvent{
                         cmd.dx * cmd.sensitivity, s.camera.pitch - old_pitch});
                 }
-                else if constexpr (std::is_same_v<T, shs::ToggleLightShaftsIntent>)
+                else if constexpr (std::is_same_v<T, shs::input::ToggleLightShaftsIntent>)
                 {
                     s.enable_light_shafts = !s.enable_light_shafts;
                     events.push_back(shs::input::RuntimeFlagToggledEvent{
                         shs::input::RuntimeFlagId::LightShafts, s.enable_light_shafts});
                 }
-                else if constexpr (std::is_same_v<T, shs::ToggleBotIntent>)
+                else if constexpr (std::is_same_v<T, shs::input::ToggleBotIntent>)
                 {
                     s.bot_enabled = !s.bot_enabled;
                     events.push_back(shs::input::RuntimeFlagToggledEvent{
                         shs::input::RuntimeFlagId::Bot, s.bot_enabled});
                 }
-                else if constexpr (std::is_same_v<T, shs::QuitIntent>)
+                else if constexpr (std::is_same_v<T, shs::input::QuitIntent>)
                 {
                     s.quit_requested = true;
                     events.push_back(shs::input::QuitRequestedEvent{});
@@ -105,14 +105,14 @@ namespace
         return s;
     }
 
-    std::vector<shs::RuntimeCommand> make_mixed_log()
+    std::vector<shs::input::RuntimeCommand> make_mixed_log()
     {
-        std::vector<shs::RuntimeCommand> commands{};
-        commands.push_back(shs::make_move_local_intent(glm::vec3(0.0f, 0.0f, 1.0f), 4.0f));
-        commands.push_back(shs::make_look_intent(10.0f, -5.0f, 0.01f));
-        commands.push_back(shs::make_toggle_light_shafts_intent());
-        commands.push_back(shs::make_toggle_bot_intent());
-        commands.push_back(shs::make_quit_intent());
+        std::vector<shs::input::RuntimeCommand> commands{};
+        commands.push_back(shs::input::make_move_local_intent(glm::vec3(0.0f, 0.0f, 1.0f), 4.0f));
+        commands.push_back(shs::input::make_look_intent(10.0f, -5.0f, 0.01f));
+        commands.push_back(shs::input::make_toggle_light_shafts_intent());
+        commands.push_back(shs::input::make_toggle_bot_intent());
+        commands.push_back(shs::input::make_quit_intent());
         return commands;
     }
 
@@ -128,12 +128,12 @@ namespace
         s.bot_enabled = false;
         s.quit_requested = false;
 
-        const std::vector<shs::RuntimeCommand> commands = make_mixed_log();
+        const std::vector<shs::input::RuntimeCommand> commands = make_mixed_log();
         std::pmr::monotonic_buffer_resource arena{4096};
         std::pmr::vector<shs::input::InputEvent> events{&arena};
 
         const shs::input::InputStep step = shs::app::session_orchestrate(s,
-            std::span<const shs::RuntimeCommand>{commands.data(), commands.size()},
+            std::span<const shs::input::RuntimeCommand>{commands.data(), commands.size()},
             shs::input::InputContext{0.5f}, events);
 
         if (!approx_eq(s.camera.pos.z, 2.0f)) return false;
@@ -155,11 +155,11 @@ namespace
         s.camera.yaw = 0.7f;
         s.camera.pitch = 0.2f;
 
-        const std::vector<shs::RuntimeCommand> commands = make_mixed_log();
+        const std::vector<shs::input::RuntimeCommand> commands = make_mixed_log();
         std::pmr::monotonic_buffer_resource arena{4096};
         std::pmr::vector<shs::input::InputEvent> events{&arena};
         shs::app::session_orchestrate(s,
-            std::span<const shs::RuntimeCommand>{commands.data(), commands.size()},
+            std::span<const shs::input::RuntimeCommand>{commands.data(), commands.size()},
             shs::input::InputContext{0.25f}, events);
 
         ReferenceState r{};
@@ -168,7 +168,7 @@ namespace
         r.camera.pitch = 0.2f;
         std::vector<shs::input::InputEvent> reference_events{};
         const ReferenceState out = reference_apply(r,
-            std::span<const shs::RuntimeCommand>{commands.data(), commands.size()},
+            std::span<const shs::input::RuntimeCommand>{commands.data(), commands.size()},
             0.25f, reference_events);
 
         if (!(s.camera == out.camera)) return false;
@@ -190,11 +190,11 @@ namespace
         SessionState b{};
         a.camera.yaw = 1.0f;
 
-        const std::vector<shs::RuntimeCommand> commands = make_mixed_log();
+        const std::vector<shs::input::RuntimeCommand> commands = make_mixed_log();
         std::pmr::monotonic_buffer_resource arena{4096};
         std::pmr::vector<shs::input::InputEvent> events{&arena};
         shs::app::session_orchestrate(a,
-            std::span<const shs::RuntimeCommand>{commands.data(), commands.size()},
+            std::span<const shs::input::RuntimeCommand>{commands.data(), commands.size()},
             shs::input::InputContext{0.5f}, events);
 
         return b == SessionState{} && a != b
@@ -205,8 +205,8 @@ namespace
     // session state AND identical fact log.
     bool test_recorded_replay()
     {
-        const std::vector<shs::RuntimeCommand> commands = make_mixed_log();
-        const std::span<const shs::RuntimeCommand> span{
+        const std::vector<shs::input::RuntimeCommand> commands = make_mixed_log();
+        const std::span<const shs::input::RuntimeCommand> span{
             commands.data(), commands.size()};
 
         SessionState a{};
@@ -224,15 +224,15 @@ namespace
     bool test_kit_determinism()
     {
         const SessionState s0{};
-        const std::vector<shs::RuntimeCommand> commands = make_mixed_log();
+        const std::vector<shs::input::RuntimeCommand> commands = make_mixed_log();
         const shs::input::InputContext in{0.5f};
         const bool deterministic = shs::pod_test::replay_is_deterministic<
-            SessionState, shs::RuntimeCommand, shs::input::InputContext,
+            SessionState, shs::input::RuntimeCommand, shs::input::InputContext,
             shs::input::InputEvent>(
             run_orchestrator, s0,
-            std::span<const shs::RuntimeCommand>{commands.data(), commands.size()}, in);
+            std::span<const shs::input::RuntimeCommand>{commands.data(), commands.size()}, in);
         const bool stable = shs::pod_test::empty_log_is_stable<
-            SessionState, shs::RuntimeCommand, shs::input::InputContext,
+            SessionState, shs::input::RuntimeCommand, shs::input::InputContext,
             shs::input::InputEvent>(run_orchestrator, s0, in);
         return deterministic && stable;
     }
@@ -240,22 +240,22 @@ namespace
     // Explicit orchestration pipeline: latch -> translation -> application.
     bool test_pipeline_composition()
     {
-        shs::InputState in{};
+        shs::input::InputState in{};
         in.forward = true;
         in.boost = true;
         in.look_active = true;
         in.look_dx = 10.0f;
         in.look_dy = -5.0f;
 
-        std::vector<shs::RuntimeCommand> commands{};
-        shs::emit_human_commands(in, commands, 4.0f, 2.0f, 0.01f);
+        std::vector<shs::input::RuntimeCommand> commands{};
+        shs::input::emit_human_commands(in, commands, 4.0f, 2.0f, 0.01f);
 
         SessionState s{};
         s.camera.pos = glm::vec3(0.0f, 0.0f, 0.0f);
         std::pmr::monotonic_buffer_resource arena{4096};
         std::pmr::vector<shs::input::InputEvent> events{&arena};
         shs::app::session_orchestrate(s,
-            std::span<const shs::RuntimeCommand>{commands.data(), commands.size()},
+            std::span<const shs::input::RuntimeCommand>{commands.data(), commands.size()},
             shs::input::InputContext{0.5f}, events);
 
         // boost multiplies base speed: 4.0 * 2.0 * dt 0.5 = 4.0 along +Z.
@@ -269,21 +269,21 @@ namespace
     bool test_clamp_saturation()
     {
         SessionState up{};
-        const std::vector<shs::RuntimeCommand> drive_up{
-            shs::make_look_intent(0.0f, -100000.0f, 1.0f)};
+        const std::vector<shs::input::RuntimeCommand> drive_up{
+            shs::input::make_look_intent(0.0f, -100000.0f, 1.0f)};
         std::pmr::monotonic_buffer_resource arena{4096};
         std::pmr::vector<shs::input::InputEvent> events{&arena};
         shs::app::session_orchestrate(up,
-            std::span<const shs::RuntimeCommand>{drive_up.data(), drive_up.size()},
+            std::span<const shs::input::RuntimeCommand>{drive_up.data(), drive_up.size()},
             shs::input::InputContext{0.016f}, events);
         if (up.camera.pitch != glm::radians(85.0f)) return false;
 
         SessionState down{};
-        const std::vector<shs::RuntimeCommand> drive_down{
-            shs::make_look_intent(0.0f, 100000.0f, 1.0f)};
+        const std::vector<shs::input::RuntimeCommand> drive_down{
+            shs::input::make_look_intent(0.0f, 100000.0f, 1.0f)};
         std::pmr::vector<shs::input::InputEvent> events2{&arena};
         shs::app::session_orchestrate(down,
-            std::span<const shs::RuntimeCommand>{drive_down.data(), drive_down.size()},
+            std::span<const shs::input::RuntimeCommand>{drive_down.data(), drive_down.size()},
             shs::input::InputContext{0.016f}, events2);
         return down.camera.pitch == glm::radians(-85.0f);
     }
@@ -296,8 +296,8 @@ namespace
     // application (the orchestrator owns pose, not projection).
     bool test_settings_host_independence()
     {
-        const std::vector<shs::RuntimeCommand> commands = make_mixed_log();
-        const std::span<const shs::RuntimeCommand> span{
+        const std::vector<shs::input::RuntimeCommand> commands = make_mixed_log();
+        const std::span<const shs::input::RuntimeCommand> span{
             commands.data(), commands.size()};
 
         SessionState a{};
@@ -336,13 +336,13 @@ namespace
     // and identical fact logs.
     bool test_settings_recorded_replay()
     {
-        std::vector<shs::RuntimeCommand> commands{};
-        commands.push_back(shs::make_toggle_light_shafts_intent());
-        commands.push_back(shs::make_toggle_light_shafts_intent());
-        commands.push_back(shs::make_toggle_bot_intent());
-        commands.push_back(shs::make_move_local_intent(glm::vec3(0.0f, 0.0f, 1.0f), 2.0f));
-        commands.push_back(shs::make_toggle_light_shafts_intent());
-        const std::span<const shs::RuntimeCommand> span{
+        std::vector<shs::input::RuntimeCommand> commands{};
+        commands.push_back(shs::input::make_toggle_light_shafts_intent());
+        commands.push_back(shs::input::make_toggle_light_shafts_intent());
+        commands.push_back(shs::input::make_toggle_bot_intent());
+        commands.push_back(shs::input::make_move_local_intent(glm::vec3(0.0f, 0.0f, 1.0f), 2.0f));
+        commands.push_back(shs::input::make_toggle_light_shafts_intent());
+        const std::span<const shs::input::RuntimeCommand> span{
             commands.data(), commands.size()};
 
         SessionState a{};
@@ -374,7 +374,7 @@ namespace
         s.znear = 0.25f;
         s.zfar = 500.0f;
 
-        shs::Scene scene{};
+        shs::scene::Scene scene{};
         scene.cam.viewproj = glm::mat4{1.0f};
 
         shs::app::sync_session_to_scene(s, scene, 1.7777f);
@@ -385,7 +385,7 @@ namespace
         if (scene.cam.znear != s.znear || scene.cam.zfar != s.zfar) return false;
 
         // Independent reference: same deterministic math path.
-        shs::ViewCamera vc{};
+        shs::camera::ViewCamera vc{};
         vc.pos = s.camera.pos;
         vc.target = s.camera.pos + s.camera.forward();
         vc.up = {0.0f, 1.0f, 0.0f};
@@ -410,14 +410,14 @@ namespace
         shs::app::SessionState s{};
         s.enable_light_shafts = true; // session default
 
-        shs::FrameParams fp{};
+        shs::render::FrameParams fp{};
         const float exposure_before = fp.exposure;
         const int steps_before = fp.pass.light_shafts.steps;
 
         // Planning-level recipe defaults light shafts OFF; apply it first.
-        const shs::RenderTechniqueRecipe recipe =
-            shs::make_builtin_render_technique_recipe(shs::RenderTechniquePreset::PBR);
-        shs::apply_render_technique_recipe_to_frame_params(recipe, fp);
+        const shs::renderpath::RenderTechniqueRecipe recipe =
+            shs::renderpath::make_builtin_render_technique_recipe(shs::RenderTechniquePreset::PBR);
+        shs::renderpath::apply_render_technique_recipe_to_frame_params(recipe, fp);
         if (fp.pass.light_shafts.enable) return false; // recipe default applied
 
         // Session funnel: runtime owner wins over the recipe default.
