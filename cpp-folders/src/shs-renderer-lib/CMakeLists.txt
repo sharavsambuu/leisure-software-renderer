@@ -336,6 +336,10 @@ if(SHS_RENDERER_BUILD_TESTS)
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/include_graph_tests.py")
     add_test(NAME shs_renderer_include_graph_gate
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_include_graph.py")
+    # P1 placement law (Rule 17 as amended): gate 8 negative fixture — a
+    # contract macro in a math leaf / non-seam header FAILs, legal homes PASS.
+    add_test(NAME shs_renderer_contract_placement_negative_test
+        COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_contract_placement_negative_test.sh")
 
     add_executable(shs_renderer_tests
         tests/core_tests.cpp

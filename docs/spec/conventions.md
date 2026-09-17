@@ -279,6 +279,13 @@ Pod-idiomatic C++23 subset (supplements Constitution II §8):
 - Only the sanctioned macros — `SHS_PRE`, `SHS_POST`, `SHS_CONTRACT_ASSERT`
   (`shs/core/contract_guardrails.hpp` bridge) — never raw `assert`/checks in
   seam code, never contract syntax in installed public headers.
+- **Placement law (2026-09-17, single-sourced from Rule 17 as amended):**
+  invariants live in the *type*, edge law lives at the *seam* —
+  `SHS_CONTRACT_ASSERT` only in `*.contract.hpp` / `*.command.hpp` /
+  `*.event.hpp` + pure leaf value headers (checker allowlist); `SHS_PRE` /
+  `SHS_POST` only in `*.gateway.hpp` / `*.contract.hpp`; any other use under
+  `include/shs/**` fails checker gate 8
+  (`tools/check_contract_placement.sh`).
 - Conditions are **side-effect-free single expressions** of pure state reads;
   they never gate control flow and never carry domain-recoverable failure
   (that is `std::expected` + typed rejections, Constitution II Rules 8–12).

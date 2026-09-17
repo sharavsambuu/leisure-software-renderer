@@ -30,17 +30,25 @@
 - Gates already live: kdba-boundary (pod purity, direction law, Kleisli shape),
   include-graph, header-migration, inventory staleness.
 
-## W-A — Ratify + land P1: guardrail placement by file role
+## W-A — Ratify + land P1: guardrail placement by file role — **DONE 2026-09-17**
 
-Source: `dvo_semantics_enforcement_proposal.md` P1 (awaiting owner ruling).
+Source: `dvo_semantics_enforcement_proposal.md` P1 (ratified — owner go-ahead
+2026-09-17). Landed:
 
-- `SHS_CONTRACT_ASSERT` = value invariants: only `*.contract.hpp` /
-  `*.command.hpp` / `*.event.hpp` and pure leaf value headers.
-- `SHS_PRE` / `SHS_POST` = edge law: only `*.gateway.hpp` / `*.contract.hpp`.
-- Macro use anywhere else in `include/shs/**` is a gate failure.
-- DoD: checker gate (8) + negative fixtures (macro in a math leaf FAILs) +
-  Constitution II Rule 17 placement sentence + Conventions §11 restatement,
-  one commit. **Owner ruling requested before any annotation lands.**
+- [x] `SHS_CONTRACT_ASSERT` = value invariants: only `*.contract.hpp` /
+  `*.command.hpp` / `*.event.hpp` and pure leaf value headers
+  (checker allowlist; first entry: `renderpath/planning/render_path_compiler.hpp`,
+  pure-tier compiler — hosts the C2.2 transition-table asserts).
+- [x] `SHS_PRE` / `SHS_POST` = edge law: only `*.gateway.hpp` / `*.contract.hpp`.
+- [x] Checker gate 8: `tools/check_contract_placement.sh`, wired as gate 8 into
+  `check_kdba_boundaries.sh` (bridge definition header exempted — the law
+  governs use sites, not the macro definitions). Green across 231 headers.
+- [x] Negative fixtures (CTest `shs_renderer_contract_placement_negative_test`):
+  `SHS_CONTRACT_ASSERT` in a math leaf FAILs; `SHS_PRE` in a non-seam header
+  FAILs; the same macros in their legal homes PASS.
+- [x] Constitution II Rule 17 placement sentence
+  (`docs/spec/value_oriented_programming.md` §2.3 item 2) + Conventions §11
+  restatement — one commit.
 
 ## W-B — C2 renderpath pilot: annotate the seam, railway-conformant
 

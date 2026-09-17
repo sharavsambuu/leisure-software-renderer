@@ -145,7 +145,13 @@ To keep one authority per provision:
    property, *always valid at every module edge*, is enforced by contract
    guardrails at boundaries — never by phantom flags inside DVOs, never by
    caller discipline. Contract guardrails are an **integral part of building a
-   DVO**, not an optional add-on.
+   DVO**, not an optional add-on. **Placement law (Rule 17 amendment,
+   2026-09-17)**: invariants live in the *type*, edge law lives at the *seam* —
+   `SHS_CONTRACT_ASSERT` (value invariants) only in `*.contract.hpp` /
+   `*.command.hpp` / `*.event.hpp` and pure leaf value headers;
+   `SHS_PRE` / `SHS_POST` (edge law) only in `*.gateway.hpp` /
+   `*.contract.hpp`; any other macro use under `include/shs/**` is a checker
+   gate failure (gate 8).
 
 **Binding order**: this philosophy is realized by §2.1 (Core 4,
 everything-is-a-pod), §8 (Kleisli doctrine), Rule 17 (contract guardrails), and

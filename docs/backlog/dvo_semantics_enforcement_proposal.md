@@ -34,6 +34,12 @@ retrofit scan of existing `SHS_*` sites; Constitution II Rule 17 amended with
 the placement sentence; Conventions §11 restatement updated same commit
 (single-source rule).
 
+> **LANDED 2026-09-17 (W-A of the enforcement plan):** gate 8 =
+> `tools/check_contract_placement.sh` (+ negative CTest fixture); Rule 17
+> placement sentence + Conventions §11 restatement landed in the same commit.
+> Pure-leaf allowlist currently: `renderpath/planning/render_path_compiler.hpp`
+> (C2.2 pilot). Retrofit scan result: zero violations across 231 headers.
+
 ## P2 — Expected-rail exclusivity at gateways (§8 codification)
 
 Gateway arrows return either a plain value or

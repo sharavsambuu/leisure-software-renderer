@@ -470,6 +470,15 @@ else
   echo "[kdba-boundary] OK: no raw assert / native contract syntax in Core 4 seams (SHS_ macros only, Rule 17)"
 fi
 
+# (8) Guardrail placement gate (P1, Rule 17 as amended 2026-09-17):
+#     invariants live in the *type*, edge law lives at the *seam*.
+#     SHS_PRE/SHS_POST only in *.gateway.hpp/*.contract.hpp;
+#     SHS_CONTRACT_ASSERT only in *.contract/command/event.hpp + the
+#     pure-leaf-value allowlist (see check_contract_placement.sh).
+if ! bash "${script_dir}/check_contract_placement.sh"; then
+  failed=1
+fi
+
 # Final enforcement gate (2026-09-16 hardening): every FAIL above must fail
 # the script. Negative-test proven: the tail-section gates (platform IO,
 # entropy, expected-vector, stringy events, phantom flags, event/error catalog
