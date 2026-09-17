@@ -242,6 +242,14 @@ rim under both gate 8 (placement) and gate 9 (rails) scans.
 
 ## W-E — Standing / parallel throughout
 
+- **Contract mechanism ruling (owner, 2026-09-17)**: the in-house
+  `core/contract_guardrails.hpp` bridge is the ratified contract mechanism —
+  no third-party library (GSL pre/post, Boost.Contract, …). Rationale: the
+  violation-handler seam + replay-parity CTest depend on the bridge's shape;
+  C++23 has no native contracts and the ladder already folds to `[[assume]]`
+  via feature tests; the sanctioned replacement is the C++26 native switch
+  (C4.3/P4), not a dependency.
+
 - **Cold-registry container migration** (resources, gfx → flat maps);
   shared lib utilities in `shs/containers/`, no private copies (vop §7 rule 6).
   **DONE (2026-09-17):** `ResourceRegistry` (resources/storage) and `RTRegistry`
