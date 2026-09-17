@@ -312,6 +312,14 @@ archives (never rewritten); and the ~11 `exps-gpu-renderer` demos that include t
   All eight identity suites pin counts, state/event preservation, replay, and
   empty batches. Input has real intents and its own Step/fact tests, not the
   monostate helper. The current 11-pod shape register is a drift guard only.
+  **Amended 2026-09-17 (domain-separation migration step 4.5):** the seven
+  pure-identity gateways (camera, geometry, gfx, lighting, resources, scene,
+  sky) were retired as dead scaffolding — empty vocabulary, no applied state,
+  no production callers — superseding the "retain" wording above for those
+  pods; `frame` keeps its gateway (identity transition over real
+  `FrameParams` state, the C1.4 replay-probe vehicle). Amendment record in
+  [pod_identifier_law.md §2.7](../spec/pod_identifier_law.md); the boundary
+  gate now fails on identity-gateway regrowth.
 - K3.1/K3.3: per-pod transition/compensation inventory is in
   [ERROR_FLOW.md](../pods/ERROR_FLOW.md). Renderpath is the sole closed error
   family; logic rejects with typed facts. All three renderpath setters now

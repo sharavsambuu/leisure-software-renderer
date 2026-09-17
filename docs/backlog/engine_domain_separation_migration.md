@@ -441,6 +441,29 @@ commits; keep mechanical moves separate from semantic changes.
 - Phase table: 1-3 COMPLETE, 4 at 4/5 (remaining: identity-only gateway
   retirement), 5 COMPLETE, 6/7 not started (7 blocked on 4-6).
 
+### Status (2026-09-17, step 4.5: identity-only gateway retirement) — PHASE 4 COMPLETE
+
+- Step 4 fifth item completed: the identity-only gateway scaffolding is
+  retired. The seven pure-identity gateways (camera, geometry, gfx, lighting,
+  resources, scene, sky — empty `variant<monostate>` command vocabulary, no
+  applied state, zero production consumers) were removed: 7 canonical gateway
+  headers + 7 `domains/` forwarders deleted (437 -> 423 headers), plus
+  `tests/identity_step_test.hpp` (only the retired pods' suites used it).
+  Useful pure functions and their tests are PRESERVED (make_render_item/
+  projection pins, follow_target/view-chain/light-fit, compute_tangent_frame/
+  perturb_normal, lambert/shade, ProceduralSky sampling, registry round-trip,
+  RTHandle/PixelBuffer). `frame` keeps its gateway (identity transition over
+  real `FrameParams` state; the C1.4 contract-guardrails replay-probe
+  vehicle). Spec amendment (law §2.2): `pod_identifier_law.md` naming tables
+  + §2.7 amended with the full retirement record (supersedes the Run C
+  "retain" wording for the seven pods); Run C close-out note in the KDBA
+  conformance backlog annotated. Gates: `check_kdba_boundaries.sh` amended —
+  retired pods exempt from the gateway file law and an identity-gateway
+  REGROWTH now FAILs the gate (negative-tested red-to-green with a probe
+  file, then removed). Full build + 32/32 CTest green, zero warnings;
+  inventory regenerated (423 headers, content hashes).
+- Phase table: 1-4 COMPLETE, 5 COMPLETE, 6/7 not started (7 blocked on 4-6).
+
 ### 1. Inventory, decision record and baseline
 
 - [x] Create a machine-readable old-header -> canonical-header manifest covering
@@ -620,7 +643,11 @@ Depends on 3; behavior changes require regression tests first.
   arbitrary workers, transitive drain via wait_idle) and shutdown ordering
   (wait_idle is the completion guarantee; destruction drains accepted jobs;
   enqueue-after-teardown-start is a caller error). `scene.gateway.hpp` and
-  `resources.gateway.hpp` carry the same policy note. New
+  `resources.gateway.hpp` carried the same policy note at the time (their
+  lifecycle wording — "event prefix stays untouched" — was superseded by the
+  mutate-before-emit finding above; the files themselves were retired in
+  step 4.5, leaving renderpath.gateway.hpp as the authoritative policy
+  statement). New
   `shs_renderer_lifecycle_semantics_tests` suite (5 tests) pins rejection
   continuation + plan preservation, partial-batch/event-alloc failure
   semantics (prefix events kept, strict-prefix state, divergence vs rerun),
@@ -629,8 +656,25 @@ Depends on 3; behavior changes require regression tests first.
   (wait_idle completion, concurrent enqueue, destructor drain).
   Gates green; full build + 32/32 CTest green; inventory regenerated
   (header-content hashes, no new headers).)
-- [ ] Retire identity-only gateway scaffolding only after consumer migration
+- [x] Retire identity-only gateway scaffolding only after consumer migration
   and spec amendment; preserve useful pure functions and their tests.
+  (Done 2026-09-17: the seven pure-identity gateways — camera, geometry, gfx,
+  lighting, resources, scene, sky, each an empty `variant<monostate>`
+  vocabulary over no applied state with zero production callers — were
+  retired after consumer migration and spec amendment. Consumers were tests
+  only: the seven pod suites dropped their identity pins (identity_step_test
+  harness + kit empty-log/replay cases deleted; `identity_step_test.hpp`
+  removed with them) while keeping every pure-function pin. 7 canonical
+  gateway headers + 7 `domains/` forwarders deleted, 437 -> 423 headers.
+  `frame` retained: identity transition over real `FrameParams` state and the
+  C1.4 replay-probe vehicle. Spec amendment per law §2.2:
+  `pod_identifier_law.md` §2.2 layer table + §2.3 pod table + §2.7 amended
+  with the retirement record superseding the Run C K1.5 "retain" verdict for
+  those pods; KDBA conformance backlog Run C close-out annotated;
+  `check_kdba_boundaries.sh` exempted the retired pods from the gateway file
+  law and now FAILs on identity-gateway regrowth (negative-tested
+  red-to-green). Full build + 32/32 CTest green, zero warnings; inventory
+  regenerated 437 -> 423.)
 
 Exit: observable behavior remains deliberate; owners and lifetimes are enforced
 by API/tests, not only directory placement.

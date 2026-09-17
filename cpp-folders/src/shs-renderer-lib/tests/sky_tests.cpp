@@ -1,26 +1,14 @@
 #include <cmath>
 #include <cstdio>
-#include <memory_resource>
-#include <variant>
-#include <vector>
 
 #include "shs/sky/sky.contract.hpp"
-#include "shs/sky/sky.gateway.hpp"
-#include "shs/core/testing/pod_test_kit.hpp"
-#include "identity_step_test.hpp"
 
-// Headless tests for the sky pod (R5a P3.9: procedural-sky pins + identity).
-// Links only shs::renderer-values + glm.
+// Headless tests for the sky pod (R5a P3.9: procedural-sky pins). The identity
+// gateway scaffolding was retired (migration step 4.5): the sky pod owns pure
+// sampling only until real intents arrive (empty command vocabulary by law
+// §6.1). Links only shs::renderer-values + glm.
 namespace
 {
-    auto run_gateway = [](shs::sky::SkyState& s,
-                             std::span<const shs::sky::SkyCommand> a,
-                             const shs::sky::SkyContext& in,
-                             std::pmr::vector<shs::sky::SkyEvent>& e)
-    {
-        shs::sky::sky_gateway(s, a, in, e);
-    };
-
     bool near_vec(const glm::vec3& a, const glm::vec3& b, float eps = 1e-5f)
     {
         return std::fabs(a.x - b.x) <= eps && std::fabs(a.y - b.y) <= eps && std::fabs(a.z - b.z) <= eps;
@@ -50,26 +38,6 @@ namespace
         const glm::vec3 d = glm::normalize(glm::vec3(0.4f, 0.2f, 0.9f));
         return sky.sample(d) == sky.sample(d);
     }
-
-    bool test_identity_stable()
-    {
-        return shs::pod_test::empty_log_is_stable<shs::sky::SkyState,
-            shs::sky::SkyCommand, shs::sky::SkyContext,
-            shs::sky::SkyEvent>(
-            run_gateway, shs::sky::SkyState{}, shs::sky::SkyContext{});
-    }
-
-    bool test_replay_deterministic()
-    {
-        const shs::sky::SkyState s0{};
-        const std::vector<shs::sky::SkyCommand> none{};
-        return shs::pod_test::replay_is_deterministic<shs::sky::SkyState,
-            shs::sky::SkyCommand, shs::sky::SkyContext,
-            shs::sky::SkyEvent>(
-            run_gateway, s0,
-            std::span<const shs::sky::SkyCommand>{none.data(), none.size()},
-            shs::sky::SkyContext{});
-    }
 } // namespace
 
 int main()
@@ -79,11 +47,6 @@ int main()
     ok = test_procedural_known_answers() && ok;
     ok = test_sun_disk() && ok;
     ok = test_sample_deterministic() && ok;
-    ok = identity_step_summary<shs::sky::SkyState,
-        shs::sky::SkyCommand, shs::sky::SkyContext,
-        shs::sky::SkyEvent, shs::sky::SkyStep>(shs::sky::sky_gateway) && ok;
-    ok = test_identity_stable() && ok;
-    ok = test_replay_deterministic() && ok;
 
     if (!ok)
     {

@@ -1,26 +1,16 @@
 #include <cstdio>
-#include <memory_resource>
-#include <variant>
 #include <vector>
 
 #include "shs/resources/resources.contract.hpp"
-#include "shs/resources/resources.gateway.hpp"
-#include "shs/core/testing/pod_test_kit.hpp"
-#include "identity_step_test.hpp"
 
 // Headless tests for the resources pod (R5a P3.7: data-type + registry pins).
-// Links only shs::renderer-values + glm. Registry API is exercised as-is
-// (flagged edge-candidate until R5b); the pins below are its migration spec.
+// The identity gateway scaffolding was retired (migration step 4.5): the
+// resources pod owns value types + the registry edge until real intents
+// arrive (empty command vocabulary by law §6.1). Links only
+// shs::renderer-values + glm. Registry API is exercised as-is (flagged
+// edge-candidate until R5b); the pins below are its migration spec.
 namespace
 {
-    auto run_gateway = [](shs::resources::ResourcesState& s,
-                             std::span<const shs::resources::ResourcesCommand> a,
-                             const shs::resources::ResourcesContext& in,
-                             std::pmr::vector<shs::resources::ResourcesEvent>& e)
-    {
-        shs::resources::resources_gateway(s, a, in, e);
-    };
-
     // Empty assets are invalid/empty; handles start null.
     bool test_data_basics()
     {
@@ -45,26 +35,6 @@ namespace
         if (!back || back->w != 2 || back->h != 2) return false;
         return reg.get_texture(h + 100) == nullptr;
     }
-
-    bool test_identity_stable()
-    {
-        return shs::pod_test::empty_log_is_stable<shs::resources::ResourcesState,
-            shs::resources::ResourcesCommand, shs::resources::ResourcesContext,
-            shs::resources::ResourcesEvent>(
-            run_gateway, shs::resources::ResourcesState{}, shs::resources::ResourcesContext{});
-    }
-
-    bool test_replay_deterministic()
-    {
-        const shs::resources::ResourcesState s0{};
-        const std::vector<shs::resources::ResourcesCommand> none{};
-        return shs::pod_test::replay_is_deterministic<shs::resources::ResourcesState,
-            shs::resources::ResourcesCommand, shs::resources::ResourcesContext,
-            shs::resources::ResourcesEvent>(
-            run_gateway, s0,
-            std::span<const shs::resources::ResourcesCommand>{none.data(), none.size()},
-            shs::resources::ResourcesContext{});
-    }
 } // namespace
 
 int main()
@@ -73,11 +43,6 @@ int main()
 
     ok = test_data_basics() && ok;
     ok = test_registry_round_trip() && ok;
-    ok = identity_step_summary<shs::resources::ResourcesState,
-        shs::resources::ResourcesCommand, shs::resources::ResourcesContext,
-        shs::resources::ResourcesEvent, shs::resources::ResourcesStep>(shs::resources::resources_gateway) && ok;
-    ok = test_identity_stable() && ok;
-    ok = test_replay_deterministic() && ok;
 
     if (!ok)
     {

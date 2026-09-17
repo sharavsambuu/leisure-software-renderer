@@ -1,26 +1,14 @@
 #include <cmath>
 #include <cstdio>
-#include <memory_resource>
-#include <variant>
-#include <vector>
 
 #include "shs/geometry/geometry.contract.hpp"
-#include "shs/geometry/geometry.gateway.hpp"
-#include "shs/core/testing/pod_test_kit.hpp"
-#include "identity_step_test.hpp"
 
-// Headless tests for the geometry pod (R4 P3.4: TBN operator pins + identity).
-// Links only shs::renderer-values + glm.
+// Headless tests for the geometry pod (R4 P3.4: TBN operator pins). The
+// identity gateway scaffolding was retired (migration step 4.5): the geometry
+// pod owns pure operators only until real intents arrive (empty command
+// vocabulary by law §6.1). Links only shs::renderer-values + glm.
 namespace
 {
-    auto run_gateway = [](shs::geometry::GeometryState& s,
-                             std::span<const shs::geometry::GeometryCommand> a,
-                             const shs::geometry::GeometryContext& in,
-                             std::pmr::vector<shs::geometry::GeometryEvent>& e)
-    {
-        shs::geometry::geometry_gateway(s, a, in, e);
-    };
-
     bool near(const glm::vec3& a, const glm::vec3& b, float eps = 1e-5f)
     {
         return std::fabs(a.x - b.x) <= eps && std::fabs(a.y - b.y) <= eps && std::fabs(a.z - b.z) <= eps;
@@ -64,26 +52,6 @@ namespace
         if (shs::decode_normal_texel(0.0f, 0.0f, 0.0f) != glm::vec3(-1.0f, -1.0f, -1.0f)) return false;
         return shs::decode_normal_texel(1.0f, 1.0f, 1.0f) == glm::vec3(1.0f, 1.0f, 1.0f);
     }
-
-    bool test_identity_stable()
-    {
-        return shs::pod_test::empty_log_is_stable<shs::geometry::GeometryState,
-            shs::geometry::GeometryCommand, shs::geometry::GeometryContext,
-            shs::geometry::GeometryEvent>(
-            run_gateway, shs::geometry::GeometryState{}, shs::geometry::GeometryContext{});
-    }
-
-    bool test_replay_deterministic()
-    {
-        const shs::geometry::GeometryState s0{};
-        const std::vector<shs::geometry::GeometryCommand> none{};
-        return shs::pod_test::replay_is_deterministic<shs::geometry::GeometryState,
-            shs::geometry::GeometryCommand, shs::geometry::GeometryContext,
-            shs::geometry::GeometryEvent>(
-            run_gateway, s0,
-            std::span<const shs::geometry::GeometryCommand>{none.data(), none.size()},
-            shs::geometry::GeometryContext{});
-    }
 } // namespace
 
 int main()
@@ -94,11 +62,6 @@ int main()
     ok = test_frame_tilted() && ok;
     ok = test_perturb_identity() && ok;
     ok = test_decode_corners() && ok;
-    ok = identity_step_summary<shs::geometry::GeometryState,
-        shs::geometry::GeometryCommand, shs::geometry::GeometryContext,
-        shs::geometry::GeometryEvent, shs::geometry::GeometryStep>(shs::geometry::geometry_gateway) && ok;
-    ok = test_identity_stable() && ok;
-    ok = test_replay_deterministic() && ok;
 
     if (!ok)
     {

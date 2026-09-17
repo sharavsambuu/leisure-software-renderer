@@ -1,27 +1,17 @@
 #include <cstdio>
-#include <memory_resource>
 #include <string>
-#include <variant>
 #include <vector>
 
 #include "shs/scene/scene.contract.hpp"
-#include "shs/scene/scene.gateway.hpp"
-#include "shs/core/testing/pod_test_kit.hpp"
-#include "identity_step_test.hpp"
 
 // Headless tests for the scene pod (R5b P3.6: projection pins + identity).
-// Links only shs::renderer-values + glm. Store mutation is exercised only
-// through its pure projection (migration spec for the R5b edge move).
+// The identity gateway scaffolding was retired (migration step 4.5): the
+// scene pod owns pure projections only (make_render_item, to_render_items)
+// until real intents arrive — the command vocabulary stays empty by law
+// (§6.1). Links only shs::renderer-values + glm. Store mutation is exercised
+// only through its pure projection (migration spec for the R5b edge move).
 namespace
 {
-    auto run_gateway = [](shs::scene::SceneState& s,
-                             std::span<const shs::scene::SceneCommand> a,
-                             const shs::scene::SceneContext& in,
-                             std::pmr::vector<shs::scene::SceneEvent>& e)
-    {
-        shs::scene::scene_gateway(s, a, in, e);
-    };
-
     // make_render_item maps every field, no surprises.
     bool test_make_render_item()
     {
@@ -58,26 +48,6 @@ namespace
         set2.add(a2);
         return set2.to_render_items()[0].object_id == items[0].object_id;
     }
-
-    bool test_identity_stable()
-    {
-        return shs::pod_test::empty_log_is_stable<shs::scene::SceneState,
-            shs::scene::SceneCommand, shs::scene::SceneContext,
-            shs::scene::SceneEvent>(
-            run_gateway, shs::scene::SceneState{}, shs::scene::SceneContext{});
-    }
-
-    bool test_replay_deterministic()
-    {
-        const shs::scene::SceneState s0{};
-        const std::vector<shs::scene::SceneCommand> none{};
-        return shs::pod_test::replay_is_deterministic<shs::scene::SceneState,
-            shs::scene::SceneCommand, shs::scene::SceneContext,
-            shs::scene::SceneEvent>(
-            run_gateway, s0,
-            std::span<const shs::scene::SceneCommand>{none.data(), none.size()},
-            shs::scene::SceneContext{});
-    }
 } // namespace
 
 int main()
@@ -91,11 +61,6 @@ int main()
 
     run("make_render_item", test_make_render_item());
     run("projection_round_trip", test_projection_round_trip());
-    run("identity_step_summary", identity_step_summary<shs::scene::SceneState,
-        shs::scene::SceneCommand, shs::scene::SceneContext,
-        shs::scene::SceneEvent, shs::scene::SceneStep>(shs::scene::scene_gateway));
-    run("identity_stable", test_identity_stable());
-    run("replay_deterministic", test_replay_deterministic());
 
     if (!ok)
     {

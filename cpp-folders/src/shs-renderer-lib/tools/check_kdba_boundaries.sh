@@ -294,10 +294,21 @@ while IFS= read -r d; do
 done < <(find "${domains_dir}" -mindepth 1 -maxdepth 1 -type d | sort)
 
 # (1) Non-vacuity: every pod carries the full Core 4 under canonical names.
+#     Exception (identity-gateway retirement, migration step 4.5): pods whose
+#     command vocabulary is EMPTY by law (§6.1) and which own no applied state
+#     carry no gateway file at all — contract/command/event stay, and the
+#     pinned empty vocabulary is the drift guard (spec §2.7). Reintroducing a
+#     gateway for a listed pod requires removing it from the list together
+#     with a real command vocabulary and a §2.2 law amendment.
+retired_identity_gateways=(camera geometry gfx lighting resources scene sky)
 vacuity=0
 for pod_dir in "${pod_dirs[@]}"; do
   pod="$(basename "${pod_dir}")"
   for role in "${core4_roles[@]}"; do
+    if [[ "${role}" == "gateway" ]] \
+      && printf '%s\n' "${retired_identity_gateways[@]}" | grep -qx -- "${pod}"; then
+      continue
+    fi
     if [[ ! -f "${pod_dir}/${pod}.${role}.hpp" ]]; then
       echo "[kdba-boundary] FAIL: pod ${pod} is missing ${pod}.${role}.hpp (Core 4 file law §6.2)"
       vacuity=1
@@ -314,7 +325,7 @@ for glob in '*.gateway.hpp' '*.event.hpp' '*.contract.hpp'; do
   fi
 done
 if [[ "${vacuity}" -eq 0 ]]; then
-  echo "[kdba-boundary] OK: non-vacuity — ${#pod_dirs[@]} pods carry the full Core 4 (contract/command/event/gateway)"
+  echo "[kdba-boundary] OK: non-vacuity — ${#pod_dirs[@]} pods carry the Core 4 file law (${#retired_identity_gateways[@]} with retired identity gateways carry contract/command/event only, step 4.5)"
 fi
 
 # (2) Paradigm-token ban: the abandoned monolith-reducer vocabulary must not
@@ -331,9 +342,18 @@ else
 fi
 
 # (3) Gateway presence: every pod exposes its <pod>_gateway entry point.
+#     Retired identity pods (step 4.5) must NOT expose one — an identity
+#     gateway regrowth is a drift violation, not a conformance win.
 missing_gw=0
 for pod_dir in "${pod_dirs[@]}"; do
   pod="$(basename "${pod_dir}")"
+  if printf '%s\n' "${retired_identity_gateways[@]}" | grep -qx -- "${pod}"; then
+    if find "${pod_scan_dirs[@]}" -name "${pod}.gateway.hpp" 2>/dev/null | grep -q .; then
+      echo "[kdba-boundary] FAIL: pod ${pod} identity gateway was retired (migration step 4.5); reintroduce only with a real command vocabulary (§2.2 amendment law)"
+      failed=1
+    fi
+    continue
+  fi
   gw_file=""
   while IFS= read -r f; do
     if ! grep -q 'Compatibility include: definitions live in' "${f}" 2>/dev/null; then
@@ -374,7 +394,7 @@ fi
 #     on `inline void reduce_*`, which the §6.6 naming migration already bans
 #     outright — the enforceable regrowth vector is the writer SIGNATURE, so
 #     this gate targets it instead.
-kleisli_migrated_pods=(camera frame geometry gfx input lighting logic renderpath resources scene sky)
+kleisli_migrated_pods=(frame input logic renderpath)
 kleisli_grandfathered_pods=()
 writer_gate=0
 for pod_dir in "${pod_dirs[@]}"; do

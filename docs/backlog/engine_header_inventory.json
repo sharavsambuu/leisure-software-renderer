@@ -3,7 +3,7 @@
   "scope": "cpp-folders/src/shs-renderer-lib/include",
   "coverage": "all .h/.hpp public headers; literal includes in all conditional branches",
   "approval": "proposed paths are inventory only; reviewed migrations live in engine_header_migration_manifest.json",
-  "header_count": 437,
+  "header_count": 423,
   "headers": [
     {
       "current": "shs/app/backend/backend_factory.hpp",
@@ -271,7 +271,6 @@
         "variant"
       ],
       "tracked_consumers": [
-        "cpp-folders/src/shs-renderer-lib/include/shs/camera/camera.gateway.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/domains/camera/camera.command.hpp"
       ],
       "build_target": "review-values-vs-aggregate"
@@ -305,7 +304,6 @@
       ],
       "external_dependencies": [],
       "tracked_consumers": [
-        "cpp-folders/src/shs-renderer-lib/include/shs/camera/camera.gateway.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/domains/camera/camera.contract.hpp",
         "cpp-folders/src/shs-renderer-lib/tests/camera_tests.cpp"
       ],
@@ -328,45 +326,7 @@
         "variant"
       ],
       "tracked_consumers": [
-        "cpp-folders/src/shs-renderer-lib/include/shs/camera/camera.gateway.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/domains/camera/camera.event.hpp"
-      ],
-      "build_target": "review-values-vs-aggregate"
-    },
-    {
-      "current": "shs/camera/camera.gateway.hpp",
-      "proposed_canonical": "shs/camera/camera.gateway.hpp",
-      "review_status": "already-named-review-dependencies",
-      "proposed_owner": "camera",
-      "namespace_declarations": [
-        "shs::camera"
-      ],
-      "visibility": "public-include-tree",
-      "direct_dependencies": [
-        "cstdint",
-        "memory_resource",
-        "shs/camera/camera.command.hpp",
-        "shs/camera/camera.contract.hpp",
-        "shs/camera/camera.event.hpp",
-        "span",
-        "type_traits",
-        "variant"
-      ],
-      "internal_dependencies": [
-        "shs/camera/camera.command.hpp",
-        "shs/camera/camera.contract.hpp",
-        "shs/camera/camera.event.hpp"
-      ],
-      "external_dependencies": [
-        "cstdint",
-        "memory_resource",
-        "span",
-        "type_traits",
-        "variant"
-      ],
-      "tracked_consumers": [
-        "cpp-folders/src/shs-renderer-lib/include/shs/domains/camera/camera.gateway.hpp",
-        "cpp-folders/src/shs-renderer-lib/tests/camera_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -790,18 +750,11 @@
       ],
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/include/shs/domains/pod_test_kit.hpp",
-        "cpp-folders/src/shs-renderer-lib/tests/camera_tests.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/frame_tests.cpp",
-        "cpp-folders/src/shs-renderer-lib/tests/geometry_tests.cpp",
-        "cpp-folders/src/shs-renderer-lib/tests/gfx_tests.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/input_tests.cpp",
-        "cpp-folders/src/shs-renderer-lib/tests/lighting_tests.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/logic_tests.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/renderpath_tests.cpp",
-        "cpp-folders/src/shs-renderer-lib/tests/resources_tests.cpp",
-        "cpp-folders/src/shs-renderer-lib/tests/scene_tests.cpp",
-        "cpp-folders/src/shs-renderer-lib/tests/session_orchestration_tests.cpp",
-        "cpp-folders/src/shs-renderer-lib/tests/sky_tests.cpp"
+        "cpp-folders/src/shs-renderer-lib/tests/session_orchestration_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -896,23 +849,6 @@
       ],
       "internal_dependencies": [
         "shs/camera/camera.event.hpp"
-      ],
-      "external_dependencies": [],
-      "tracked_consumers": [],
-      "build_target": "review-values-vs-aggregate"
-    },
-    {
-      "current": "shs/domains/camera/camera.gateway.hpp",
-      "proposed_canonical": "shs/camera/camera.gateway.hpp",
-      "review_status": "proposed-preserve-filename",
-      "proposed_owner": "camera",
-      "namespace_declarations": [],
-      "visibility": "public-include-tree",
-      "direct_dependencies": [
-        "shs/camera/camera.gateway.hpp"
-      ],
-      "internal_dependencies": [
-        "shs/camera/camera.gateway.hpp"
       ],
       "external_dependencies": [],
       "tracked_consumers": [],
@@ -1312,23 +1248,6 @@
       "build_target": "review-values-vs-aggregate"
     },
     {
-      "current": "shs/domains/geometry/geometry.gateway.hpp",
-      "proposed_canonical": "shs/geometry/geometry.gateway.hpp",
-      "review_status": "proposed-preserve-filename",
-      "proposed_owner": "geometry",
-      "namespace_declarations": [],
-      "visibility": "public-include-tree",
-      "direct_dependencies": [
-        "shs/geometry/geometry.gateway.hpp"
-      ],
-      "internal_dependencies": [
-        "shs/geometry/geometry.gateway.hpp"
-      ],
-      "external_dependencies": [],
-      "tracked_consumers": [],
-      "build_target": "review-values-vs-aggregate"
-    },
-    {
       "current": "shs/domains/geometry/jolt_adapter.hpp",
       "proposed_canonical": "shs/geometry/adapters/jolt/jolt_adapter.hpp",
       "review_status": "extract-adapter-dependencies",
@@ -1612,23 +1531,6 @@
       ],
       "internal_dependencies": [
         "shs/render/targets/gfx.event.hpp"
-      ],
-      "external_dependencies": [],
-      "tracked_consumers": [],
-      "build_target": "review-values-vs-aggregate"
-    },
-    {
-      "current": "shs/domains/gfx/gfx.gateway.hpp",
-      "proposed_canonical": "shs/render/targets/gfx.gateway.hpp",
-      "review_status": "proposed-preserve-filename",
-      "proposed_owner": "render",
-      "namespace_declarations": [],
-      "visibility": "public-include-tree",
-      "direct_dependencies": [
-        "shs/render/targets/gfx.gateway.hpp"
-      ],
-      "internal_dependencies": [
-        "shs/render/targets/gfx.gateway.hpp"
       ],
       "external_dependencies": [],
       "tracked_consumers": [],
@@ -2060,23 +1962,6 @@
       "build_target": "review-values-vs-aggregate"
     },
     {
-      "current": "shs/domains/lighting/lighting.gateway.hpp",
-      "proposed_canonical": "shs/lighting/lighting.gateway.hpp",
-      "review_status": "proposed-preserve-filename",
-      "proposed_owner": "lighting",
-      "namespace_declarations": [],
-      "visibility": "public-include-tree",
-      "direct_dependencies": [
-        "shs/lighting/lighting.gateway.hpp"
-      ],
-      "internal_dependencies": [
-        "shs/lighting/lighting.gateway.hpp"
-      ],
-      "external_dependencies": [],
-      "tracked_consumers": [],
-      "build_target": "review-values-vs-aggregate"
-    },
-    {
       "current": "shs/domains/lighting/pbr_sun_shadow.hpp",
       "proposed_canonical": "shs/lighting/pbr_sun_shadow.hpp",
       "review_status": "proposed-preserve-filename",
@@ -2468,23 +2353,6 @@
       "build_target": "review-values-vs-aggregate"
     },
     {
-      "current": "shs/domains/resources/resources.gateway.hpp",
-      "proposed_canonical": "shs/resources/resources.gateway.hpp",
-      "review_status": "proposed-preserve-filename",
-      "proposed_owner": "resources",
-      "namespace_declarations": [],
-      "visibility": "public-include-tree",
-      "direct_dependencies": [
-        "shs/resources/resources.gateway.hpp"
-      ],
-      "internal_dependencies": [
-        "shs/resources/resources.gateway.hpp"
-      ],
-      "external_dependencies": [],
-      "tracked_consumers": [],
-      "build_target": "review-values-vs-aggregate"
-    },
-    {
       "current": "shs/domains/resources/texture.hpp",
       "proposed_canonical": "shs/resources/texture.hpp",
       "review_status": "proposed-preserve-filename",
@@ -2581,23 +2449,6 @@
       ],
       "internal_dependencies": [
         "shs/scene/scene.event.hpp"
-      ],
-      "external_dependencies": [],
-      "tracked_consumers": [],
-      "build_target": "review-values-vs-aggregate"
-    },
-    {
-      "current": "shs/domains/scene/scene.gateway.hpp",
-      "proposed_canonical": "shs/scene/scene.gateway.hpp",
-      "review_status": "proposed-preserve-filename",
-      "proposed_owner": "scene",
-      "namespace_declarations": [],
-      "visibility": "public-include-tree",
-      "direct_dependencies": [
-        "shs/scene/scene.gateway.hpp"
-      ],
-      "internal_dependencies": [
-        "shs/scene/scene.gateway.hpp"
       ],
       "external_dependencies": [],
       "tracked_consumers": [],
@@ -2819,23 +2670,6 @@
       ],
       "internal_dependencies": [
         "shs/sky/sky.event.hpp"
-      ],
-      "external_dependencies": [],
-      "tracked_consumers": [],
-      "build_target": "review-values-vs-aggregate"
-    },
-    {
-      "current": "shs/domains/sky/sky.gateway.hpp",
-      "proposed_canonical": "shs/sky/sky.gateway.hpp",
-      "review_status": "proposed-preserve-filename",
-      "proposed_owner": "sky",
-      "namespace_declarations": [],
-      "visibility": "public-include-tree",
-      "direct_dependencies": [
-        "shs/sky/sky.gateway.hpp"
-      ],
-      "internal_dependencies": [
-        "shs/sky/sky.gateway.hpp"
       ],
       "external_dependencies": [],
       "tracked_consumers": [],
@@ -4902,8 +4736,7 @@
         "variant"
       ],
       "tracked_consumers": [
-        "cpp-folders/src/shs-renderer-lib/include/shs/domains/geometry/geometry.command.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/geometry/geometry.gateway.hpp"
+        "cpp-folders/src/shs-renderer-lib/include/shs/domains/geometry/geometry.command.hpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -4931,7 +4764,6 @@
       "external_dependencies": [],
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/include/shs/domains/geometry/geometry.contract.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/geometry/geometry.gateway.hpp",
         "cpp-folders/src/shs-renderer-lib/tests/geometry_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
@@ -4953,45 +4785,7 @@
         "variant"
       ],
       "tracked_consumers": [
-        "cpp-folders/src/shs-renderer-lib/include/shs/domains/geometry/geometry.event.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/geometry/geometry.gateway.hpp"
-      ],
-      "build_target": "review-values-vs-aggregate"
-    },
-    {
-      "current": "shs/geometry/geometry.gateway.hpp",
-      "proposed_canonical": "shs/geometry/geometry.gateway.hpp",
-      "review_status": "already-named-review-dependencies",
-      "proposed_owner": "geometry",
-      "namespace_declarations": [
-        "shs::geometry"
-      ],
-      "visibility": "public-include-tree",
-      "direct_dependencies": [
-        "cstdint",
-        "memory_resource",
-        "shs/geometry/geometry.command.hpp",
-        "shs/geometry/geometry.contract.hpp",
-        "shs/geometry/geometry.event.hpp",
-        "span",
-        "type_traits",
-        "variant"
-      ],
-      "internal_dependencies": [
-        "shs/geometry/geometry.command.hpp",
-        "shs/geometry/geometry.contract.hpp",
-        "shs/geometry/geometry.event.hpp"
-      ],
-      "external_dependencies": [
-        "cstdint",
-        "memory_resource",
-        "span",
-        "type_traits",
-        "variant"
-      ],
-      "tracked_consumers": [
-        "cpp-folders/src/shs-renderer-lib/include/shs/domains/geometry/geometry.gateway.hpp",
-        "cpp-folders/src/shs-renderer-lib/tests/geometry_tests.cpp"
+        "cpp-folders/src/shs-renderer-lib/include/shs/domains/geometry/geometry.event.hpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -5801,8 +5595,7 @@
         "variant"
       ],
       "tracked_consumers": [
-        "cpp-folders/src/shs-renderer-lib/include/shs/domains/lighting/lighting.command.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/lighting/lighting.gateway.hpp"
+        "cpp-folders/src/shs-renderer-lib/include/shs/domains/lighting/lighting.command.hpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -5830,7 +5623,6 @@
       "external_dependencies": [],
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/include/shs/domains/lighting/lighting.contract.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/lighting/lighting.gateway.hpp",
         "cpp-folders/src/shs-renderer-lib/tests/lighting_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
@@ -5852,45 +5644,7 @@
         "variant"
       ],
       "tracked_consumers": [
-        "cpp-folders/src/shs-renderer-lib/include/shs/domains/lighting/lighting.event.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/lighting/lighting.gateway.hpp"
-      ],
-      "build_target": "review-values-vs-aggregate"
-    },
-    {
-      "current": "shs/lighting/lighting.gateway.hpp",
-      "proposed_canonical": "shs/lighting/lighting.gateway.hpp",
-      "review_status": "already-named-review-dependencies",
-      "proposed_owner": "lighting",
-      "namespace_declarations": [
-        "shs::lighting"
-      ],
-      "visibility": "public-include-tree",
-      "direct_dependencies": [
-        "cstdint",
-        "memory_resource",
-        "shs/lighting/lighting.command.hpp",
-        "shs/lighting/lighting.contract.hpp",
-        "shs/lighting/lighting.event.hpp",
-        "span",
-        "type_traits",
-        "variant"
-      ],
-      "internal_dependencies": [
-        "shs/lighting/lighting.command.hpp",
-        "shs/lighting/lighting.contract.hpp",
-        "shs/lighting/lighting.event.hpp"
-      ],
-      "external_dependencies": [
-        "cstdint",
-        "memory_resource",
-        "span",
-        "type_traits",
-        "variant"
-      ],
-      "tracked_consumers": [
-        "cpp-folders/src/shs-renderer-lib/include/shs/domains/lighting/lighting.gateway.hpp",
-        "cpp-folders/src/shs-renderer-lib/tests/lighting_tests.cpp"
+        "cpp-folders/src/shs-renderer-lib/include/shs/domains/lighting/lighting.event.hpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -6685,8 +6439,7 @@
         "variant"
       ],
       "tracked_consumers": [
-        "cpp-folders/src/shs-renderer-lib/include/shs/domains/gfx/gfx.command.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/render/targets/gfx.gateway.hpp"
+        "cpp-folders/src/shs-renderer-lib/include/shs/domains/gfx/gfx.command.hpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -6716,7 +6469,6 @@
       "external_dependencies": [],
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/include/shs/domains/gfx/gfx.contract.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/render/targets/gfx.gateway.hpp",
         "cpp-folders/src/shs-renderer-lib/tests/gfx_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
@@ -6738,45 +6490,7 @@
         "variant"
       ],
       "tracked_consumers": [
-        "cpp-folders/src/shs-renderer-lib/include/shs/domains/gfx/gfx.event.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/render/targets/gfx.gateway.hpp"
-      ],
-      "build_target": "review-values-vs-aggregate"
-    },
-    {
-      "current": "shs/render/targets/gfx.gateway.hpp",
-      "proposed_canonical": "shs/render/targets/gfx.gateway.hpp",
-      "review_status": "already-named-review-dependencies",
-      "proposed_owner": "render",
-      "namespace_declarations": [
-        "shs::gfx"
-      ],
-      "visibility": "public-include-tree",
-      "direct_dependencies": [
-        "cstdint",
-        "memory_resource",
-        "shs/render/targets/gfx.command.hpp",
-        "shs/render/targets/gfx.contract.hpp",
-        "shs/render/targets/gfx.event.hpp",
-        "span",
-        "type_traits",
-        "variant"
-      ],
-      "internal_dependencies": [
-        "shs/render/targets/gfx.command.hpp",
-        "shs/render/targets/gfx.contract.hpp",
-        "shs/render/targets/gfx.event.hpp"
-      ],
-      "external_dependencies": [
-        "cstdint",
-        "memory_resource",
-        "span",
-        "type_traits",
-        "variant"
-      ],
-      "tracked_consumers": [
-        "cpp-folders/src/shs-renderer-lib/include/shs/domains/gfx/gfx.gateway.hpp",
-        "cpp-folders/src/shs-renderer-lib/tests/gfx_tests.cpp"
+        "cpp-folders/src/shs-renderer-lib/include/shs/domains/gfx/gfx.event.hpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -8427,6 +8141,7 @@
       ],
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/include/shs/domains/renderpath/renderpath.gateway.hpp",
+        "cpp-folders/src/shs-renderer-lib/tests/lifecycle_semantics_tests.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/renderpath_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
@@ -8723,8 +8438,7 @@
         "variant"
       ],
       "tracked_consumers": [
-        "cpp-folders/src/shs-renderer-lib/include/shs/domains/resources/resources.command.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/resources/resources.gateway.hpp"
+        "cpp-folders/src/shs-renderer-lib/include/shs/domains/resources/resources.command.hpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -8756,7 +8470,6 @@
       "external_dependencies": [],
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/include/shs/domains/resources/resources.contract.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/resources/resources.gateway.hpp",
         "cpp-folders/src/shs-renderer-lib/tests/resources_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
@@ -8778,45 +8491,7 @@
         "variant"
       ],
       "tracked_consumers": [
-        "cpp-folders/src/shs-renderer-lib/include/shs/domains/resources/resources.event.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/resources/resources.gateway.hpp"
-      ],
-      "build_target": "review-values-vs-aggregate"
-    },
-    {
-      "current": "shs/resources/resources.gateway.hpp",
-      "proposed_canonical": "shs/resources/resources.gateway.hpp",
-      "review_status": "already-named-review-dependencies",
-      "proposed_owner": "resources",
-      "namespace_declarations": [
-        "shs::resources"
-      ],
-      "visibility": "public-include-tree",
-      "direct_dependencies": [
-        "cstdint",
-        "memory_resource",
-        "shs/resources/resources.command.hpp",
-        "shs/resources/resources.contract.hpp",
-        "shs/resources/resources.event.hpp",
-        "span",
-        "type_traits",
-        "variant"
-      ],
-      "internal_dependencies": [
-        "shs/resources/resources.command.hpp",
-        "shs/resources/resources.contract.hpp",
-        "shs/resources/resources.event.hpp"
-      ],
-      "external_dependencies": [
-        "cstdint",
-        "memory_resource",
-        "span",
-        "type_traits",
-        "variant"
-      ],
-      "tracked_consumers": [
-        "cpp-folders/src/shs-renderer-lib/include/shs/domains/resources/resources.gateway.hpp",
-        "cpp-folders/src/shs-renderer-lib/tests/resources_tests.cpp"
+        "cpp-folders/src/shs-renderer-lib/include/shs/domains/resources/resources.event.hpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -10235,8 +9910,7 @@
         "variant"
       ],
       "tracked_consumers": [
-        "cpp-folders/src/shs-renderer-lib/include/shs/domains/scene/scene.command.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/scene/scene.gateway.hpp"
+        "cpp-folders/src/shs-renderer-lib/include/shs/domains/scene/scene.command.hpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -10262,7 +9936,6 @@
       "external_dependencies": [],
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/include/shs/domains/scene/scene.contract.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/scene/scene.gateway.hpp",
         "cpp-folders/src/shs-renderer-lib/tests/scene_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
@@ -10284,45 +9957,7 @@
         "variant"
       ],
       "tracked_consumers": [
-        "cpp-folders/src/shs-renderer-lib/include/shs/domains/scene/scene.event.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/scene/scene.gateway.hpp"
-      ],
-      "build_target": "review-values-vs-aggregate"
-    },
-    {
-      "current": "shs/scene/scene.gateway.hpp",
-      "proposed_canonical": "shs/scene/scene.gateway.hpp",
-      "review_status": "already-named-review-dependencies",
-      "proposed_owner": "scene",
-      "namespace_declarations": [
-        "shs::scene"
-      ],
-      "visibility": "public-include-tree",
-      "direct_dependencies": [
-        "cstdint",
-        "memory_resource",
-        "shs/scene/scene.command.hpp",
-        "shs/scene/scene.contract.hpp",
-        "shs/scene/scene.event.hpp",
-        "span",
-        "type_traits",
-        "variant"
-      ],
-      "internal_dependencies": [
-        "shs/scene/scene.command.hpp",
-        "shs/scene/scene.contract.hpp",
-        "shs/scene/scene.event.hpp"
-      ],
-      "external_dependencies": [
-        "cstdint",
-        "memory_resource",
-        "span",
-        "type_traits",
-        "variant"
-      ],
-      "tracked_consumers": [
-        "cpp-folders/src/shs-renderer-lib/include/shs/domains/scene/scene.gateway.hpp",
-        "cpp-folders/src/shs-renderer-lib/tests/scene_tests.cpp"
+        "cpp-folders/src/shs-renderer-lib/include/shs/domains/scene/scene.event.hpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -10762,8 +10397,7 @@
         "variant"
       ],
       "tracked_consumers": [
-        "cpp-folders/src/shs-renderer-lib/include/shs/domains/sky/sky.command.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/sky/sky.gateway.hpp"
+        "cpp-folders/src/shs-renderer-lib/include/shs/domains/sky/sky.command.hpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -10789,7 +10423,6 @@
       "external_dependencies": [],
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/include/shs/domains/sky/sky.contract.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/sky/sky.gateway.hpp",
         "cpp-folders/src/shs-renderer-lib/tests/sky_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
@@ -10811,45 +10444,7 @@
         "variant"
       ],
       "tracked_consumers": [
-        "cpp-folders/src/shs-renderer-lib/include/shs/domains/sky/sky.event.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/sky/sky.gateway.hpp"
-      ],
-      "build_target": "review-values-vs-aggregate"
-    },
-    {
-      "current": "shs/sky/sky.gateway.hpp",
-      "proposed_canonical": "shs/sky/sky.gateway.hpp",
-      "review_status": "already-named-review-dependencies",
-      "proposed_owner": "sky",
-      "namespace_declarations": [
-        "shs::sky"
-      ],
-      "visibility": "public-include-tree",
-      "direct_dependencies": [
-        "cstdint",
-        "memory_resource",
-        "shs/sky/sky.command.hpp",
-        "shs/sky/sky.contract.hpp",
-        "shs/sky/sky.event.hpp",
-        "span",
-        "type_traits",
-        "variant"
-      ],
-      "internal_dependencies": [
-        "shs/sky/sky.command.hpp",
-        "shs/sky/sky.contract.hpp",
-        "shs/sky/sky.event.hpp"
-      ],
-      "external_dependencies": [
-        "cstdint",
-        "memory_resource",
-        "span",
-        "type_traits",
-        "variant"
-      ],
-      "tracked_consumers": [
-        "cpp-folders/src/shs-renderer-lib/include/shs/domains/sky/sky.gateway.hpp",
-        "cpp-folders/src/shs-renderer-lib/tests/sky_tests.cpp"
+        "cpp-folders/src/shs-renderer-lib/include/shs/domains/sky/sky.event.hpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -10976,7 +10571,8 @@
         "vector"
       ],
       "tracked_consumers": [
-        "cpp-folders/src/shs-renderer-lib/include/shs/execution/job/thread_pool_job_system.hpp"
+        "cpp-folders/src/shs-renderer-lib/include/shs/execution/job/thread_pool_job_system.hpp",
+        "cpp-folders/src/shs-renderer-lib/tests/lifecycle_semantics_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -11127,10 +10723,6 @@
       "shs/camera/camera.event.hpp",
       "shs/domains/camera/camera.event.hpp"
     ],
-    "shs/camera/camera.gateway.hpp": [
-      "shs/camera/camera.gateway.hpp",
-      "shs/domains/camera/camera.gateway.hpp"
-    ],
     "shs/camera/camera_math.hpp": [
       "shs/camera/camera_math.hpp",
       "shs/domains/camera/camera_math.hpp"
@@ -11230,10 +10822,6 @@
     "shs/geometry/geometry.event.hpp": [
       "shs/domains/geometry/geometry.event.hpp",
       "shs/geometry/geometry.event.hpp"
-    ],
-    "shs/geometry/geometry.gateway.hpp": [
-      "shs/domains/geometry/geometry.gateway.hpp",
-      "shs/geometry/geometry.gateway.hpp"
     ],
     "shs/geometry/primitives.hpp": [
       "shs/domains/geometry/primitives.hpp",
@@ -11338,10 +10926,6 @@
     "shs/lighting/lighting.event.hpp": [
       "shs/domains/lighting/lighting.event.hpp",
       "shs/lighting/lighting.event.hpp"
-    ],
-    "shs/lighting/lighting.gateway.hpp": [
-      "shs/domains/lighting/lighting.gateway.hpp",
-      "shs/lighting/lighting.gateway.hpp"
     ],
     "shs/lighting/pbr_sun_shadow.hpp": [
       "shs/domains/lighting/pbr_sun_shadow.hpp",
@@ -11454,10 +11038,6 @@
     "shs/render/targets/gfx.event.hpp": [
       "shs/domains/gfx/gfx.event.hpp",
       "shs/render/targets/gfx.event.hpp"
-    ],
-    "shs/render/targets/gfx.gateway.hpp": [
-      "shs/domains/gfx/gfx.gateway.hpp",
-      "shs/render/targets/gfx.gateway.hpp"
     ],
     "shs/render/targets/resource_handles.hpp": [
       "shs/domains/gfx/resource_handles.hpp",
@@ -11687,10 +11267,6 @@
       "shs/domains/resources/resources.event.hpp",
       "shs/resources/resources.event.hpp"
     ],
-    "shs/resources/resources.gateway.hpp": [
-      "shs/domains/resources/resources.gateway.hpp",
-      "shs/resources/resources.gateway.hpp"
-    ],
     "shs/resources/storage/resource_registry.hpp": [
       "shs/domains/resources/edge/resource_registry.hpp",
       "shs/resources/storage/resource_registry.hpp"
@@ -11851,10 +11427,6 @@
       "shs/domains/scene/scene.event.hpp",
       "shs/scene/scene.event.hpp"
     ],
-    "shs/scene/scene.gateway.hpp": [
-      "shs/domains/scene/scene.gateway.hpp",
-      "shs/scene/scene.gateway.hpp"
-    ],
     "shs/scene/scene_bindings.hpp": [
       "shs/domains/scene/scene_bindings.hpp",
       "shs/scene/scene_bindings.hpp"
@@ -11914,10 +11486,6 @@
     "shs/sky/sky.event.hpp": [
       "shs/domains/sky/sky.event.hpp",
       "shs/sky/sky.event.hpp"
-    ],
-    "shs/sky/sky.gateway.hpp": [
-      "shs/domains/sky/sky.gateway.hpp",
-      "shs/sky/sky.gateway.hpp"
     ],
     "shs/sky/sky_model.hpp": [
       "shs/domains/sky/sky_model.hpp",

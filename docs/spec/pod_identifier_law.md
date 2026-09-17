@@ -113,11 +113,11 @@ carries "which layer am I", the *alternative* carries "what happened". Same for
 
 | Layer | Law noun | Canonical identifier | Lives in | Reality (2026-09-17) |
 | :--- | :--- | :--- | :--- | :--- |
-| Core 1 state | Snapshot / State | `<Pod>State`, `<Pod>Snapshot` | `<pod>.contract.hpp` | present in all 11 pods |
+| Core 1 state | Snapshot / State | `<Pod>State`, `<Pod>Snapshot` | `<pod>.contract.hpp` | state types in the 4 gateway pods; the 7 value-tier pods own their real values in contract headers (see 2.7) |
 | Core 2 vocabulary | Command | `<Pod>Command = variant<...Intent>` | `<pod>.command.hpp` | 11/11 (`variant<monostate>` when empty) |
-| Kleisli environment | Context (`Ctx`) | `<Pod>Context` (carries `dt`) | `<pod>.gateway.hpp` | `FrameContext`, `GfxContext`, `GeometryContext`, `SceneContext`, `ResourcesContext`, `LogicContext<TStateId>`, ... |
+| Kleisli environment | Context (`Ctx`) | `<Pod>Context` (carries `dt`) | `<pod>.gateway.hpp` | `FrameContext`, `LogicContext<TStateId>`, and the real gateways' environments; the empty-vocabulary identity `Context` pods were retired with their gateways (see 2.7) |
 | Core 3 facts | Event | `<Pod>Event` + `<FactPhrase>Event` | `<pod>.event.hpp` | 11/11 + `*_event_name()` name tables + `variant_size` pins |
-| Core 4 entry point | Gateway | `<pod>_gateway(State, span<const Command>, Context, events)` | `<pod>.gateway.hpp` | present and unique, still `inline void` — see 2.7 |
+| Core 4 entry point | Gateway | `<pod>_gateway(State, span<const Command>, Context, events)` | `<pod>.gateway.hpp` | present and unique in the 4 pods with a real transition (frame, renderpath, logic, input); the 7 pure-identity gateways were retired (step 4.5) — see 2.7 |
 | Internal arrows | Arrow | verb phrases in `shs::<pod>::detail` | `<pod>.gateway.hpp` | `verify_*`, `apply_*`, `compile_plan`, `select_rule` |
 | Failure rail | Error / Rejection | `<Pod>Error`, `<Pod>RejectionReason` (closed enums) | `<pod>.event.hpp` | only `PathSwapRejectionReason` exists — see 2.7 |
 
@@ -126,16 +126,16 @@ carries "which layer am I", the *alternative* carries "what happened". Same for
 | Pod | Command variant | Event variant | Gateway entry point | Namespace note |
 | :--- | :--- | :--- | :--- | :--- |
 | `renderpath` | `RenderPathCommand` | `RenderPathEvent` | `renderpath_gateway` | `shs::renderpath`; first formal pod |
-| `input` | `InputCommand = shs::RuntimeCommand` | `InputEvent` | `input_gateway` | alias to root vocabulary; legacy `runtime_state_gateway` + `input_latch_gateway` delegate |
+| `input` | `InputCommand = shs::RuntimeCommand` | `InputEvent` | `input_latch_gateway` | alias to root vocabulary; application half moved to the app orchestrator (migration 4.1) |
 | `logic` | `FsmCommand<TStateId>` | `FsmEvent` | `logic_gateway` | **parameterized** pod; `TrafficCommand = shs::FsmCommand<TrafficLight>` |
-| `frame` | `FrameCommand` (`monostate`) | `FrameEvent` | `frame_gateway` | empty vocabulary, still explicit |
-| `geometry` | `GeometryCommand` (`monostate`) | `GeometryEvent` | `geometry_gateway` | |
-| `camera` | `CameraCommand` (`monostate`) | `CameraEvent` | `camera_gateway` | camera *math* still lives in input's edge; K1.4 decides home |
-| `lighting` | `LightingCommand` (`monostate`) | `LightingEvent` | `lighting_gateway` | |
-| `resources` | `ResourcesCommand` (`monostate`) | `ResourcesEvent` | `resources_gateway` | edge-owned asset stores |
-| `sky` | `SkyCommand` (`monostate`) | `SkyEvent` | `sky_gateway` | |
-| `scene` | `SceneCommand` (`monostate`) | `SceneEvent` | `scene_gateway` | edge-owned stores |
-| `gfx` | `GfxCommand` (`monostate`) | `GfxEvent` | `gfx_gateway` | edge-owned registry |
+| `frame` | `FrameCommand` (`monostate`) | `FrameEvent` | `frame_gateway` | empty vocabulary over REAL state (`FrameParams`); C1.4 replay-probe vehicle — retained |
+| `geometry` | `GeometryCommand` (`monostate`) | `GeometryEvent` | *retired* (step 4.5) | identity scaffolding removed; pure operators remain |
+| `camera` | `CameraCommand` (`monostate`) | `CameraEvent` | *retired* (step 4.5) | rig state is owned by `shs::app::SessionState`; pure builders remain |
+| `lighting` | `LightingCommand` (`monostate`) | `LightingEvent` | *retired* (step 4.5) | pure shading terms remain |
+| `resources` | `ResourcesCommand` (`monostate`) | `ResourcesEvent` | *retired* (step 4.5) | edge-owned registry remains |
+| `sky` | `SkyCommand` (`monostate`) | `SkyEvent` | *retired* (step 4.5) | pure sampling remains |
+| `scene` | `SceneCommand` (`monostate`) | `SceneEvent` | *retired* (step 4.5) | pure projections (`to_render_items`) + store edges remain |
+| `gfx` | `GfxCommand` (`monostate`) | `GfxEvent` | *retired* (step 4.5) | edge-owned registry remains |
 
 **Empty-vocabulary law.** `using FrameCommand = std::variant<std::monostate>;` is not a
 placeholder. §6.1 requires a pod to *declare* even a trivially small vocabulary so its
@@ -203,17 +203,35 @@ batched step at the boundary".
 
 ### 2.7 Honest status: law nouns not yet realized
 
-Rule N2 requires every law noun to exist as an identifier. Two do not, yet. They are listed
+Rule N2 requires every law noun to exist as an identifier. One does not, yet. It is listed
 here so nobody mistakes law for inventory:
 
-- **`<Pod>Error` / `<Pod>RejectionReason`** — only `PathSwapRejectionReason` exists. All 11
-  gateways still return `inline void` with a `pmr::vector<Event>&` out-parameter (the
-  "writer shape"). The closed-enum failure rail is *law* (§6.6 N1) but unrealized; the
+- **`<Pod>Error` / `<Pod>RejectionReason`** — only `PathSwapRejectionReason` exists; the
+  other gateways report rejection through typed facts (logic) or do not reject (identity).
+  The closed-enum failure rail is *law* (§6.6 N1) but unrealized pod by pod; the
   K1.x port work in the [KDBA conformance backlog](../backlog/kdba_conformance_backlog.md)
   realizes it pod by pod.
-- **`Step`** — the house-signature return type exists **only in demo pods**
-  (`SessionStep`, `MissionStep`, ...), never in the library. Naming it is K1.1; defining it
-  is K1.2/K1.4 — behavioural work, not cosmetic.
+
+**Amendment (2026-09-17, engine domain-separation migration step 4.5): identity-gateway
+retirement.** The seven pure-identity gateways (`camera`, `geometry`, `gfx`, `lighting`,
+`resources`, `scene`, `sky`) were retired: empty command vocabulary (`variant<monostate>`),
+no applied state, zero production callers — the gateway only counted its own inputs, and
+its only consumers were the tests pinning the scaffolding itself. The earlier K1.5 verdict
+("identity gateways are legal; retain the Step summaries") governed the Run C signature
+port, not permanent inventory: the two provisions conflict for dead scaffolding, and this
+amendment supersedes the retention for those seven pods. **`frame` is deliberately
+retained**: its gateway is an identity transition over real per-frame state (`FrameParams`)
+and is the load-bearing vehicle for the C1.4 contract-guardrails replay-parity probe. The
+remaining law is unchanged for the four pods with real transitions (frame, renderpath,
+logic, input via `input_latch_gateway`): gateway present, unique, Kleisli house shape. The
+retired pods keep their contract/command/event files — the pinned empty vocabulary stays
+"greppable, auditable, and mechanically checkable" (§6.1), a new intent still lands as a
+named `apply_*` arrow first, and the boundary gate now FAILs if a retired identity gateway
+regrows without a real command vocabulary and a new §2.2 amendment. Scope: 14 gateway
+headers deleted (7 canonical + 7 `domains/` forwarders), `identity_step_test.hpp` deleted,
+the seven pod test suites keep their pure-function pins (builders, projections, shading
+terms, registry round-trips, procedural sampling); full build + 32/32 CTest green;
+`check_kdba_boundaries.sh` amended and re-verified red-to-green on a regrowth probe.
 
 ### 2.8 Header banner convention
 

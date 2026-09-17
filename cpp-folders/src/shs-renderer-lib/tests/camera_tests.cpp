@@ -1,26 +1,14 @@
 #include <cmath>
 #include <cstdio>
-#include <memory_resource>
-#include <variant>
-#include <vector>
 
 #include "shs/camera/camera.contract.hpp"
-#include "shs/camera/camera.gateway.hpp"
-#include "shs/core/testing/pod_test_kit.hpp"
-#include "identity_step_test.hpp"
 
-// Headless tests for the camera pod (R5a P3.3: builder pins + identity).
-// Links only shs::renderer-values + glm.
+// Headless tests for the camera pod (R5a P3.3: builder pins). The identity
+// gateway scaffolding was retired (migration step 4.5): the camera pod owns
+// pure builders only until real intents arrive (empty command vocabulary
+// by law §6.1). Links only shs::renderer-values + glm.
 namespace
 {
-    auto run_gateway = [](shs::camera::CameraState& s,
-                             std::span<const shs::camera::CameraCommand> a,
-                             const shs::camera::CameraContext& in,
-                             std::pmr::vector<shs::camera::CameraEvent>& e)
-    {
-        shs::camera::camera_gateway(s, a, in, e);
-    };
-
     bool near(float a, float b, float eps = 1e-4f)
     {
         return std::fabs(a - b) <= eps;
@@ -68,26 +56,6 @@ namespace
         cam.update_matrices(16.0f / 9.0f);
         return cam.prev_viewproj == first && cam.viewproj == first;
     }
-
-    bool test_identity_stable()
-    {
-        return shs::pod_test::empty_log_is_stable<shs::camera::CameraState,
-            shs::camera::CameraCommand, shs::camera::CameraContext,
-            shs::camera::CameraEvent>(
-            run_gateway, shs::camera::CameraState{}, shs::camera::CameraContext{});
-    }
-
-    bool test_replay_deterministic()
-    {
-        const shs::camera::CameraState s0{};
-        const std::vector<shs::camera::CameraCommand> none{};
-        return shs::pod_test::replay_is_deterministic<shs::camera::CameraState,
-            shs::camera::CameraCommand, shs::camera::CameraContext,
-            shs::camera::CameraEvent>(
-            run_gateway, s0,
-            std::span<const shs::camera::CameraCommand>{none.data(), none.size()},
-            shs::camera::CameraContext{});
-    }
 } // namespace
 
 int main()
@@ -102,11 +70,6 @@ int main()
     run("follow_known_answers", test_follow_known_answers());
     run("light_camera_fit", test_light_camera_fit());
     run("view_chain", test_view_chain());
-    run("identity_step_summary", identity_step_summary<shs::camera::CameraState,
-        shs::camera::CameraCommand, shs::camera::CameraContext,
-        shs::camera::CameraEvent, shs::camera::CameraStep>(shs::camera::camera_gateway));
-    run("identity_stable", test_identity_stable());
-    run("replay_deterministic", test_replay_deterministic());
 
     if (!ok)
     {
