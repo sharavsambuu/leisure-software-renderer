@@ -1,13 +1,14 @@
 #pragma once
 
 #include <vector>
+#include <span>
 #include <cmath>
 #include <algorithm>
 
 #include <glm/glm.hpp>
 
 #include "shs/render/targets/rt_types.hpp"
-#include "shs/geometry/adapters/jolt/jolt_debug_draw.hpp"
+#include "shs/geometry/debug_mesh.hpp"
 
 namespace shs
 {

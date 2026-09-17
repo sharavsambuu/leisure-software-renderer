@@ -3,7 +3,7 @@
   "scope": "cpp-folders/src/shs-renderer-lib/include",
   "coverage": "all .h/.hpp public headers; literal includes in all conditional branches",
   "approval": "proposed paths are inventory only; reviewed migrations live in engine_header_migration_manifest.json",
-  "header_count": 432,
+  "header_count": 433,
   "headers": [
     {
       "current": "shs/app/backend/backend_factory.hpp",
@@ -4289,6 +4289,7 @@
         "shs/geometry/aabb.hpp",
         "shs/geometry/adapters/jolt/jolt_adapter.hpp",
         "shs/geometry/adapters/jolt/jolt_culling.hpp",
+        "shs/geometry/debug_mesh.hpp",
         "shs/geometry/volumes.hpp",
         "vector"
       ],
@@ -4296,6 +4297,7 @@
         "shs/geometry/aabb.hpp",
         "shs/geometry/adapters/jolt/jolt_adapter.hpp",
         "shs/geometry/adapters/jolt/jolt_culling.hpp",
+        "shs/geometry/debug_mesh.hpp",
         "shs/geometry/volumes.hpp"
       ],
       "external_dependencies": [
@@ -4310,8 +4312,7 @@
       ],
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/include/shs/domains/geometry/jolt_debug_draw.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/geometry/culling_software.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/render/software/debug_draw.hpp"
+        "cpp-folders/src/shs-renderer-lib/include/shs/geometry/culling_software.hpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -4712,6 +4713,32 @@
         "cpp-folders/src/exps-gpu-renderer/exp-plumbing/hello_occlusion_culling_vk.cpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/domains/geometry/culling_visibility.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/scene/scene_culling.hpp"
+      ],
+      "build_target": "review-values-vs-aggregate"
+    },
+    {
+      "current": "shs/geometry/debug_mesh.hpp",
+      "proposed_canonical": "shs/geometry/debug_mesh.hpp",
+      "review_status": "already-named-review-dependencies",
+      "proposed_owner": "geometry",
+      "namespace_declarations": [
+        "shs"
+      ],
+      "visibility": "public-include-tree",
+      "direct_dependencies": [
+        "cstdint",
+        "glm/glm.hpp",
+        "vector"
+      ],
+      "internal_dependencies": [],
+      "external_dependencies": [
+        "cstdint",
+        "glm/glm.hpp",
+        "vector"
+      ],
+      "tracked_consumers": [
+        "cpp-folders/src/shs-renderer-lib/include/shs/geometry/adapters/jolt/jolt_debug_draw.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/render/software/debug_draw.hpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -6420,18 +6447,20 @@
         "algorithm",
         "cmath",
         "glm/glm.hpp",
-        "shs/geometry/adapters/jolt/jolt_debug_draw.hpp",
+        "shs/geometry/debug_mesh.hpp",
         "shs/render/targets/rt_types.hpp",
+        "span",
         "vector"
       ],
       "internal_dependencies": [
-        "shs/geometry/adapters/jolt/jolt_debug_draw.hpp",
+        "shs/geometry/debug_mesh.hpp",
         "shs/render/targets/rt_types.hpp"
       ],
       "external_dependencies": [
         "algorithm",
         "cmath",
         "glm/glm.hpp",
+        "span",
         "vector"
       ],
       "tracked_consumers": [
@@ -8190,6 +8219,7 @@
         "variant"
       ],
       "tracked_consumers": [
+        "cpp-folders/src/exps-gpu-renderer/exp-rendering-techniques/demo_renderpath_bridge.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/domains/renderpath/renderpath.command.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/renderpath.gateway.hpp"
       ],

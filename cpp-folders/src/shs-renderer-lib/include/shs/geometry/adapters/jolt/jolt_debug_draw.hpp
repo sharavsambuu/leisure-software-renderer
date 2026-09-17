@@ -23,32 +23,15 @@
 #include <Jolt/Physics/Collision/Shape/SubShapeID.h>
 
 #include "shs/geometry/aabb.hpp"
+#include "shs/geometry/debug_mesh.hpp"
 #include "shs/geometry/volumes.hpp"
 #include "shs/geometry/adapters/jolt/jolt_adapter.hpp"
 #include "shs/geometry/adapters/jolt/jolt_culling.hpp"
 
 namespace shs
 {
-    // =========================================================================
-    //  Debug mesh — simple indexed triangle mesh for visualization
-    // =========================================================================
-
-    struct DebugMesh
-    {
-        std::vector<glm::vec3> vertices{};
-        std::vector<uint32_t>  indices{};
-
-        void clear()
-        {
-            vertices.clear();
-            indices.clear();
-        }
-
-        bool empty() const noexcept
-        {
-            return vertices.empty();
-        }
-    };
+    // DebugMesh is a pure value type now owned by shs/geometry/debug_mesh.hpp
+    // (value seam: adapters produce it, software rendering consumes it).
 
 
     // =========================================================================

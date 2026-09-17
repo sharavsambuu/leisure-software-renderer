@@ -1,13 +1,5 @@
 {
   "schema_version": 1,
-  "description": "Tracked value-tier -> adapter/SDK reachability exceptions for the include-graph gate (tools/check_include_graph.py). Every entry must carry a reason and a tracking note; unlisted violations fail the gate.",
-  "description": "Tracked value-tier -> adapter/SDK reachability exceptions for the include-graph gate (tools/check_include_graph.py). Every entry must carry a reason and a tracking note; unlisted violations fail the gate.",
-  "exceptions": [
-    {
-      "header": "render/software/debug_draw.hpp",
-      "rule": "R3-value-reaches-adapter",
-      "reason": "Software debug-draw path reaches Jolt debug-draw adapter transitively.",
-      "tracking": "Evaluate an observer/callback seam so render/software does not link adapter code; decide with the rhi-ownership work (migration step 5)."
-    }
-  ]
+  "description": "Tracked value-tier -> adapter/SDK reachability exceptions for the include-graph gate (tools/check_include_graph.py). Every entry must carry a reason and a tracking note; unlisted violations fail the gate. Currently empty: all historical exceptions (7 -> 0) are resolved at the source, not waived.",
+  "exceptions": []
 }

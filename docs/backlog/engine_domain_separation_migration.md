@@ -286,6 +286,39 @@ commits; keep mechanical moves separate from semantic changes.
   step-1 matrix notes.
 
 
+### Status (2026-09-17, exceptions cleared to zero + adapters made conditional)
+
+- Step 3 COMPLETE — exceptions manifest empty (7 -> 3 -> 1 -> 0):
+  - `render/software/debug_draw.hpp` (the last exception) was resolved at the
+    source via the value seam its tracking note called for: `DebugMesh`
+    extracted from the Jolt debug-draw adapter into the new pure value header
+    `shs/geometry/debug_mesh.hpp` (GLM-only). The Jolt adapter *produces* it,
+    software debug draw *consumes* it — render/software no longer reaches
+    adapter code at all (verified standalone: GLM-only `g++ -fsyntax-only`).
+  - Latent IWYU bug surfaced by that standalone check and fixed: `debug_draw.hpp`
+    used `std::span` without `#include <span>` (rode in transitively from the
+    Jolt adapter). Manifest duplicate `description` key deduped.
+  - Parked-demo stale path fixed: `demo_renderpath_bridge.hpp` still included
+    the retired `shs/domains/renderpath/renderpath.reducer.hpp` (the
+    reducer->gateway renames removed it; `exps-gpu-renderer` is commented out
+    of the active build so the break was latent). Repointed to canonical
+    `shs/renderpath/renderpath.command.hpp`; compiles standalone.
+- Step 5 first item — selectable dependency ownership: `SHS_RENDERER_WITH_SDL2`
+  and `SHS_RENDERER_WITH_ASSIMP` CMake options (default ON = unchanged
+  behavior) make SDL2/SDL2_image and Assimp discovery + linking conditional;
+  `SHS_HAS_SDL2` / `SHS_HAS_ASSIMP` PUBLIC definitions expose the selection
+  (same shape as `SHS_HAS_JOLT`). Safe because the compiled library TUs are
+  pure anchors. Proof: full tree configure + build + **24/24 CTest with both
+  options OFF** (`/tmp/shs-nosdk` scratch, Vulkan still auto-discovered and
+  green on lavapipe with validation). Remaining step-5 items (install/export
+  package-consumer tests, minimal exported deps, source-path leakage
+  rejection) stay open.
+- Validation: gate OK, 5/5 gate self-tests, 24/24 CTest in BOTH the default
+  (adapters-ON) tree and the no-SDK tree; header-migration checker green;
+  inventory regenerated (221 canonical headers — new `geometry/debug_mesh.hpp`).
+- Phase table: 1 PARTIAL, 2 pilot-partial, 3 DONE, 4-6 not started, 7 blocked
+  on 4-6; forwarder-folder removal still a step-7 breaking release.
+
 ### 1. Inventory, decision record and baseline
 - [ ] Create a machine-readable old-header -> canonical-header manifest covering
   every header, namespace owner, public/private status and build dependency.
@@ -315,17 +348,27 @@ or public namespace changes mixed into relocations.
 
 ### 3. Enforce actual dependency separation
 Depends on 2.
-- [ ] Put recipe/compiler/plan definitions under renderpath ownership; remove
+- [x] Put recipe/compiler/plan definitions under renderpath ownership; remove
   the sanctioned domain-to-execution re-export workaround.
-- [ ] Extract Jolt/Assimp/SDL/backend adapters from neutral headers and separate
+  (Done in the bulk step-2 relocation: recipe/compiler/plan definitions live
+  under `shs/renderpath/planning/`; grep-verified no `shs/domains/` ->
+  `shs/execution/` re-exports remain.)
+- [x] Extract Jolt/Assimp/SDL/backend adapters from neutral headers and separate
   scene/resource values from storage/runtime integration where necessary.
-- [ ] Define public include/dependency manifests and narrowly scoped exceptions.
+  (R5b umbrella contract split + R5c value seam: `DebugMesh` extracted from
+  the Jolt debug-draw adapter into `shs/geometry/debug_mesh.hpp`; transitive
+  gate R3 now holds with zero exceptions.)
+- [x] Define public include/dependency manifests and narrowly scoped exceptions.
   Replace path-token checks with rules covering transitive includes and cycles.
-- [ ] Add negative gate fixtures: a pure contract including a driver or app
+  (`tools/check_include_graph.py` transitive gate; exceptions manifest is
+  now empty — all 7 historical exceptions resolved at the source, not waived.)
+- [x] Add negative gate fixtures: a pure contract including a driver or app
   header must fail. Restore checks immediately for every migrated directory.
+  (`tests/include_graph_tests.py`: 5/5 — planted cycle, SDK-in-value,
+  value->adapter, plus non-vacuity guards over the live tree.)
 
 Exit: neutral-header compile tests need no optional SDKs; dependency violations
-are detected, not merely hidden under new paths.
+are detected, not merely hidden under new paths. **Step 3 COMPLETE (2026-09-17).**
 
 ### 4. Clarify state ownership and harden contracts
 Depends on 3; behavior changes require regression tests first.
@@ -348,9 +391,11 @@ Depends on 3; may proceed alongside 4.
 - [ ] Preserve `shs_renderer` and `shs::renderer` as aggregate compatibility
   targets. Add component targets only for real dependency seams, not competing
   software/GPU libraries.
-- [ ] Make SDL/SDL_image and Assimp discovery conditional on enabled adapters.
-  Today CMake requires them; header moves alone cannot make headless consumers
-  independent of those packages. Keep C++23 and GLM baseline.
+- [x] Make SDL/SDL_image and Assimp discovery conditional on enabled adapters.
+  (Done 2026-09-17: `SHS_RENDERER_WITH_SDL2` / `SHS_RENDERER_WITH_ASSIMP`
+  options, default ON for unchanged behavior; with both OFF the full tree
+  configures, builds and passes 24/24 CTest with zero windowing/asset-import
+  SDKs. Keep C++23 and GLM baseline — untouched.)
 - [ ] Add install/export/package-consumer tests: minimal headless configuration
   and separately enabled software, Vulkan and platform adapters. Preserve
   static/shared options; document binary compatibility limitations.

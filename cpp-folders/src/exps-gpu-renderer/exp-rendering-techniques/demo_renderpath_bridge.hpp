@@ -21,7 +21,7 @@
 #include <optional>
 
 #include "demo_input_actions.hpp"
-#include "shs/domains/renderpath/renderpath.reducer.hpp"
+#include "shs/renderpath/renderpath.command.hpp"
 
 namespace shs::demo
 {

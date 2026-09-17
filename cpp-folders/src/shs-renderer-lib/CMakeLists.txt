@@ -12,10 +12,23 @@
 
 project(SHSRenderer LANGUAGES CXX)
 
-find_package(SDL2 CONFIG REQUIRED)
-find_package(SDL2_image CONFIG REQUIRED)
+# Adapter selection (migration step 5 — selectable dependency ownership):
+# SDL2/SDL2_image and Assimp are optional integration adapters. Defaults keep
+# the historical behavior (all ON); consumer configurations may disable them
+# to build the GPU-free, windowing-free core (the compiled TUs are anchors
+# only, so nothing in the library itself needs these SDKs). Vulkan stays
+# auto-discovered (QUIET); Jolt/xsimd stay auto-discovered target-conditional.
+option(SHS_RENDERER_WITH_SDL2 "Discover and link SDL2/SDL2_image (windowed runtime + texture adapters)" ON)
+option(SHS_RENDERER_WITH_ASSIMP "Discover and link Assimp (mesh import adapters)" ON)
+
 find_package(glm CONFIG REQUIRED)
-find_package(assimp CONFIG REQUIRED)
+if(SHS_RENDERER_WITH_SDL2)
+    find_package(SDL2 CONFIG REQUIRED)
+    find_package(SDL2_image CONFIG REQUIRED)
+endif()
+if(SHS_RENDERER_WITH_ASSIMP)
+    find_package(assimp CONFIG REQUIRED)
+endif()
 
 # Vulkan discovery (absorbed from shs-gpu-lib): QUIET — the lib configures and
 # builds GPU-free when Vulkan is absent; the runtime edge sources are simply
@@ -90,8 +103,11 @@ endif()
 # C++ standard for everyone who links this
 target_compile_features(shs_renderer PUBLIC cxx_std_23)
 
-# Packages (vcpkg config mode)
-find_package(SDL2 CONFIG REQUIRED)
+# Packages (vcpkg config mode) — conditional per SHS_RENDERER_WITH_SDL2 /
+# SHS_RENDERER_WITH_ASSIMP (see adapter-selection options at top).
+if(SHS_RENDERER_WITH_SDL2)
+    find_package(SDL2 CONFIG REQUIRED)
+endif()
 if(NOT TARGET SDL2_image::Main)
     if(TARGET SDL2_image::SDL2_image)
         add_library(SDL2_image::Main ALIAS SDL2_image::SDL2_image)
@@ -102,7 +118,9 @@ if(NOT TARGET SDL2_image::Main)
     endif()
 endif()
 find_package(glm CONFIG REQUIRED)
-find_package(assimp CONFIG REQUIRED)
+if(SHS_RENDERER_WITH_ASSIMP)
+    find_package(assimp CONFIG REQUIRED)
+endif()
 
 # Include paths that your headers need
 target_include_directories(shs_renderer PUBLIC
@@ -112,13 +130,24 @@ target_include_directories(shs_renderer PUBLIC
     ${stb_SOURCE_DIR}
 )
 
-# Link deps that demos will inherit automatically
+# Link deps that demos will inherit automatically. SDL2/Assimp are optional
+# adapters (step 5): when disabled, the library builds and links with zero
+# windowing/asset-import SDKs; SHS_HAS_SDL2 / SHS_HAS_ASSIMP let headers
+# feature-guard adapter entry points (same shape as SHS_HAS_JOLT).
 target_link_libraries(shs_renderer PUBLIC
-    SDL2::SDL2
-    SDL2_image::Main
     glm::glm
-    assimp::assimp
 )
+if(SHS_RENDERER_WITH_SDL2)
+    target_link_libraries(shs_renderer PUBLIC
+        SDL2::SDL2
+        SDL2_image::Main
+    )
+    target_compile_definitions(shs_renderer PUBLIC SHS_HAS_SDL2=1)
+endif()
+if(SHS_RENDERER_WITH_ASSIMP)
+    target_link_libraries(shs_renderer PUBLIC assimp::assimp)
+    target_compile_definitions(shs_renderer PUBLIC SHS_HAS_ASSIMP=1)
+endif()
 
 set(SHS_RENDERER_HAS_XSIMD OFF)
 if(TARGET xsimd)
