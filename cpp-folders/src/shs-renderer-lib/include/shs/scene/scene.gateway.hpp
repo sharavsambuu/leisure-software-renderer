@@ -48,6 +48,12 @@ namespace shs::scene
         const SceneContext&      context,
         std::pmr::vector<SceneEvent>& events)
     {
+        // Lifecycle policy (step 4.4): same house shape as renderpath —
+        // reentrant across threads only with disjoint states + disjoint PMR
+        // arenas; events live on the caller's arena and never outlive it;
+        // event-allocation failure propagates as an exception (state and the
+        // event prefix stay untouched, the Step is lost). Full policy in
+        // shs/renderpath/renderpath.gateway.hpp.
         (void)state;
         (void)context;
         (void)events;

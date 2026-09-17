@@ -425,6 +425,22 @@ commits; keep mechanical moves separate from semantic changes.
   green; inventory 437.
 
 
+### Status (2026-09-17, step 4.4: lifecycle + failure semantics)
+
+- Step 4 fourth item completed: one authoritative lifecycle policy per
+  surface — gateway thread access/arena lifetime/rejection + failure
+  semantics (renderpath as the reference house shape, scene + resources
+  aligned) and the job-system thread/shutdown contract. One honest semantic
+  discovery pinned by tests: a gateway command mutates state BEFORE
+  emitting its event, so an arena allocation failure on the event push
+  leaves the failing command's mutation in state while only its event is
+  lost (log/state divergence) — documented and pinned rather than papered
+  over with rollback. Evidence in the step-4 checkbox above. Suite 5/5
+  green; gates green; full build + 32/32 CTest green; inventory regenerated
+  (content hashes, header count unchanged at 437).
+- Phase table: 1-3 COMPLETE, 4 at 4/5 (remaining: identity-only gateway
+  retirement), 5 COMPLETE, 6/7 not started (7 blocked on 4-6).
+
 ### 1. Inventory, decision record and baseline
 
 - [x] Create a machine-readable old-header -> canonical-header manifest covering
@@ -586,8 +602,33 @@ Depends on 3; behavior changes require regression tests first.
   including projection-copy independence from later set mutations and the
   generation-epoch stale-handle rule. Gates green; inventory regenerated
   436->437 (new `scene_identity.hpp`).)
-- [ ] Document and test thread access, arena lifetimes, shutdown ordering,
+- [x] Document and test thread access, arena lifetimes, shutdown ordering,
   rejection preservation and partial-batch/event-allocation failure semantics.
+  — DONE 2026-09-17: the lifecycle policy is written where it is enforced —
+  `renderpath.gateway.hpp` LIFECYCLE POLICY block (thread access: gateway
+  batches reentrant only over disjoint states + disjoint PMR arenas,
+  compiler/caps freely shareable; arena lifetime: events live on the
+  caller's arena, Step is a plain value, per-frame reset legal with
+  copy-before-reset; rejection preservation: invalid compile keeps
+  plan + recipe + generation and the batch continues; event-allocation
+  failure: bad_alloc propagates unabsorbed, every already-performed state
+  mutation persists — a command mutates before emitting, so the failing
+  command's mutation lands while only its event is lost (documented
+  log/state divergence), rerun from the same initial state reproduces the
+  full log). `task/job_system.hpp` IJobSystem contract + ThreadPoolJobSystem
+  destructor docs pin thread access (enqueue/wait_idle any-thread, jobs on
+  arbitrary workers, transitive drain via wait_idle) and shutdown ordering
+  (wait_idle is the completion guarantee; destruction drains accepted jobs;
+  enqueue-after-teardown-start is a caller error). `scene.gateway.hpp` and
+  `resources.gateway.hpp` carry the same policy note. New
+  `shs_renderer_lifecycle_semantics_tests` suite (5 tests) pins rejection
+  continuation + plan preservation, partial-batch/event-alloc failure
+  semantics (prefix events kept, strict-prefix state, divergence vs rerun),
+  arena replay parity across disjoint arenas, concurrent gateway batches
+  equal to the single-thread reference, and thread-pool shutdown ordering
+  (wait_idle completion, concurrent enqueue, destructor drain).
+  Gates green; full build + 32/32 CTest green; inventory regenerated
+  (header-content hashes, no new headers).)
 - [ ] Retire identity-only gateway scaffolding only after consumer migration
   and spec amendment; preserve useful pure functions and their tests.
 

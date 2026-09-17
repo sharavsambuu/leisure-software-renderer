@@ -37,6 +37,11 @@ namespace shs
             }
         }
 
+        // Shutdown ordering (step 4.4): stops accepting work and DRAINS the
+        // remaining queue before joining — every job accepted by enqueue()
+        // before the destructor started has run by the time it returns.
+        // Callers that need completion before releasing job memory must use
+        // wait_idle() instead of relying on the drain.
         ~ThreadPoolJobSystem() override
         {
             {

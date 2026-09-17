@@ -589,6 +589,31 @@ if(SHS_RENDERER_BUILD_TESTS)
         target_compile_options(shs_renderer_geometry_tests PRIVATE -Wall -Wextra -Wpedantic)
     endif()
 
+    # Step 4.4 lifecycle-semantics tests (engine_domain_separation_migration
+    # .md): thread access, arena lifetimes, shutdown ordering, rejection
+    # preservation and partial-batch/event-allocation failure semantics;
+    # value-tier only (shs::renderer-values + std::thread).
+    add_executable(shs_renderer_lifecycle_semantics_tests
+        tests/lifecycle_semantics_tests.cpp
+    )
+    target_link_libraries(shs_renderer_lifecycle_semantics_tests PRIVATE shs::renderer-values)
+    target_compile_features(shs_renderer_lifecycle_semantics_tests PRIVATE cxx_std_23)
+    find_package(Threads REQUIRED)
+    target_link_libraries(shs_renderer_lifecycle_semantics_tests PRIVATE Threads::Threads)
+    if(MSVC)
+        target_compile_options(shs_renderer_lifecycle_semantics_tests PRIVATE /W4)
+    else()
+        target_compile_options(shs_renderer_lifecycle_semantics_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+
+    add_test(
+        NAME shs_renderer_lifecycle_semantics_tests
+        COMMAND shs_renderer_lifecycle_semantics_tests
+    )
+    set_tests_properties(shs_renderer_lifecycle_semantics_tests PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    )
+
     add_executable(shs_renderer_lighting_tests
         tests/lighting_tests.cpp
     )

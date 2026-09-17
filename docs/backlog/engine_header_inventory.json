@@ -8667,7 +8667,8 @@
         "cpp-folders/src/shs-renderer-lib/include/shs/domains/resources/material.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/resources/resources.contract.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/resources/storage/resource_registry.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/scene/scene_resource_view.hpp"
+        "cpp-folders/src/shs-renderer-lib/include/shs/scene/scene_resource_view.hpp",
+        "cpp-folders/src/shs-renderer-lib/tests/scene_identity_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -8700,7 +8701,8 @@
         "cpp-folders/src/shs-renderer-lib/include/shs/render/software/rasterizer.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/resources/adapters/mesh_loader_assimp.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/resources/resources.contract.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/resources/storage/resource_registry.hpp"
+        "cpp-folders/src/shs-renderer-lib/include/shs/resources/storage/resource_registry.hpp",
+        "cpp-folders/src/shs-renderer-lib/tests/scene_identity_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -8856,7 +8858,8 @@
         "cpp-folders/src/shs-renderer-lib/include/shs/resources/adapters/texture_loader_sdl.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/resources/loaders/primitive_import.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/resources/resources.contract.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/scene/scene_resource_view.hpp"
+        "cpp-folders/src/shs-renderer-lib/include/shs/scene/scene_resource_view.hpp",
+        "cpp-folders/src/shs-renderer-lib/tests/scene_identity_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -8890,7 +8893,8 @@
         "cpp-folders/src/shs-renderer-lib/include/shs/resources/material.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/resources/resources.contract.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/resources/storage/resource_registry.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/sky/cubemap_sky.hpp"
+        "cpp-folders/src/shs-renderer-lib/include/shs/sky/cubemap_sky.hpp",
+        "cpp-folders/src/shs-renderer-lib/tests/scene_identity_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -10345,7 +10349,8 @@
         "cpp-folders/src/shs-renderer-lib/include/shs/domains/scene/scene_bindings.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/geometry/adapters/jolt/jolt_renderable.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/scene/scene.contract.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/scene/scene_objects.hpp"
+        "cpp-folders/src/shs-renderer-lib/include/shs/scene/scene_objects.hpp",
+        "cpp-folders/src/shs-renderer-lib/tests/scene_identity_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -10461,7 +10466,9 @@
         "cstddef",
         "span"
       ],
-      "tracked_consumers": [],
+      "tracked_consumers": [
+        "cpp-folders/src/shs-renderer-lib/tests/scene_identity_tests.cpp"
+      ],
       "build_target": "review-values-vs-aggregate"
     },
     {
@@ -10522,7 +10529,9 @@
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/include/shs/domains/scene/scene_objects.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/scene/scene.contract.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/scene/storage/system_processors.hpp"
+        "cpp-folders/src/shs-renderer-lib/include/shs/scene/scene_identity.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/scene/storage/system_processors.hpp",
+        "cpp-folders/src/shs-renderer-lib/tests/scene_identity_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -10547,7 +10556,8 @@
       ],
       "external_dependencies": [],
       "tracked_consumers": [
-        "cpp-folders/src/shs-renderer-lib/include/shs/domains/scene/scene_resource_view.hpp"
+        "cpp-folders/src/shs-renderer-lib/include/shs/domains/scene/scene_resource_view.hpp",
+        "cpp-folders/src/shs-renderer-lib/tests/scene_identity_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -10586,8 +10596,10 @@
         "cpp-folders/src/shs-renderer-lib/include/shs/scene/scene.contract.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/scene/scene_bindings.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/scene/scene_elements.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/scene/scene_identity.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/scene/scene_resource_view.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/scene/storage/system_processors.hpp",
+        "cpp-folders/src/shs-renderer-lib/tests/scene_identity_tests.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/session_orchestration_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"

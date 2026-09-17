@@ -13,6 +13,41 @@
              PATH_SWAP_REJECTED. Events append to a caller-provided pmr
              vector (frame arena, A.7 divergence — the Writer log is never
              bundled into the value payload). No platform headers.
+
+    LIFECYCLE POLICY (step 4.4, engine_domain_separation_migration.md):
+
+    THREAD ACCESS
+      - A gateway batch is a pure transition over the CALLER's state and
+      arena: it is reentrant across threads only when each concurrent batch
+      uses disjoint State objects and disjoint PMR arenas. No gateway
+      touches shared mutable state; never run two batches over the same
+      state concurrently.
+      - Compiler + caps are immutable value context: freely shareable.
+
+    ARENA LIFETIME
+      - Events land on the caller's PMR arena. The returned Step is a plain
+      value, but the event log is NOT: it is valid only as long as the
+      arena. Copy the log if it must outlive the frame; reset the arena
+      between frames (the documented per-frame pattern).
+      - The pod state never references arena memory (value-honest state).
+
+    REJECTION PRESERVATION + PARTIAL BATCH
+      - Domain failures (compile rejection) are absorbed per command: the
+      previous plan + recipe survive untouched, PATH_SWAP_REJECTED is
+      emitted, and the batch CONTINUES with the remaining commands.
+      - Event-allocation failure (std::bad_alloc escaping from the arena)
+      is NOT absorbed: it propagates to the caller. Semantics: the Step
+      summary is lost (never returned), every state mutation already
+      performed PERSISTS (no rollback — a command mutates state before
+      emitting, so the failing command's mutation lands while only its
+      event is lost: state and log can diverge after such a failure), and
+      the caller keeps the event prefix already on its vector. Re-running
+      the same batch from the same initial state on a healthy arena
+      reproduces the full log and final state.
+
+    Pinned by lifecycle_semantics_tests (concurrent batches, arena
+    replay parity, injected event-allocation failure, rejection
+    continuation) and renderpath_tests (rejection pins).
 */
 
 #include <cstdint>
