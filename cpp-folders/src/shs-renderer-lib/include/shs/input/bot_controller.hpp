@@ -16,8 +16,13 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace input
+    {
     inline void emit_orbit_bot_runtime_commands(float time_s, std::vector<RuntimeCommand>& out)
     {
         emit_orbit_bot_commands(time_s, out);
     }
+
+    } // inline namespace input
 }

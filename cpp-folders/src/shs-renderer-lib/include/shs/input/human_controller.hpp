@@ -14,6 +14,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace input
+    {
     inline void emit_human_runtime_commands(
         const InputState& in,
         std::vector<RuntimeCommand>& out,
@@ -24,4 +27,6 @@ namespace shs
     {
         emit_human_commands(in, out, base_speed, boost_multiplier, look_sensitivity);
     }
+
+    } // inline namespace input
 }

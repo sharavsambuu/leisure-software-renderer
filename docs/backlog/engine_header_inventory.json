@@ -5068,6 +5068,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "input",
       "namespace_declarations": [
+        "input",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -5093,6 +5094,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "input",
       "namespace_declarations": [
+        "input",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -5117,6 +5119,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "input",
       "namespace_declarations": [
+        "input",
         "shs",
         "shs::input"
       ],
@@ -5239,6 +5242,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "input",
       "namespace_declarations": [
+        "input",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -5264,6 +5268,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "input",
       "namespace_declarations": [
+        "input",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -5292,6 +5297,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "input",
       "namespace_declarations": [
+        "input",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -5319,6 +5325,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "input",
       "namespace_declarations": [
+        "input",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -5353,6 +5360,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "input",
       "namespace_declarations": [
+        "input",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -5400,6 +5408,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "input",
       "namespace_declarations": [
+        "input",
         "shs"
       ],
       "visibility": "public-include-tree",

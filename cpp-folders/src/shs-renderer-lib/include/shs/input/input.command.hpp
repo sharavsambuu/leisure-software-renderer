@@ -18,6 +18,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace input
+    {
     struct MoveLocalIntent
     {
         glm::vec3 local_dir{0.0f};
@@ -82,6 +85,8 @@ namespace shs
     {
         return RuntimeCommand{QuitIntent{}};
     }
+
+    } // inline namespace input
 } // namespace shs
 
 namespace shs::input

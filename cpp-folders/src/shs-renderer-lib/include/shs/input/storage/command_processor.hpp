@@ -20,6 +20,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace input
+    {
     class CommandProcessor
     {
     public:
@@ -58,4 +61,6 @@ namespace shs
     private:
         std::vector<CommandPtr> queue_{};
     };
+
+    } // inline namespace input
 }

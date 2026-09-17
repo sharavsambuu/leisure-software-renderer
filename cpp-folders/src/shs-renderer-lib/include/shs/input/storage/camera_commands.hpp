@@ -17,6 +17,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace input
+    {
     class MoveCommand final : public ICommand
     {
     public:
@@ -78,4 +81,6 @@ namespace shs
             return make_quit_intent();
         }
     };
+
+    } // inline namespace input
 }

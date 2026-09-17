@@ -34,6 +34,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace input
+    {
     // K5.1 (Run B): the legacy by-value runtime_state_gateway wrapper is
     // retired. One pod, one public Kleisli gateway: shs::input::input_gateway.
 
@@ -68,4 +71,6 @@ namespace shs
         out.push_back(make_look_intent(0.35f + 0.25f * sway, 0.0f, 0.01f));
         out.push_back(make_move_local_intent(glm::vec3(0.0f, 0.0f, 0.4f + 0.2f * std::sin(time_s * 0.8f)), 2.0f));
     }
+
+    } // inline namespace input
 }

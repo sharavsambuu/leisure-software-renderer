@@ -14,6 +14,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace input
+    {
     struct RuntimeInputLatch
     {
         bool forward = false;
@@ -140,4 +143,6 @@ namespace shs
     {
         out.push_back(make_bool_input_event(type, value));
     }
+
+    } // inline namespace input
 }

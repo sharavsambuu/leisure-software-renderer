@@ -16,6 +16,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace input
+    {
     struct ICommand
     {
         virtual ~ICommand() = default;
@@ -24,4 +27,6 @@ namespace shs
     };
 
     using CommandPtr = std::unique_ptr<ICommand>;
+
+    } // inline namespace input
 }
