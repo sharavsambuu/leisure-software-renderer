@@ -54,6 +54,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace scene
+    {
     // Identity audit over a renderer projection (Scene::items). First
     // occurrence of an object_id is the owner; every later occurrence is
     // counted as a duplicate. Zero ids are counted separately (reserved).
@@ -88,4 +91,6 @@ namespace shs
         }
         return report;
     }
+
+    } // inline namespace scene
 } // namespace shs

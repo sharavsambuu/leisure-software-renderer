@@ -17,6 +17,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace scene
+    {
     class World
     {
     public:
@@ -37,5 +40,7 @@ namespace shs
     private:
         std::vector<std::unique_ptr<ISystem>> systems_{};
     };
+
+    } // inline namespace scene
 }
 

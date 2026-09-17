@@ -16,6 +16,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace scene
+    {
     struct SceneResourceView
     {
         // Renderer projection (step 4.3): resolves scene asset handles into
@@ -37,4 +40,6 @@ namespace shs
             return resources->get_material((MaterialAssetHandle)item.mat);
         }
     };
+
+    } // inline namespace scene
 }

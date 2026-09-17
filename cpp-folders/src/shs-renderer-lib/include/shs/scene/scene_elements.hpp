@@ -26,6 +26,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace scene
+    {
     struct SceneElement
     {
         SceneShape geometry{};
@@ -232,6 +235,8 @@ namespace shs
         uint64_t next_object_id_ = 1u;
         uint32_t next_stable_id_ = 1u;
     };
+
+    } // inline namespace scene
 }
 
 #endif // SHS_HAS_JOLT

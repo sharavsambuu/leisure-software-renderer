@@ -12,11 +12,16 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace scene
+    {
     class ISystem
     {
     public:
         virtual ~ISystem() = default;
         virtual void tick(float dt) = 0;
     };
+
+    } // inline namespace scene
 }
 

@@ -16,6 +16,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace scene
+    {
     struct AnimationState
     {
         glm::vec3 base_pos{0.0f};
@@ -37,6 +40,8 @@ namespace shs
         bool occluded = false;
         bool casts_shadow = true;
     };
+
+    } // inline namespace scene
 }
 
 #endif // SHS_HAS_JOLT

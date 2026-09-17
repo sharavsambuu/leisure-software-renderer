@@ -16,6 +16,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace scene
+    {
     inline RenderItem make_render_item(
         MeshHandle mesh,
         MaterialHandle mat,
@@ -44,4 +47,6 @@ namespace shs
     {
         it.mesh = mesh;
     }
+
+    } // inline namespace scene
 }

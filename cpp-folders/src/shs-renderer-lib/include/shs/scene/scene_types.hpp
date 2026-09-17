@@ -20,6 +20,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace scene
+    {
     // Орчин үеийн пасс болон пайплайнуудын ашиглах ертөнцийн үндсэн бүтэц.
 
     // ------------------------------------------
@@ -103,4 +106,6 @@ namespace shs
         const ISkyModel* sky = nullptr;
         const ResourceRegistry* resources = nullptr;
     };
+
+    } // inline namespace scene
 }

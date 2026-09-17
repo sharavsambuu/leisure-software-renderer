@@ -25,6 +25,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace scene
+    {
     class SceneCullingContext
     {
     public:
@@ -224,6 +227,8 @@ namespace shs
         CullingStats stats_{};
         VisibilityHistory visibility_history_{};
     };
+
+    } // inline namespace scene
 }
 
 #endif // SHS_HAS_JOLT

@@ -23,6 +23,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace scene
+    {
     struct LogicSystemContext
     {
         float dt = 0.0f;
@@ -93,4 +96,6 @@ namespace shs
     private:
         std::vector<RenderSystem> systems_{};
     };
+
+    } // inline namespace scene
 }

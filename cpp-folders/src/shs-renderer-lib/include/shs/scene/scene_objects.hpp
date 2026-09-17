@@ -27,6 +27,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace scene
+    {
     struct SceneObject
     {
         std::string name{};
@@ -144,4 +147,6 @@ namespace shs
 
         std::vector<SceneObject> objects_{};
     };
+
+    } // inline namespace scene
 }
