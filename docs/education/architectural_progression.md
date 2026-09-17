@@ -10,6 +10,37 @@
 > [domain_value_objects.md](domain_value_objects.md),
 > [cpp26_contract_guardrails.md](cpp26_contract_guardrails.md).
 
+## 0. The preface — the C purist I used to be
+
+An honest starting point: for most of this project's life I thought the new
+C++ features were a bloated cool-kids thing. Classic ANSI C, maybe 1990s C++ —
+that was "real" C++ to me. A software renderer seemed to prove it: the GPU
+cares about memory and triangles, not about your abstractions. Concepts,
+`expected`, variant visits, allocators — noise, overhead, committee fashion.
+
+What changed my mind was not a feature. It was the **concept of the domain**.
+The moment I started asking "what does this code *mean*?" instead of "how fast
+does this loop run?", every modern feature stopped looking like bloat and
+started looking like an answer to a problem I had been re-solving by hand:
+
+- I hand-rolled error codes and out-parameter dances → that was
+  `std::expected`'s railway, waiting.
+- I wrote tagged unions and dispatch switches by hand → that was
+  `std::variant` + `std::visit`, my command/event vocabulary spelled by the
+  committee.
+- I passed raw pointers with a length and a prayer at every edge → that was
+  `std::span`, my edge discipline made a type.
+- I wrote "requirements" in comments and hoped reviewers read them → those
+  were contracts, and C++26 is making them executable.
+
+The lesson I'd tattoo on the README if laws allowed: **the features were never
+bloated; they were answers to questions I hadn't asked yet.** Once the domain
+question was asked, the mapping rate exploded — Core 4 made Kleisli obvious,
+Kleisli made DVO obvious, DVO made contracts obvious — which is why the last
+weeks felt like geometric growth. The concepts were compounding. Each one gave
+the next one its vocabulary.
+
+
 ## 1. Pixels before principles (August 2023)
 
 It started the way it should: a pixel, a canvas, a triangle. TGA images, line
