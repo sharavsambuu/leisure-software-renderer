@@ -24,6 +24,7 @@
 #include <type_traits>
 #include <variant>
 
+#include "shs/core/contract_guardrails.hpp"
 #include "shs/logic/logic.command.hpp"
 #include "shs/logic/logic.contract.hpp"
 #include "shs/logic/logic.event.hpp"
@@ -233,6 +234,14 @@ namespace shs::logic
         const LogicContext<TStateId>& context,
         std::pmr::vector<FsmEvent<TStateId>>& events)
     {
+        // Rim precondition (W-D logic slice, 2026-09-17): the transition table
+        // is trusted data — select_rule's result feeds apply_transition
+        // unvalidated, so a rule referencing an unregistered state must be
+        // rejected at the rim, not discovered after the commit. (No wait-free
+        // dst/src span pair exists in this pod, so Rule 7.1's aliasing /
+        // sizes-equal halves have no entry here — same recorded deviation
+        // family as the renderpath C2.3 leg.)
+        SHS_PRE(desc.rules_reference_states());
         FsmStep step{};
         for (const FsmCommand<TStateId>& command : commands)
         {
@@ -265,6 +274,17 @@ namespace shs::logic
                 }
             }, command);
         }
+        // Rim postconditions (W-D logic slice, 2026-09-17), checked after the
+        // batch commits (the bridge checks at its evaluation point):
+        //   1. the FSM never rests in an unregistered state — defense in depth
+        //      behind the table-integrity precondition (a caller-owned state
+        //      can arrive pre-started pointing anywhere);
+        //   2. zero-signal-loss accounting (K3.2): every consumed command was
+        //      counted by exactly one of applied/facts/rejected.
+        SHS_POST(!state.started || desc.has_state(state.current));
+        SHS_POST(static_cast<uint64_t>(step.commands_applied) + step.facts_observed
+                     + step.commands_rejected
+                 == static_cast<uint64_t>(commands.size()));
         return step;
     }
 } // namespace shs::logic

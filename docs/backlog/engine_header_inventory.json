@@ -729,6 +729,7 @@
         "cstdlib"
       ],
       "tracked_consumers": [
+        "cpp-folders/src/shs-renderer-lib/include/shs/logic/logic.gateway.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/planning/render_path_compiler.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/renderpath.gateway.hpp",
         "cpp-folders/src/shs-renderer-lib/tests/contract_guardrails_pilot_tests.cpp",
@@ -2627,6 +2628,7 @@
         "cstdint",
         "limits",
         "memory_resource",
+        "shs/core/contract_guardrails.hpp",
         "shs/logic/logic.command.hpp",
         "shs/logic/logic.contract.hpp",
         "shs/logic/logic.event.hpp",
@@ -2635,6 +2637,7 @@
         "variant"
       ],
       "internal_dependencies": [
+        "shs/core/contract_guardrails.hpp",
         "shs/logic/logic.command.hpp",
         "shs/logic/logic.contract.hpp",
         "shs/logic/logic.event.hpp"
@@ -7381,7 +7384,9 @@
       "render",
       "scene"
     ],
-    "logic": [],
+    "logic": [
+      "core"
+    ],
     "memory": [],
     "platform": [],
     "render": [

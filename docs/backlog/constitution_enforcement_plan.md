@@ -113,6 +113,30 @@ resources → gfx → input** (input last — biggest vocabulary). Per pod:
 4. **Gates**: build + full CTest + kdba-boundary + include-graph; inventory
    same-commit if a header changed.
 
+### Slice 1: logic pod — **DONE 2026-09-17**
+
+- [x] **Railway audit**: gateway is assembly-only (arrows in `fsm_detail`);
+  `FsmStart`/`FsmSignal`/`FsmForce`/`FsmTick` dispatch exhaustively (P5 tail
+  landed with W-C); zero-signal-loss is materialized facts (K3.2 house
+  answer); error/rejection family present in `ERROR_FLOW.md` (drift gate
+  green); no `continue;` swallow; rims Step-valued (P2 green).
+- [x] **Guardrail annotations**: rim PRE — transition-table integrity
+  (`desc.rules_reference_states()`, new pure validator on `FsmDesc`: every
+  rule references registered states on both ends — `select_rule` trusts the
+  table, so a broken row was previously discoverable only after the commit);
+  rim POSTs — the FSM never rests in an unregistered state (defense in depth
+  for caller-owned pre-started states) + zero-signal-loss accounting
+  (applied+facts+rejected == commands.size()). Deviation recorded: no
+  wait-free dst/src span pair in this pod, so Rule 7.1 has no entry here
+  (same deviation family as C2.3's sizes-equal leg — lesson 9.8: annotate
+  what exists).
+- [x] **Negative tests**: `shs_renderer_logic_guardrail_tests` (enforced:
+  hand-broken table row → kind=pre; unregistered resting state + empty batch
+  → kind=post; valid batch silent) + release twin (assume path).
+- [x] **Gates**: 39/39 CTest, boundary (incl. gates 8+9), include-graph,
+  inventory same-commit.
+
+
 ## W-E — Standing / parallel throughout
 
 - **Cold-registry container migration** (resources, gfx → flat maps);

@@ -41,6 +41,20 @@ namespace shs::logic
             }
             return false;
         }
+
+        // Table-integrity invariant the gateway rides (W-D logic slice,
+        // 2026-09-17): every transition rule must reference registered
+        // states on BOTH ends. select_rule trusts the table blindly — a
+        // rule->to outside `states` would otherwise commit the FSM into an
+        // unregistered state. Pure, allocation-free, O(states·transitions).
+        bool rules_reference_states() const
+        {
+            for (const auto& tr : transitions)
+            {
+                if (!has_state(tr.from) || !has_state(tr.to)) return false;
+            }
+            return true;
+        }
     };
 
     template <typename TStateId>
