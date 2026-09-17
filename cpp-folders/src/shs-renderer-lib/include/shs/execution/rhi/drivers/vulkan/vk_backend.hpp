@@ -30,6 +30,7 @@
 #include "shs/execution/rhi/drivers/vulkan/vk_commands.hpp"
 #include "shs/execution/rhi/drivers/vulkan/vk_sync.hpp"
 #include "shs/execution/rhi/drivers/vulkan/vk_offscreen.hpp"
+#include "shs/execution/rhi/drivers/vulkan/vk_offscreen_pipeline.hpp"
 
 namespace shs
 {
@@ -46,8 +47,10 @@ namespace shs
                               const VulkanBufferPool& buffers,
                               const VulkanImagePool& images,
                               const VulkanPipelineCache* pipelines = nullptr,
-                              const VulkanOffscreenPass* offscreen = nullptr)
-            : device_(device), cmd_(cmd), buffers_(buffers), images_(images), pipelines_(pipelines), offscreen_(offscreen) {}
+                              const VulkanOffscreenPass* offscreen = nullptr,
+                              const VulkanOffscreenPipeline* graphics = nullptr)
+            : device_(device), cmd_(cmd), buffers_(buffers), images_(images), pipelines_(pipelines),
+              offscreen_(offscreen), graphics_(graphics) {}
 
         // Pure resource/capability checks, also usable without a device in tests.
         [[nodiscard]] std::expected<void, VulkanRecordingFailure> validate_command(
@@ -75,7 +78,9 @@ namespace shs
                 const bool found = pipelines_ && (inside_pass ? pipelines_->find_graphics(d->pipeline) :
                     pipelines_->find_compute(d->pipeline));
                 if (!found) return fail(VulkanRecordingError::MissingPipeline, d->pipeline);
-                // A cache record is not a realized VkPipeline.
+                // A cache record alone is not a realized VkPipeline.
+                if (inside_pass && graphics_ && offscreen_ && offscreen_->device() == device_ &&
+                    graphics_->accepts(*pipelines_->find_graphics(d->pipeline), *offscreen_)) return {};
                 return fail(VulkanRecordingError::UnsupportedCommand, d->pipeline);
             }
             uint64_t buffer = 0;
@@ -120,8 +125,13 @@ namespace shs
 
         std::expected<void, VulkanRecordingError> bind_pipeline(const RHICmdBindPipelineDesc& d)
         {
-            (void)d;
-            return std::unexpected(VulkanRecordingError::UnsupportedCommand);
+            if (!graphics_) return std::unexpected(VulkanRecordingError::UnsupportedCommand);
+            if (auto ready = recording_ready(); !ready) return ready;
+            if (!inside_pass_) return std::unexpected(VulkanRecordingError::InvalidRecordingOrder);
+            if (auto valid = validate_command(rhi_cmd_bind_pipeline(d.pipeline), true); !valid)
+                return std::unexpected(valid.error().code);
+            vkCmdBindPipeline(cmd_, VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_->pipeline());
+            return {};
         }
 
         std::expected<void, VulkanRecordingError> bind_vertex_buffer(const RHICmdBindVertexBufferDesc& d)
@@ -190,6 +200,7 @@ namespace shs
         const VulkanImagePool& images_;
         const VulkanPipelineCache* pipelines_;
         const VulkanOffscreenPass* offscreen_;
+        const VulkanOffscreenPipeline* graphics_;
         bool inside_pass_ = false;
     };
 

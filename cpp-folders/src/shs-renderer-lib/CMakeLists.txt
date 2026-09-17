@@ -529,7 +529,32 @@ if(SHS_RENDERER_BUILD_TESTS)
         else()
             target_compile_options(shs_renderer_vk_offscreen_pass_tests PRIVATE -Wall -Wextra -Wpedantic)
         endif()
+        # Vulkan 1.1 core: use SPIR-V 1.3, not the adventures' 1.5 profile.
+        find_program(SHS_OFFSCREEN_SLANGC NAMES slangc HINTS "$ENV{VULKAN_SDK}/bin")
+        if(SHS_OFFSCREEN_SLANGC)
+            set(_offscreen_src "${CMAKE_CURRENT_SOURCE_DIR}/tests/shaders/offscreen_pipeline.slang")
+            set(_offscreen_spv "${CMAKE_CURRENT_BINARY_DIR}/offscreen_spv")
+            add_custom_command(
+                OUTPUT "${_offscreen_spv}/offscreen_vs.spv" "${_offscreen_spv}/offscreen_fs.spv"
+                COMMAND ${CMAKE_COMMAND} -E make_directory "${_offscreen_spv}"
+                COMMAND "${SHS_OFFSCREEN_SLANGC}" "${_offscreen_src}"
+                    -target spirv -profile spirv_1_3 -matrix-layout-column-major -fvk-use-entrypoint-name
+                    -entry vs_main -stage vertex -o "${_offscreen_spv}/offscreen_vs.spv"
+                COMMAND "${SHS_OFFSCREEN_SLANGC}" "${_offscreen_src}"
+                    -target spirv -profile spirv_1_3 -matrix-layout-column-major -fvk-use-entrypoint-name
+                    -entry fs_main -stage fragment -o "${_offscreen_spv}/offscreen_fs.spv"
+                DEPENDS "${_offscreen_src}" VERBATIM)
+            add_custom_target(shs_renderer_offscreen_shaders DEPENDS
+                "${_offscreen_spv}/offscreen_vs.spv" "${_offscreen_spv}/offscreen_fs.spv")
+            add_dependencies(shs_renderer_vk_offscreen_pass_tests shs_renderer_offscreen_shaders)
+            target_compile_definitions(shs_renderer_vk_offscreen_pass_tests PRIVATE
+                SHS_OFFSCREEN_SHADER_DIR="${_offscreen_spv}")
+        else()
+            message(STATUS "slangc unavailable: offscreen test covers attachments only, not pipelines")
+        endif()
         add_test(NAME shs_renderer_vk_offscreen_pass_tests COMMAND shs_renderer_vk_offscreen_pass_tests)
+        set_tests_properties(shs_renderer_vk_offscreen_pass_tests PROPERTIES
+            FAIL_REGULAR_EXPRESSION "Validation Error")
         set_tests_properties(shs_renderer_vk_offscreen_pass_tests PROPERTIES
             WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
             SKIP_RETURN_CODE 77)

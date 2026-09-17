@@ -104,7 +104,7 @@ resource lifetimes remain at the execution edge.
   Acceptance: render one deterministic scene through value commands; supported
   formats/layouts/features are explicit, failures release acquired resources,
   and Vulkan validation reports no errors on an available backend. Depends on G1.
-  — PARTIAL 2026-09-17 (slice 1, commit pending): new
+  — PARTIAL 2026-09-17 (slice 1, `b2d7d79`): new
   `execution/rhi/drivers/vulkan/vk_offscreen.hpp` — explicit (non-lazy) owned
   realization of a narrowly-supported attachment config: RGBA8_UNorm 2D, 1
   mip/layer, ColorAttachment usage, LOAD_OP_CLEAR (transparent black), STORE,
@@ -127,6 +127,28 @@ resource lifetimes remain at the execution edge.
   explicit reset/recreate. NO submission, NO readback, NO pixel claim — G2
   remains open for pipeline realization, vertex upload and the deterministic
   scene; submission/readback evidence stays G3.
+  — PARTIAL 2026-09-17 (slice 2): `VulkanOffscreenPipeline` explicitly owns
+  a graphics pipeline/layout, creates and releases temporary shader modules,
+  and unwinds Vulkan creation failures. Fixed ABI: triangle list, no vertex
+  attributes/descriptors/push constants, RGBA8, no depth/blending, static
+  viewport/scissor. Caller supplies trusted validated SPIR-V matching the ABI;
+  `supports()` is a descriptor/header gate, not shader reflection/validation.
+  The recorder now binds realized graphics pipelines inside a pass, requiring
+  matching cache ID/hash, device and extent. Cache-only or retired realization
+  remains UnsupportedCommand; missing IDs retain G1 MissingPipeline precedence.
+  Cache identity does not include viewport extent: callers must explicitly
+  re-realize after reset when changing extent, never treat cache hits as owners.
+  Existing offscreen CTest also exercises real creation/binding, cache hits,
+  negative descriptors, unsupported SPIR-V version, double-prepare refusal and
+  reset/recreation. Slang fixture builds as SPIR-V 1.3 for Vulkan 1.1, using
+  SV_VulkanVertexID to avoid the unenabled DrawParameters feature emitted by
+  SV_VertexID. No bootstrap feature/extension changes. Without slangc the test
+  explicitly reports attachment-only coverage; missing Vulkan returns skip 77.
+  Local lavapipe evidence: pipeline creation and two bind streams, validation
+  enabled with no reported errors, plus full CTest 18/18. No draw, submission,
+  readback or pixel claim; G2 scene acceptance remains open. Factory-facing
+  backend attachment/pipeline lifecycle integration is not yet wired. Creation
+  failure unwind is implemented but Vulkan allocation failures are not injected.
 - [ ] **G3 Upload, submit and readback proof** — complete the minimal scene's
   buffer upload, synchronization, submission and image readback. Check known
   pixels independently of parity; exercise failure and resource cleanup paths.
