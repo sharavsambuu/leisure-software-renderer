@@ -364,6 +364,22 @@ if(SHS_RENDERER_BUILD_TESTS)
         add_test(NAME ${camera_include_target} COMMAND ${camera_include_target})
     endforeach()
 
+    # Step-7 namespace cutover compatibility: old (shs::X) vs new
+    # (shs::<owner>::X) spellings must denote the same entities; overload
+    # lookup, ADL, serialization ids and mixed legacy/canonical includes
+    # keep working. Namespaces can break ABI: aliases do not guarantee
+    # binary compatibility (see migration doc step 7).
+    add_executable(shs_renderer_namespace_cutover_tests
+        tests/namespace_cutover_tests.cpp
+    )
+    target_link_libraries(shs_renderer_namespace_cutover_tests PRIVATE shs::renderer-values)
+    if(MSVC)
+        target_compile_options(shs_renderer_namespace_cutover_tests PRIVATE /W4)
+    else()
+        target_compile_options(shs_renderer_namespace_cutover_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+    add_test(NAME shs_renderer_namespace_cutover_tests COMMAND shs_renderer_namespace_cutover_tests)
+
     # P1 renderpath pod tests: pure value tests, frame-arena events, no
     # platform links (only shs::renderer-values + glm headers).
     add_executable(shs_renderer_renderpath_tests
