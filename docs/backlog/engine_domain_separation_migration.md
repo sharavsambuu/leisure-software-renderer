@@ -464,6 +464,46 @@ commits; keep mechanical moves separate from semantic changes.
   inventory regenerated (423 headers, content hashes).
 - Phase table: 1-4 COMPLETE, 5 COMPLETE, 6/7 not started (7 blocked on 4-6).
 
+### Status (2026-09-17, step 6: vertical-slice engine integration) — PHASE 6 COMPLETE
+
+- Step 6 COMPLETE — all five checkboxes ticked with evidence at the step-6
+  block below. New public-API-only engine host `shs/app/vertical_slice_host.hpp`
+  (424th public header; inventory regenerated). New CTest
+  `shs_renderer_vertical_slice_tests` (deterministic replay, interleaved
+  independent hosts, resize, backend-unavailable rejection + rejection
+  preservation, asset deletion/recreation + registry-epoch stale handles,
+  recorded quit/shutdown, known-pixel software output, teardown with
+  outstanding work) and `shs_renderer_sw_vk_parity_tests` (bounded
+  software/GPU parity via the real offscreen pipeline; explicit SKIP + 77
+  for unavailable device/SPIR-V). New spec `docs/spec/external_engine_seams.md`
+  (seams + completion/cancellation boundaries). Full build 0 warnings,
+  CTest green (34 suites; parity test SKIPs cleanly when the GPU/SPIR-V
+  config is unavailable), boundary gate green.
+- Phase table: 1-6 COMPLETE, 5 COMPLETE, 7 not started (unblocked: its
+  dependencies 2-6 are all COMPLETE).
+
+### Status (2026-09-17, step 6 completion snapshot): task completion table
+
+Snapshot at the step-6 close-out commit (includes the pre-phase pilot
+evidence block at the top of the file):
+
+| # | Phase | Items | Status | Evidence |
+|---|-------|-------|--------|----------|
+| — | Pilot: camera convention compatibility | 5/5 | COMPLETE | Pilot evidence block (top of file) |
+| 1 | Inventory, decision record and baseline | 4/4 | COMPLETE | Manifest + KDBA amendments + clean build/CTest/boundary baseline (433 headers at baseline) |
+| 2 | Relocate headers without changing behavior | 4/4 | COMPLETE | Canonical layout + forwarding headers + dual-include-order smoke consumers |
+| 3 | Enforce actual dependency separation | 4/4 | COMPLETE | Renderpath ownership, conditional adapters, manifests + negative gate fixtures |
+| 4 | Clarify state ownership and harden contracts | 5/5 | COMPLETE | 4.1 input split, 4.2 settings owner, 4.3 identity policy, 4.4 lifecycle/failure semantics, 4.5 identity-gateway retirement (437 -> 423 headers) |
+| 5 | Make dependencies selectable by consumers | 4/4 | COMPLETE | Aggregate targets + conditional discovery + install/export/self-containment gates |
+| 6 | Prove engine integration through a vertical slice | 5/5 | COMPLETE | `shs/app/vertical_slice_host.hpp` + `vertical_slice_tests` + `sw_vk_parity_tests` + `docs/spec/external_engine_seams.md` (423 -> 424 headers) |
+| 7 | Namespace/API cutover and compatibility retirement | 0/5 | NOT STARTED | Namespace slices, alias policy, consumer migration, forwarding-header retirement, legacy-include rejection |
+
+**Totals: 31/36 checkboxes done (86%). Phases 1-6 COMPLETE, 7 not started.**
+Validation at HEAD: CTest green (incl. boundary gate; parity suite SKIPs
+explicitly when Vulkan/SPIR-V is unavailable), zero warnings, inventory
+424 headers. Next executable step: 7 (namespace/API cutover) — now unblocked;
+it is the final phase.
+
 ### Status (2026-09-17, step 4.5 completion snapshot): task completion table
 
 Snapshot of every checkbox in this backlog at commit `2bd2bd6` (includes the
@@ -757,21 +797,72 @@ aggregate-target consumers still build.
 
 ### 6. Prove engine integration through a vertical slice
 Depends on 4 and 5.
-- [ ] Add a public-API-only host: recorded input -> action routing -> camera/scene
+- [x] Add a public-API-only host: recorded input -> action routing -> camera/scene
   update -> render projection -> plan -> backend output. Game rules stay outside
   the rendering library.
-- [ ] Verify deterministic headless replay, independent host instances, resize,
+  — DONE 2026-09-17: `shs/app/vertical_slice_host.hpp` (`shs::app::VerticalSliceHost`,
+  a value aggregate; 424th public header). Per frame: recorded `RuntimeCommand`
+  batch -> `session_orchestrate` (action routing, step 4.1) -> `sync_session_to_scene`
+  + `apply_session_render_settings` (canonical funnels, step 4.2) -> `frame_gateway`
+  (per-frame vehicle, C1.4) -> `renderpath_gateway` plan over a DATA capability
+  snapshot -> `SceneObjectSet::to_render_items()` + `SceneResourceView` per-call
+  resolution -> `rasterize_mesh` backend output (`RT_ColorHDR`) with a stable FNV-1a
+  pixel digest. Game rules stay outside: the host carries no gameplay logic — every
+  decision is a recorded command or a pure projection; the asset registry is an
+  external reference the host never owns. Links only `shs::renderer-values` + glm
+  (no SDL, no Vulkan, no Context).
+- [x] Verify deterministic headless replay, independent host instances, resize,
   backend-unavailable rejection, asset deletion/recreation and shutdown.
-- [ ] Exercise software/Vulkan paths with known-pixel and bounded parity tests;
+  — DONE 2026-09-17: `tests/vertical_slice_tests.cpp` (CTest
+  `shs_renderer_vertical_slice_tests`): two fresh hosts replay the same recorded
+  log to identical per-frame reports + final `SessionState` + pixel digests;
+  two hosts run interleaved with no cross-talk; resize reallocates targets and a
+  fresh host at the resized geometry reproduces the resized frame byte-exactly;
+  a capability snapshot with no backend rejects the initial compile
+  (`plan_generation == 0`, batch still runs) and a recipe requiring occlusion
+  support the snapshot lacks is rejected per command with the previous plan kept
+  (`swaps_rejected == 1`, generation unchanged); scene object deletion removes the
+  item, re-adding the same name restores the SAME `object_id` and a pixel-identical
+  frame; `registry.clear()` bumps the epoch and stale handles degrade to skipped
+  items (no crash); a routed `QuitIntent` ends the recorded loop.
+- [x] Exercise software/Vulkan paths with known-pixel and bounded parity tests;
   explicitly report unavailable/skipped configurations.
-- [ ] Specify external physics/animation/audio seams: snapshots/commands, stable
+  — DONE 2026-09-17: known-pixel software output pinned exactly (flat-color
+  triangle, 41 covered pixels of 1024, byte-exact twin digest); new CTest
+  `shs_renderer_sw_vk_parity_tests` (Vulkan-gated) runs the SAME flat NDC
+  triangle through the real GPU offscreen path (`offscreen_vs`/`offscreen_fs`
+  SPIR-V, RGBA8 readback) and the CPU rasterizer: per-channel tolerance 1/255,
+  zero mismatches where both covered, coverage may differ only on boundary
+  pixels (budget 16; observed 15 GPU-only fill-rule pixels at 32x32). Every
+  unavailable configuration reports explicitly on stderr and exits 77
+  (CTest SKIP_RETURN_CODE): Vulkan device unavailable, slangc/SPIR-V missing —
+  never a silent pass.
+- [x] Specify external physics/animation/audio seams: snapshots/commands, stable
   IDs and scheduling ownership. Do not add placeholder subsystems or mandate SHS
   storage, FSMs, ECS, a global event bus or the optional app host.
-- [ ] Document sync/async completion and cancellation at task/asset/backend
+  — DONE 2026-09-17: new spec `docs/spec/external_engine_seams.md`: snapshots
+  in / optional value records out; stable IDs = `object_id` + registry handles
+  with `generation()` epochs; scheduling ownership (subsystem owns its tick and
+  snapshot point, host owns the frame loop, renderer owns only documented
+  per-frame state); explicit non-mandate section (no placeholder subsystems, no
+  SHS storage requirement, no FSM/ECS/event-bus/app-host dependency).
+- [x] Document sync/async completion and cancellation at task/asset/backend
   boundaries; test teardown with outstanding work before promising concurrency.
+  — DONE 2026-09-17: seams spec §4 (task: `wait_idle()` is the only completion
+  guarantee, destructor drains accepted work; asset: host-owned publication
+  between frames, cancellation degrades to skipped items; backend:
+  `run_frame` synchronous, backend-async allowed only behind its own completion
+  primitive, cancellation = pre-submission rejection; future async work must
+  ship its teardown test in the same change). Teardown with outstanding work is
+  pinned: a `ThreadPoolJobSystem` destroyed WITHOUT `wait_idle()` after 64
+  outstanding jobs runs every one (host seam of the step-4.4 contract).
 
 Exit: an engine-style consumer proves integration; isolated tests or a single
-triangle cannot close this step.
+triangle cannot close this step. — MET 2026-09-17: the host is an engine-style
+consumer chaining ALL pod seams (input routing, camera/scene sync, frame pod,
+renderpath plan, asset resolution, raster) under one recorded-input loop with
+lifecycle coverage; suite lives at `tests/vertical_slice_tests.cpp` +
+`tests/sw_vk_parity_tests.cpp`.
 
 ### 7. Namespace/API cutover and compatibility retirement
 Depends on 2-6.

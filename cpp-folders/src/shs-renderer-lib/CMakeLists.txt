@@ -556,6 +556,30 @@ if(SHS_RENDERER_BUILD_TESTS)
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     )
 
+    # Step 6: vertical-slice host suite (engine_domain_separation_migration.md)
+    # — public-API-only engine integration: deterministic headless replay,
+    # independent host instances, resize, backend-unavailable rejection,
+    # asset deletion/recreation, shutdown, known-pixel software output, and
+    # teardown with outstanding work. Links only shs::renderer-values + glm.
+    add_executable(shs_renderer_vertical_slice_tests
+        tests/vertical_slice_tests.cpp
+    )
+    target_link_libraries(shs_renderer_vertical_slice_tests PRIVATE shs::renderer-values)
+    target_compile_features(shs_renderer_vertical_slice_tests PRIVATE cxx_std_23)
+    if(MSVC)
+        target_compile_options(shs_renderer_vertical_slice_tests PRIVATE /W4)
+    else()
+        target_compile_options(shs_renderer_vertical_slice_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+
+    add_test(
+        NAME shs_renderer_vertical_slice_tests
+        COMMAND shs_renderer_vertical_slice_tests
+    )
+    set_tests_properties(shs_renderer_vertical_slice_tests PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    )
+
     # Step 4.3: scene/resource identity policy regression suite (object_id
     # uniqueness/stability, name first-wins, handle null/append-only/
     # generation rules, renderer projection copy rules), value-tier only.
@@ -874,6 +898,31 @@ if(SHS_RENDERER_BUILD_TESTS)
         set_tests_properties(shs_renderer_vk_offscreen_pass_tests PROPERTIES
             FAIL_REGULAR_EXPRESSION "Validation Error")
         set_tests_properties(shs_renderer_vk_offscreen_pass_tests PROPERTIES
+            WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+            SKIP_RETURN_CODE 77)
+
+        # Step 6: bounded software/Vulkan parity (engine_domain_separation_
+        # migration.md). Same flat NDC triangle through the real GPU offscreen
+        # path and the CPU rasterizer; per-channel tolerance 1/255 with a
+        # small edge-pixel budget. Explicit SKIP + 77 when the device or the
+        # offscreen SPIR-V is unavailable — never a silent pass.
+        add_executable(shs_renderer_sw_vk_parity_tests tests/sw_vk_parity_tests.cpp)
+        target_link_libraries(shs_renderer_sw_vk_parity_tests PRIVATE
+            shs::renderer-values Vulkan::Vulkan)
+        target_compile_features(shs_renderer_sw_vk_parity_tests PRIVATE cxx_std_23)
+        if(MSVC)
+            target_compile_options(shs_renderer_sw_vk_parity_tests PRIVATE /W4)
+        else()
+            target_compile_options(shs_renderer_sw_vk_parity_tests PRIVATE -Wall -Wextra -Wpedantic)
+        endif()
+        if(SHS_OFFSCREEN_SLANGC)
+            add_dependencies(shs_renderer_sw_vk_parity_tests shs_renderer_offscreen_shaders)
+            target_compile_definitions(shs_renderer_sw_vk_parity_tests PRIVATE
+                SHS_OFFSCREEN_SHADER_DIR="${_offscreen_spv}")
+        endif()
+        target_compile_definitions(shs_renderer_sw_vk_parity_tests PRIVATE SHS_HAS_VULKAN=1)
+        add_test(NAME shs_renderer_sw_vk_parity_tests COMMAND shs_renderer_sw_vk_parity_tests)
+        set_tests_properties(shs_renderer_sw_vk_parity_tests PROPERTIES
             WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
             SKIP_RETURN_CODE 77)
 

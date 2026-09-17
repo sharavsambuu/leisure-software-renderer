@@ -3,7 +3,7 @@
   "scope": "cpp-folders/src/shs-renderer-lib/include",
   "coverage": "all .h/.hpp public headers; literal includes in all conditional branches",
   "approval": "proposed paths are inventory only; reviewed migrations live in engine_header_migration_manifest.json",
-  "header_count": 423,
+  "header_count": 424,
   "headers": [
     {
       "current": "shs/app/backend/backend_factory.hpp",
@@ -252,6 +252,56 @@
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/tests/session_orchestration_tests.cpp"
       ],
+      "build_target": "review-values-vs-aggregate"
+    },
+    {
+      "current": "shs/app/vertical_slice_host.hpp",
+      "proposed_canonical": "shs/app/vertical_slice_host.hpp",
+      "review_status": "already-named-review-dependencies",
+      "proposed_owner": "app",
+      "namespace_declarations": [
+        "shs::app"
+      ],
+      "visibility": "public-include-tree",
+      "direct_dependencies": [
+        "cstdint",
+        "glm/glm.hpp",
+        "glm/gtc/matrix_transform.hpp",
+        "memory",
+        "memory_resource",
+        "shs/app/session_orchestrator.hpp",
+        "shs/app/session_settings_sync.hpp",
+        "shs/render/frame/frame.gateway.hpp",
+        "shs/render/software/rasterizer.hpp",
+        "shs/renderpath/planning/render_path_compiler.hpp",
+        "shs/renderpath/planning/render_path_presets.hpp",
+        "shs/renderpath/renderpath.gateway.hpp",
+        "shs/resources/storage/resource_registry.hpp",
+        "shs/scene/scene_objects.hpp",
+        "shs/scene/scene_resource_view.hpp",
+        "span"
+      ],
+      "internal_dependencies": [
+        "shs/app/session_orchestrator.hpp",
+        "shs/app/session_settings_sync.hpp",
+        "shs/render/frame/frame.gateway.hpp",
+        "shs/render/software/rasterizer.hpp",
+        "shs/renderpath/planning/render_path_compiler.hpp",
+        "shs/renderpath/planning/render_path_presets.hpp",
+        "shs/renderpath/renderpath.gateway.hpp",
+        "shs/resources/storage/resource_registry.hpp",
+        "shs/scene/scene_objects.hpp",
+        "shs/scene/scene_resource_view.hpp"
+      ],
+      "external_dependencies": [
+        "cstdint",
+        "glm/glm.hpp",
+        "glm/gtc/matrix_transform.hpp",
+        "memory",
+        "memory_resource",
+        "span"
+      ],
+      "tracked_consumers": [],
       "build_target": "review-values-vs-aggregate"
     },
     {
@@ -10612,6 +10662,8 @@
       "input",
       "platform",
       "render",
+      "renderpath",
+      "resources",
       "rhi",
       "scene",
       "task"
