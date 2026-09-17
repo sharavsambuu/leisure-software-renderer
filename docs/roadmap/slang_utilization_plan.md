@@ -23,14 +23,14 @@
 
 ## 1. Why Slang is the right substrate for this architecture
 
-The renderer is pure-gateway Domain PODs: passes consume/produce identical value
+The renderer is pure-gateway Domain Value Objects: passes consume/produce identical value
 state on every backend. Slang's structural features map onto that directly:
 
 | Slang feature | Renderer leverage |
 |---|---|
-| `module` / `import` (real modules, not text includes) | Shader modules mirror domain pods (`shs.lighting.types` ↔ `domains/lighting/light_types.hpp`). Kills `#include` drift, header-order bugs, macro guards — the exact failure mode `CullingLightGPU` suffered. |
+| `module` / `import` (real modules, not text includes) | Shader modules mirror Domain Value Objects (`shs.lighting.types` ↔ `domains/lighting/light_types.hpp`). Kills `#include` drift, header-order bugs, macro guards — the exact failure mode `CullingLightGPU` suffered. |
 | `interface` + `specialize<T>` | Pluggable materials/techniques as interfaces (`ILightingModel`), specialized at pipeline creation per `RenderPathRenderingTechnique`. Zero-overhead dispatch — the shader-side analog of the pluggable recipe. |
-| `ParameterBlock<T>` / `StructuredBuffer<T>` | Bind domain pods (CullingLightGPU, frame uniforms) as named typed blocks; reflection validates them against the C++ static_assert'd pods → single-source structs (P2). |
+| `ParameterBlock<T>` / `StructuredBuffer<T>` | Bind Domain Value Objects (CullingLightGPU, frame uniforms) as named typed blocks; reflection validates them against the C++ static_assert'd pods → single-source structs (P2). |
 | `[push_constant]` | Per-draw small data in the push block, budget-checked against `BackendLimitCaps::max_push_constant_bytes`. |
 | Specialization constants | Bake capability limits and recipe knobs (`light_tile_size`, `cluster_z_slices` from `RenderPathRecipe`) into pipelines — one source of truth, no `#define` permutations. |
 | `[shader("vertex"/"fragment"/"compute")]` | One `.slang` per pass with multiple entry points replaces the `.vert`/`.frag` paired-file convention; each entry point compiles to its own `.spv`. |

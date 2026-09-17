@@ -1,4 +1,4 @@
-# Domain Pod Error Flow — shs-renderer-lib
+# Domain Value Object Error Flow — shs-renderer-lib
 
 > Status: living catalog (2026-09-16, KDBA hardening). The failure-rail mirror
 > of `EVENT_FLOW.md`: every closed error enum riding an `std::expected<T, E>`

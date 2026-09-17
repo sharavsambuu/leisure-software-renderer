@@ -1,15 +1,15 @@
-# Domain Pod Engine Rollout Roadmap
+# Domain Value Object Engine Rollout Roadmap
 
-> Status: **Active plan (2026-09-15)**. Ratifies and rolls out the Domain Pod
+> Status: **Active plan (2026-09-15)**. Ratifies and rolls out the Domain Value Object
 > Constitution (§2.1 + Rule 10, precedence §2.2; canon tables §6.1–6.2): the
-> "everything is a pure gateway based Domain Pod" law binding the engine library
+> "everything is a pure gateway based Domain Value Object" law binding the engine library
 > and all demos alike, rolled into the library tree, the dynamic render path
 > system, and the Vulkan backend.
 > Architecture details: `docs/arch/render_path_domain_pod_architecture.md`.
 
 ## Vision
 
-"Everything is a Domain Pod in mind" (Constitution §2.1): every stateful subsystem is expressed as
+"Everything is a Domain Value Object in mind" (Constitution §2.1): every stateful subsystem is expressed as
 **Types (contract) + Command (action) + Gateway + Event**, with batch planners as an
 optional extension and all side effects confined to edges. State transitions become
 pure, replayable, GPU-free-testable, and auditable — data-oriented design with dynamic
@@ -21,8 +21,8 @@ gateway transition).
 - [x] Constitution II §6.1/6.2 amended: Core 4 mandatory, extensions conditional,
       conformance note for pre-canon pods.
 - [x] Tetris `ARCHITECTURE.md` Part I synced with the canon.
-- [x] **Domain Pod Constitution ratified (§2.1 + §2.2 + Mandatory Rule 10)**: "everything
-      is a pure gateway based Domain Pod" with the Core 4 {types, action, gateway,
+- [x] **Domain Value Object Constitution ratified (§2.1 + §2.2 + Mandatory Rule 10)**: "everything
+      is a pure gateway based Domain Value Object" with the Core 4 {types, action, gateway,
       event} is now supreme law binding the engine library *and* all demos;
       physical layout (`domains/` + edge zone) and CI linter enforcement referenced.
       §2.2 adds the Law Precedence & Single-Source Rule (numbered rules win;
@@ -32,7 +32,7 @@ gateway transition).
 ## Phase P0.5 — Pod-First Tree Restructure (DO FIRST — zero code changed yet)
 
 Goal: reorganize `include/shs/` once, now, so the physical tree itself expresses the
-"everything is a Domain Pod" philosophy — **before** any pod lands, so P1 writes
+"everything is a Domain Value Object" philosophy — **before** any pod lands, so P1 writes
 directly into its final home. Purely mechanical: moves + facade compatibility headers
 + CMake path updates. This replaces the "directories stay" stance of the old P5.
 
@@ -142,7 +142,7 @@ existing `ctest` suite green; boundary linter (from old P5, pulled forward) enfo
 
 ## Phase P1 — `renderpath` Pod in the Engine Lib
 
-Goal: the first formal Domain Pod in `shs-renderer-lib`, wrapping the
+Goal: the first formal Domain Value Object in `shs-renderer-lib`, wrapping the
 existing recipe → compiler → plans spine.
 
 - [x] Create `include/shs/domains/renderpath/` with `contract` (re-export of recipe /
@@ -170,7 +170,7 @@ consumers (pod re-exports, no breakage).
 > wholesale to `execution/pipeline/` in P0.5, so the pod's re-exports point there —
 > `pipeline/` facades keep old-path consumers working untouched; (2) the boundary
 > linter gained a P1-sanctioned carve-out: `shs/domains/renderpath/` is the only
-> domain pod allowed to include execution zones (it IS the contract seam). The
+> Domain Value Object allowed to include execution zones (it IS the contract seam). The
 > `shs::renderer-values` INTERFACE target (header-only: include dirs + glm only,
 > no SDL/assimp/Vulkan) landed with this phase — the renderpath test binary's
 > link line is `libglm.a` and nothing else. ctest: `shs_renderer_renderpath_tests`
@@ -429,7 +429,7 @@ outside arenas; event log overlay ships in the demo.
 ## Backlog — POD Semantics Hardening (parked 2026-09-15; work later)
 
 > Suggestions from the post-Tier0 lib review on strengthening pure gateway
-> Domain POD semantics in `shs-renderer-lib`. Not scheduled — recorded so the
+> Domain Value Object semantics in `shs-renderer-lib`. Not scheduled — recorded so the
 > Runs 1–5 plan above can absorb them at the right moment. `renderpath` (P1)
 > proved the pattern; this backlog is about making the pattern cheap to follow
 > correctly and hard to follow incorrectly.

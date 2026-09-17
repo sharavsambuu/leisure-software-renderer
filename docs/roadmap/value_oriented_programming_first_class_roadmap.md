@@ -200,7 +200,7 @@ Only step 5 is side-effecting.
 
 To achieve the CPU cache utilization described in [Constitution III](../spec/dod_ecs_architecture.md), the high-level OOP systems must be transitioned to domain-owned value/data-oriented design. Per the 2026-09-17 governing clarification, ECS is **not** the programming model: layout is a technique under domain ownership.
 
-1. **Domain-owned SoA storage (not an ECS world):** Replace all derived `ILogicSystem` and `IRenderSystem` classes with KDBA domain pods whose pure batch stages operate over domain-owned SoA tables (stateless arrows, no global entity/component registry).
+1. **Domain-owned SoA storage (not an ECS world):** Replace all derived `ILogicSystem` and `IRenderSystem` classes with KDBA Domain Value Objects whose pure batch stages operate over domain-owned SoA tables (stateless arrows, no global entity/component registry).
 2. **SoA Refactor:** Convert AoS arrays in hot paths (culling/physics, transform hierarchies) to Structure of Arrays (SoA).
 3. **Generational Handles:** Replace all pointer-based object references (`std::shared_ptr`, raw pointers) with `uint32_t` or `uint64_t` generational indices.
 4. **Wait-Free Spans:** Enforce that multithreaded simulation jobs are pure functions receiving read-only inputs (`std::span<const T>`) and restricted to exclusive write outputs (`std::span<U>`), eliminating atomic locks entirely.
@@ -211,7 +211,7 @@ The ultimate evolution of the engine, maximizing concurrency by eliminating all 
 
 1. **Lock-Free Job Queues:** Replace `std::mutex` scheduling with lock-free atomic queues (MPMC or Work-Stealing).
 2. **Per-Frame Arena Allocators:** Integrate `std::pmr::monotonic_buffer_resource` across all simulation jobs. Pre-allocate per-frame memory to achieve a strictly Zero-Allocation (`malloc`/`new` free) update loop.
-3. **GPU-Driven Rendering:** Migrate fine-grained culling (frustum/occlusion) and draw command generation (`vkCmdDrawIndexedIndirect`) entirely to Vulkan Compute Shaders, delegating only broad-phase planning to the CPU domain pods.
+3. **GPU-Driven Rendering:** Migrate fine-grained culling (frustum/occlusion) and draw command generation (`vkCmdDrawIndexedIndirect`) entirely to Vulkan Compute Shaders, delegating only broad-phase planning to the CPU Domain Value Objects.
 
 ## Deliverables
 

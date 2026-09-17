@@ -1,7 +1,7 @@
-# Render Path & Vulkan Renderer as Domain Pods
+# Render Path & Vulkan Renderer as Domain Value Objects
 
 > Status: **Architecture plan (approved direction, 2026-09-15)**. Implements the Core 4
-> Domain Pod canon (Constitution §2.1, canon tables §6.1–6.2) across the dynamic render path system and
+> Domain Value Object canon (Constitution §2.1, canon tables §6.1–6.2) across the dynamic render path system and
 > the Vulkan backend. Companion roadmap: `docs/roadmap/domain_pod_engine_rollout_roadmap.md`.
 > Multi-context workflows add the saga orchestrator as a pod (Core 4+1, Constitution II §6.1, Rules 11–12).
 
@@ -11,7 +11,7 @@ The render path system is already a pure value pipeline — `RenderPathRecipe` �
 `RenderPathCompiler` → execution/resource/barrier plans → `RenderPathExecutor` — but it
 has no explicit command vocabulary, no event log, and its Vulkan reality is a 9,373-line
 monolith (`exp-rendering-techniques/demo_forward_classic_renderpath.cpp`) with hard-coded
-path logic. Adopting the Core 4 Domain Pod canon gives the renderer the same properties
+path logic. Adopting the Core 4 DVO canon gives the renderer the same properties
 the game demos already have: auditable state transitions, replayable configuration
 history, GPU-free testing of path logic, and hot-swappable paths as pure gateway
 transitions.
@@ -26,7 +26,7 @@ transitions.
 | `shs/pipeline/` holds 25 headers (recipe, compiler, executor, barrier/resource plans, presets, registries) | Already pod-shaped; needs reorganization under Core 4 suffixes, not rewriting |
 | Demos (tetris/snake) have the working gateway/event pattern; tetris pods are the reference | Reuse the demo pattern vocabulary in the lib, not the reverse |
 
-## 3. The `renderpath` Domain Pod (Core 4 mapping)
+## 3. The `renderpath` Domain Value Object (Core 4 mapping)
 
 ```text
 shs-renderer-lib/include/shs/domains/renderpath/

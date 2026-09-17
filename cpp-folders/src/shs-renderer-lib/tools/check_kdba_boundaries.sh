@@ -428,6 +428,23 @@ else
   echo "[kdba-boundary] OK: no silent-drop 'continue' in pod gateways (K6.3)"
 fi
 
+# (7) Contract-guardrail seam gate (Constitution II Rule 17 + Forbidden
+#     Pattern 7, C3.1 residual closed 2026-09-17): Core 4 seam files state
+#     their edge law with the SHS_ contract macros only. Raw assert() and
+#     native C++26 contract syntax are banned until the sanctioned C++26
+#     switch run (C4.3) rewrites sites mechanically (bridge rule: single-
+#     expression, side-effect-free conditions).
+seam_contract_files=()
+while IFS= read -r f; do seam_contract_files+=("${f}"); done < <(find "${pod_scan_dirs[@]}" \( -name '*.contract.hpp' -o -name '*.command.hpp' -o -name '*.event.hpp' -o -name '*.gateway.hpp' \) | sort)
+raw_contract_hits="$(grep -nE '#include[[:space:]]*[<"](cassert|assert\.h)[>"]|\bassert[[:space:]]*\(|\b(pre|post|contract_assert)[[:space:]]*\(' "${seam_contract_files[@]}" 2>/dev/null || true)"
+if [[ -n "${raw_contract_hits}" ]]; then
+  echo "[kdba-boundary] FAIL: raw assert / native contract syntax in a Core 4 seam file (use SHS_PRE / SHS_POST / SHS_CONTRACT_ASSERT from shs/core/contract_guardrails.hpp, Rule 17)"
+  echo "${raw_contract_hits}"
+  failed=1
+else
+  echo "[kdba-boundary] OK: no raw assert / native contract syntax in Core 4 seams (SHS_ macros only, Rule 17)"
+fi
+
 # Final enforcement gate (2026-09-16 hardening): every FAIL above must fail
 # the script. Negative-test proven: the tail-section gates (platform IO,
 # entropy, expected-vector, stringy events, phantom flags, event/error catalog

@@ -27,7 +27,7 @@
 ## 2. The Composite Values (structs you assemble or pick)
 
 > **Pod home (P1):** the recipe → compiler → plan spine is owned by the
-> `renderpath` Domain Pod — `include/shs/domains/renderpath/` (Core 4:
+> `renderpath` Domain Value Object — `include/shs/domains/renderpath/` (Core 4:
 > `renderpath.contract.hpp` re-exports everything below, `renderpath.command.hpp`
 > carries the closed `RenderPathCommand` variant, `renderpath.event.hpp` the
 > closed `RenderPathEvent` variant, `renderpath.gateway.hpp` the pure

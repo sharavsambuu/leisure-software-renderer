@@ -33,8 +33,8 @@
 
 ## C3 — Conventions + documentation sweep
 
-- [x] **C3.1 Codify the bridge conventions** — DONE 2026-09-17 (ahead of C2, by owner ruling): Constitution II Rule 17 + Forbidden Pattern 7 + Constitution I §11 enacted. Residual: boundary-checker extension (raw `assert`/contract syntax in seam code) still open — carried to the next gate pass. DoD: amendment landed ✓; checker extension listed ✓.
-- [ ] **C3.2 DVO docs sweep (shrink-only)** — live docs adopting "Domain Value Object" terminology per T3 (`docs/spec/domain_value_object_law.md` Part 5): sweep `docs/arch/render_path_architecture.md`, `docs/pods/DOMAIN_GLOSSARY.md` body, roadmap docs at next edit. DoD: live-doc "domain pod" match count strictly decreased; archives untouched.
+- [x] **C3.1 Codify the bridge conventions** — DONE 2026-09-17 (ahead of C2, by owner ruling): Constitution II Rule 17 + Forbidden Pattern 7 + Constitution I §11 enacted. Residual CLOSED 2026-09-17: boundary checker now enforces gate (7) — raw `assert`/`<cassert>` and native `pre(`/`post(`/`contract_assert(` syntax FAIL in Core 4 seam files (contract/command/event/gateway) until the C4.3 switch. DoD: amendment landed ✓; checker extension landed + negative-tested ✓.
+- [x] **C3.2 DVO docs sweep (shrink-only)** — DONE 2026-09-17: swept `docs/arch/render_path_architecture.md`, `docs/arch/render_path_domain_pod_architecture.md`, `docs/roadmap/domain_pod_engine_rollout_roadmap.md`, `docs/roadmap/value_oriented_programming_first_class_roadmap.md`, `docs/roadmap/slang_utilization_plan.md`, `docs/pods/DOMAIN_GLOSSARY.md` body (amendment note kept — deliberate retirement quote), `docs/pods/ERROR_FLOW.md` title, and the `kdba_conformance_backlog.md` trigger line. Legacy-term live-doc match count 26 → 0 (T4 shrink-only). Archives untouched (T2); the only remaining live occurrences are the deliberate defining quotes in the law/teaching docs and DOMAIN_GLOSSARY.md's header amendment note.
 - [x] **C3.3 Education index** — DONE 2026-09-17: `docs/education/README.md` lists both new teaching docs under "Live teaching" (done together with C0.1/C0.2). DoD: index updated.
 
 ## C4 — Native C++26 readiness (standing, not scheduled)

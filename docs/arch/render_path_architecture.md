@@ -81,7 +81,7 @@ prove out in a demo, via the same Recipe → Compiler → Plan pipeline.
 Vision: the core renderer satisfies *every class* of complex rendering technique —
 materials, lighting, light culling, compute-based effects up to UE5-class
 complexity — by being a **small closed vocabulary + open registries**, with
-consumer complexity added as *additive abstractions* built on the Domain POD
+consumer complexity added as *additive abstractions* built on the Domain Value Object
 concepts (value descs, contracts, recipes — never by editing the core).
 
 Already first-class in the value vocabulary:
@@ -128,8 +128,8 @@ The system is currently at **L4 Maturity**, meaning:
 - **Presets**: `shs/pipeline/render_composition_presets.hpp`
 - **Compiler**: `shs/pipeline/render_path_compiler.hpp`
 - **Vulkan Bindings**: `shs/rhi/drivers/vulkan/vk_render_path_descriptors.hpp` *(planned — driver does not exist yet; see below)*
-- **Domain Pod rearchitecture**: `docs/arch/render_path_domain_pod_architecture.md` —
-  wraps this pipeline in the Core 4 Domain Pod canon (`domains/renderpath/`: contract =
+- **Domain Value Object rearchitecture**: `docs/arch/render_path_domain_pod_architecture.md` —
+  wraps this pipeline in the Core 4 DVO canon (`domains/renderpath/`: contract =
   recipe/plan types, action = `RenderPathCommand` intents, gateway = `renderpath_gateway`
   with keep-on-reject hot-swap invariant, event = `PATH_COMPILED` / `PATH_SWAP_REJECTED`
   log). Rollout phases in `docs/roadmap/domain_pod_engine_rollout_roadmap.md`.
