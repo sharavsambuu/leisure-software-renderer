@@ -1,5 +1,16 @@
 #pragma once
 
+#if defined(SHS_HAS_JOLT) && ((SHS_HAS_JOLT + 0) == 1)
+
+/*
+    Jolt-backed light-selection/culling runtime (R5b lighting convergence).
+    Entirely feature-guarded: with SHS_HAS_JOLT unset this header is empty,
+    so lighting stays SDK-free and the include-graph gate classifies this
+    header as integration-tier (same pattern as scene/scene_elements.hpp).
+    Pure light-selection values that need no SDK should migrate out of this
+    header (see engine_include_exceptions.json history).
+*/
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -630,3 +641,5 @@ namespace shs
             cull_mode);
     }
 }
+
+#endif // SHS_HAS_JOLT

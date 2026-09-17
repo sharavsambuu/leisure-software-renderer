@@ -251,8 +251,8 @@ commits; keep mechanical moves separate from semantic changes.
   plus a non-vacuity guard asserting the gate sees the live tree
   (220 canonical headers, 63 integration-tier).
 - Remaining tier violations are tracked, not hidden, in
-  `tools/engine_include_exceptions.json` (3 entries, down from 7): the
-  R5b umbrella split was executed — `scene/scene.contract.hpp` no longer
+  `tools/engine_include_exceptions.json` (1 entry, down from 7): the R5b
+  umbrella split was executed — `scene/scene.contract.hpp` no longer
   re-exports the Jolt-gated integration headers (`scene_elements`,
   `scene_instance`) and `resources/resources.contract.hpp` no longer
   re-exports the assimp adapter (`adapters/resource_import.hpp`); both
@@ -262,12 +262,20 @@ commits; keep mechanical moves separate from semantic changes.
   Jolt/Assimp include paths). The adapters remain discoverable at their
   canonical homes (`shs/scene/scene_elements.hpp`,
   `shs/scene/scene_instance.hpp`, `shs/resources/adapters/resource_import.hpp`;
-  old-path `shs/domains/*/edge/` forwarders still map to them). Remaining
-  exceptions, each with reason + tracking note:
-  `lighting/light_runtime.hpp`, `render/software/debug_draw.hpp` and
-  `renderpath/execution/pass_adapters.hpp` (all step-5 rhi-ownership
-  decisions). The test suite fails on stale exceptions
-  (fixed-but-still-listed) and on malformed entries.
+  old-path `shs/domains/*/edge/` forwarders still map to them). The
+  `lighting/light_runtime.hpp` exception was resolved per its tracking
+  note by wrapping the whole header in the `SHS_HAS_JOLT` guard (same
+  pattern as `scene_elements.hpp`; the library always defines
+  `SHS_HAS_JOLT=1`, so no consumer changes); the
+  `renderpath/execution/pass_adapters.hpp` exception was resolved by
+  folding it under the gate's driver-adjacent classification alongside
+  `renderpath/execution/vk_*` (it is execution-tier adapter aggregation
+  over the software renderer + Jolt culling; no library header includes
+  it). The last remaining exception, each with reason + tracking note:
+  `render/software/debug_draw.hpp` (observer/callback seam — a design
+  decision explicitly deferred to the step-5 rhi-ownership work). The
+  test suite fails on stale exceptions (fixed-but-still-listed) and on
+  malformed entries.
 - Validation: full build + 24/24 CTest green (22 existing + 2 new gate
   tests; Vulkan tests on lavapipe with
   `VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation`), header-migration

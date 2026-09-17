@@ -5,7 +5,8 @@ Structural rules over the real include graph (forwarders resolved):
 
   R1  no include cycles between canonical (non-forwarder) headers
   R2  raw SDK includes (Jolt/SDL2/Assimp/Vulkan) only in integration-tier
-      headers (adapter dirs, rhi/, driver-adjacent vk_* execution headers,
+      headers (adapter dirs, rhi/, driver-adjacent vk_* execution headers
+      and the pass-adapter aggregation pass_adapters.hpp,
       or files feature-guarded with SHS_HAS_<SDK>)
   R3  value-tier headers must not reach adapter/SDK-bearing integration
       headers directly or transitively, unless tracked in
@@ -30,7 +31,12 @@ SDK_INC_RE = re.compile(r'#include\s+[<"](Jolt/|SDL2/|assimp/|vulkan/vulkan\.h|G
 SDK_TOKEN_RE = re.compile(r"JPH::|SDL_[A-Z]|aiScene|AiMesh|Vk[A-Z]")
 GUARD_RE = re.compile(r"#\s*if\s+defined\(SHS_HAS_(JOLT|VULKAN|ASSIMP|SDL)\)")
 INTEGRATION_PREFIXES = ("rhi/", "platform/", "app/backend/")
-DRIVER_EXEC_RE = re.compile(r"^renderpath/execution/vk_")
+# Driver-adjacent execution helpers: the vk_* driver headers and the
+# pass-adapter aggregation header (execution-tier adapter code over the
+# software renderer + Jolt-backed culling; no value-tier header may
+# transitively reach them). Ruling: pass_adapters.hpp is folded under the
+# same driver-adjacent classification as vk_* (see migration step 5).
+DRIVER_EXEC_RE = re.compile(r"^renderpath/execution/(vk_|pass_adapters)")
 
 
 def load_canonical_headers(root=INCLUDE_ROOT):
