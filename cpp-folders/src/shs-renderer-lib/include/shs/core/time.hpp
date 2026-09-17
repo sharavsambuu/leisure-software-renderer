@@ -14,6 +14,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace core
+    {
     struct FrameClock
     {
         uint64_t ticks_prev = 0;
@@ -31,5 +34,7 @@ namespace shs
             return dt;
         }
     };
+
+    } // inline namespace core
 }
 

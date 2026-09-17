@@ -13,6 +13,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace core
+    {
     enum class contract_kind { pre, post, assertion };
 
     // P2900-shaped handler seam: the C++26 switch replaces the handler, never its call sites.
@@ -38,6 +41,8 @@ namespace shs
     {
         contract_violation_handler_instance(kind, expr, file, line);
     }
+
+    } // inline namespace core
 } // namespace shs
 
 #if defined(__cpp_contracts) || defined(SHS_CONTRACTS_ENFORCED)

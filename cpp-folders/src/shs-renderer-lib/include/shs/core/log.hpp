@@ -15,6 +15,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace core
+    {
     inline void log_info(const std::string& msg)
     {
         std::cout << "[INFO] " << msg << std::endl;
@@ -29,5 +32,7 @@ namespace shs
     {
         std::cerr << "[ERROR] " << msg << std::endl;
     }
+
+    } // inline namespace core
 }
 

@@ -15,6 +15,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace core
+    {
     template<typename T>
     struct Result
     {
@@ -32,4 +35,6 @@ namespace shs
             return Result<T>{false, T{}, std::move(e)};
         }
     };
+
+    } // inline namespace core
 }
