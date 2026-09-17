@@ -232,7 +232,10 @@ namespace shs
         h = rhi_hash_value(h, d.rt.color_format);
         h = rhi_hash_value(h, d.rt.depth_format);
         h = rhi_hash_value(h, d.rt.has_depth);
-        return h;
+        h = rhi_hash_value(h, d.vertex_layout);
+        const uint64_t fragment_entry = d.fs.entry ? rhi_hash_bytes(d.fs.entry,
+            std::char_traits<char>::length(d.fs.entry)) : 0;
+        return rhi_hash_value(h, fragment_entry);
     }
 
     [[nodiscard]] inline uint64_t hash_compute_pipeline_desc(const RHIComputePipelineDesc& d)

@@ -29,6 +29,7 @@ namespace shs
                 shader_supported(d.fs, RHIShaderStage::Fragment) &&
                 d.rt.color_format == RHIFormat::RGBA8_UNorm && !d.rt.has_depth &&
                 !d.depth.enable_test && !d.depth.enable_write && !d.blend.enable &&
+                (d.vertex_layout == RHIVertexLayout::Procedural || d.vertex_layout == RHIVertexLayout::Position2F) &&
                 !d.raster.depth_clamp &&
                 (d.raster.cull == RHICullMode::None || d.raster.cull == RHICullMode::Back ||
                  d.raster.cull == RHICullMode::Front) &&
@@ -72,6 +73,14 @@ namespace shs
             vp.pScissors = &scissor;
             VkPipelineVertexInputStateCreateInfo vertex{};
             vertex.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+            VkVertexInputBindingDescription binding{0, 2 * sizeof(float), VK_VERTEX_INPUT_RATE_VERTEX};
+            VkVertexInputAttributeDescription attribute{0, 0, VK_FORMAT_R32G32_SFLOAT, 0};
+            if (d.vertex_layout == RHIVertexLayout::Position2F)
+            {
+                vertex.vertexBindingDescriptionCount = vertex.vertexAttributeDescriptionCount = 1;
+                vertex.pVertexBindingDescriptions = &binding;
+                vertex.pVertexAttributeDescriptions = &attribute;
+            }
             VkPipelineInputAssemblyStateCreateInfo assembly{};
             assembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
             assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;

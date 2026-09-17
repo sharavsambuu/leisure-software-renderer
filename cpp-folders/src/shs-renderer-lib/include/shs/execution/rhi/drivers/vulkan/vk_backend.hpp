@@ -85,7 +85,8 @@ namespace shs
                     graphics_->accepts(*pipelines_->find_graphics(d->pipeline), *offscreen_)) return {};
                 return fail(VulkanRecordingError::UnsupportedCommand, d->pipeline);
             }
-            if (std::holds_alternative<RHICmdDrawDesc>(cmd.payload))
+            if (std::holds_alternative<RHICmdDrawDesc>(cmd.payload) ||
+                std::holds_alternative<RHICmdDrawIndexedDesc>(cmd.payload))
             {
                 if (inside_pass && graphics_ && graphics_->pipeline()) return {};
                 return fail(VulkanRecordingError::UnsupportedCommand);
@@ -118,6 +119,7 @@ namespace shs
             vkCmdBeginRenderPass(cmd_, &info, VK_SUBPASS_CONTENTS_INLINE);
             inside_pass_ = true;
             bound_pipeline_ = 0;
+            bound_index_ = false;
             return {};
         }
 
@@ -163,6 +165,7 @@ namespace shs
             {
                 vkCmdBindIndexBuffer(cmd_, *b, (VkDeviceSize)d.offset,
                                      d.index_u32 ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16);
+                bound_index_ = true;
                 return {};
             }
             return std::unexpected(VulkanRecordingError::MissingBuffer);
@@ -181,9 +184,12 @@ namespace shs
 
         std::expected<void, VulkanRecordingError> draw_indexed(const RHICmdDrawIndexedDesc& d)
         {
-            (void)d;
-            // Pipeline binding must exist before draws are legal (G2).
-            return std::unexpected(VulkanRecordingError::UnsupportedCommand);
+            if (!graphics_) return std::unexpected(VulkanRecordingError::UnsupportedCommand);
+            if (auto ready = recording_ready(); !ready) return ready;
+            if (!inside_pass_) return std::unexpected(VulkanRecordingError::InvalidRecordingOrder);
+            if (!bound_pipeline_ || !bound_index_) return std::unexpected(VulkanRecordingError::MissingBinding);
+            vkCmdDrawIndexed(cmd_, d.index_count, d.instance_count, d.first_index, d.vertex_offset, d.first_instance);
+            return {};
         }
 
         std::expected<void, VulkanRecordingError> dispatch(const RHICmdDispatchDesc& d)
@@ -223,6 +229,7 @@ namespace shs
         const VulkanOffscreenPass* offscreen_;
         const VulkanOffscreenPipeline* graphics_;
         bool inside_pass_ = false;
+        bool bound_index_ = false;
         uint64_t bound_pipeline_ = 0;
     };
 
@@ -288,6 +295,27 @@ namespace shs
             });
         }
 
+        // CPU-visible coherent upload; caller retires any borrowed submissions
+        // before updating. Only explicitly CPUVisible buffers are writable here.
+        [[nodiscard]] std::expected<void, VulkanExecutionFailure> upload_buffer(
+            uint64_t id, std::span<const uint8_t> bytes)
+        {
+            const auto* desc = buffer_descs_.find(id);
+            const auto* memory = buffer_memory_.find(id);
+            if (!device_ready() || !desc || !memory || desc->memory != RHIMemoryClass::CPUVisible ||
+                bytes.size() != desc->size_bytes || bytes.empty())
+                return std::unexpected(VulkanExecutionFailure{VulkanExecutionError::InvalidDescriptor});
+            std::vector<uint8_t> shadow(bytes.begin(), bytes.end());
+            void* mapped = nullptr;
+            const auto result = vkMapMemory(device_.device(), *memory, 0, bytes.size(), 0, &mapped);
+            if (result != VK_SUCCESS)
+                return std::unexpected(VulkanExecutionFailure{VulkanExecutionError::UploadFailed, result});
+            std::memcpy(mapped, bytes.data(), bytes.size());
+            vkUnmapMemory(device_.device(), *memory);
+            uploaded_.insert_or_assign(id, std::move(shadow));
+            return {};
+        }
+
         // Explicit single-target preparation. Reset before resize; callers must
         // retire borrowed command buffers before reset/shutdown. Synchronous
         // execute_offscreen itself never leaves successful work in flight.
@@ -315,6 +343,7 @@ namespace shs
                 reset_offscreen();
                 return std::unexpected(VulkanExecutionFailure{VulkanExecutionError::CreationFailed});
             }
+            vertex_layout_ = pipeline.vertex_layout;
             return id;
         }
 
@@ -335,6 +364,10 @@ namespace shs
             if (stream.empty() || !std::holds_alternative<RHICmdBeginPassDesc>(stream.front().payload) ||
                 !std::holds_alternative<RHICmdEndPassDesc>(stream.back().payload))
                 return std::unexpected(VulkanExecutionFailure{VulkanExecutionError::InvalidDescriptor});
+            if (auto order = validate_command_order(stream); !order)
+                return std::unexpected(VulkanExecutionFailure{VulkanExecutionError::RecordingFailed, VK_SUCCESS, order.error()});
+            if (auto geometry = validate_geometry(stream); !geometry)
+                return std::unexpected(VulkanExecutionFailure{VulkanExecutionError::RecordingFailed, VK_SUCCESS, geometry.error()});
             return readback_.execute(*images_.find(offscreen_target_), rgba, [&](VkCommandBuffer command) {
                 VulkanCommandRecorder recorder{device_.device(), command, buffers_, images_,
                     &pipelines_, &offscreen_, &graphics_};
@@ -394,6 +427,69 @@ namespace shs
         }
 
     private:
+        [[nodiscard]] std::expected<void, VulkanRecordingFailure> validate_geometry(std::span<const RHICmd> stream) const
+        {
+            RHICmdBindVertexBufferDesc vertex{};
+            RHICmdBindIndexBufferDesc index{};
+            for (size_t i = 0; i < stream.size(); ++i)
+            {
+                const auto fail = [&](VulkanRecordingError code, uint64_t id = 0) {
+                    return std::unexpected(VulkanRecordingFailure{code, i, VulkanRecordingStage::Validation,
+                        vulkan_command_kind(stream[i]), id});
+                };
+                const auto& p = stream[i].payload;
+                if (std::holds_alternative<RHICmdBeginPassDesc>(p)) { vertex = {}; index = {}; }
+                if (const auto* d = std::get_if<RHICmdBindVertexBufferDesc>(&p)) vertex = *d;
+                if (const auto* d = std::get_if<RHICmdBindIndexBufferDesc>(&p)) index = *d;
+                if (const auto* d = std::get_if<RHICmdBindVertexBufferDesc>(&p))
+                {
+                    const auto* desc = buffer_descs_.find(d->buffer);
+                    if (!desc) return fail(VulkanRecordingError::MissingBuffer, d->buffer);
+                    if (!(desc->usage & RHIBufferUsage_Vertex) || d->offset >= desc->size_bytes || d->offset % 4)
+                        return fail(VulkanRecordingError::InvalidCommand, d->buffer);
+                }
+                if (const auto* d = std::get_if<RHICmdBindIndexBufferDesc>(&p))
+                {
+                    const auto* desc = buffer_descs_.find(d->buffer);
+                    if (!desc) return fail(VulkanRecordingError::MissingBuffer, d->buffer);
+                    if (!(desc->usage & RHIBufferUsage_Index) || d->offset >= desc->size_bytes)
+                        return fail(VulkanRecordingError::InvalidCommand, d->buffer);
+                }
+                const auto* draw = std::get_if<RHICmdDrawDesc>(&p);
+                const auto* indexed = std::get_if<RHICmdDrawIndexedDesc>(&p);
+                if (!draw && !indexed) continue;
+                const auto* vertices = uploaded_.find(vertex.buffer);
+                if (vertex_layout_ == RHIVertexLayout::Position2F && !vertices)
+                    return fail(VulkanRecordingError::MissingBinding, vertex.buffer);
+                const uint64_t count = vertices && vertex.offset <= vertices->size() ? (vertices->size() - vertex.offset) / 8 : 0;
+                if (draw && vertex_layout_ == RHIVertexLayout::Position2F &&
+                    uint64_t(draw->first_vertex) + draw->vertex_count > count)
+                    return fail(VulkanRecordingError::InvalidCommand, vertex.buffer);
+                if (indexed)
+                {
+                    const auto* indices = uploaded_.find(index.buffer);
+                    if (!indices) return fail(VulkanRecordingError::MissingBinding, index.buffer);
+                    const uint64_t stride = index.index_u32 ? 4 : 2;
+                    const uint64_t end = index.offset + (uint64_t(indexed->first_index) + indexed->index_count) * stride;
+                    if (end > indices->size()) return fail(VulkanRecordingError::InvalidCommand, index.buffer);
+                    if (vertex_layout_ == RHIVertexLayout::Position2F)
+                    {
+                        for (uint64_t n = 0; n < indexed->index_count; ++n)
+                        {
+                            uint32_t value = 0;
+                            const auto* source = indices->data() + index.offset + (indexed->first_index + n) * stride;
+                            if (index.index_u32) std::memcpy(&value, source, 4);
+                            else { uint16_t small; std::memcpy(&small, source, 2); value = small; }
+                            const int64_t effective = int64_t(value) + indexed->vertex_offset;
+                            if (effective < 0 || uint64_t(effective) >= count)
+                                return fail(VulkanRecordingError::InvalidCommand, vertex.buffer);
+                        }
+                    }
+                }
+            }
+            return {};
+        }
+
         [[nodiscard]] bool create_buffer_gpu(uint64_t id, const RHIBufferDesc& d)
         {
             if (!device_.device_available()) return false;
@@ -426,6 +522,7 @@ namespace shs
             }
             buffers_.insert_or_assign(id, buffer);
             buffer_memory_.insert_or_assign(id, memory);
+            buffer_descs_.insert_or_assign(id, d);
             live_buffer_ids_.push_back(id);
             return true;
         }
@@ -484,6 +581,7 @@ namespace shs
             buffers_.clear(); images_.clear();
             buffer_memory_.clear(); image_memory_.clear();
             resources_.clear(); pipelines_.clear();
+            buffer_descs_.clear(); uploaded_.clear();
             live_buffer_ids_.clear();
             live_image_ids_.clear();
             command_buffer_ = VK_NULL_HANDLE;
@@ -497,6 +595,9 @@ namespace shs
         VulkanOffscreenPipeline graphics_;
         VulkanReadback readback_;
         uint64_t offscreen_target_ = 0;
+        RHIVertexLayout vertex_layout_ = RHIVertexLayout::Procedural;
+        containers::FlatMap<uint64_t, RHIBufferDesc> buffer_descs_{std::pmr::get_default_resource()};
+        containers::FlatMap<uint64_t, std::vector<uint8_t>> uploaded_{std::pmr::get_default_resource()};
         VulkanBufferPool buffers_{std::pmr::get_default_resource()};
         VulkanImagePool images_{std::pmr::get_default_resource()};
         VulkanMemoryPool buffer_memory_{std::pmr::get_default_resource()};

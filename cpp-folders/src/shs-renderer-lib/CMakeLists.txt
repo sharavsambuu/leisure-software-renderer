@@ -544,8 +544,16 @@ if(SHS_RENDERER_BUILD_TESTS)
                     -target spirv -profile spirv_1_3 -matrix-layout-column-major -fvk-use-entrypoint-name
                     -entry fs_main -stage fragment -o "${_offscreen_spv}/offscreen_fs.spv"
                 DEPENDS "${_offscreen_src}" VERBATIM)
+            add_custom_command(
+                OUTPUT "${_offscreen_spv}/uploaded_vs.spv"
+                COMMAND ${CMAKE_COMMAND} -E make_directory "${_offscreen_spv}"
+                COMMAND "${SHS_OFFSCREEN_SLANGC}" "${_offscreen_src}"
+                    -target spirv -profile spirv_1_3 -matrix-layout-column-major -fvk-use-entrypoint-name
+                    -entry vs_uploaded -stage vertex -o "${_offscreen_spv}/uploaded_vs.spv"
+                DEPENDS "${_offscreen_src}" VERBATIM)
             add_custom_target(shs_renderer_offscreen_shaders DEPENDS
-                "${_offscreen_spv}/offscreen_vs.spv" "${_offscreen_spv}/offscreen_fs.spv")
+                "${_offscreen_spv}/offscreen_vs.spv" "${_offscreen_spv}/offscreen_fs.spv"
+                "${_offscreen_spv}/uploaded_vs.spv")
             add_dependencies(shs_renderer_vk_offscreen_pass_tests shs_renderer_offscreen_shaders)
             target_compile_definitions(shs_renderer_vk_offscreen_pass_tests PRIVATE
                 SHS_OFFSCREEN_SHADER_DIR="${_offscreen_spv}")

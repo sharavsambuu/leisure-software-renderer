@@ -6,6 +6,12 @@ float4 vs_main(uint vertex : SV_VulkanVertexID) : SV_Position
     return float4(positions[vertex % 3], 0.0, 1.0);
 }
 
+[shader("vertex")]
+float4 vs_uploaded(float2 position : POSITION) : SV_Position
+{
+    return float4(position, 0.0, 1.0);
+}
+
 [shader("fragment")]
 float4 fs_main() : SV_Target0
 {

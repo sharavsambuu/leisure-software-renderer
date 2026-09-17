@@ -16,7 +16,14 @@ static std::vector<uint32_t> read_spirv(const char* path)
     return words;
 }
 #endif
+#include "vk_failure_injection.hpp"
 #include "shs/execution/rhi/drivers/vulkan/vk_backend.hpp"
+#undef vkAllocateMemory
+#undef vkCreateGraphicsPipelines
+#undef vkCreateFence
+#undef vkQueueSubmit
+#undef vkMapMemory
+#include "shs/execution/sw_render/rasterizer.hpp"
 
 #define CHECK(condition) do { if (!(condition)) { \
     std::fprintf(stderr, "FAIL line %d: %s\n", __LINE__, #condition); return 1; } } while (false)
@@ -308,6 +315,124 @@ int main()
     CHECK(backend.execute_offscreen(recreated_stream, backend_pixels));
     CHECK(!backend.execute_offscreen(resized_stream, backend_pixels));
     backend.shutdown();
+    CHECK(backend.initialize_device());
+    auto uploaded_vs = read_spirv(SHS_OFFSCREEN_SHADER_DIR "/uploaded_vs.spv");
+    CHECK(!uploaded_vs.empty());
+    auto uploaded_pd = pd;
+    uploaded_pd.vs = {RHIShaderStage::Vertex, uploaded_vs.data(), uploaded_vs.size() * 4, "vs_uploaded"};
+    uploaded_pd.vertex_layout = RHIVertexLayout::Position2F;
+    CHECK(hash_graphics_pipeline_desc(uploaded_pd) != hash_graphics_pipeline_desc(pd));
+    vk_test::arm(vk_test::Fault::Pipeline);
+    auto pipeline_failure = backend.prepare_offscreen(desc, uploaded_pd);
+    CHECK(!pipeline_failure && vk_test::triggered &&
+        pipeline_failure.error().code == VulkanExecutionError::CreationFailed);
+    CHECK(!backend.offscreen_target());
+    prepared = backend.prepare_offscreen(desc, uploaded_pd);
+    CHECK(prepared);
+    float vertices[] = {-0.5f, -0.5f, 0.5f, -0.5f, 0.0f, 0.5f};
+    uint16_t indices[] = {0, 1, 2};
+    const auto bytes_of = [](const auto& values) {
+        return std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(values), sizeof(values));
+    };
+    RHIBufferDesc vb_desc{};
+    vb_desc.size_bytes = sizeof(vertices);
+    vb_desc.usage = RHIBufferUsage_Vertex;
+    vb_desc.memory = RHIMemoryClass::CPUVisible;
+    auto ib_desc = vb_desc;
+    ib_desc.size_bytes = sizeof(indices);
+    ib_desc.usage = RHIBufferUsage_Index;
+    const auto vb = backend.create_buffer(vb_desc), ib = backend.create_buffer(ib_desc);
+    CHECK(vb && ib);
+    vk_test::arm(vk_test::Fault::Allocation);
+    RHIBufferDesc third_desc{};
+    third_desc.size_bytes = 16;
+    third_desc.usage = RHIBufferUsage_Vertex;
+    third_desc.memory = RHIMemoryClass::CPUVisible;
+    CHECK(backend.create_buffer(third_desc) == 0); // reported, nothing cached
+    CHECK(backend.create_buffer(third_desc) != 0); // retry succeeds
+    CHECK(!backend.upload_buffer(0, bytes_of(vertices)));
+    CHECK(!backend.upload_buffer(vb, bytes_of(indices)));
+    const RHICmd uploaded_stream[] = {rhi_cmd_begin_pass({backend.offscreen_target(), 0, true, false}),
+        rhi_cmd_bind_pipeline(*prepared), rhi_cmd_bind_vertex_buffer(vb, 0),
+        rhi_cmd_bind_index_buffer(ib, 0, false), rhi_cmd_draw_indexed({3}), rhi_cmd_end_pass()};
+    backend_pixels.resize(pixels.size());
+    CHECK(!backend.execute_offscreen(uploaded_stream, backend_pixels));
+    vk_test::arm(vk_test::Fault::Map);
+    const auto upload_failure = backend.upload_buffer(vb, bytes_of(vertices));
+    CHECK(!upload_failure && vk_test::triggered && upload_failure.error().code == VulkanExecutionError::UploadFailed);
+    CHECK(backend.upload_buffer(vb, bytes_of(vertices)));
+    CHECK(backend.upload_buffer(ib, bytes_of(indices)));
+    vk_test::arm(vk_test::Fault::Submit);
+    const std::vector<uint8_t> last_good = backend_pixels;
+    auto submit_failure = backend.execute_offscreen(uploaded_stream, backend_pixels);
+    CHECK(!submit_failure && vk_test::triggered &&
+        submit_failure.error().code == VulkanExecutionError::SubmissionFailed);
+    CHECK(backend_pixels == last_good); // untouched by the failed submission
+    CHECK(backend.execute_offscreen(uploaded_stream, backend_pixels));
+    CHECK(backend_pixels == pixels);
+    MeshData mesh;
+    for (int v = 0; v < 3; ++v) mesh.positions.push_back({vertices[v * 2], vertices[v * 2 + 1], 0});
+    mesh.indices = {0, 1, 2};
+    ShaderProgram software;
+    software.vs = [](const ShaderVertex& v, const ShaderUniforms&) {
+        VertexOut out; out.clip = glm::vec4(v.position, 1); return out;
+    };
+    software.fs = [](const FragmentIn&, const ShaderUniforms&) {
+        FragmentOut out; out.color = {1, 0.25f, 0, 1}; return out;
+    };
+    RT_ColorHDR software_target(32, 32, {0, 0, 0, 0});
+    RasterizerConfig raster_config;
+    raster_config.cull_mode = RasterizerCullMode::None;
+    const auto raster_stats = rasterize_mesh(mesh, software, {}, {&software_target, nullptr}, raster_config);
+    CHECK(raster_stats.tri_raster == 1);
+    CHECK(software_target.color.at(16, 12).r == 1 && software_target.color.at(16, 12).a == 1);
+    CHECK(software_target.color.at(1, 1).r == 0 && software_target.color.at(1, 1).a == 0);
+    size_t edge_differences = 0;
+    const glm::vec2 corners[] = {{8, 8}, {24, 8}, {16, 24}};
+    for (int y = 0; y < 32; ++y) for (int x = 0; x < 32; ++x)
+    {
+        const auto color = software_target.color.at(x, y);
+        const uint8_t sw[] = {uint8_t(std::lround(color.r * 255)), uint8_t(std::lround(color.g * 255)),
+            uint8_t(std::lround(color.b * 255)), uint8_t(std::lround(color.a * 255))};
+        const auto* gpu = backend_pixels.data() + (y * 32 + x) * 4;
+        bool equal = true;
+        for (int channel = 0; channel < 4; ++channel) equal &= sw[channel] == gpu[channel];
+        if (equal) continue;
+        ++edge_differences;
+        // Software uses (extent-1), Vulkan uses extent; coverage tolerance is
+        // geometric (one pixel), never a blanket color-error allowance.
+        float edge_distance = 1000;
+        const glm::vec2 point{x + 0.5f, y + 0.5f};
+        for (int edge = 0; edge < 3; ++edge)
+        {
+            const auto a = corners[edge], b = corners[(edge + 1) % 3];
+            const auto direction = b - a;
+            const auto t = std::clamp(glm::dot(point - a, direction) / glm::dot(direction, direction), 0.0f, 1.0f);
+            edge_distance = std::min(edge_distance, glm::length(point - (a + t * direction)));
+        }
+        CHECK(edge_distance <= 1.0f);
+        CHECK((sw[3] == 0) != (gpu[3] == 0)); // only coverage may differ
+    }
+    CHECK(edge_differences <= 64);
+    std::fprintf(stderr, "PASS: library SW/Vulkan triangle equivalence (%zu edge-coverage differences)\n", edge_differences);
+    indices[2] = 9;
+    CHECK(backend.upload_buffer(ib, bytes_of(indices)));
+    auto invalid_index = backend.execute_offscreen(uploaded_stream, backend_pixels);
+    CHECK(!invalid_index && invalid_index.error().recording.code == VulkanRecordingError::InvalidCommand);
+    CHECK(backend_pixels == pixels);
+    indices[1] = indices[2] = 0;
+    CHECK(backend.upload_buffer(ib, bytes_of(indices)));
+    CHECK(backend.execute_offscreen(uploaded_stream, backend_pixels));
+    for (auto value : backend_pixels) CHECK(value == 0); // degenerate indices are consumed
+    indices[1] = 1; indices[2] = 2;
+    CHECK(backend.upload_buffer(ib, bytes_of(indices)));
+    for (int v = 0; v < 3; ++v) vertices[v * 2] -= 0.5f;
+    CHECK(backend.upload_buffer(vb, bytes_of(vertices)));
+    CHECK(backend.execute_offscreen(uploaded_stream, backend_pixels));
+    CHECK(backend_pixels[(12 * 32 + 8) * 4] == 255);
+    CHECK(backend_pixels[(12 * 32 + 16) * 4] == 0);
+    backend.shutdown();
+    std::fprintf(stderr, "PASS: consumed vertex/index uploads, mutation, range rejection and known pixels\n");
     std::fprintf(stderr, "PASS: backend synchronous execution, repeated readback, rejection recovery and resize\n");
     std::fprintf(stderr, "PASS: submitted triangle, fence completion, RGBA8 known pixels\n");
 #else

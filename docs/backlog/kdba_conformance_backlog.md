@@ -189,6 +189,39 @@ resource lifetimes remain at the execution edge.
   allocation/submission failures, broader preparation failure cleanup, and G4.
   The concrete Vulkan backend API is tested; generic factory-interface execution
   and asynchronous retirement are not claimed.
+  — PARTIAL 2026-09-17 (upload + injection slice): explicit `RHIVertexLayout`
+  (Procedural default, Position2F) in `RHIGraphicsPipelineDesc`; hashed into the
+  pipeline cache key alongside the fragment entry name. `VulkanOffscreenPipeline`
+  realizes location/binding-0 float2 vertex input when Position2F is selected.
+  `VulkanRenderBackend::upload_buffer` writes full-size CPU-visible buffers
+  (map/unmap; requires explicit CPUVisible memory class; retries after a failed
+  map succeed). Backend execution preflights whole streams before recording:
+  bind/draw-index ranges are checked against a CPU-side shadow of uploaded bytes
+  (`InvalidCommand`/`MissingBinding` at the exact command index, output left
+  untouched). Indexed draws record `vkCmdDrawIndexed` with pass-scoped index
+  binding state. Regression evidence: uploaded triangle pixels equal the
+  independent procedural fixture exactly; degenerate index lists consume both
+  buffers and clear the image; moved vertices move the triangle; out-of-range
+  indices and unuploaded buffers are rejected preflight with untouched output.
+  Test-only `vk_failure_injection.hpp` interposes real Vulkan calls (memory
+  allocation, pipeline creation, fence, queue submit, map) to prove typed
+  failures and full cleanup/retry: failed pipeline creation unwinds the
+  prepared target, failed upload leaves buffers usable, failed submission
+  preserves the previous output and the transfer pool is reusable. Full build
+  and validation-enabled lavapipe CTest: 18/18. Staging→device-local copy upload
+  and factory-facing execution remain open G3 items.
+  — PARTIAL 2026-09-17 (triangle parity): the same minimal triangle runs through
+  the library software rasterizer (`rasterize_mesh`, cull None, clear {0,0,0,0})
+  and the Vulkan backend: identical vertices, indices, flat fragment color
+  {1,0.25,0,1} and clear policy. Away from triangle edges RGBA8 output is equal
+  exactly; differences are coverage-only, within a fixed one-pixel edge band
+  caused by the software rasterizer mapping NDC to (extent-1) while Vulkan uses
+  extent (15 differences on the 32×32 fixture; per-pixel alpha-transition check,
+  distance-to-triangle bound, and a cap on total differing pixels). Independent
+  known-answer checks (software interior `(1,0.25,0,1)`, background transparent,
+  raster stats) are asserted alongside the comparison. This is recipe-level
+  evidence for the fixed offscreen ABI, not full G4: single triangle, no
+  depth/motion paths, no portable CTest gate beyond the existing target.
 - [ ] **G4 Library SW/Vulkan equivalence** — run the same minimal scene/policy
   through actual library execution paths with documented per-output tolerances
   and independent known-answer checks. Wire portable CTest gates and retain

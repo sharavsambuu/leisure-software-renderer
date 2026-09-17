@@ -68,6 +68,9 @@ namespace shs
         bool has_depth = true;
     };
 
+    // Minimal explicit vertex ABI: tightly packed float2 at location/binding 0.
+    enum class RHIVertexLayout : uint8_t { Procedural, Position2F };
+
     struct RHIGraphicsPipelineDesc
     {
         RHIShaderModuleDesc vs{};
@@ -76,6 +79,7 @@ namespace shs
         RHIDepthStateDesc depth{};
         RHIBlendStateDesc blend{};
         RHIRenderTargetLayoutDesc rt{};
+        RHIVertexLayout vertex_layout = RHIVertexLayout::Procedural;
     };
 
     struct RHIComputePipelineDesc

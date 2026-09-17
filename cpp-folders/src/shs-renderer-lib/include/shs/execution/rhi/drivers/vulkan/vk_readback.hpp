@@ -9,7 +9,7 @@
 
 namespace shs
 {
-    enum class VulkanExecutionError { NotPrepared, InvalidDescriptor, CreationFailed, RecordingFailed, SubmissionFailed, ReadbackFailed };
+    enum class VulkanExecutionError { NotPrepared, InvalidDescriptor, CreationFailed, RecordingFailed, SubmissionFailed, ReadbackFailed, UploadFailed };
     struct VulkanExecutionFailure
     {
         VulkanExecutionError code;
