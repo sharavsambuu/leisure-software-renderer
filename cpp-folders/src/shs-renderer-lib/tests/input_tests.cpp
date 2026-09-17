@@ -5,7 +5,7 @@
 #include <vector>
 
 #include "shs/input/input.contract.hpp"
-#include "shs/app/session_orchestrator.hpp"
+#include "shs/app/session_orchestrator.gateway.hpp"
 #include "shs/core/testing/pod_test_kit.hpp"
 
 // Headless tests for the input pod (R3: P3.1 + P4.1 + P4.2) and the app

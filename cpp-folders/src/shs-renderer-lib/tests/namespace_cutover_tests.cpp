@@ -23,7 +23,7 @@
 
 #include "shs/app/backend/backend_factory.hpp"
 #include "shs/app/context.hpp"
-#include "shs/app/session_orchestrator.hpp"
+#include "shs/app/session_orchestrator.gateway.hpp"
 #include "shs/camera/camera_rig.hpp"
 #include "shs/render/frame/backend_type.hpp"
 #include "shs/rhi/core/backend.hpp"

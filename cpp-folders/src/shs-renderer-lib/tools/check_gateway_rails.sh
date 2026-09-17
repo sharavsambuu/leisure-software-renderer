@@ -16,12 +16,23 @@ set -euo pipefail
 # `static_assert` tail per `std::visit` so a NEW alternative fails to compile
 # instead of silently doing nothing (monostate is not in these variants).
 #
+# Comments (line and block) are stripped before scanning (lesson 9.10, as
+# extended 2026-09-17 by the W-D input slice: block-comment prose in a
+# `.gateway.hpp` banner legitimately names `std::visit`; a gate must not
+# police its own documentation).
+#
 # Scan root is `include/shs` of the lib tree; overridable for the negative
 # fixture (same pattern as check_contract_placement.sh, SHS_PLACEMENT_SCAN_ROOT).
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 lib_root="$(cd "${script_dir}/.." && pwd)"
 scan_root="${GATEWAY_RAILS_SCAN_ROOT:-${lib_root}/include/shs}"
+
+# lesson 9.10 (extended W-D input slice, 2026-09-17): strip line AND block
+# comments before any token scan — a text gate scans code, not prose.
+strip_comments() {
+  perl -0777 -pe 's{/\*.*?\*/}{}gs; s{//[^\n]*}{}g' "$1"
+}
 
 failed=0
 
@@ -61,7 +72,7 @@ fi
 # (trailing // comments are stripped first — prose may legitimately mention
 # the forbidden token; code may not contain it)
 default_hits="$(for f in "${gateway_files[@]}"; do
-  sed 's|//.*||' "${f}" | grep -nE '\bdefault[[:space:]]*:' | sed "s|^|${f}:|" || true
+  strip_comments "${f}" | grep -nE '\bdefault[[:space:]]*:' | sed "s|^|${f}:|" || true
 done)"
 if [[ -n "${default_hits}" ]]; then
   echo "[gateway-rails] FAIL: 'default:' swallow in a gateway dispatch (P5: closed variants are handled exhaustively)"
@@ -72,7 +83,7 @@ else
 fi
 
 for f in "${gateway_files[@]}"; do
-  visits="$(grep -c 'std::visit' "${f}" || true)"
+  visits="$(strip_comments "${f}" | grep -c 'std::visit' || true)"
   sasserts="$(grep -c 'static_assert' "${f}" || true)"
   if [[ "${visits}" -gt 0 && "${sasserts}" -lt "${visits}" ]]; then
     echo "[gateway-rails] FAIL: ${f#${scan_root}/} — std::visit dispatch without a static_assert exhaustiveness tail (P5: a new alternative must fail to compile, not silently do nothing)"

@@ -613,6 +613,52 @@ if(SHS_RENDERER_BUILD_TESTS)
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     )
 
+    # W-D input-pod guardrails (slice 9): the input pod owns translation
+    # only; its intents are applied at the app orchestrator rim
+    # (session_orchestrate). That rim is infallible by law (every intent in
+    # the closed 5-alternative vocabulary is valid), so the twins prove the
+    # silence side: a mixed valid batch applies every command with one fact
+    # per command and the handler untouched (enforced) / checks discarded
+    # (release twin). The P5 tail is compile-time.
+    add_executable(shs_renderer_input_guardrail_tests
+        tests/input_guardrail_tests.cpp
+    )
+    target_link_libraries(shs_renderer_input_guardrail_tests PRIVATE shs::renderer-values)
+    target_compile_features(shs_renderer_input_guardrail_tests PRIVATE cxx_std_23)
+    target_compile_definitions(shs_renderer_input_guardrail_tests PRIVATE SHS_CONTRACTS_ENFORCED=1)
+    if(MSVC)
+        target_compile_options(shs_renderer_input_guardrail_tests PRIVATE /W4)
+    else()
+        target_compile_options(shs_renderer_input_guardrail_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+
+    add_executable(shs_renderer_input_guardrail_release_tests
+        tests/input_guardrail_tests.cpp
+    )
+    target_link_libraries(shs_renderer_input_guardrail_release_tests PRIVATE shs::renderer-values)
+    target_compile_features(shs_renderer_input_guardrail_release_tests PRIVATE cxx_std_23)
+    if(MSVC)
+        target_compile_options(shs_renderer_input_guardrail_release_tests PRIVATE /W4)
+    else()
+        target_compile_options(shs_renderer_input_guardrail_release_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+
+    add_test(
+        NAME shs_renderer_input_guardrail_tests
+        COMMAND shs_renderer_input_guardrail_tests
+    )
+    set_tests_properties(shs_renderer_input_guardrail_tests PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    )
+
+    add_test(
+        NAME shs_renderer_input_guardrail_release_tests
+        COMMAND shs_renderer_input_guardrail_release_tests
+    )
+    set_tests_properties(shs_renderer_input_guardrail_release_tests PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    )
+
     # Replay parity (C1.4): identical probe source, only the contract mode
     # differs; replay-relevant output must be byte-identical across the pair.
     add_executable(shs_renderer_contract_replay_probe_enforced

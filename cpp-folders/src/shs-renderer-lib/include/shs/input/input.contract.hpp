@@ -28,7 +28,7 @@ namespace shs::input
     // --- state vocabulary ---
     // (RuntimeState moved to app ownership as shs::app::SessionState in
     // step 4.1; the root alias shs::RuntimeState lives in
-    // shs/app/session_orchestrator.hpp — the pod no longer names it.)
+    // shs/app/session_orchestrator.gateway.hpp — the pod no longer names it.)
     using shs::InputState;
     using shs::RuntimeInputLatch;
 

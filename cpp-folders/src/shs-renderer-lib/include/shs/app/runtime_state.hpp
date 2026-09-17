@@ -12,7 +12,7 @@
 
 // Edge-zone alias: the session aggregate (camera rig + render/session
 // settings) is app-owned since step 4.1; the old root symbol stays valid.
-#include "shs/app/session_orchestrator.hpp"
+#include "shs/app/session_orchestrator.gateway.hpp"
 
 namespace shs
 {

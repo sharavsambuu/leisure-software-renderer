@@ -53,7 +53,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-#include "shs/app/session_orchestrator.hpp"
+#include "shs/app/session_orchestrator.gateway.hpp"
 #include "shs/app/session_settings_sync.hpp"
 #include "shs/render/frame/frame.gateway.hpp"
 #include "shs/render/software/rasterizer.hpp"

@@ -4,7 +4,7 @@
 #include <string>
 
 #include "shs/app/context.hpp"
-#include "shs/app/session_orchestrator.hpp"
+#include "shs/app/session_orchestrator.gateway.hpp"
 #include "shs/render/frame/frame_params.hpp"
 #include "shs/input/storage/camera_commands.hpp"
 #include "shs/input/storage/command_processor.hpp"

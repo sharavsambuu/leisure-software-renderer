@@ -29,7 +29,7 @@
              per-frame render inputs; neither mutates the session.
 */
 
-#include "shs/app/session_orchestrator.hpp"
+#include "shs/app/session_orchestrator.gateway.hpp"
 #include "shs/camera/view_camera.hpp"
 #include "shs/render/frame/frame_params.hpp"
 #include "shs/scene/scene_types.hpp"

@@ -4,7 +4,7 @@
 #include <variant>
 #include <vector>
 
-#include "shs/app/session_orchestrator.hpp"
+#include "shs/app/session_orchestrator.gateway.hpp"
 #include "shs/app/session_settings_sync.hpp"
 #include "shs/camera/camera_rig.hpp"
 #include "shs/input/input.contract.hpp"

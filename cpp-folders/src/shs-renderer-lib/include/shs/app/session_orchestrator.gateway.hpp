@@ -33,6 +33,7 @@
 
 #include <glm/glm.hpp>
 
+#include "shs/core/contract_guardrails.hpp"
 #include "shs/camera/camera_rig.hpp"
 #include "shs/input/input.command.hpp"
 #include "shs/input/input.event.hpp"
@@ -178,8 +179,24 @@ namespace shs::app
                 {
                     detail::apply_quit(state, events, step);
                 }
+                else
+                {
+                    // P5 exhaustiveness (W-D input slice, 2026-09-17): the
+                    // command variant is closed — an unhandled alternative
+                    // must fail to compile here, never silently swallow
+                    // (no default:). The gate 9 scan covers *.gateway.hpp
+                    // only; this orchestrator rim is annotated by the sweep.
+                    static_assert(sizeof(T) == 0,
+                        "unhandled RuntimeCommand alternative in session_orchestrate dispatch");
+                }
             }, command);
         }
+        // Rim postcondition (W-D input slice, 2026-09-17): the rim is
+        // infallible by law — every intent in the closed vocabulary is valid
+        // for this pod (input.gateway.hpp: "the rim is infallible") — so
+        // zero-signal-loss (K3.2) means every consumed command was applied
+        // and emitted exactly one fact.
+        SHS_POST(step.commands_applied == commands.size());
         return step;
     }
 } // namespace shs::app

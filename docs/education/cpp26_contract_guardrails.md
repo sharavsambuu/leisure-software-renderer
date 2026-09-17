@@ -320,3 +320,10 @@ ban. A textual gate scans code, so strip trailing `//` comments before the
 match (and keep fixture prose that mentions the token — that is exactly what
 the negative test should prove). A gate that fails on its own documentation
 trains people to avoid documenting gates.
+
+*Extension (W-D input slice, 2026-09-17):* the lesson applies to block
+comments too. Renaming the app orchestrator seam to
+`session_orchestrator.gateway.hpp` brought its banner prose — which
+legitimately names `std::visit` when describing the retired gateway's shape —
+under the P5 visit-count check. `check_gateway_rails.sh` now strips both
+line and block comments before every token scan.

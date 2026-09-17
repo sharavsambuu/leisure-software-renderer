@@ -190,6 +190,53 @@ provably identical — empty closed vocabularies, no gateway seam):
 - [x] **Gates**: full CTest, boundary (incl. gates 8+9), include-graph,
   inventory same-commit (Rule 15).
 
+### Slice 9: input pod — **DONE 2026-09-17**
+
+- [x] **Railway audit**: the input pod owns TRANSLATION only (step 4.1) —
+  latch (`value_input_latch.hpp`) and pure command emitters
+  (`value_commands.hpp`); application of its intents moved to the explicit
+  app orchestrator `shs::app::session_orchestrate` (the retired
+  `input_gateway`'s Kleisli shape preserved verbatim). Application bodies
+  live in named `apply_*` arrows; the orchestrator is assembly-only. Rim is
+  Step-valued (`InputStep`, no bool rail, no throw — P2 green). Error
+  family documented in `ERROR_FLOW.md` ("intents emit their corresponding
+  facts; no domain error rail") — drift gate green. Quit idempotent;
+  movement/toggles not claimed idempotent (matches ERROR_FLOW).
+- [x] **Guardrail annotations (real gaps found)**:
+  1. **P5 gap in the orchestrator dispatch** — `session_orchestrate`'s
+     `std::visit` over the closed 5-alternative `RuntimeCommand` variant had
+     NO exhaustiveness tail. Gate 9 scans `*.gateway.hpp` only, so this rim
+     was invisible to it — a new intent alternative would have compiled
+     silently. Tail added. Gate 8 then correctly rejected the `SHS_POST`
+     (P1: edge law lives only in `*.gateway.hpp`/`*.contract.hpp`), which
+     forced the structural fix: the orchestrator file IS the application
+     seam (it carries the retired `input_gateway`'s Kleisli shape verbatim),
+     so it was renamed `session_orchestrator.gateway.hpp` — no gate was
+     relaxed, and the rename also closes the scan gap (gate 9's P5 check now
+     covers the dispatch natively; the vocabulary is additionally
+     count-pinned in `input.command.hpp`, variant_size == 5).
+  2. **Rim POST — zero-signal-loss**: the input rim is infallible by law
+     (every intent is valid; no rejection rail), so
+     `commands_applied == commands.size()` with exactly one fact per
+     command. `SHS_POST` added at the orchestrator rim.
+  3. Translation rim `input_latch_gateway`: exhaustive switch over 11
+     enumerators, no `default:` swallow, latch returned by value — protected
+     by `-Wswitch` under the project-wide `-Wall`; no Step type exists, so
+     no annotation applies (lesson 9.8).
+- [x] **Tests**: `shs_renderer_input_guardrail_tests` + release twin —
+  valid mixed batch (all 5 intent kinds) fully applied, one fact per
+  command, handler untouched in enforced build / assume path in release.
+  Negative leg not reachable through the public seam (closed vocabulary,
+  all intents valid) — same story family as the frame slice.
+- [x] **Gates**: full CTest, boundary (incl. gates 8+9), include-graph,
+  inventory same-commit (Rule 15).
+
+**W-D traversal COMPLETE (2026-09-17)**: 9/9 pods audited and annotated.
+The input slice also hardened the tooling: gate 9 now strips block comments
+before token scans (lesson 9.10 extension — a text gate must not police its
+own prose), and `session_orchestrator.gateway.hpp` brings the application
+rim under both gate 8 (placement) and gate 9 (rails) scans.
+
 
 ## W-E — Standing / parallel throughout
 
