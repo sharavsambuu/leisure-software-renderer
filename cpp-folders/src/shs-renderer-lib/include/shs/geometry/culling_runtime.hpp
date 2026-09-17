@@ -24,6 +24,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace geometry
+    {
     enum class CullingPassKind : uint8_t
     {
         Frustum = 0,
@@ -234,6 +237,8 @@ namespace shs
         VisibilityHistoryPolicy policy_{};
         std::unordered_map<uint32_t, Entry> entries_{};
     };
+
+    } // inline namespace geometry
 }
 
 #endif // SHS_HAS_JOLT

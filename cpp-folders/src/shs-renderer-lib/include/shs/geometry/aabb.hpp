@@ -13,6 +13,9 @@
 #include <algorithm>
 
 namespace shs {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace geometry
+    {
 
 struct AABB {
     glm::vec3 minv{  1e30f };
@@ -27,4 +30,6 @@ struct AABB {
     inline glm::vec3 extent() const { return 0.5f * (maxv - minv); }
 };
 
+
+    } // inline namespace geometry
 } // namespace shs

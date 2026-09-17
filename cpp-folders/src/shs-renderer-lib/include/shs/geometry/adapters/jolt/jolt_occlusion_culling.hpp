@@ -28,6 +28,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace geometry
+    {
     // =========================================================================
     //  Occlusion culling result
     // =========================================================================
@@ -193,6 +196,8 @@ namespace shs
         }
         return out;
     }
+
+    } // inline namespace geometry
 }
 
 #endif // SHS_HAS_JOLT

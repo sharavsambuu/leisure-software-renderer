@@ -22,6 +22,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace geometry
+    {
     // =========================================================================
     //  Batch frustum cull for scene objects
     //  Extracts frustum from view-projection, then uses generic cull_vs_frustum.
@@ -52,6 +55,8 @@ namespace shs
         const CullClass c = classify_vs_frustum(obj, frustum, tol);
         return c != CullClass::Outside;
     }
+
+    } // inline namespace geometry
 }
 
 #endif // SHS_HAS_JOLT

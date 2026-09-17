@@ -22,6 +22,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace geometry
+    {
     template<typename TObject, typename GetStableIdFn, typename SetOccludedFn>
     requires requires(
         TObject& object,
@@ -111,6 +114,8 @@ namespace shs
             query_count == 0u &&
             stats.visible_count == 0u;
     }
+
+    } // inline namespace geometry
 }
 
 #endif // SHS_HAS_JOLT

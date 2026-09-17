@@ -19,6 +19,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace geometry
+    {
     enum class FrustumPlane : uint32_t
     {
         Left = 0,
@@ -86,4 +89,6 @@ namespace shs
         }
         return true;
     }
+
+    } // inline namespace geometry
 }

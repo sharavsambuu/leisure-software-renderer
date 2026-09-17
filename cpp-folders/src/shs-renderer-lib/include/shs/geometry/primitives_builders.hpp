@@ -21,6 +21,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace geometry
+    {
     namespace detail
     {
         inline uint32_t add_vertex(MeshData& m, const glm::vec3& p, const glm::vec3& n, const glm::vec2& uv)
@@ -242,4 +245,6 @@ namespace shs
 
         return m;
     }
+
+    } // inline namespace geometry
 }

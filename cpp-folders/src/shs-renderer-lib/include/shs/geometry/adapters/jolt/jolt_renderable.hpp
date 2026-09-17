@@ -26,6 +26,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace geometry
+    {
     /**
      * @brief High-level renderable object based on Jolt Physics shape.
      * Integrates geometry (JPH::Shape), transform (JPH::Mat44), and material.
@@ -98,6 +101,8 @@ namespace shs
             return ri;
         }
     };
+
+    } // inline namespace geometry
 }
 
 #endif // SHS_HAS_JOLT

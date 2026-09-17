@@ -25,6 +25,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace geometry
+    {
     // =========================================================================
     //  Shape Kind Enum — compile-time shape category tag
     // =========================================================================
@@ -105,6 +108,8 @@ namespace shs
     /// Cullable object that also provides a fast bounding sphere.
     template<typename T>
     concept FastCullable = Cullable<T> && HasBoundingSphere<T>;
+
+    } // inline namespace geometry
 }
 
 #endif // SHS_HAS_JOLT

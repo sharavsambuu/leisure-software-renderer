@@ -36,7 +36,12 @@
 #include "shs/resources/mesh.hpp"
 
 // Forward declare light types to avoid circular dependency.
-namespace shs { struct SpotLight; struct RectAreaLight; struct TubeAreaLight; }
+namespace shs {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace geometry
+    { struct SpotLight; struct RectAreaLight; struct TubeAreaLight; 
+    } // inline namespace geometry
+}
 
 namespace shs::jolt
 {

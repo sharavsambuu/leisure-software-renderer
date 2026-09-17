@@ -14,6 +14,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace geometry
+    {
     struct PlaneDesc
     {
         float width = 10.0f;
@@ -45,5 +48,7 @@ namespace shs
         int seg_height = 1;
         bool cap = true;
     };
+
+    } // inline namespace geometry
 }
 

@@ -38,6 +38,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace geometry
+    {
     // =========================================================================
     //  CullingCell — хөнгөн жинтэй хавтан (tile)/багц (cluster)/бууралт (cascade) шалгах нүд
     //  Хуучин ConvexCell-тэй ижил боловч Jolt-д суурилсан шугамд зориулагдсан.
@@ -366,6 +369,8 @@ namespace shs
         if (include_intersecting && c == CullClass::Intersecting) return true;
         return false;
     }
+
+    } // inline namespace geometry
 }
 
 #endif // SHS_HAS_JOLT

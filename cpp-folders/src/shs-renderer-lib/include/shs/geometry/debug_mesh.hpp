@@ -23,6 +23,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace geometry
+    {
     struct DebugMesh
     {
         std::vector<glm::vec3> vertices{};
@@ -39,4 +42,6 @@ namespace shs
             return vertices.empty();
         }
     };
+
+    } // inline namespace geometry
 } // namespace shs

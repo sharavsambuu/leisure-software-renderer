@@ -4116,6 +4116,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "geometry",
       "namespace_declarations": [
+        "geometry",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -4216,6 +4217,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "geometry",
       "namespace_declarations": [
+        "geometry",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -4273,6 +4275,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "geometry",
       "namespace_declarations": [
+        "geometry",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -4320,6 +4323,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "geometry",
       "namespace_declarations": [
+        "geometry",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -4351,6 +4355,7 @@
       "proposed_owner": "geometry",
       "namespace_declarations": [
         "detail",
+        "geometry",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -4393,6 +4398,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "geometry",
       "namespace_declarations": [
+        "geometry",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -4431,6 +4437,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "geometry",
       "namespace_declarations": [
+        "geometry",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -4470,6 +4477,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "geometry",
       "namespace_declarations": [
+        "geometry",
         "shs",
         "shs::jolt"
       ],
@@ -4529,6 +4537,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "geometry",
       "namespace_declarations": [
+        "geometry",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -4562,6 +4571,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "geometry",
       "namespace_declarations": [
+        "geometry",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -4596,6 +4606,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "geometry",
       "namespace_declarations": [
+        "geometry",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -4688,6 +4699,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "geometry",
       "namespace_declarations": [
+        "geometry",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -4722,6 +4734,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "geometry",
       "namespace_declarations": [
+        "geometry",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -4748,6 +4761,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "geometry",
       "namespace_declarations": [
+        "geometry",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -4853,6 +4867,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "geometry",
       "namespace_declarations": [
+        "geometry",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -4878,6 +4893,7 @@
       "proposed_owner": "geometry",
       "namespace_declarations": [
         "detail",
+        "geometry",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -4911,6 +4927,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "geometry",
       "namespace_declarations": [
+        "geometry",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -4967,6 +4984,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "geometry",
       "namespace_declarations": [
+        "geometry",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -4989,6 +5007,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "geometry",
       "namespace_declarations": [
+        "geometry",
         "shs"
       ],
       "visibility": "public-include-tree",

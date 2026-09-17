@@ -28,6 +28,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace geometry
+    {
     struct SceneShape
     {
         JPH::ShapeRefC  shape{};
@@ -85,6 +88,8 @@ namespace shs
     static_assert(Cullable<SceneShape>, "SceneShape нь Cullable концептийг хангасан байх ёстой");
     static_assert(FastCullable<SceneShape>, "SceneShape нь FastCullable концептийг хангасан байх ёстой");
     static_assert(HasWorldAABB<SceneShape>, "SceneShape нь HasWorldAABB концептийг хангасан байх ёстой");
+
+    } // inline namespace geometry
 }
 
 #endif // SHS_HAS_JOLT

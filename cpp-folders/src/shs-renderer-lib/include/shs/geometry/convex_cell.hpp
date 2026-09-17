@@ -20,6 +20,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace geometry
+    {
     inline constexpr uint32_t k_convex_cell_max_planes = 16u;
 
     enum class ConvexCellKind : uint8_t
@@ -83,5 +86,7 @@ namespace shs
         const Frustum frustum = extract_frustum_planes(view_proj);
         return make_convex_cell_from_frustum(frustum, kind);
     }
+
+    } // inline namespace geometry
 }
 

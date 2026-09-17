@@ -22,6 +22,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace geometry
+    {
     struct Point3
     {
         glm::vec3 p{0.0f};
@@ -251,4 +254,6 @@ namespace shs
         }
         return out;
     }
+
+    } // inline namespace geometry
 }

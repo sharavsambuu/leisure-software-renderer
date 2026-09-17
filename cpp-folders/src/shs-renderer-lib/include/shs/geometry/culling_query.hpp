@@ -20,6 +20,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace geometry
+    {
     enum class CullClass : uint8_t
     {
         Outside = 0,
@@ -209,5 +212,7 @@ namespace shs
         return classify_support_shape(cylinder, cell, tol);
     }
 
+
+    } // inline namespace geometry
 }
 

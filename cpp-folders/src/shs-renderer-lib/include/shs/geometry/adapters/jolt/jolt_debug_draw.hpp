@@ -30,6 +30,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace geometry
+    {
     // DebugMesh is a pure value type now owned by shs/geometry/debug_mesh.hpp
     // (value seam: adapters produce it, software rendering consumes it).
 
@@ -224,6 +227,8 @@ namespace shs
         }
         return mesh;
     }
+
+    } // inline namespace geometry
 }
 
 #endif // SHS_HAS_JOLT

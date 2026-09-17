@@ -15,6 +15,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace geometry
+    {
     struct TangentFrame
     {
         glm::vec3 tangent{1.0f, 0.0f, 0.0f};
@@ -45,4 +48,6 @@ namespace shs
     {
         return glm::normalize(f.tangent * n_tangent.x + f.bitangent * n_tangent.y + f.normal * n_tangent.z);
     }
+
+    } // inline namespace geometry
 } // namespace shs
