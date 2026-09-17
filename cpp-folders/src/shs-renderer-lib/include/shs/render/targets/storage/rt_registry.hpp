@@ -13,10 +13,11 @@
 #include <cstdint>
 #include <cmath>
 #include <memory>
+#include <memory_resource>
 #include <string>
 #include <type_traits>
-#include <unordered_map>
 
+#include "shs/containers/flat_map.hpp"
 #include "shs/render/targets/rt_handle.hpp"
 #include "shs/render/targets/rt_shadow.hpp"
 #include "shs/render/targets/rt_types.hpp"
@@ -47,6 +48,16 @@ namespace shs
     class RTRegistry
     {
     public:
+        // Cold-registry container migration (W-E, 2026-09-17): keyed state is
+        // node-free (shs::containers::FlatMap, §7.2 rule 5/6 — shared lib
+        // utility, no private copies). Defaults to the default pmr resource;
+        // pass an arena for arena-scoped lifetimes.
+        explicit RTRegistry(
+            std::pmr::memory_resource* resource = std::pmr::get_default_resource())
+            : map_{resource},
+              transient_ldr_{resource}, transient_hdr_{resource},
+              transient_motion_{resource}, transient_shadow_{resource} {}
+
         struct Extent
         {
             int w = 0;
@@ -81,35 +92,35 @@ namespace shs
         template<typename THandle>
         bool has(THandle h) const
         {
-            return map_.find(h.id) != map_.end();
+            return map_.contains(h.id);
         }
 
         template<typename THandle>
         void* get(THandle h) const
         {
-            auto it = map_.find(h.id);
-            return (it == map_.end()) ? nullptr : it->second.ptr;
+            const Entry* e = map_.find(h.id);
+            return e ? e->ptr : nullptr;
         }
 
         template<typename THandle>
         RTKind kind(THandle h) const
         {
-            auto it = map_.find(h.id);
-            return (it == map_.end()) ? RTKind::Unknown : it->second.kind;
+            const Entry* e = map_.find(h.id);
+            return e ? e->kind : RTKind::Unknown;
         }
 
         RTHandle ensure_transient_color_ldr(const std::string& name, int w, int h, Color clear = {0, 0, 0, 255})
         {
-            auto it = transient_ldr_.find(name);
-            if (it == transient_ldr_.end())
+            TransientLdr* slot = transient_ldr_.find(name);
+            if (!slot)
             {
                 auto rt = std::make_unique<RT_ColorLDR>(w, h, clear);
                 RTHandle hdl = reg_impl<RTHandle>((void*)rt.get(), RTKind::ColorLDR);
-                auto [ins_it, _] = transient_ldr_.emplace(name, TransientLdr{hdl, std::move(rt)});
-                return ins_it->second.handle;
+                slot = transient_ldr_.insert_or_assign(name, TransientLdr{hdl, std::move(rt)});
+                return slot->handle;
             }
 
-            RT_ColorLDR* rt = it->second.rt.get();
+            RT_ColorLDR* rt = slot->rt.get();
             if (!rt) return RTHandle{};
             if (rt->w != w || rt->h != h)
             {
@@ -117,21 +128,21 @@ namespace shs
                 rt->h = h;
                 rt->color.resize(w, h, clear);
             }
-            return it->second.handle;
+            return slot->handle;
         }
 
         RTHandle ensure_transient_color_hdr(const std::string& name, int w, int h, ColorF clear = {0.0f, 0.0f, 0.0f, 1.0f})
         {
-            auto it = transient_hdr_.find(name);
-            if (it == transient_hdr_.end())
+            TransientHdr* slot = transient_hdr_.find(name);
+            if (!slot)
             {
                 auto rt = std::make_unique<RT_ColorHDR>(w, h, clear);
                 RTHandle hdl = reg_impl<RTHandle>((void*)rt.get(), RTKind::ColorHDR);
-                auto [ins_it, _] = transient_hdr_.emplace(name, TransientHdr{hdl, std::move(rt)});
-                return ins_it->second.handle;
+                slot = transient_hdr_.insert_or_assign(name, TransientHdr{hdl, std::move(rt)});
+                return slot->handle;
             }
 
-            RT_ColorHDR* rt = it->second.rt.get();
+            RT_ColorHDR* rt = slot->rt.get();
             if (!rt) return RTHandle{};
             if (rt->w != w || rt->h != h)
             {
@@ -139,81 +150,81 @@ namespace shs
                 rt->h = h;
                 rt->color.resize(w, h, clear);
             }
-            return it->second.handle;
+            return slot->handle;
         }
 
         RTHandle ensure_transient_motion(const std::string& name, int w, int h, float zn, float zf, Color clear = {0, 0, 0, 255})
         {
-            auto it = transient_motion_.find(name);
-            if (it == transient_motion_.end())
+            TransientMotion* slot = transient_motion_.find(name);
+            if (!slot)
             {
                 auto rt = std::make_unique<RT_ColorDepthMotion>(w, h, zn, zf, clear);
                 RTHandle hdl = reg_impl<RTHandle>((void*)rt.get(), RTKind::Motion);
-                auto [ins_it, _] = transient_motion_.emplace(name, TransientMotion{hdl, std::move(rt)});
-                return ins_it->second.handle;
+                slot = transient_motion_.insert_or_assign(name, TransientMotion{hdl, std::move(rt)});
+                return slot->handle;
             }
 
-            RT_ColorDepthMotion* rt = it->second.rt.get();
+            RT_ColorDepthMotion* rt = slot->rt.get();
             if (!rt) return RTHandle{};
             if (rt->w != w || rt->h != h || std::abs(rt->zn - zn) > 1e-6f || std::abs(rt->zf - zf) > 1e-6f)
             {
                 *rt = RT_ColorDepthMotion(w, h, zn, zf, clear);
             }
-            return it->second.handle;
+            return slot->handle;
         }
 
         RTHandle ensure_transient_shadow(const std::string& name, int w, int h)
         {
-            auto it = transient_shadow_.find(name);
-            if (it == transient_shadow_.end())
+            TransientShadow* slot = transient_shadow_.find(name);
+            if (!slot)
             {
                 auto rt = std::make_unique<RT_ShadowDepth>(w, h);
                 RTHandle hdl = reg_impl<RTHandle>((void*)rt.get(), RTKind::Shadow);
-                auto [ins_it, _] = transient_shadow_.emplace(name, TransientShadow{hdl, std::move(rt)});
-                return ins_it->second.handle;
+                slot = transient_shadow_.insert_or_assign(name, TransientShadow{hdl, std::move(rt)});
+                return slot->handle;
             }
 
-            RT_ShadowDepth* rt = it->second.rt.get();
+            RT_ShadowDepth* rt = slot->rt.get();
             if (!rt) return RTHandle{};
             if (rt->w != w || rt->h != h)
             {
                 rt->resize(w, h);
             }
-            return it->second.handle;
+            return slot->handle;
         }
 
         template<typename THandle>
         Extent extent(THandle h) const
         {
             Extent e{};
-            auto it = map_.find(h.id);
-            if (it == map_.end() || !it->second.ptr) return e;
-            switch (it->second.kind)
+            const Entry* entry = map_.find(h.id);
+            if (!entry || !entry->ptr) return e;
+            switch (entry->kind)
             {
                 case RTKind::ColorLDR:
                 {
-                    auto* p = static_cast<const RT_ColorLDR*>(it->second.ptr);
+                    auto* p = static_cast<const RT_ColorLDR*>(entry->ptr);
                     e.w = p ? p->w : 0;
                     e.h = p ? p->h : 0;
                     break;
                 }
                 case RTKind::ColorHDR:
                 {
-                    auto* p = static_cast<const RT_ColorHDR*>(it->second.ptr);
+                    auto* p = static_cast<const RT_ColorHDR*>(entry->ptr);
                     e.w = p ? p->w : 0;
                     e.h = p ? p->h : 0;
                     break;
                 }
                 case RTKind::Motion:
                 {
-                    auto* p = static_cast<const RT_ColorDepthMotion*>(it->second.ptr);
+                    auto* p = static_cast<const RT_ColorDepthMotion*>(entry->ptr);
                     e.w = p ? p->w : 0;
                     e.h = p ? p->h : 0;
                     break;
                 }
                 case RTKind::Shadow:
                 {
-                    auto* p = static_cast<const RT_ShadowDepth*>(it->second.ptr);
+                    auto* p = static_cast<const RT_ShadowDepth*>(entry->ptr);
                     e.w = p ? p->w : 0;
                     e.h = p ? p->h : 0;
                     break;
@@ -237,7 +248,7 @@ namespace shs
         {
             THandle h{};
             h.id = next_id_++;
-            map_[h.id] = Entry{ptr, kind};
+            map_.insert_or_assign(h.id, Entry{ptr, kind});
             return h;
         }
 
@@ -263,11 +274,11 @@ namespace shs
         };
 
         uint32_t next_id_ = 1;
-        std::unordered_map<uint32_t, Entry> map_{};
-        std::unordered_map<std::string, TransientLdr> transient_ldr_{};
-        std::unordered_map<std::string, TransientHdr> transient_hdr_{};
-        std::unordered_map<std::string, TransientMotion> transient_motion_{};
-        std::unordered_map<std::string, TransientShadow> transient_shadow_{};
+        containers::FlatMap<uint32_t, Entry> map_;
+        containers::FlatMap<std::string, TransientLdr> transient_ldr_;
+        containers::FlatMap<std::string, TransientHdr> transient_hdr_;
+        containers::FlatMap<std::string, TransientMotion> transient_motion_;
+        containers::FlatMap<std::string, TransientShadow> transient_shadow_;
     };
 
     } // inline namespace render

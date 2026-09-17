@@ -10,10 +10,11 @@
 */
 
 
+#include <memory_resource>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
+#include "shs/containers/flat_map.hpp"
 #include "shs/resources/material.hpp"
 #include "shs/resources/mesh.hpp"
 #include "shs/resources/texture.hpp"
@@ -43,6 +44,15 @@ namespace shs
     class ResourceRegistry
     {
     public:
+        // Cold-registry container migration (W-E, 2026-09-17): keyed state is
+        // node-free (shs::containers::FlatMap, §7.2 rule 5/6 — shared lib
+        // utility, no private copies). Defaults to the default pmr resource;
+        // pass an arena for arena-scoped lifetimes.
+        explicit ResourceRegistry(
+            std::pmr::memory_resource* resource = std::pmr::get_default_resource())
+            : mesh_by_key_{resource}, texture_by_key_{resource},
+              material_by_key_{resource} {}
+
         // Identity epoch (step 4.3): bumped by every clear(). Handles minted
         // in an older generation are stale and must be re-derived via find_*.
         uint64_t generation() const { return generation_; }
@@ -50,7 +60,7 @@ namespace shs
         {
             meshes_.push_back(std::move(mesh));
             const MeshAssetHandle h = (MeshAssetHandle)meshes_.size();
-            if (!key.empty()) mesh_by_key_[key] = h;
+            if (!key.empty()) mesh_by_key_.insert_or_assign(key, h);
             return h;
         }
 
@@ -58,7 +68,7 @@ namespace shs
         {
             textures_.push_back(std::move(tex));
             const TextureAssetHandle h = (TextureAssetHandle)textures_.size();
-            if (!key.empty()) texture_by_key_[key] = h;
+            if (!key.empty()) texture_by_key_.insert_or_assign(key, h);
             return h;
         }
 
@@ -66,7 +76,7 @@ namespace shs
         {
             materials_.push_back(std::move(mat));
             const MaterialAssetHandle h = (MaterialAssetHandle)materials_.size();
-            if (!key.empty()) material_by_key_[key] = h;
+            if (!key.empty()) material_by_key_.insert_or_assign(key, h);
             return h;
         }
 
@@ -108,20 +118,20 @@ namespace shs
 
         MeshAssetHandle find_mesh(const std::string& key) const
         {
-            const auto it = mesh_by_key_.find(key);
-            return it == mesh_by_key_.end() ? 0u : it->second;
+            const MeshAssetHandle* v = mesh_by_key_.find(key);
+            return v ? *v : 0u;
         }
 
         TextureAssetHandle find_texture(const std::string& key) const
         {
-            const auto it = texture_by_key_.find(key);
-            return it == texture_by_key_.end() ? 0u : it->second;
+            const TextureAssetHandle* v = texture_by_key_.find(key);
+            return v ? *v : 0u;
         }
 
         MaterialAssetHandle find_material(const std::string& key) const
         {
-            const auto it = material_by_key_.find(key);
-            return it == material_by_key_.end() ? 0u : it->second;
+            const MaterialAssetHandle* v = material_by_key_.find(key);
+            return v ? *v : 0u;
         }
 
         size_t mesh_count() const { return meshes_.size(); }
@@ -144,9 +154,9 @@ namespace shs
         std::vector<MeshData> meshes_{};
         std::vector<Texture2DData> textures_{};
         std::vector<MaterialData> materials_{};
-        std::unordered_map<std::string, MeshAssetHandle> mesh_by_key_{};
-        std::unordered_map<std::string, TextureAssetHandle> texture_by_key_{};
-        std::unordered_map<std::string, MaterialAssetHandle> material_by_key_{};
+        containers::FlatMap<std::string, MeshAssetHandle> mesh_by_key_;
+        containers::FlatMap<std::string, TextureAssetHandle> texture_by_key_;
+        containers::FlatMap<std::string, MaterialAssetHandle> material_by_key_;
     };
 
     } // inline namespace resources

@@ -94,8 +94,10 @@ echo "[kdba-boundary] OK: value-tier pod headers carry no direct adapter/executi
 
 # §7.2 rule 5 (roadmap P1.5 DoD): no node-based containers in hot-state zones.
 # Hot-state zones are the shared primitive utilities (memory/, containers/,
-# frame/) and the domain pods' state headers; cold string-keyed registries in
-# the resources + gfx cold registries are flagged INFO until their migration.
+# frame/) and the domain pods' state headers. The resources + gfx cold
+# registries were migrated to shs::containers::FlatMap (W-E, 2026-09-17);
+# remaining pod-zone node containers below are renderpath execution/planner
+# edges (sanctioned execution tier, not keyed hot state).
 node_container_pattern='std::(list|map|set|unordered_map|unordered_set)[[:space:]]*<'
 hot_state_dirs=(
   "${lib_root}/include/shs/memory"
@@ -121,7 +123,7 @@ echo "[kdba-boundary] OK: zero node-based containers in hot-state zones (§7.2 r
 
 cold_registry_hits="$(grep -rnE 'std::(list|map|set|unordered_map|unordered_set)[[:space:]]*<' \
   "${pod_scan_dirs[@]}" 2>/dev/null || true | wc -l)"
-echo "[kdba-boundary] INFO: ${cold_registry_hits} node-container uses in pod zones (cold registries; migrate to FlatMap — tracked in docs/backlog/kdba_conformance_backlog.md)"
+echo "[kdba-boundary] INFO: ${cold_registry_hits} node-container uses in pod zones (renderpath execution/planner edges; resources+gfx cold registries migrated to FlatMap 2026-09-17, W-E)"
 
 if [[ "${failed}" -ne 0 ]]; then
   exit 1

@@ -242,6 +242,17 @@ rim under both gate 8 (placement) and gate 9 (rails) scans.
 
 - **Cold-registry container migration** (resources, gfx → flat maps);
   shared lib utilities in `shs/containers/`, no private copies (vop §7 rule 6).
+  **DONE (2026-09-17):** `ResourceRegistry` (resources/storage) and `RTRegistry`
+  (render/targets/storage) keyed state migrated to `shs::containers::FlatMap`
+  — 3 string-keyed handle maps + 5 id/transient maps, zero new container code
+  (the shared utility already existed per §7.2 rule 6). Behavior preserved
+  (append-only, last-wins rebind, stale-handle null rule); pmr resource is
+  injected with `get_default_resource()` default (house pattern from
+  `VulkanResourceRegistry`). Gate 5's INFO line reworded: cold registries are
+  no longer the tracked debt — remaining pod-zone node containers are the
+  renderpath execution/planner edges. Regression net: existing 43-test suite
+  (resources/scene/vertical-slice/vk-driver/core exercise both registries);
+  inventory regenerated same-commit.
 - **C4.2 toolchain tracking** (GCC 16/17 + Clang contract support table);
   C4.3/P4 native switch runbook stands until a toolchain ruling — the
   replay-parity CTest is the release blocker when it fires.

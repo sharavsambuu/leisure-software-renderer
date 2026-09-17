@@ -225,6 +225,7 @@
         "cpp-folders/src/shs-renderer-lib/include/shs/app/session_settings_sync.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/app/vertical_slice_host.hpp",
         "cpp-folders/src/shs-renderer-lib/tests/core_tests.cpp",
+        "cpp-folders/src/shs-renderer-lib/tests/input_guardrail_tests.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/input_tests.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/namespace_cutover_tests.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/session_orchestration_tests.cpp"
@@ -643,6 +644,8 @@
         "utility"
       ],
       "tracked_consumers": [
+        "cpp-folders/src/shs-renderer-lib/include/shs/render/targets/storage/rt_registry.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/resources/storage/resource_registry.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/rhi/vulkan/value/vk_backend.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/rhi/vulkan/value/vk_pipelines.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/rhi/vulkan/value/vk_resources.hpp",
@@ -740,6 +743,7 @@
         "cpp-folders/src/shs-renderer-lib/tests/contract_guardrails_replay_probe.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/contract_guardrails_tests.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/frame_guardrail_tests.cpp",
+        "cpp-folders/src/shs-renderer-lib/tests/input_guardrail_tests.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/logic_guardrail_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
@@ -3427,14 +3431,16 @@
         "cmath",
         "cstdint",
         "memory",
+        "memory_resource",
+        "shs/containers/flat_map.hpp",
         "shs/render/targets/rt_handle.hpp",
         "shs/render/targets/rt_shadow.hpp",
         "shs/render/targets/rt_types.hpp",
         "string",
-        "type_traits",
-        "unordered_map"
+        "type_traits"
       ],
       "internal_dependencies": [
+        "shs/containers/flat_map.hpp",
         "shs/render/targets/rt_handle.hpp",
         "shs/render/targets/rt_shadow.hpp",
         "shs/render/targets/rt_types.hpp"
@@ -3443,9 +3449,9 @@
         "cmath",
         "cstdint",
         "memory",
+        "memory_resource",
         "string",
-        "type_traits",
-        "unordered_map"
+        "type_traits"
       ],
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/include/shs/render/targets/gfx.contract.hpp",
@@ -5292,21 +5298,23 @@
       ],
       "visibility": "public-include-tree",
       "direct_dependencies": [
+        "memory_resource",
+        "shs/containers/flat_map.hpp",
         "shs/resources/material.hpp",
         "shs/resources/mesh.hpp",
         "shs/resources/texture.hpp",
         "string",
-        "unordered_map",
         "vector"
       ],
       "internal_dependencies": [
+        "shs/containers/flat_map.hpp",
         "shs/resources/material.hpp",
         "shs/resources/mesh.hpp",
         "shs/resources/texture.hpp"
       ],
       "external_dependencies": [
+        "memory_resource",
         "string",
-        "unordered_map",
         "vector"
       ],
       "tracked_consumers": [
@@ -7401,6 +7409,7 @@
     "memory": [],
     "platform": [],
     "render": [
+      "containers",
       "core",
       "geometry",
       "lighting",
@@ -7421,6 +7430,7 @@
       "task"
     ],
     "resources": [
+      "containers",
       "geometry",
       "render",
       "sky"
