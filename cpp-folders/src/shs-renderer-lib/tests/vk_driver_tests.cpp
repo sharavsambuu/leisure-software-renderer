@@ -379,7 +379,12 @@ namespace
 
         std::vector<shs::RHICmd> stream;
         stream.push_back(shs::rhi_cmd_bind_pipeline(0x47ull));
-        backend.record_frame_commands(std::span<const shs::RHICmd>(stream.data(), stream.size()));
+        const auto recorded = backend.record_frame_commands(
+            std::span<const shs::RHICmd>(stream.data(), stream.size()));
+        if (recorded || recorded.error() != shs::VulkanRecordingError::DeviceUnavailable) return false;
+        // Even an empty stream must not disguise an unavailable execution edge.
+        const auto empty = backend.record_frame_commands({});
+        if (empty || empty.error() != shs::VulkanRecordingError::DeviceUnavailable) return false;
 
         backend.shutdown();
         return true;

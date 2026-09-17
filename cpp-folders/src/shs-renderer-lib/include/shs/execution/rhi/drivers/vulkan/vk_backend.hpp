@@ -16,6 +16,7 @@
 */
 
 #include <cstdint>
+#include <expected>
 #include <memory_resource>
 
 #include <vulkan/vulkan.h>
@@ -31,6 +32,12 @@
 
 namespace shs
 {
+    enum class VulkanRecordingError : uint8_t
+    {
+        DeviceUnavailable,
+        CommandBufferUnavailable
+    };
+
     using VulkanBufferPool = containers::FlatMap<uint64_t, VkBuffer>;
     using VulkanImagePool = containers::FlatMap<uint64_t, VkImage>;
     using VulkanMemoryPool = containers::FlatMap<uint64_t, VkDeviceMemory>;
@@ -138,8 +145,8 @@ namespace shs
         }
 
         // Explicit, once-only device bootstrap. Returns false when no Vulkan
-        // loader/ICD exists; the backend then runs in headless value mode
-        // (bookkeeping works, GPU entry points no-op) instead of failing.
+        // loader/ICD exists. Headless bookkeeping remains usable, but command
+        // recording reports DeviceUnavailable rather than silently succeeding.
         [[nodiscard]] bool initialize_device(const VulkanDeviceDesc& desc = {})
         {
             if (device_.device_available()) return true;
@@ -168,11 +175,16 @@ namespace shs
 
         // ---- CommandDesc stream recording (arch §4 rule 2) ----------------
 
-        void record_frame_commands(std::span<const RHICmd> stream)
+        [[nodiscard]] std::expected<void, VulkanRecordingError> record_frame_commands(
+            std::span<const RHICmd> stream)
         {
-            if (!device_.device_available() || command_buffer_ == VK_NULL_HANDLE) return;
+            if (!device_.device_available())
+                return std::unexpected(VulkanRecordingError::DeviceUnavailable);
+            if (command_buffer_ == VK_NULL_HANDLE)
+                return std::unexpected(VulkanRecordingError::CommandBufferUnavailable);
             VulkanCommandRecorder recorder{device_.device(), command_buffer_, buffers_, images_};
             record_commands(stream, recorder);
+            return {};
         }
 
         void set_command_buffer(VkCommandBuffer cmd) { command_buffer_ = cmd; }
