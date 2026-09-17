@@ -43,8 +43,45 @@ namespace shs
     public:
         VulkanCommandRecorder(VkDevice device, VkCommandBuffer cmd,
                               const VulkanBufferPool& buffers,
-                              const VulkanImagePool& images)
-            : device_(device), cmd_(cmd), buffers_(buffers), images_(images) {}
+                              const VulkanImagePool& images,
+                              const VulkanPipelineCache* pipelines = nullptr)
+            : device_(device), cmd_(cmd), buffers_(buffers), images_(images), pipelines_(pipelines) {}
+
+        // Pure resource/capability checks, also usable without a device in tests.
+        [[nodiscard]] std::expected<void, VulkanRecordingFailure> validate_command(
+            const RHICmd& cmd, bool inside_pass) const
+        {
+            const auto fail = [](VulkanRecordingError code, uint64_t id = 0) {
+                return std::unexpected(VulkanRecordingFailure{code, SIZE_MAX,
+                    VulkanRecordingStage::Validation, VulkanCommandKind::None, id});
+            };
+            if (const auto* d = std::get_if<RHICmdBeginPassDesc>(&cmd.payload))
+            {
+                for (uint64_t id : {d->color_target, d->depth_target})
+                {
+                    if (!id) continue; // absent attachment, not an invalid reference
+                    const auto* image = images_.find(id);
+                    if (!image || *image == VK_NULL_HANDLE) return fail(VulkanRecordingError::MissingImage, id);
+                }
+                return fail(VulkanRecordingError::UnsupportedCommand);
+            }
+            if (const auto* d = std::get_if<RHICmdBindPipelineDesc>(&cmd.payload))
+            {
+                const bool found = pipelines_ && (inside_pass ? pipelines_->find_graphics(d->pipeline) :
+                    pipelines_->find_compute(d->pipeline));
+                if (!found) return fail(VulkanRecordingError::MissingPipeline, d->pipeline);
+                // A cache record is not a realized VkPipeline.
+                return fail(VulkanRecordingError::UnsupportedCommand, d->pipeline);
+            }
+            uint64_t buffer = 0;
+            if (const auto* d = std::get_if<RHICmdBindVertexBufferDesc>(&cmd.payload)) buffer = d->buffer;
+            else if (const auto* d = std::get_if<RHICmdBindIndexBufferDesc>(&cmd.payload)) buffer = d->buffer;
+            else if (std::holds_alternative<RHICmdBarrierDesc>(cmd.payload)) return {};
+            else return fail(VulkanRecordingError::UnsupportedCommand);
+            const auto* handle = buffers_.find(buffer);
+            if (!buffer || !handle || *handle == VK_NULL_HANDLE) return fail(VulkanRecordingError::MissingBuffer, buffer);
+            return {};
+        }
 
         std::expected<void, VulkanRecordingError> begin_pass(const RHICmdBeginPassDesc& d)
         {
@@ -115,8 +152,7 @@ namespace shs
             return {};
         }
 
-    private:
-        std::expected<void, VulkanRecordingError> recording_ready() const
+        [[nodiscard]] std::expected<void, VulkanRecordingError> recording_ready() const
         {
             if (device_ == VK_NULL_HANDLE)
                 return std::unexpected(VulkanRecordingError::DeviceUnavailable);
@@ -125,10 +161,12 @@ namespace shs
             return {};
         }
 
+    private:
         VkDevice device_;
         VkCommandBuffer cmd_;
         const VulkanBufferPool& buffers_;
         const VulkanImagePool& images_;
+        const VulkanPipelineCache* pipelines_;
     };
 
     // ------------------------------------------------------------------
@@ -202,10 +240,13 @@ namespace shs
                 return std::unexpected(VulkanRecordingFailure{VulkanRecordingError::DeviceUnavailable});
             if (command_buffer_ == VK_NULL_HANDLE)
                 return std::unexpected(VulkanRecordingFailure{VulkanRecordingError::CommandBufferUnavailable});
-            VulkanCommandRecorder recorder{device_.device(), command_buffer_, buffers_, images_};
+            VulkanCommandRecorder recorder{device_.device(), command_buffer_, buffers_, images_, &pipelines_};
             return record_commands(stream, recorder);
         }
 
+        // Borrowed handle: caller owns lifetime, vkBegin/vkEndCommandBuffer,
+        // queue compatibility and external synchronization. A non-null handle
+        // alone cannot establish Vulkan recording state or device ownership.
         void set_command_buffer(VkCommandBuffer cmd) { command_buffer_ = cmd; }
 
         // ---- IRenderBackend ------------------------------------------------

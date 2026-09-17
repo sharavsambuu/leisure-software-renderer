@@ -70,6 +70,35 @@ resource lifetimes remain at the execution edge.
   validation and stage diagnostics remain open. Sink failures are still fail-fast,
   not transactional: earlier calls are not rolled back. Spy/headless tests prove
   contracts, not GPU rendering.
+  Batch progress (2026-09-17): whole-stream `validate_command_order` preflight
+  rejects unmatched end-pass (`InvalidRecordingOrder`), unterminated passes
+  (attributed to the opening begin-pass command), draws outside a pass and
+  dispatches inside a pass; draws require pipeline + index bindings per call
+  (`MissingBinding`, no cross-call/cross-pass leakage), dispatch requires a
+  pipeline; binds reject zero IDs; index offsets are alignment-checked
+  (`InvalidCommand`); in-pass barriers are rejected as unsupported; barrier
+  stage/access enums are range-checked. `VulkanCommandRecorder::validate_command`
+  is a pure resource/capability preflight: begin-pass targets resolve against
+  the image pool (`MissingImage`), pipelines resolve through the pipeline cache
+  by pass context (`MissingPipeline`, incl. graphics/compute kind mismatch),
+  binds resolve buffer handles (`MissingBuffer`); unsupported operations still
+  report `UnsupportedCommand`. Failures carry `stage`
+  (Prerequisite/Validation/Recording), `command` kind and `resource_id`
+  diagnostics. `record_commands` checks optional `recording_ready` and
+  `validate_command` sink hooks before any recording call. New error codes:
+  `MissingPipeline`, `MissingImage`, `MissingBinding`, `InvalidCommand`.
+  `VulkanPipelineCache::find_compute` added (ID→hash index, same pattern as
+  `find_graphics`). Tests: table-driven valid/invalid stream suite (exact codes,
+  indices, stages, sink zero-call checks), per-position fail-fast sink table,
+  resource-preflight table through a validating spy, and a real-device
+  prerequisite suite (`shs_renderer_vk_recording_prerequisite_tests`, skips
+  explicitly when Vulkan is unavailable; exercises device-unavailable,
+  command-buffer-unavailable, null/missing buffer handles and whole-stream
+  rejection before recording, with no submission). Documented limits: pass/pipeline
+  realization and in-pass execution remain G2; `set_command_buffer` is a borrowed
+  handle whose recording state is caller-managed. Fail-fast semantics unchanged;
+  earlier calls are not rolled back. Spy/headless tests prove contracts, not GPU
+  rendering.
 - [ ] **G2 Minimal offscreen graphics realization** — implement actual attachment
   setup, pipeline creation/binding and begin/end-pass recording in the new driver.
   Acceptance: render one deterministic scene through value commands; supported

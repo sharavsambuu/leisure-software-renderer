@@ -299,6 +299,7 @@ namespace
     bool test_command_stream_dispatch_and_barrier()
     {
         std::vector<shs::RHICmd> stream;
+        stream.push_back(shs::rhi_cmd_bind_pipeline(67));
         stream.push_back(shs::rhi_cmd_dispatch(4, 4, 1));
         shs::RHIMemoryBarrierDesc mb{};
         mb.src_stage = shs::RHIPipelineStage::ComputeShader;
@@ -309,9 +310,9 @@ namespace
 
         SpySink sink;
         if (!shs::record_commands(std::span<const shs::RHICmd>(stream.data(), stream.size()), sink)) return false;
-        if (sink.calls.size() != 2) return false;
-        if (sink.calls[0] != 7 || sink.ids[0] != 4) return false;
-        if (sink.calls[1] != 8 || sink.ids[1] != (uint64_t)shs::RHIPipelineStage::ComputeShader) return false;
+        if (sink.calls != std::vector<uint32_t>{3, 7, 8}) return false;
+        if (sink.ids[0] != 67 || sink.ids[1] != 4) return false;
+        if (sink.ids[2] != (uint64_t)shs::RHIPipelineStage::ComputeShader) return false;
         return true;
     }
 
@@ -349,7 +350,9 @@ namespace
         RejectingSink sink;
         const auto result = shs::record_commands(stream, sink);
         if (result || result.error().code != shs::VulkanRecordingError::UnsupportedCommand ||
-            result.error().command_index != 1) return false;
+            result.error().command_index != 1 ||
+            result.error().stage != shs::VulkanRecordingStage::Recording ||
+            result.error().command != shs::VulkanCommandKind::BindPipeline) return false;
         return sink.calls == std::vector<uint32_t>{1, 3};
     }
 
@@ -359,21 +362,204 @@ namespace
         shs::VulkanImagePool images{std::pmr::get_default_resource()};
         shs::VulkanCommandRecorder recorder{VK_NULL_HANDLE, VK_NULL_HANDLE, buffers, images};
         // Unsupported operations reject before touching Vulkan, even when called directly.
-        const shs::RHICmd commands[] = {
-            shs::rhi_cmd_begin_pass({}), shs::rhi_cmd_end_pass(),
-            shs::rhi_cmd_bind_pipeline(47), shs::rhi_cmd_draw_indexed({}),
-            shs::rhi_cmd_dispatch(1, 1, 1)
+        const std::expected<void, shs::VulkanRecordingError> results[] = {
+            recorder.begin_pass({}), recorder.end_pass({}), recorder.bind_pipeline({47}),
+            recorder.draw_indexed({}), recorder.dispatch({})
         };
-        for (const auto& command : commands)
-        {
-            const auto result = shs::record_commands(std::span<const shs::RHICmd>(&command, 1), recorder);
-            if (result || result.error().code != shs::VulkanRecordingError::UnsupportedCommand ||
-                result.error().command_index != 0) return false;
-        }
+        for (const auto& result : results)
+            if (result || result.error() != shs::VulkanRecordingError::UnsupportedCommand) return false;
+        const auto empty = shs::record_commands({}, recorder);
+        if (empty || empty.error().code != shs::VulkanRecordingError::DeviceUnavailable ||
+            empty.error().command_index != SIZE_MAX ||
+            empty.error().stage != shs::VulkanRecordingStage::Prerequisite) return false;
         const auto bind = recorder.bind_vertex_buffer({123, 0});
         const auto barrier = recorder.barrier({});
         return !bind && bind.error() == shs::VulkanRecordingError::DeviceUnavailable &&
                !barrier && barrier.error() == shs::VulkanRecordingError::DeviceUnavailable;
+    }
+
+    bool test_recording_failure_positions()
+    {
+        using namespace shs;
+        struct Sink
+        {
+            size_t calls = 0, reject = 0;
+            std::expected<void, VulkanRecordingError> call()
+            {
+                if (calls++ == reject) return std::unexpected(VulkanRecordingError::UnsupportedCommand);
+                return {};
+            }
+            auto begin_pass(const RHICmdBeginPassDesc&) { return call(); }
+            auto end_pass(const RHICmdEndPassDesc&) { return call(); }
+            auto bind_pipeline(const RHICmdBindPipelineDesc&) { return call(); }
+            auto bind_vertex_buffer(const RHICmdBindVertexBufferDesc&) { return call(); }
+            auto bind_index_buffer(const RHICmdBindIndexBufferDesc&) { return call(); }
+            auto draw_indexed(const RHICmdDrawIndexedDesc&) { return call(); }
+            auto dispatch(const RHICmdDispatchDesc&) { return call(); }
+            auto barrier(const RHICmdBarrierDesc&) { return call(); }
+        };
+        const RHICmd stream[] = {rhi_cmd_barrier({}), rhi_cmd_begin_pass({}),
+            rhi_cmd_bind_pipeline(47), rhi_cmd_bind_vertex_buffer(52, 0),
+            rhi_cmd_bind_index_buffer(52, 0, true), rhi_cmd_draw_indexed({3}),
+            rhi_cmd_end_pass(), rhi_cmd_bind_pipeline(67), rhi_cmd_dispatch(1, 1, 1)};
+        for (size_t i = 0; i < std::size(stream); ++i)
+        {
+            Sink sink{0, i};
+            const auto result = record_commands(stream, sink);
+            if (result || result.error().code != VulkanRecordingError::UnsupportedCommand ||
+                result.error().command_index != i || result.error().stage != VulkanRecordingStage::Recording ||
+                result.error().command != vulkan_command_kind(stream[i]) || sink.calls != i + 1) return false;
+        }
+        return true;
+    }
+
+    bool test_command_preflight_table()
+    {
+        using namespace shs;
+        using E = VulkanRecordingError;
+        const auto b = rhi_cmd_begin_pass({});
+        const auto e = rhi_cmd_end_pass();
+        const auto p = rhi_cmd_bind_pipeline(47);
+        const auto ib = rhi_cmd_bind_index_buffer(52, 0, true);
+        const auto draw = rhi_cmd_draw_indexed({3});
+        const auto dispatch = rhi_cmd_dispatch(1, 1, 1);
+        const auto barrier = rhi_cmd_barrier({});
+        struct Invalid { const char* name; std::vector<RHICmd> stream; E code; size_t index; };
+        const Invalid invalid[] = {
+            {"nested", {barrier, b, b, e, e}, E::InvalidRecordingOrder, 2},
+            {"unmatched", {barrier, e}, E::InvalidRecordingOrder, 1},
+            {"unterminated", {barrier, b}, E::InvalidRecordingOrder, 1},
+            {"outside draw", {barrier, draw}, E::InvalidRecordingOrder, 1},
+            {"inside dispatch", {b, p, dispatch, e}, E::InvalidRecordingOrder, 2},
+            {"no bindings", {barrier, b, draw, e}, E::MissingBinding, 2},
+            {"no index", {b, p, draw, e}, E::MissingBinding, 2},
+            {"no pipeline", {b, ib, draw, e}, E::MissingBinding, 2},
+            {"dispatch binding", {barrier, dispatch}, E::MissingBinding, 1},
+            {"pass reset", {b, p, ib, draw, e, b, draw, e}, E::MissingBinding, 6},
+            {"compute reset", {p, b, e, dispatch}, E::MissingBinding, 3},
+            {"zero pipeline", {barrier, rhi_cmd_bind_pipeline(0)}, E::MissingPipeline, 1},
+            {"zero vertex", {barrier, rhi_cmd_bind_vertex_buffer(0, 0)}, E::MissingBuffer, 1},
+            {"zero index", {barrier, rhi_cmd_bind_index_buffer(0, 0, false)}, E::MissingBuffer, 1},
+            {"u32 alignment", {barrier, rhi_cmd_bind_index_buffer(52, 2, true)}, E::InvalidCommand, 1},
+            {"u16 alignment", {barrier, rhi_cmd_bind_index_buffer(52, 1, false)}, E::InvalidCommand, 1},
+            {"in-pass barrier", {b, barrier, e}, E::UnsupportedCommand, 1},
+            {"bad stage", {rhi_cmd_barrier({static_cast<RHIPipelineStage>(255)})}, E::InvalidCommand, 0},
+            {"bad access", {rhi_cmd_barrier({RHIPipelineStage::Top, RHIPipelineStage::Bottom,
+                static_cast<RHIAccess>(255)})}, E::InvalidCommand, 0}
+        };
+        for (const auto& c : invalid)
+        {
+            SpySink sink;
+            const auto result = record_commands(c.stream, sink);
+            if (result || result.error().code != c.code || result.error().command_index != c.index ||
+                result.error().stage != VulkanRecordingStage::Validation ||
+                result.error().command != vulkan_command_kind(c.stream[c.index]) || !sink.calls.empty())
+            {
+                std::fprintf(stderr, "preflight case failed: %s\n", c.name);
+                return false;
+            }
+        }
+        const std::vector<RHICmd> valid[] = {
+            {}, {barrier}, {b, e, b, e}, {b, p, ib, draw, e},
+            {p, dispatch, barrier, dispatch}, {b, p, ib, draw, draw, e, b, p, ib, draw, e},
+            {rhi_cmd_bind_index_buffer(52, 2, false)},
+            {b, p, ib, draw, e, p, dispatch}
+        };
+        SpySink reused;
+        for (const auto& stream : valid)
+        {
+            const auto before = reused.calls.size();
+            if (!record_commands(stream, reused) || reused.calls.size() != before + stream.size()) return false;
+        }
+        // A new call cannot inherit bindings or an open pass from a previous call.
+        const RHICmd next[] = {b, draw, e};
+        const auto before = reused.calls.size();
+        const auto result = record_commands(next, reused);
+        return !result && result.error().code == E::MissingBinding && reused.calls.size() == before;
+    }
+
+    bool test_recorder_resource_preflight()
+    {
+        using namespace shs;
+        using E = VulkanRecordingError;
+        VulkanBufferPool buffers{std::pmr::get_default_resource()};
+        VulkanImagePool images{std::pmr::get_default_resource()};
+        VulkanPipelineCache cache;
+        const auto graphics = cache.intern_graphics({}, [](auto, const auto&) { return true; });
+        const auto compute = cache.intern_compute({}, [](auto, const auto&) { return true; });
+        buffers.insert_or_assign(52, VK_NULL_HANDLE);
+        images.insert_or_assign(53, VK_NULL_HANDLE);
+        VulkanCommandRecorder recorder{VK_NULL_HANDLE, VK_NULL_HANDLE, buffers, images, &cache};
+        struct Case { RHICmd cmd; bool inside; E code; uint64_t id; };
+        const Case cases[] = {
+            {rhi_cmd_bind_vertex_buffer(0, 0), false, E::MissingBuffer, 0},
+            {rhi_cmd_bind_vertex_buffer(51, 0), false, E::MissingBuffer, 51},
+            {rhi_cmd_bind_vertex_buffer(52, 0), false, E::MissingBuffer, 52},
+            {rhi_cmd_bind_index_buffer(51, 0, false), false, E::MissingBuffer, 51},
+            {rhi_cmd_bind_index_buffer(52, 0, true), false, E::MissingBuffer, 52},
+            {rhi_cmd_begin_pass({53}), false, E::MissingImage, 53},
+            {rhi_cmd_begin_pass({54}), false, E::MissingImage, 54},
+            {rhi_cmd_begin_pass({0, 53}), false, E::MissingImage, 53},
+            {rhi_cmd_begin_pass({0, 54}), false, E::MissingImage, 54},
+            {rhi_cmd_begin_pass({}), false, E::UnsupportedCommand, 0},
+            {rhi_cmd_bind_pipeline(0), false, E::MissingPipeline, 0},
+            {rhi_cmd_bind_pipeline(UINT64_MAX), true, E::MissingPipeline, UINT64_MAX},
+            {rhi_cmd_bind_pipeline(graphics), false, E::MissingPipeline, graphics},
+            {rhi_cmd_bind_pipeline(compute), true, E::MissingPipeline, compute},
+            {rhi_cmd_bind_pipeline(graphics), true, E::UnsupportedCommand, graphics},
+            {rhi_cmd_bind_pipeline(compute), false, E::UnsupportedCommand, compute},
+            {rhi_cmd_end_pass(), true, E::UnsupportedCommand, 0},
+            {rhi_cmd_draw_indexed({}), true, E::UnsupportedCommand, 0},
+            {rhi_cmd_dispatch(1, 1, 1), false, E::UnsupportedCommand, 0}
+        };
+        for (const auto& c : cases)
+        {
+            const auto result = recorder.validate_command(c.cmd, c.inside);
+            if (result || result.error().code != c.code || result.error().resource_id != c.id) return false;
+        }
+        // Exercise production validation through a spy: no fake dispatchable
+        // handles, and no Vulkan calls. The earlier barrier MUST NOT be emitted.
+        struct ValidatingSpy : SpySink
+        {
+            const VulkanCommandRecorder& recorder;
+            explicit ValidatingSpy(const VulkanCommandRecorder& r) : recorder(r) {}
+            auto validate_command(const RHICmd& cmd, bool inside) const
+            { return recorder.validate_command(cmd, inside); }
+        };
+        const std::vector<RHICmd> rejected[] = {
+            {rhi_cmd_barrier({}), rhi_cmd_bind_vertex_buffer(52, 0)},
+            {rhi_cmd_barrier({}), rhi_cmd_bind_index_buffer(51, 0, true)},
+            {rhi_cmd_barrier({}), rhi_cmd_begin_pass({53}), rhi_cmd_end_pass()},
+            {rhi_cmd_barrier({}), rhi_cmd_bind_pipeline(UINT64_MAX)},
+            {rhi_cmd_barrier({}), rhi_cmd_bind_pipeline(compute)},
+            {rhi_cmd_barrier({}), rhi_cmd_begin_pass({}), rhi_cmd_end_pass()}
+        };
+        const E errors[] = {E::MissingBuffer, E::MissingBuffer, E::MissingImage,
+            E::MissingPipeline, E::UnsupportedCommand, E::UnsupportedCommand};
+        for (size_t i = 0; i < std::size(rejected); ++i)
+        {
+            ValidatingSpy sink{recorder};
+            const auto result = record_commands(rejected[i], sink);
+            if (result || result.error().code != errors[i] || result.error().command_index != 1 ||
+                result.error().stage != VulkanRecordingStage::Validation || !sink.calls.empty()) return false;
+        }
+        return true;
+    }
+
+    bool test_compute_pipeline_lookup()
+    {
+        shs::VulkanPipelineCache cache;
+        shs::RHIComputePipelineDesc desc{};
+        const auto create = [](auto, const auto&) { return true; };
+        const auto first = cache.intern_compute(desc, create);
+        if (!first || !cache.find_compute(first) || cache.find_compute(first)->id != first ||
+            cache.intern_compute(desc, create) != first || cache.find_graphics(first) ||
+            cache.find_compute(0) || cache.find_compute(UINT64_MAX)) return false;
+        shs::VulkanPipelineCache retry;
+        if (retry.intern_compute(desc, [](auto, const auto&) { return false; }) != 0 ||
+            retry.find_compute(shs::VulkanPipelineCache::kComputePipelineIdBase + 1)) return false;
+        const auto second = retry.intern_compute(desc, create);
+        return second && retry.find_compute(second) && retry.find_compute(second)->id == second;
     }
 
     // --- frame sync: slot rotation, timeline semantics ---------------------------
@@ -508,6 +694,10 @@ int main()
         {"vk_command_stream_rejection", test_command_stream_rejection},
         {"vk_nested_pass_preflight", test_nested_pass_rejected_before_recording},
         {"vk_recorder_unsupported_commands", test_recorder_unsupported_commands},
+        {"vk_command_preflight_table", test_command_preflight_table},
+        {"vk_recording_failure_positions", test_recording_failure_positions},
+        {"vk_recorder_resource_preflight", test_recorder_resource_preflight},
+        {"vk_compute_pipeline_lookup", test_compute_pipeline_lookup},
         {"vk_frame_sync_slots", test_frame_sync_slots},
         {"vk_frame_sync_triple_buffer", test_frame_sync_triple_buffer},
         {"vk_backend_headless_contract", test_backend_headless_contract},
