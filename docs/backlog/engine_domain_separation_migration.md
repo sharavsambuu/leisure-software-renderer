@@ -108,6 +108,10 @@ pulling device dependencies into pure contracts.
 
 ## Dependency and ownership rules
 
+> These rules are codified as Constitution II §3 Rules 13–16 (2026-09-17
+> amendment: module boundary include-direction, adapter value seams, closed
+> shrink-only exception sets, optional-SDK conditionality).
+
 An arrow means "may depend on"; public-header dependencies must form a DAG.
 
 - Foundations (`memory`, `containers`) -> minimal core; never subsystems.
@@ -316,6 +320,10 @@ commits; keep mechanical moves separate from semantic changes.
 - Validation: gate OK, 5/5 gate self-tests, 24/24 CTest in BOTH the default
   (adapters-ON) tree and the no-SDK tree; header-migration checker green;
   inventory regenerated (221 canonical headers — new `geometry/debug_mesh.hpp`).
+- Law amendment: the practices above (value-tier include direction, adapter
+  value seams, closed shrink-only exception sets, optional `SHS_HAS_*` SDK
+  guards, no-SDK headless validation) are codified as Constitution II
+  Rules 13–16 (`docs/spec/value_oriented_programming.md` §3, 2026-09-17).
 - Phase table: 1 PARTIAL, 2 pilot-partial, 3 DONE, 4-6 not started, 7 blocked
   on 4-6; forwarder-folder removal still a step-7 breaking release.
 
