@@ -19,6 +19,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace resources
+    {
     using MaterialAssetHandle = uint32_t;
 
     struct MaterialData
@@ -38,5 +41,7 @@ namespace shs
         TextureAssetHandle orm_tex = 0;
         TextureAssetHandle emissive_tex = 0;
     };
+
+    } // inline namespace resources
 }
 

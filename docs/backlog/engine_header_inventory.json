@@ -8298,6 +8298,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "resources",
       "namespace_declarations": [
+        "resources",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -8326,6 +8327,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "resources",
       "namespace_declarations": [
+        "resources",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -8352,6 +8354,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "resources",
       "namespace_declarations": [
+        "resources",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -8385,6 +8388,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "resources",
       "namespace_declarations": [
+        "resources",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -8412,6 +8416,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "resources",
       "namespace_declarations": [
+        "resources",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -8444,6 +8449,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "resources",
       "namespace_declarations": [
+        "resources",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -8476,6 +8482,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "resources",
       "namespace_declarations": [
+        "resources",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -8507,6 +8514,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "resources",
       "namespace_declarations": [
+        "resources",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -8539,6 +8547,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "resources",
       "namespace_declarations": [
+        "resources",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -8647,6 +8656,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "resources",
       "namespace_declarations": [
+        "resources",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -8692,6 +8702,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "resources",
       "namespace_declarations": [
+        "resources",
         "shs"
       ],
       "visibility": "public-include-tree",

@@ -18,6 +18,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace resources
+    {
     struct CubeMapLinear
     {
         int size = 0;
@@ -284,4 +287,6 @@ namespace shs
         const glm::vec3 c1 = sample_cubemap_linear_vec(ps.mip[(size_t)m1], direction_ws);
         return glm::mix(c0, c1, t);
     }
+
+    } // inline namespace resources
 }

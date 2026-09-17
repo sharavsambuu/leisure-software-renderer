@@ -18,6 +18,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace resources
+    {
     using MeshAssetHandle = uint32_t;
 
     struct MeshData
@@ -41,5 +44,7 @@ namespace shs
             indices.clear();
         }
     };
+
+    } // inline namespace resources
 }
 

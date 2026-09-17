@@ -20,6 +20,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace resources
+    {
     inline Texture2DData load_texture2d_sdl_image(const std::string& path, bool flip_y = true)
     {
         SDL_Surface* loaded = IMG_Load(path.c_str());
@@ -61,4 +64,6 @@ namespace shs
         if (!tex.valid()) return 0;
         return reg.add_texture(std::move(tex), key.empty() ? path : key);
     }
+
+    } // inline namespace resources
 }

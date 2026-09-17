@@ -17,6 +17,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace resources
+    {
     inline CubemapData load_cubemap_sdl_faces(
         const std::string& right,
         const std::string& left,
@@ -49,5 +52,7 @@ namespace shs
             flip_y
         );
     }
+
+    } // inline namespace resources
 }
 

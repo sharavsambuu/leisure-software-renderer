@@ -21,6 +21,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace resources
+    {
     struct MeshLoadOptions
     {
         bool triangulate = true;
@@ -106,5 +109,7 @@ namespace shs
         if (meshes.empty()) return MeshData{};
         return meshes.front();
     }
+
+    } // inline namespace resources
 }
 

@@ -17,6 +17,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace resources
+    {
     inline MeshAssetHandle import_mesh_assimp(
         ResourceRegistry& reg,
         const std::string& path,
@@ -29,4 +32,6 @@ namespace shs
         return reg.add_mesh(std::move(mesh), key.empty() ? path : key);
     }
 
+
+    } // inline namespace resources
 }

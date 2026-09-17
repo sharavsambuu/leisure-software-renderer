@@ -18,6 +18,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace resources
+    {
     class AssetManager
     {
     public:
@@ -37,4 +40,6 @@ namespace shs
     private:
         ResourceRegistry registry_{};
     };
+
+    } // inline namespace resources
 }

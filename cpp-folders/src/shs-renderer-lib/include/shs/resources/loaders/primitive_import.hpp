@@ -18,6 +18,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace resources
+    {
     inline MeshAssetHandle import_plane_primitive(ResourceRegistry& reg, const PlaneDesc& d, const std::string& key = {})
     {
         return reg.add_mesh(make_plane(d), key);
@@ -37,5 +40,7 @@ namespace shs
     {
         return reg.add_mesh(make_cone(d), key);
     }
+
+    } // inline namespace resources
 }
 

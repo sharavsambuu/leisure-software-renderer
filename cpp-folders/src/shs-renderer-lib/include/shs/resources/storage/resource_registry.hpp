@@ -20,6 +20,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace resources
+    {
     /*
         IDENTITY POLICY (step 4.3, engine_domain_separation_migration.md):
         - Handles are 1-based indices; 0 = "unbound"; every getter returns
@@ -145,4 +148,6 @@ namespace shs
         std::unordered_map<std::string, TextureAssetHandle> texture_by_key_{};
         std::unordered_map<std::string, MaterialAssetHandle> material_by_key_{};
     };
+
+    } // inline namespace resources
 }

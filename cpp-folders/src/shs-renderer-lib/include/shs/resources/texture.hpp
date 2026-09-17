@@ -18,6 +18,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace resources
+    {
     using TextureAssetHandle = uint32_t;
 
     struct Texture2DData
@@ -47,5 +50,7 @@ namespace shs
             return texels[(size_t)y * (size_t)w + (size_t)x];
         }
     };
+
+    } // inline namespace resources
 }
 
