@@ -29,6 +29,7 @@
 #include "shs/execution/rhi/drivers/vulkan/vk_pipelines.hpp"
 #include "shs/execution/rhi/drivers/vulkan/vk_commands.hpp"
 #include "shs/execution/rhi/drivers/vulkan/vk_sync.hpp"
+#include "shs/execution/rhi/drivers/vulkan/vk_offscreen.hpp"
 
 namespace shs
 {
@@ -44,8 +45,9 @@ namespace shs
         VulkanCommandRecorder(VkDevice device, VkCommandBuffer cmd,
                               const VulkanBufferPool& buffers,
                               const VulkanImagePool& images,
-                              const VulkanPipelineCache* pipelines = nullptr)
-            : device_(device), cmd_(cmd), buffers_(buffers), images_(images), pipelines_(pipelines) {}
+                              const VulkanPipelineCache* pipelines = nullptr,
+                              const VulkanOffscreenPass* offscreen = nullptr)
+            : device_(device), cmd_(cmd), buffers_(buffers), images_(images), pipelines_(pipelines), offscreen_(offscreen) {}
 
         // Pure resource/capability checks, also usable without a device in tests.
         [[nodiscard]] std::expected<void, VulkanRecordingFailure> validate_command(
@@ -63,8 +65,11 @@ namespace shs
                     const auto* image = images_.find(id);
                     if (!image || *image == VK_NULL_HANDLE) return fail(VulkanRecordingError::MissingImage, id);
                 }
+                if (offscreen_ && offscreen_->device() == device_ && offscreen_->accepts(*d)) return {};
                 return fail(VulkanRecordingError::UnsupportedCommand);
             }
+            if (std::holds_alternative<RHICmdEndPassDesc>(cmd.payload) && offscreen_ && inside_pass)
+                return {};
             if (const auto* d = std::get_if<RHICmdBindPipelineDesc>(&cmd.payload))
             {
                 const bool found = pipelines_ && (inside_pass ? pipelines_->find_graphics(d->pipeline) :
@@ -85,15 +90,32 @@ namespace shs
 
         std::expected<void, VulkanRecordingError> begin_pass(const RHICmdBeginPassDesc& d)
         {
-            (void)d;
-            // Renderpass dynamic rendering comes with the resource-plan wiring;
-            // recording contract established here (P2).
-            return std::unexpected(VulkanRecordingError::UnsupportedCommand);
+            if (!offscreen_) return std::unexpected(VulkanRecordingError::UnsupportedCommand);
+            if (auto ready = recording_ready(); !ready) return ready;
+            if (inside_pass_) return std::unexpected(VulkanRecordingError::InvalidRecordingOrder);
+            if (auto valid = validate_command(rhi_cmd_begin_pass(d), false); !valid)
+                return std::unexpected(valid.error().code);
+            VkClearValue clear{}; // transparent black; no configurable clear value in the RHI yet
+            VkRenderPassBeginInfo info{};
+            info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+            info.renderPass = offscreen_->render_pass();
+            info.framebuffer = offscreen_->framebuffer();
+            info.renderArea.extent = offscreen_->extent();
+            info.clearValueCount = 1;
+            info.pClearValues = &clear;
+            vkCmdBeginRenderPass(cmd_, &info, VK_SUBPASS_CONTENTS_INLINE);
+            inside_pass_ = true;
+            return {};
         }
 
         std::expected<void, VulkanRecordingError> end_pass(const RHICmdEndPassDesc&)
         {
-            return std::unexpected(VulkanRecordingError::UnsupportedCommand);
+            if (!offscreen_) return std::unexpected(VulkanRecordingError::UnsupportedCommand);
+            if (auto ready = recording_ready(); !ready) return ready;
+            if (!inside_pass_) return std::unexpected(VulkanRecordingError::InvalidRecordingOrder);
+            vkCmdEndRenderPass(cmd_);
+            inside_pass_ = false;
+            return {};
         }
 
         std::expected<void, VulkanRecordingError> bind_pipeline(const RHICmdBindPipelineDesc& d)
@@ -167,6 +189,8 @@ namespace shs
         const VulkanBufferPool& buffers_;
         const VulkanImagePool& images_;
         const VulkanPipelineCache* pipelines_;
+        const VulkanOffscreenPass* offscreen_;
+        bool inside_pass_ = false;
     };
 
     // ------------------------------------------------------------------

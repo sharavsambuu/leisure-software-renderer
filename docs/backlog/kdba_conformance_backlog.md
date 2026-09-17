@@ -104,6 +104,29 @@ resource lifetimes remain at the execution edge.
   Acceptance: render one deterministic scene through value commands; supported
   formats/layouts/features are explicit, failures release acquired resources,
   and Vulkan validation reports no errors on an available backend. Depends on G1.
+  — PARTIAL 2026-09-17 (slice 1, commit pending): new
+  `execution/rhi/drivers/vulkan/vk_offscreen.hpp` — explicit (non-lazy) owned
+  realization of a narrowly-supported attachment config: RGBA8_UNorm 2D, 1
+  mip/layer, ColorAttachment usage, LOAD_OP_CLEAR (transparent black), STORE,
+  no depth, single subpass with external serialization dependency;
+  `supports()` makes the accepted desc set explicit, failed creation unwinds
+  acquired objects, re-prepare while live is refused, `reset()` destroys
+  view/render pass/framebuffer (caller guarantees no pending references).
+  `VulkanCommandRecorder` grew an optional `VulkanOffscreenPass*`: begin/end
+  pass now record real `vkCmdBeginRenderPass/vkCmdEndRenderPass` (Vulkan 1.1
+  render passes — no new device extensions beyond the existing bootstrap);
+  begin validates the desc against the pass (`accepts`: matching color target
+  id, no depth target, clear_color, no clear_depth), guards nesting
+  (`InvalidRecordingOrder`), and everything else remains `UnsupportedCommand`
+  (bind/draw/dispatch included — pipeline realization is the next slice).
+  Test `shs_renderer_vk_offscreen_pass_tests` (real device, lavapipe locally):
+  supports() negative table, view/pass/framebuffer creation on a real image,
+  failed-prepare unwind, double-prepare refusal, accepts() table, stream
+  rejection before any recording (validation stage, exact index), real
+  begin/end recording twice through `record_commands`, nesting guards,
+  explicit reset/recreate. NO submission, NO readback, NO pixel claim — G2
+  remains open for pipeline realization, vertex upload and the deterministic
+  scene; submission/readback evidence stays G3.
 - [ ] **G3 Upload, submit and readback proof** — complete the minimal scene's
   buffer upload, synchronization, submission and image readback. Check known
   pixels independently of parity; exercise failure and resource cleanup paths.

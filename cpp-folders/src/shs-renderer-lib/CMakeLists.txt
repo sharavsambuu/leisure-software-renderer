@@ -518,6 +518,22 @@ if(SHS_RENDERER_BUILD_TESTS)
             WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
             SKIP_RETURN_CODE 77)
 
+        # G2 attachment/recording slice: actual objects and command recording,
+        # but no queue submission or pixel claim yet.
+        add_executable(shs_renderer_vk_offscreen_pass_tests tests/vk_offscreen_pass_tests.cpp)
+        target_link_libraries(shs_renderer_vk_offscreen_pass_tests PRIVATE
+            shs::renderer-values Vulkan::Vulkan)
+        target_compile_features(shs_renderer_vk_offscreen_pass_tests PRIVATE cxx_std_23)
+        if(MSVC)
+            target_compile_options(shs_renderer_vk_offscreen_pass_tests PRIVATE /W4)
+        else()
+            target_compile_options(shs_renderer_vk_offscreen_pass_tests PRIVATE -Wall -Wextra -Wpedantic)
+        endif()
+        add_test(NAME shs_renderer_vk_offscreen_pass_tests COMMAND shs_renderer_vk_offscreen_pass_tests)
+        set_tests_properties(shs_renderer_vk_offscreen_pass_tests PROPERTIES
+            WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+            SKIP_RETURN_CODE 77)
+
     else()
         message(STATUS "Vulkan headers not found — skipping shs_renderer_vk_driver_tests")
     endif()
