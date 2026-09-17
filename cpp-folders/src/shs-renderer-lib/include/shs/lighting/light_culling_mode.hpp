@@ -13,6 +13,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace lighting
+    {
     enum class LightCullingMode : uint32_t
     {
         None = 0,
@@ -44,4 +47,6 @@ namespace shs
         }
         return LightCullingMode::None;
     }
+
+    } // inline namespace lighting
 }

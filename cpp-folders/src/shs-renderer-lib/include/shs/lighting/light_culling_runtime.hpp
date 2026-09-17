@@ -26,6 +26,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace lighting
+    {
     struct LightBinCullingConfig
     {
         LightCullingMode mode = LightCullingMode::None;
@@ -445,6 +448,8 @@ namespace shs
 
         return std::span<const uint32_t>(scratch_scene_indices.data(), scratch_scene_indices.size());
     }
+
+    } // inline namespace lighting
 }
 
 #endif // SHS_HAS_JOLT

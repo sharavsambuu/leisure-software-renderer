@@ -15,6 +15,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace lighting
+    {
     enum class ShadowTechnique : uint32_t
     {
         None = 0,
@@ -121,5 +124,7 @@ namespace shs
         ShadowCompositionSettings s{};
         return s;
     }
+
+    } // inline namespace lighting
 }
 

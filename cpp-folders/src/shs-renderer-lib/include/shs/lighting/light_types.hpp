@@ -21,6 +21,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace lighting
+    {
     enum class LightType : uint32_t
     {
         Directional = 0,
@@ -433,4 +436,6 @@ namespace shs
         assign_light_cull_bounds(out, bounds, aabb_from_capsule(cap));
         return out;
     }
+
+    } // inline namespace lighting
 }

@@ -14,6 +14,9 @@
 #include <shs/render/targets/rt_shadow.hpp>
 
 namespace shs {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace lighting
+    {
 
 struct ShadowParams {
     glm::mat4 light_viewproj{1.0f};
@@ -103,4 +106,6 @@ inline float shadow_visibility_dir(
     return (count > 0) ? (float)lit / (float)count : 1.0f;
 }
 
+
+    } // inline namespace lighting
 } // namespace shs

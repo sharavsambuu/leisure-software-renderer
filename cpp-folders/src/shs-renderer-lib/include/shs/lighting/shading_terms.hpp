@@ -14,6 +14,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace lighting
+    {
     // Lambert diffuse factor: clamped cosine between normal and light dir.
     inline float lambert_diffuse(const glm::vec3& n, const glm::vec3& l)
     {
@@ -25,4 +28,6 @@ namespace shs
     {
         return albedo * diffuse + glm::vec3(ambient);
     }
+
+    } // inline namespace lighting
 } // namespace shs

@@ -32,6 +32,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace lighting
+    {
     // =========================================================================
     //  Tiled light culling result
     // =========================================================================
@@ -410,6 +413,8 @@ namespace shs
         }
         return result;
     }
+
+    } // inline namespace lighting
 }
 
 #endif // SHS_HAS_JOLT

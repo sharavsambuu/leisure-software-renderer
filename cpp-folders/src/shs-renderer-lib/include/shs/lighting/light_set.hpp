@@ -19,6 +19,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace lighting
+    {
     struct LightSet
     {
         std::vector<PointLight> points{};
@@ -114,4 +117,6 @@ namespace shs
             return to_cullable_gpu(cull_sources, std::numeric_limits<size_t>::max(), source_shape);
         }
     };
+
+    } // inline namespace lighting
 }

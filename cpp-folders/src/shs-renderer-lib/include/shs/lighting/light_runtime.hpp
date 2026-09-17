@@ -30,6 +30,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace lighting
+    {
     constexpr uint32_t kLightSelectionCapacity = 8u;
 
     enum class LightObjectCullMode : uint8_t
@@ -640,6 +643,8 @@ namespace shs
             lights,
             cull_mode);
     }
+
+    } // inline namespace lighting
 }
 
 #endif // SHS_HAS_JOLT

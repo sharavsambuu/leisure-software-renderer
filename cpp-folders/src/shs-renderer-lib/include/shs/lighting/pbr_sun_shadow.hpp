@@ -16,6 +16,9 @@
 #include <shs/render/targets/rt_shadow.hpp>
 
 namespace shs {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace lighting
+    {
 
 // PBR BRDF-ийн туслах функцууд.
 inline glm::vec3 fresnel_schlick(float cosTheta, const glm::vec3& F0){
@@ -90,4 +93,6 @@ inline glm::vec3 pbr_direct_sun_shadowed(
     return (diff + spec) * sun_radiance * (NdotL * vis);
 }
 
+
+    } // inline namespace lighting
 } // namespace shs
