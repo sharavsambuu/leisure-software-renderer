@@ -64,8 +64,10 @@ C2.1–C2.3 of the adoption todo, made P1-legal by W-A:
   technique-mode table moved to its pure-leaf home (`render_path_recipe.hpp`)
   and the compiler asserts the plan/recipe table row
   (`SHS_CONTRACT_ASSERT` in `render_path_compiler.hpp`, gate-8 allowlisted).
-  The `reason`/`toggle` legs stay INFO-tracked dispatches; the W-C retro rules
-  whether they decompose into named arrows or move to contract headers.
+  The `reason`/`toggle` legs: **RULING recorded (owner, 2026-09-17)** — they
+  stay INFO-tracked dispatches as-is; they already are named arrows with
+  exhaustive 1:1 closed-enum mappings, and no decomposition or contract-header
+  move (rationale recorded in the adoption todo C2.2 entry).
 - [x] **C2.3 wait-free span preconditions** — DONE 2026-09-17: `SHS_PRE` at
   the `renderpath_gateway` rim (commands span vs events buffer never alias).
   Recorded deviation: the sizes-equal half of Rule 7.1 has no dst/src job
