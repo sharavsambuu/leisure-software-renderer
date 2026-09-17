@@ -6,7 +6,7 @@
 This roadmap outlines the steps to build high-level gameplay logic using the **ECS Backbone** (Data-Oriented Design) established in [Constitution III](../spec/dod_ecs_architecture.md).
 
 ## Dependencies
-- 🛣️ **[Core Engine Foundation](./core_engine_foundation_roadmap.md)** (Requires Phase 3: Brain Bridge)
+- 🛣️ **[Core Engine Foundation](../roadmap/core_engine_foundation_roadmap.md)** (Requires Phase 3: Brain Bridge)
 - 📜 **[Constitution III](../spec/dod_ecs_architecture.md)** (Strict ECS and DOD adherence)
 
 ## Phase 1: The Core ECS Layer (C++)

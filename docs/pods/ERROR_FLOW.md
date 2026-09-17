@@ -12,7 +12,7 @@
 
 - **Channel** = where the error rides: the per-command `expected` error rail
   inside a gateway's Kleisli arrows (house shape per
-  `docs/backlog/kdba_kleisli_migration_plan.md`: the batch rim is a `Step`
+  `docs/outdated/kdba_kleisli_migration_plan.md` (archived 2026-09-17): the batch rim is a `Step`
   summary — infallible wherever every real failure is already a materialized
   rejection fact), or a rejection *fact* (e.g. `PathSwapRejectedEvent`)
   materialized on the failure rail while persistent state stays pristine.

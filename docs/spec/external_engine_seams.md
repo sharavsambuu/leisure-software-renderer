@@ -1,6 +1,6 @@
 # External engine seams: physics, animation, audio
 
-Status: normative (step 6, engine_domain_separation_migration.md).
+Status: normative (step 6 of the completed domain-separation migration; record archived at `docs/outdated/engine_domain_separation_migration.md`).
 Supplements the job-system contract in `shs/task/job_system.hpp` (step 4.4)
 and the vertical-slice host seam (`shs/app/vertical_slice_host.hpp`).
 

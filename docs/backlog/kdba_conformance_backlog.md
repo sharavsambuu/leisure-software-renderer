@@ -7,7 +7,7 @@
 > Status: active (2026-09-16). Source: full audit of `include/shs/domains/` (11 pods) against Constitution II (Kleisli Domain Boundary Architecture) + the 2026-09-16 hardening amendments (gateway-gateway terminology, Rule 4.1 drain-order law, ERROR_FLOW failure-rail catalog + drift gate).
 > Trigger: user directive — current state is the old gateway-based Domain Value Object architecture (the retired term was used in the original directive); audit the lib against KDBA laws and register every violation candidate.
 > Law precedence: Constitution II S2.1 + Rules 2/10/11/12, canon S6.1-S6.2, precedence S2.2. Roadmap is schedule, not law.
-> Provenance: supersedes `domain_pod_hardening_backlog.md` (FROZEN same day, see its banner). Blocked P6.x items and standing laws roll forward here; nothing was silently dropped.
+> Provenance: supersedes `../outdated/domain_pod_hardening_backlog.md` (FROZEN same day, see its banner; archived 2026-09-17). Blocked P6.x items and standing laws roll forward here; nothing was silently dropped.
 > Verification after every item: `build/` ctest suite green + `check_kdba_boundaries.sh` green (now with the ERROR_FLOW drift gate + final-enforcement exit guard).
 
 ## Backlog ownership and historical dispositions (2026-09-17)
@@ -16,12 +16,12 @@
   P4.4/S1 are one stochasticity workstream; P6.2/P6.3 and S5 share persistence
   work, not separate codec implementations. Headless S5 preparation can proceed
   while host integration remains blocked.
-- The [hardening backlog](domain_pod_hardening_backlog.md) remains frozen.
+- The [hardening backlog](../outdated/domain_pod_hardening_backlog.md) remains frozen (archived 2026-09-17).
   Its P4.4/P6 checkboxes are historical references, not duplicate assignments.
   Its unchecked **L1 renderpath uniform-signature migration** is superseded by
   completed K1.2/Run A and the Run C reassessment; do not schedule another port.
   Frozen DoD checkboxes are not evidence of new work without a current audit.
-- The [migration plan](kdba_kleisli_migration_plan.md) records intermediate
+- The [migration plan](../outdated/kdba_kleisli_migration_plan.md) records intermediate
   decisions. Current Constitution II, pod contracts, and this close-out take
   precedence over its historical signature descriptions.
 - Roadmap entries require a current implementation/dependency check before
@@ -353,7 +353,7 @@ Checked against KDBA laws: Kleisli house signature (`expected<Step{NextState, Ev
 
 ## W1 — Kleisli gateway migration (flagship, phased per pod)
 
-- [x] **K1.1 Migration law note + per-pod port plan** — DONE 2026-09-17 (Run A): [`kdba_kleisli_migration_plan.md`](kdba_kleisli_migration_plan.md) publishes the shared `Step`/gateway vocabulary, the port order, and the batch-vs-per-command spike decision; renderpath landed with kit-extended tests (replay + empty-log + value-equality `operator==` on state/events) proving the signature swap is behavior-neutral. — was: publish the port order and the shared `Step`/gateway vocabulary before touching any gateway, so the 11 migrations are mechanical copies of one proven shape, not 12 ad-hoc designs. Pilot = renderpath (its `try_swap_plan` is already an arrow chain: `and_then`/`or_else` over `expected`, only the wrapper is `void` — smallest delta to full house shape). Port order: renderpath -> logic -> frame -> geometry -> lighting -> sky -> scene -> resources -> gfx -> input (input last: biggest monolith, needs W2 first).
+- [x] **K1.1 Migration law note + per-pod port plan** — DONE 2026-09-17 (Run A): [`kdba_kleisli_migration_plan.md`](../outdated/kdba_kleisli_migration_plan.md) publishes the shared `Step`/gateway vocabulary, the port order, and the batch-vs-per-command spike decision; renderpath landed with kit-extended tests (replay + empty-log + value-equality `operator==` on state/events) proving the signature swap is behavior-neutral. — was: publish the port order and the shared `Step`/gateway vocabulary before touching any gateway, so the 11 migrations are mechanical copies of one proven shape, not 12 ad-hoc designs. Pilot = renderpath (its `try_swap_plan` is already an arrow chain: `and_then`/`or_else` over `expected`, only the wrapper is `void` — smallest delta to full house shape). Port order: renderpath -> logic -> frame -> geometry -> lighting -> sky -> scene -> resources -> gfx -> input (input last: biggest monolith, needs W2 first).
 - [x] **K1.2 renderpath** — DONE 2026-09-17 (Run A): `renderpath_gateway` now returns `RenderPathStep{commands_applied, noops_observed, swaps_rejected, plan_generation}` by value; events stay on the caller's arena (A.7 divergence honored); transition bodies moved to named per-intent `apply_*` arrows (K2.2 renderpath half); `try_swap_plan` returns its outcome over the unchanged per-command `expected` rail. **Reassessment verdict (banner):** the audit's literal "`expected` at the batch rim" was REFUTED — every real failure is a compile rejection absorbed by the per-command rail and materialized as `PATH_SWAP_REJECTED` (previous plan kept), so a batch-level error enum would be invented/vacuous (ERROR_FLOW non-vacuity law); evidence + decision in the plan doc. Unlocks the L1 leftover from the frozen backlog as stated.
 - [x] **K1.3 logic** — DONE 2026-09-17 (Run B): `logic_gateway` + the full `Fsm*` vocabulary moved to `shs::logic` (zero external consumers); dt moved from `FsmTick` to `LogicContext` (one dt per batch, input-parity); gateway returns `FsmStep{commands_applied, facts_observed, commands_rejected}` (batch rim infallible per the Run A decision — no invented error enum); dispatch is `std::visit` + `if constexpr` over named `apply_*` arrows; silent `continue` drops now emit facts (K3.2). — was: `logic_gateway` (logic.gateway.hpp:86): writer shape + `FsmInputs` empty + dt lives on `FsmTick` action instead of Inputs (L125-129) while input pod takes dt from Inputs — inconsistent time placement across pods. Port unifies: time in Inputs, gateway returns `expected<FsmStep, FsmError>`; silent `continue` drops become observable (K3.2). Namespace `shs` -> `shs::logic`.
 - [x] **K1.4 camera** — RESOLVED BY REASSESSMENT 2026-09-17 (Run B; verdict in `kdba_kleisli_migration_plan.md`): the "discard-all gateway" charge is vacuous — the camera pod's command/event vocabularies are `variant<monostate>` (§6.1-legal empty vocabularies, frame-pod precedent; identity pinned by kit tests), so no real signal can ever be dropped. Its contract seam (`CameraRig`, builders) is live code, so fold-delete would break real consumers; the input pod's camera math over the rig inside its OWN `RuntimeState` aggregate is intra-pod, not cross-pod mutation. Decision: neither absorb nor fold — full absorption waits for an orchestrator host (same blocker family as P6.1-P6.3); Run C's K1.5 sweep ports the identity shape mechanically. DoD met in the reassessed form: no gateway with a non-empty vocabulary discards commands. — was: `camera_gateway` (camera.gateway.hpp:32-42) discards ALL arguments (`(void)state; (void)actions; ...`): a gateway that silently eats every command, the trivial worst-case zero-signal-loss violation. Decide: real camera gateway absorbing the camera math that currently lives in input's MoveLocal/Look handling (input.gateway.hpp:45-68 reaches directly into `state.camera` — cross-vocabulary coupling), or fold camera vocabulary into the input pod and delete the stub.
@@ -472,7 +472,7 @@ facilities; do not build a general framework before a measured need exists.
   trees green.
   **Status: DONE 2026-09-17** — port + K4.1/K4.2 + K3.2 house answer + K6.1
   gate + K1.1 plan doc landed; verdicts in
-  [`kdba_kleisli_migration_plan.md`](kdba_kleisli_migration_plan.md).
+  [`kdba_kleisli_migration_plan.md`](../outdated/kdba_kleisli_migration_plan.md).
 
 - **Run B — Behavioral pods (logic + input + camera).**
   Reassess K1.3/K1.4/K2.1/K5.1 against real callers first.
@@ -492,7 +492,7 @@ facilities; do not build a general framework before a measured need exists.
   public gateway per pod; `value_commands.hpp` gone or banner-deprecated.
   **Status: DONE 2026-09-17** — K1.3/K2.1/K2.2/K3.2/K5.1 landed; K1.4
   resolved by reassessment (verdict in
-  [`kdba_kleisli_migration_plan.md`](kdba_kleisli_migration_plan.md)).
+  [`kdba_kleisli_migration_plan.md`](../outdated/kdba_kleisli_migration_plan.md)).
 
 - **Run C — Sweep + harden (mechanical + docs + final gates).**
   Land: **K1.5** (the 8 silent pods — mechanical copies of the Run A shape,

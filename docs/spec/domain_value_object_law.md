@@ -131,7 +131,7 @@ Consequences the term now makes explicit:
 - **T2 — Archives are never rewritten.** Frozen/history documents keep the old
   term byte-identical (Rule N5). Known occurrences at adoption (124 total,
   2026-09-17): `docs/education/kdba_history/*`,
-  `docs/backlog/domain_pod_hardening_backlog.md` (FROZEN banner),
+  `docs/outdated/domain_pod_hardening_backlog.md` (FROZEN banner; archived 2026-09-17),
   `docs/outdated/*`, `docs/education/monadic_domain_architecture_lessons.md`,
   demo `docs/pods/*` snapshots. Reading them: mentally substitute
   "Domain Value Object"; do not edit. (The terminology-defining documents

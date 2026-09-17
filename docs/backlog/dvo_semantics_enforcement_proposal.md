@@ -1,6 +1,8 @@
 # DVO semantics enforcement — proposal
 
-> Status: **proposal (2026-09-17)** — awaiting owner ruling. Companion to
+> Status: **proposal (2026-09-17)** — awaiting owner ruling. Landing schedule:
+> [`constitution_enforcement_plan.md`](constitution_enforcement_plan.md).
+> Companion to
 > Constitution II (§6, §8 Kleisli doctrine, Rule 17), the module-layout amendment
 > (§6, 2026-09-17), and the adoption todo
 > (`contract_guardrails_adoption_todo.md`). Once ratified, items land as

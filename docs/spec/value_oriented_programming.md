@@ -218,7 +218,7 @@ read DVO (§6.7, rules T3/T6); the structural noun "pod" is unchanged (T5).
 
 
 > **Module-layout amendment (2026-09-17, reconciles §6 with §3 Rules 13–16):** with
-> the knowledge-ownership migration (`docs/backlog/engine_domain_separation_migration.md`),
+> the knowledge-ownership migration (`docs/outdated/engine_domain_separation_migration.md`, archived on completion),
 > a DVO's canonical home is the knowledge-owning top-level module (`renderpath/`,
 > `render/frame/`, `camera/`, …), not a global `domains/` partition; `domains/<domain_name>/`
 > remains a valid address for every pod until its per-header manifest lands — no blind

@@ -11,7 +11,7 @@
 ## How to read this
 
 - **Producer** = the pod's Kleisli gateway (house shape per
-  `docs/backlog/kdba_kleisli_migration_plan.md`: batch rim
+  `docs/outdated/kdba_kleisli_migration_plan.md` (archived 2026-09-17): batch rim
   `(State, span<Command>, Context, arena) -> Step` summary — infallible
   wherever every real failure is already a materialized rejection fact;
   per-command `expected` rails live inside the arrows; failure keeps state +

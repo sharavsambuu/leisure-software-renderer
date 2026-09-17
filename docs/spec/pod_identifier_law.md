@@ -83,7 +83,7 @@ rewritten** (Rule N5):
 - `docs/education/kdba_history/kdba_manifesto_v1.md`, `kdba_manifesto_v2.md`
 - `docs/education/monadic_domain_architecture_lessons.md`
 - `docs/outdated/vop-track-leaf-seams-scope-2026-09-16.md`
-- `docs/backlog/domain_pod_hardening_backlog.md` (FROZEN banner)
+- `docs/outdated/domain_pod_hardening_backlog.md` (FROZEN, archived 2026-09-17)
 - `docs/outdated/state_orchestration_architecture.md`
 
 ---
@@ -358,7 +358,7 @@ One commit, in this order:
   nouns and are pinned by three drift gates.
 - **`edge/` `ICommand`** keeps `Command` (see §2.4): there it means "executable edge object".
 - **Archives are never rewritten:** `docs/outdated/` and `docs/education/kdba_history/`.
-  `docs/backlog/domain_pod_hardening_backlog.md` is FROZEN and likewise untouched.
+  `docs/outdated/domain_pod_hardening_backlog.md` is FROZEN and likewise untouched.
 - **`docs/arch/action_based_input_architecture.md` and `docs/roadmap/action_based_input_roadmap.md`**
   keep their filenames: their "Action Registry" / "Action Priority" refer to the
   hardware-to-*action* binding *design concept* (a separate concern from pod vocabulary),

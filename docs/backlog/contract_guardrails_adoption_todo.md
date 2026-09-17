@@ -2,6 +2,8 @@
 
 > Status: **active (2026-09-17)**. Companion proposal:
 > `contract_guardrails_adoption_proposal.md` (design + rulings requested).
+> Traversal schedule (W-A…W-E, per-pod order):
+> [`constitution_enforcement_plan.md`](constitution_enforcement_plan.md).
 > Teaching: `docs/education/cpp26_contract_guardrails.md`.
 > Law precedence: Constitution II §2.1 + §2.2 + Rules 4.1/7.1/13/15; Constitution I §10.
 > Verification after every item: full `build/` CTest green + `check_kdba_boundaries.sh`

@@ -1,7 +1,13 @@
 # KDBA Kleisli Migration Plan — K1.1 (Run A pilot: renderpath)
 
+> ARCHIVED 2026-09-17 (moved from `docs/backlog/`): Run A–C are closed and the
+> Step/gateway vocabulary is binding law (Constitution II §8 + the pod
+> contracts). Read-only DoD artifact and spike evidence; nothing here
+> overrides the law. Active planning:
+> [`docs/backlog/constitution_enforcement_plan.md`](../backlog/constitution_enforcement_plan.md).
+
 > Status: historical migration artifact (2026-09-17); Run A–C are complete.
-> The [KDBA backlog close-out](kdba_conformance_backlog.md#run-c-close-out-2026-09-17)
+> The [KDBA backlog close-out](../backlog/kdba_conformance_backlog.md#run-c-close-out-2026-09-17)
 > governs current status. Intermediate Run A signature and event-ownership
 > descriptions below are provenance, not the final gateway contract or new work.
 > Follow Constitution II and current pod contracts for implementation.

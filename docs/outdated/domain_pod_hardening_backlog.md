@@ -1,5 +1,10 @@
 # Domain Pod Hardening Backlog — shs-renderer-lib
 
+> ARCHIVED 2026-09-17 (moved from `docs/backlog/`; FROZEN banner below stands):
+> superseded by [`kdba_conformance_backlog.md`](../backlog/kdba_conformance_backlog.md)
+> and fully dispositioned (open work rolled forward there). Read-only
+> provenance — do not tick, edit, or re-open items.
+
 > **STATUS: FROZEN (2026-09-16)** — superseded by `kdba_conformance_backlog.md` (KDBA gateway migration directive). Read-only history: do NOT tick, edit, or re-open items here. Open work rolls forward in the new backlog: P6.1-P6.3 (blocked on demo host) + P4.4 (standing law) are carried there under "Rolled forward"; everything else on this file is DONE or explicitly closed. Kept as provenance — conflicts are recorded, never overwritten.
 
 > Status: active (2026-09-16). Source: lib review vs Constitutions I/II/III + rollout roadmap P3-P6 + backlog "POD Semantics Hardening" (parked 2026-09-15).

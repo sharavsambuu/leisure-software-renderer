@@ -1,5 +1,14 @@
 # Engine-ready module boundaries: proposal and migration backlog
 
+> ARCHIVED 2026-09-17 (moved from `docs/backlog/`): all seven phases are
+> COMPLETE — see the "Task completion table snapshot (2026-09-17, all steps
+> complete)" at the bottom of this file, plus the same-day accelerated
+> forwarder-tree removal (`c9928d2`). This file is read-only provenance;
+> active enforcement planning lives in
+> [`docs/backlog/constitution_enforcement_plan.md`](../backlog/constitution_enforcement_plan.md).
+> Law precedence: Constitution II §2.2 — where this record and a numbered rule
+> disagree, the rule wins.
+
 Status: migration started; camera convention compatibility pilot implemented.
 
 ## Pilot evidence (2026-09-17)
@@ -19,7 +28,7 @@ Status: migration started; camera convention compatibility pilot implemented.
   cached vcpkg toolchain, lavapipe and Vulkan validation enabled. No fresh-cache,
   installed-package, alternate-platform or shared-library claim is made.
 
-The [machine-readable manifest](engine_header_migration_manifest.json) covers
+The [machine-readable manifest](../backlog/engine_header_migration_manifest.json) covers
 this pilot only, not the full tree. Step 1 remains partial: complete header/DAG
 inventory, consumer/SDK matrix and broad ownership decisions are still pending.
 This leaf pilot intentionally precedes completing that inventory to validate
@@ -949,7 +958,7 @@ slices independently; never duplicate implementations or disable boundary gates.
 Record commit, configurations, tests and skips for each completed item.
 
 This proposal owns placement, dependency/ownership separation and packaging.
-The [KDBA backlog](kdba_conformance_backlog.md) retains its behavioral/renderer
+The [KDBA backlog](../backlog/kdba_conformance_backlog.md) retains its behavioral/renderer
 feature gaps; [Kleisli migration history](kdba_kleisli_migration_plan.md) is not
 reopened by renames. Step 1 must reconcile the active
 [value-oriented specification](../spec/value_oriented_programming.md), especially
