@@ -270,7 +270,11 @@ rim under both gate 8 (placement) and gate 9 (rails) scans.
   feature-test discipline); local baseline GCC 13.3.0 supports neither and the
   emulation ladder is correct as-is. Baseline ruling remains owner-side; the
   C4.3/P4 native-switch runbook stands until it — the replay-parity CTest is
-  the release blocker when it fires.
+  the release blocker when it fires. **Runbook drafted 2026-09-17**
+  (`docs/backlog/cpp26_native_switch_runbook.md`): full site inventory (14
+  sites, all single-expression — P4's mechanical shape holds), steps, native
+  keyword mapping, handler-move plan, acceptance gates, rollback. Execution
+  now requires only the baseline ruling.
 - **P3 re-scope bookkeeping**: the 2026-09-17 forwarder-tree removal already
   moved every checker scan root off `domains/` onto the canonical owner tree;
   P3's prefix hazard is resolved by that amendment (manifest-derived roots are
