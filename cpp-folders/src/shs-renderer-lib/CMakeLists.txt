@@ -186,6 +186,11 @@ endif()
 option(SHS_RENDERER_BUILD_TESTS "Build shs_renderer core tests" ON)
 if(SHS_RENDERER_BUILD_TESTS)
     enable_testing()
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    add_test(NAME shs_renderer_header_migration_tests
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/header_migration_tests.py")
+    add_test(NAME shs_renderer_header_inventory_check
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/inventory_headers.py")
 
     add_executable(shs_renderer_tests
         tests/core_tests.cpp
@@ -228,7 +233,8 @@ if(SHS_RENDERER_BUILD_TESTS)
     endif()
 
     add_custom_target(shs_renderer_boundary_check
-        COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_kdba_boundaries.sh"
+        COMMAND "${CMAKE_COMMAND}" -E env "PYTHON=${Python3_EXECUTABLE}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_kdba_boundaries.sh"
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
         COMMENT "Running KDBA boundary checks for planner layer"
         VERBATIM
@@ -236,7 +242,8 @@ if(SHS_RENDERER_BUILD_TESTS)
 
     add_test(
         NAME shs_renderer_boundary_check
-        COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_kdba_boundaries.sh"
+        COMMAND "${CMAKE_COMMAND}" -E env "PYTHON=${Python3_EXECUTABLE}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_kdba_boundaries.sh"
     )
     set_tests_properties(shs_renderer_boundary_check PROPERTIES
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"

@@ -10,6 +10,7 @@
       "namespace": "shs",
       "visibility": "public",
       "status": "migrated-with-forwarder",
+      "policy": "pure-leaf",
       "direct_dependencies": ["glm/glm.hpp", "glm/gtc/matrix_transform.hpp"],
       "build_target": "shs::renderer-values",
       "compatibility": "Retain old include and symbols until announced breaking release"
