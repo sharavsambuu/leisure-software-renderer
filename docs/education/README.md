@@ -8,6 +8,7 @@
 
 ## Live teaching
 
+- `dvo_bounded_context_tutorial.md` — **start here (new contributors)**: the full walkthrough — bounded-context folder anatomy, DVOs, contracts at the rims, why the style beats switch-case nesting, and the working coding checklist.
 - `kdba_kleisli_composition.md` — the primer.
 - `architectural_progression.md` — the personal history: eras, aha moments, and
   how each self-discovered concept later mapped onto C++ features and known
