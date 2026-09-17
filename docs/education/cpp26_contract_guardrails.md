@@ -210,14 +210,39 @@ the C++20→C++23 bump):
 3. The bridge header shrinks to the feature-test shim, then retires.
 4. Acceptance gate: the replay-parity CTest stays green across the switch.
 
+### 7.1 Toolchain support table (C4.2 tracking snapshot, 2026-09-17)
+
+Source: cppreference "Compiler support for C++26", checked 2026-09-17.
+Baseline ruling status: **none taken** — the local baseline remains
+GCC 13.3.0 (Ubuntu 24.04); the bridge's `__cpp_contracts` branch stays
+dormant and the emulation ladder is correct as-is.
+
+| Capability | GCC | Clang | Bridge implication |
+| :--- | :--- | :--- | :--- |
+| Native contracts — `pre`/`post`/`contract_assert` (P2900R14, `__cpp_contracts`) | **16** | not yet in any release | C4.3/P4 switch becomes mechanically possible at GCC 16 only |
+| `<contracts>` violation-handling library (P2900R14/P3819R0) | **16** (libstdc++) | — | the handler move (switch step 2) also opens at GCC 16 |
+| `[[assume]]` (C++23 P1774R8) | 14 | 19 | the release fold the bridge uses today — **ahead** of the 13.3 baseline, so local release builds take the no-op fallback ladder |
+
+Facts relevant to the (owner) baseline ruling, when it is taken:
+
+- Language and library gates open **together at GCC 16** — the native switch
+  is all-or-nothing per compiler; a mixed GCC-16/Clang-N toolchain must keep
+  the bridge until Clang lands contracts. C4.1's feature-test discipline
+  makes that mixed case free (no compiler-name branches anywhere).
+- The local baseline supports neither; nothing fires today; no baseline
+  action is possible before the toolchain itself moves.
+- Re-check triggers for this table: any Clang release defining
+  `__cpp_contracts`; GCC 17 contract DR follow-ups (e.g. P3598R0
+  const-ification of splice expressions in contract assertions).
+
 ## 8. Reading order
 
 1. The adoption proposal: `docs/backlog/contract_guardrails_adoption_proposal.md`.
 2. The adoption todo: `docs/backlog/contract_guardrails_adoption_todo.md`.
 3. `domain_value_objects.md` — why the invariants belong to gateways (DVOs).
 4. §9 below — what placing real annotations taught us (read before scaling).
-5. cppreference "C++26 compiler support" — track GCC 16/17 and Clang progress
-   before any baseline ruling.
+5. cppreference "C++26 compiler support" — re-check before any baseline
+   ruling; the tracked snapshot lives in §7.1 above.
 
 ## 9. Implementation lessons (W-A/W-B pilot, 2026-09-17)
 

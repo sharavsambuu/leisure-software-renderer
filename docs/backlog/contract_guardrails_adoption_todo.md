@@ -42,7 +42,7 @@
 ## C4 — Native C++26 readiness (standing, not scheduled)
 
 - [ ] **C4.1 Feature-test discipline** — every contract expansion keys on `__cpp_contracts`; no compiler sniffing anywhere. DoD: `grep -rn "cpp_contracts" cpp-folders/src/shs-renderer-lib` shows only the bridge; zero compiler-name branches.
-- [ ] **C4.2 Track the toolchain** — note GCC 16/17 and Clang contract support in the education doc's support table when it changes; no baseline action until a toolchain ruling. DoD: table current at each docs sweep.
+- [x] **C4.2 Track the toolchain** — standing tracking, first snapshot recorded 2026-09-17: support table added to the education doc (§7.1, `cpp26_contract_guardrails.md`), sourced from cppreference. Facts: native contracts (`__cpp_contracts`) and `<contracts>` both open at **GCC 16**; **Clang has no contracts release yet**; `[[assume]]` (C++23) is GCC 14+/Clang 19+ — ahead of the local GCC 13.3.0 baseline, which takes the bridge's no-op fallback. No baseline ruling taken (stays owner-side); the table names the re-check triggers (any Clang `__cpp_contracts` release; GCC 17 contract DRs). DoD stands: re-verify the table at each docs sweep.
 - [ ] **C4.3 Switch run plan (blocked on C4.2 ruling)** — flip the `__cpp_contracts` branch, rewrite sites (mechanical: single-expression conditions per bridge rule 2), move handler to `<contracts>` plumbing, replay-parity CTest green, retire emulation. DoD: run plan executed and marked DONE with commit hash; bridge shrinks to a shim.
 
 ---

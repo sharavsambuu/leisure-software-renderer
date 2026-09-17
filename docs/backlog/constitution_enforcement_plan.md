@@ -255,9 +255,14 @@ rim under both gate 8 (placement) and gate 9 (rails) scans.
   renderpath execution/planner edges. Regression net: existing 43-test suite
   (resources/scene/vertical-slice/vk-driver/core exercise both registries);
   inventory regenerated same-commit.
-- **C4.2 toolchain tracking** (GCC 16/17 + Clang contract support table);
-  C4.3/P4 native switch runbook stands until a toolchain ruling — the
-  replay-parity CTest is the release blocker when it fires.
+- **C4.2 toolchain tracking** — first snapshot recorded (2026-09-17): the
+  education doc's support table (§7.1) now exists. Key facts: `__cpp_contracts`
+  and `<contracts>` open together at GCC 16; Clang has no contracts support in
+  any release yet, so a mixed toolchain must keep the bridge (free under C4.1's
+  feature-test discipline); local baseline GCC 13.3.0 supports neither and the
+  emulation ladder is correct as-is. Baseline ruling remains owner-side; the
+  C4.3/P4 native-switch runbook stands until it — the replay-parity CTest is
+  the release blocker when it fires.
 - **P3 re-scope bookkeeping**: the 2026-09-17 forwarder-tree removal already
   moved every checker scan root off `domains/` onto the canonical owner tree;
   P3's prefix hazard is resolved by that amendment (manifest-derived roots are
