@@ -138,6 +138,34 @@ explicit: `expected` alone supplies neither rollback nor atomicity.
 Every unchecked item below is future work. Prefer small independently reverting
 commits; keep mechanical moves separate from semantic changes.
 
+### Status (2026-09-17, automated continuation run)
+
+- Camera pilot committed (`21e45c9`): canonical `shs/camera/convention.hpp`
+  plus content-pinned forwarding header, 4 consumers repointed, both
+  include-order CTests; 20/20 CTest green (lavapipe + VK_LAYER validation).
+- Step 1 tooling committed (`743554f`): `tools/check_header_migration.py`
+  enforces reviewed migrations from `engine_header_migration_manifest.json`
+  (content-pinned single-hop forwarders, pinned dependencies, GLM-only
+  pure-leaf policy, include-cycle/ambient-effect reachability, retired-path
+  ban, unregistered-header ban) with 16 isolated positive/negative tests;
+  `tools/inventory_headers.py` regenerates the full 220-header inventory
+  (`engine_header_inventory.json`, staleness-checked in CTest); the boundary
+  gate delegates to it. 22/22 CTest green (clean rebuild, both Vulkan tests
+  run on lavapipe with validation).
+- Step 1 remains PARTIAL: consumer/SDK matrix (fresh-cache, installed-package,
+  shared builds) and the compiler matrix are not yet recorded; the manifest
+  covers only reviewed pilots, as designed.
+- Inventory finding: no include cycles between the 220 headers and no missing
+  internal includes; the proposed module mapping still has one cross-module
+  cycle (`proposed_module_cycles` in the inventory) driven by execution-zone
+  and adapter dependencies — resolve before step 2 relocations beyond leaves.
+- Vulkan trees: inventory proposes keeping them separate as
+  `shs/rhi/vulkan/value/` vs `shs/rhi/vulkan/runtime/` (no implementation
+  merge, no symbol/ABI claims); relocation stays blocked on the ownership
+  decision (step 5 gate).
+- Phase table: 1 PARTIAL, 2 pilot-partial, 3 pilot-partial (manifest-driven
+  checks cover reviewed leaves only), 4–7 not started.
+
 ### 1. Inventory, decision record and baseline
 - [ ] Create a machine-readable old-header -> canonical-header manifest covering
   every header, namespace owner, public/private status and build dependency.
