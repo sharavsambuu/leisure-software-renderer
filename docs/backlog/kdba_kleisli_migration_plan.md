@@ -1,7 +1,11 @@
 # KDBA Kleisli Migration Plan — K1.1 (Run A pilot: renderpath)
 
-> Status: active plan (2026-09-17, Run A of the consolidated run plan in
-> `docs/backlog/kdba_conformance_backlog.md`). This is the K1.1 DoD artifact:
+> Status: historical migration artifact (2026-09-17); Run A–C are complete.
+> The [KDBA backlog close-out](kdba_conformance_backlog.md#run-c-close-out-2026-09-17)
+> governs current status. Intermediate Run A signature and event-ownership
+> descriptions below are provenance, not the final gateway contract or new work.
+> Follow Constitution II and current pod contracts for implementation.
+> This is the K1.1 DoD artifact:
 > the shared `Step`/gateway vocabulary and the per-pod port order, published
 > before the remaining ports land, so they are mechanical copies of one proven
 > shape. Law precedence: Constitution II §2.2 — where this plan and a numbered

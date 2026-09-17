@@ -1,12 +1,108 @@
 # KDBA Conformance Backlog — shs-renderer-lib
 
-> **Reassessment required (2026-09-17).** This audit predates the [governing clarification](../spec/dod_ecs_architecture.md). Findings below are candidates, not newly approved migration work. K1.1–K1.5, K5.1, and K6.1 must be re-evaluated against actual contracts and callers: a `void` signature, identity gateway, or wrapper alone does not prove a defect. Do not invent vacuous errors or run signature-only ports. Boundary, lost-fact, determinism, and lifetime findings still require evidence and tests. Blocked P6.x and standing P4.4 work remain tracked; nothing is completed or dropped by this notice. This notice supersedes conflicting status and run-plan language below.
+> **Current status (2026-09-17): Run A–C complete; library migration stabilized.** The reassessment below was applied during those runs; it is not a new migration queue. Run C evidence and scalability contracts landed in commit `05bb646`. Remaining library work is P6.1–P6.3, standing P4.4, and trigger-scoped S1–S6. Adventure-demo AD0–AD7 is a separate consumer backlog. Historical audit findings and intermediate plans below do not override the close-out.
+
+> **Historical reassessment directive (2026-09-17).** This audit predates the [governing clarification](../spec/dod_ecs_architecture.md). Findings below are candidates, not newly approved migration work. K1.1–K1.5, K5.1, and K6.1 must be re-evaluated against actual contracts and callers: a `void` signature, identity gateway, or wrapper alone does not prove a defect. Do not invent vacuous errors or run signature-only ports. Boundary, lost-fact, determinism, and lifetime findings still require evidence and tests. Blocked P6.x and standing P4.4 work remain tracked; nothing is completed or dropped by this notice. This notice supersedes conflicting status and run-plan language below.
 
 > Status: active (2026-09-16). Source: full audit of `include/shs/domains/` (11 pods) against Constitution II (Kleisli Domain Boundary Architecture) + the 2026-09-16 hardening amendments (gateway-gateway terminology, Rule 4.1 drain-order law, ERROR_FLOW failure-rail catalog + drift gate).
 > Trigger: user directive — current pods are the "old gateway based Domain PODs architecture"; audit the lib against KDBA laws and register every violation candidate.
 > Law precedence: Constitution II S2.1 + Rules 2/10/11/12, canon S6.1-S6.2, precedence S2.2. Roadmap is schedule, not law.
 > Provenance: supersedes `domain_pod_hardening_backlog.md` (FROZEN same day, see its banner). Blocked P6.x items and standing laws roll forward here; nothing was silently dropped.
 > Verification after every item: `build/` ctest suite green + `check_kdba_boundaries.sh` green (now with the ERROR_FLOW drift gate + final-enforcement exit guard).
+
+## Backlog ownership and historical dispositions (2026-09-17)
+
+- This file owns the current status of library P4.4, P6.1–P6.3, and S1–S6.
+  P4.4/S1 are one stochasticity workstream; P6.2/P6.3 and S5 share persistence
+  work, not separate codec implementations. Headless S5 preparation can proceed
+  while host integration remains blocked.
+- The [hardening backlog](domain_pod_hardening_backlog.md) remains frozen.
+  Its P4.4/P6 checkboxes are historical references, not duplicate assignments.
+  Its unchecked **L1 renderpath uniform-signature migration** is superseded by
+  completed K1.2/Run A and the Run C reassessment; do not schedule another port.
+  Frozen DoD checkboxes are not evidence of new work without a current audit.
+- The [migration plan](kdba_kleisli_migration_plan.md) records intermediate
+  decisions. Current Constitution II, pod contracts, and this close-out take
+  precedence over its historical signature descriptions.
+- Roadmap entries require a current implementation/dependency check before
+  scheduling. Checkbox totals are not unique-task totals; absence of checkboxes
+  does not establish completion. Performance work requires measured evidence,
+  and S1–S6 retain their explicit triggers rather than authorizing speculative
+  infrastructure.
+
+## Consumer-driven renderer feature delivery (2026-09-17)
+
+Priority: finish a minimal value-plan-to-pixels execution slice before expanding
+visual effects or introducing performance infrastructure. These execution tasks
+do not reopen the completed domain migration. No new pod is required merely to
+wrap Vulkan ownership. Fallible preparation uses typed results; GPU effects and
+resource lifetimes remain at the execution edge.
+
+### GPU execution path — selected next work
+
+- [x] **G0 Stable graphics pipeline-ID lookup** — DONE 2026-09-17: explicit
+  ID-to-hash index fixes `VulkanPipelineCache::find_graphics`. Regression failed
+  before the fix and passed afterward; deduplication, distinct/unknown IDs and
+  failed creation/retry are covered. Driver target rebuilt; registered CTest
+  suite 16/16 passed including the boundary checker. This proves bookkeeping,
+  not GPU pipeline binding; no live GPU rendering was exercised. Known
+  asymmetry: `intern_compute` shares the same ID/hash distinction but exposes no
+  `find_compute`; when compute ID lookup is needed, reuse the proven ID→hash
+  index pattern instead of keying a hash map by ID.
+- [ ] **G1 Explicit recording failures** — replace silent unsupported/no-device
+  recording with a closed error vocabulary and command/stage diagnostics. Test
+  unsupported commands, missing IDs and invalid recording order; preparation
+  rejects invalid streams before GPU effects where possible. Do not claim GPU
+  rollback or treat headless bookkeeping as successful rendering.
+  Partial progress (2026-09-17): `record_frame_commands` now returns
+  `std::expected<void, VulkanRecordingFailure>` with an error code and zero-based
+  command index (`SIZE_MAX` for prerequisites). It rejects an unavailable device
+  or missing command buffer and propagates sink failures. Headless tests cover
+  empty/nonempty streams returning `DeviceUnavailable`, unsupported pass/pipeline/
+  draw/dispatch rejection and translation stopping at the first rejected command.
+  Buffer binds now reject missing/null handles instead of silently doing nothing.
+  The command-buffer and missing-buffer branches still need dedicated coverage.
+  Whole-stream preflight, broader ID checks, recording-order validation and stage
+  diagnostics remain open. Translation is fail-fast, not transactional: earlier
+  calls are not rolled back. Spy/headless tests prove contracts, not GPU rendering.
+- [ ] **G2 Minimal offscreen graphics realization** — implement actual attachment
+  setup, pipeline creation/binding and begin/end-pass recording in the new driver.
+  Acceptance: render one deterministic scene through value commands; supported
+  formats/layouts/features are explicit, failures release acquired resources,
+  and Vulkan validation reports no errors on an available backend. Depends on G1.
+- [ ] **G3 Upload, submit and readback proof** — complete the minimal scene's
+  buffer upload, synchronization, submission and image readback. Check known
+  pixels independently of parity; exercise failure and resource cleanup paths.
+  Record unavailable Vulkan capability as a skip, never a pass. Depends on G2.
+- [ ] **G4 Library SW/Vulkan equivalence** — run the same minimal scene/policy
+  through actual library execution paths with documented per-output tolerances
+  and independent known-answer checks. Wire portable CTest gates and retain
+  backend diagnostics. Adventure AD1/AD4 are related, not substitute evidence.
+  Depends on G3 and a verified software realization of the selected recipe.
+
+### Follow-on features — existing ownership preserved
+
+- **Live plan switching, resize and safe GPU retirement:** owned by P6.1;
+  accepted plans rebuild execution resources, rejected plans preserve the working
+  renderer, in-flight resources outlive submission. Offscreen G2/G3 do not wait
+  for window presentation, and do not mark host integration complete.
+- **Persisted capture/replay and time-travel debugging:** owned by P6.2/P6.3 + S5;
+  versioned codecs, asset/config identity, handle reconstruction and snapshot/log
+  resume precede an overlay. Headless preparation remains independently possible.
+- **Library shader pipeline:** owned by the
+  [Slang plan](../roadmap/slang_utilization_plan.md); verify existing phase status
+  before scheduling compiler gates, shader identity, reflection-checked layouts
+  and bindings. Adventure Slang usage alone does not complete this integration.
+- **Optimization and additional effects:** deferred behind consumer demand and
+  measured evidence; no speculative scheduler, graph or meshlet framework.
+
+## Related demo work (2026-09-17)
+
+The [Adventure Demo Domain Boundary & Composition Backlog](adventure_demo_conformance_backlog.md)
+tracks AD0–AD7 for the six active adventure-demo pairs: shared semantic ownership,
+typed composition, known-answer tests, execution adapters, and portable gates.
+Implementation is not started. This is separate consumer work, not a reopening of
+Run C or completion of the library P6/S1–S6 integration and scalability tasks.
 
 ## Naming migration (2026-09-17) — vocabulary harmonization, no behavior change
 
@@ -86,7 +182,8 @@ archives (never rewritten); and the ~11 `exps-gpu-renderer` demos that include t
   recognize known syntax, not all semantic dispatch or lost-fact defects.
 - Validation: clean build succeeded in `cpp-folders/build`; after the final
   renderpath fix, full rebuild and unfiltered CTest passed **16/16**, including
-  the boundary checker. No Run C commit was made. P6.1–P6.3 remain blocked;
+  the boundary checker. Run C and the scalability contracts were committed as
+  `05bb646` (2026-09-17). P6.1–P6.3 host integration remains blocked;
   P4.4 remains standing. This reassessed close-out supersedes the historical
   signature-only/vacuous-error Run C plan below.
 
