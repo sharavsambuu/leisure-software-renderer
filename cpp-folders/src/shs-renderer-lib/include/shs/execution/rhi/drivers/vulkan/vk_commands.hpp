@@ -42,7 +42,7 @@ namespace shs
     enum class VulkanCommandKind : uint8_t
     {
         None, BeginPass, EndPass, BindPipeline, BindVertexBuffer, BindIndexBuffer,
-        DrawIndexed, Dispatch, Barrier
+        DrawIndexed, Dispatch, Barrier, Draw
     };
 
     inline VulkanCommandKind vulkan_command_kind(const RHICmd& cmd)
@@ -55,6 +55,7 @@ namespace shs
         if (std::holds_alternative<RHICmdDrawIndexedDesc>(cmd.payload)) return VulkanCommandKind::DrawIndexed;
         if (std::holds_alternative<RHICmdDispatchDesc>(cmd.payload)) return VulkanCommandKind::Dispatch;
         if (std::holds_alternative<RHICmdBarrierDesc>(cmd.payload)) return VulkanCommandKind::Barrier;
+        if (std::holds_alternative<RHICmdDrawDesc>(cmd.payload)) return VulkanCommandKind::Draw;
         return VulkanCommandKind::None;
     }
 
@@ -107,6 +108,11 @@ namespace shs
                 if (d->offset % (d->index_u32 ? 4 : 2))
                     return fail(VulkanRecordingError::InvalidCommand, i, d->buffer);
                 index = true;
+            }
+            else if (std::holds_alternative<RHICmdDrawDesc>(p))
+            {
+                if (!inside) return fail(VulkanRecordingError::InvalidRecordingOrder, i);
+                if (!pipeline) return fail(VulkanRecordingError::MissingBinding, i);
             }
             else if (std::holds_alternative<RHICmdDrawIndexedDesc>(p))
             {
@@ -209,6 +215,12 @@ namespace shs
                 result = invoke([&] { return sink.bind_vertex_buffer(*d); });
             else if (const auto* d = std::get_if<RHICmdBindIndexBufferDesc>(&cmd.payload))
                 result = invoke([&] { return sink.bind_index_buffer(*d); });
+            else if (const auto* d = std::get_if<RHICmdDrawDesc>(&cmd.payload))
+            {
+                if constexpr (requires { sink.draw(*d); })
+                    result = invoke([&] { return sink.draw(*d); });
+                else result = std::unexpected(VulkanRecordingError::UnsupportedCommand);
+            }
             else if (const auto* d = std::get_if<RHICmdDrawIndexedDesc>(&cmd.payload))
                 result = invoke([&] { return sink.draw_indexed(*d); });
             else if (const auto* d = std::get_if<RHICmdDispatchDesc>(&cmd.payload))

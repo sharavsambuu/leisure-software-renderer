@@ -149,10 +149,28 @@ resource lifetimes remain at the execution edge.
   readback or pixel claim; G2 scene acceptance remains open. Factory-facing
   backend attachment/pipeline lifecycle integration is not yet wired. Creation
   failure unwind is implemented but Vulkan allocation failures are not injected.
+  — PARTIAL 2026-09-17 (slice 3): added non-indexed `RHICmdDrawDesc`
+  and value-command translation, preserving existing variant indices and sinks
+  without draw support (explicit UnsupportedCommand). The Vulkan recorder requires
+  an active pass and a bound, still-compatible realization. Pass boundaries clear
+  binding state. The offscreen test records a deterministic procedural triangle;
+  negative ordering/missing-binding streams fail preflight before recording.
+  Full build and 18/18 CTest passed. Factory-facing attachment/pipeline lifecycle
+  integration remains open; no backend-owned execution API is claimed.
 - [ ] **G3 Upload, submit and readback proof** — complete the minimal scene's
   buffer upload, synchronization, submission and image readback. Check known
   pixels independently of parity; exercise failure and resource cleanup paths.
   Record unavailable Vulkan capability as a skip, never a pass. Depends on G2.
+  — PARTIAL 2026-09-17: existing offscreen integration test now submits real
+  commands, waits on a fence, transitions the RGBA8 attachment to transfer source,
+  copies to host-visible staging memory with a host-read barrier, and verifies
+  independent known pixels: triangle `(255,64,0,255)`, background `(0,0,0,0)`.
+  Lavapipe run with validation enabled passed without reported validation errors.
+  This is driver-level evidence, not factory-facing execution. The procedural
+  scene does not upload vertex/index buffers; upload proof, reusable backend
+  submission/readback, injected Vulkan failures, and software parity remain open.
+  Backend shutdown cache invalidation also needs coverage before device recreation
+  is exposed: existing registries currently retain retired resource records.
 - [ ] **G4 Library SW/Vulkan equivalence** — run the same minimal scene/policy
   through actual library execution paths with documented per-output tolerances
   and independent known-answer checks. Wire portable CTest gates and retain

@@ -83,6 +83,11 @@ namespace shs
                     graphics_->accepts(*pipelines_->find_graphics(d->pipeline), *offscreen_)) return {};
                 return fail(VulkanRecordingError::UnsupportedCommand, d->pipeline);
             }
+            if (std::holds_alternative<RHICmdDrawDesc>(cmd.payload))
+            {
+                if (inside_pass && graphics_ && graphics_->pipeline()) return {};
+                return fail(VulkanRecordingError::UnsupportedCommand);
+            }
             uint64_t buffer = 0;
             if (const auto* d = std::get_if<RHICmdBindVertexBufferDesc>(&cmd.payload)) buffer = d->buffer;
             else if (const auto* d = std::get_if<RHICmdBindIndexBufferDesc>(&cmd.payload)) buffer = d->buffer;
@@ -110,6 +115,7 @@ namespace shs
             info.pClearValues = &clear;
             vkCmdBeginRenderPass(cmd_, &info, VK_SUBPASS_CONTENTS_INLINE);
             inside_pass_ = true;
+            bound_pipeline_ = 0;
             return {};
         }
 
@@ -120,6 +126,7 @@ namespace shs
             if (!inside_pass_) return std::unexpected(VulkanRecordingError::InvalidRecordingOrder);
             vkCmdEndRenderPass(cmd_);
             inside_pass_ = false;
+            bound_pipeline_ = 0;
             return {};
         }
 
@@ -131,6 +138,7 @@ namespace shs
             if (auto valid = validate_command(rhi_cmd_bind_pipeline(d.pipeline), true); !valid)
                 return std::unexpected(valid.error().code);
             vkCmdBindPipeline(cmd_, VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_->pipeline());
+            bound_pipeline_ = d.pipeline;
             return {};
         }
 
@@ -156,6 +164,17 @@ namespace shs
                 return {};
             }
             return std::unexpected(VulkanRecordingError::MissingBuffer);
+        }
+
+        std::expected<void, VulkanRecordingError> draw(const RHICmdDrawDesc& d)
+        {
+            if (auto ready = recording_ready(); !ready) return ready;
+            if (!inside_pass_) return std::unexpected(VulkanRecordingError::InvalidRecordingOrder);
+            if (!bound_pipeline_) return std::unexpected(VulkanRecordingError::MissingBinding);
+            if (auto valid = validate_command(rhi_cmd_bind_pipeline(bound_pipeline_), true); !valid)
+                return std::unexpected(valid.error().code);
+            vkCmdDraw(cmd_, d.vertex_count, d.instance_count, d.first_vertex, d.first_instance);
+            return {};
         }
 
         std::expected<void, VulkanRecordingError> draw_indexed(const RHICmdDrawIndexedDesc& d)
@@ -202,6 +221,7 @@ namespace shs
         const VulkanOffscreenPass* offscreen_;
         const VulkanOffscreenPipeline* graphics_;
         bool inside_pass_ = false;
+        uint64_t bound_pipeline_ = 0;
     };
 
     // ------------------------------------------------------------------

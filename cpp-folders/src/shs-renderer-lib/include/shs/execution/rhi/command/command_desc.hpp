@@ -59,6 +59,14 @@ namespace shs
         uint32_t first_instance = 0;
     };
 
+    struct RHICmdDrawDesc
+    {
+        uint32_t vertex_count = 0;
+        uint32_t instance_count = 1;
+        uint32_t first_vertex = 0;
+        uint32_t first_instance = 0;
+    };
+
     struct RHICmdDispatchDesc
     {
         uint32_t group_x = 1;
@@ -87,7 +95,8 @@ namespace shs
         RHICmdDrawIndexedDesc,
         RHICmdDispatchDesc,
         RHICmdBarrierDesc,
-        RHICmdEndPassDesc
+        RHICmdEndPassDesc,
+        RHICmdDrawDesc
     >;
 
     struct RHICmd
@@ -99,6 +108,7 @@ namespace shs
     inline RHICmd rhi_cmd_bind_pipeline(uint64_t pipeline) { return RHICmd{RHICmdBindPipelineDesc{pipeline}}; }
     inline RHICmd rhi_cmd_bind_vertex_buffer(uint64_t buffer, uint64_t offset) { return RHICmd{RHICmdBindVertexBufferDesc{buffer, offset}}; }
     inline RHICmd rhi_cmd_bind_index_buffer(uint64_t buffer, uint64_t offset, bool index_u32) { return RHICmd{RHICmdBindIndexBufferDesc{buffer, offset, index_u32}}; }
+    inline RHICmd rhi_cmd_draw(const RHICmdDrawDesc& d) { return RHICmd{d}; }
     inline RHICmd rhi_cmd_draw_indexed(const RHICmdDrawIndexedDesc& d) { return RHICmd{d}; }
     inline RHICmd rhi_cmd_dispatch(uint32_t x, uint32_t y, uint32_t z) { return RHICmd{RHICmdDispatchDesc{x, y, z}}; }
     inline RHICmd rhi_cmd_barrier(const RHIMemoryBarrierDesc& b) { return RHICmd{RHICmdBarrierDesc{b}}; }

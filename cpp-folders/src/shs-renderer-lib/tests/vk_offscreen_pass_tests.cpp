@@ -21,7 +21,8 @@ static std::vector<uint32_t> read_spirv(const char* path)
 #define CHECK(condition) do { if (!(condition)) { \
     std::fprintf(stderr, "FAIL line %d: %s\n", __LINE__, #condition); return 1; } } while (false)
 
-// Recording evidence only. Submission/readback and known pixels belong to G3.
+// G2 draw recording plus focused G3 submission/readback evidence.
+// Factory-facing execution and buffer upload remain separate acceptance items.
 int main()
 {
     using namespace shs;
@@ -43,8 +44,16 @@ int main()
         VkImage image = VK_NULL_HANDLE;
         VkDeviceMemory memory = VK_NULL_HANDLE;
         VkCommandPool pool = VK_NULL_HANDLE;
+        VkBuffer readback = VK_NULL_HANDLE;
+        VkDeviceMemory readback_memory = VK_NULL_HANDLE;
+        VkFence fence = VK_NULL_HANDLE;
         ~Objects()
         {
+            // Also protects failure exits after submission.
+            vkDeviceWaitIdle(device);
+            if (fence) vkDestroyFence(device, fence, nullptr);
+            if (readback) vkDestroyBuffer(device, readback, nullptr);
+            if (readback_memory) vkFreeMemory(device, readback_memory, nullptr);
             if (pool) vkDestroyCommandPool(device, pool, nullptr);
             if (image) vkDestroyImage(device, image, nullptr);
             if (memory) vkFreeMemory(device, memory, nullptr);
@@ -54,7 +63,7 @@ int main()
     desc.width = 32;
     desc.height = 32;
     desc.format = RHIFormat::RGBA8_UNorm;
-    desc.usage = RHIImageUsage_ColorAttachment;
+    desc.usage = RHIImageUsage_ColorAttachment | RHIImageUsage_TransferSrc;
     CHECK(VulkanOffscreenPass::supports(desc));
     for (int invalid = 0; invalid < 6; ++invalid)
     {
@@ -170,21 +179,99 @@ int main()
     VulkanCommandRecorder bound{vk, cmd, buffers, images, &cache, &pass, &graphics};
     CHECK(!bound.bind_pipeline({id})); // direct bind outside a pass
     const RHICmd bind_stream[] = {rhi_cmd_begin_pass({1, 0, true, false}),
-        rhi_cmd_bind_pipeline(id), rhi_cmd_end_pass()};
+        rhi_cmd_bind_pipeline(id), rhi_cmd_draw({3}), rhi_cmd_end_pass()};
     VulkanCommandRecorder bookkeeping{vk, cmd, buffers, images, &cache, &pass};
     auto unavailable = record_commands(bind_stream, bookkeeping);
     CHECK(!unavailable && unavailable.error().code == VulkanRecordingError::UnsupportedCommand);
     CHECK(unavailable.error().stage == VulkanRecordingStage::Validation);
     CHECK(unavailable.error().command_index == 1);
     CHECK(!bookkeeping.end_pass({}));
+    const RHICmd outside[] = {rhi_cmd_draw({3})};
+    auto bad_draw = record_commands(outside, bound);
+    CHECK(!bad_draw && bad_draw.error().code == VulkanRecordingError::InvalidRecordingOrder);
+    CHECK(bad_draw.error().command == VulkanCommandKind::Draw);
+    const RHICmd unbound[] = {rhi_cmd_begin_pass({1, 0, true, false}),
+        rhi_cmd_draw({3}), rhi_cmd_end_pass()};
+    bad_draw = record_commands(unbound, bound);
+    CHECK(!bad_draw && bad_draw.error().code == VulkanRecordingError::MissingBinding);
+    CHECK(bad_draw.error().command_index == 1);
+    CHECK(!bound.end_pass({})); // rejection was preflight, not partial recording
+    CHECK(!bound.draw({3}));
+    CHECK(bound.begin_pass({1, 0, true, false}));
+    auto direct = bound.draw({3});
+    CHECK(!direct && direct.error() == VulkanRecordingError::MissingBinding);
+    CHECK(bound.end_pass({}));
     CHECK(record_commands(bind_stream, bound));
     CHECK(record_commands(bind_stream, bound));
-    std::fprintf(stderr, "PASS: real graphics pipeline creation and value-stream bind recording\n");
+    std::fprintf(stderr, "PASS: real graphics pipeline creation and value-stream bind/draw recording\n");
 #else
     std::fprintf(stderr, "NOTE: pipeline coverage unavailable (slangc not configured); attachments only\n");
 #endif
+    VkBufferCreateInfo read_ci{};
+    read_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    read_ci.size = 32 * 32 * 4;
+    read_ci.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    CHECK(vkCreateBuffer(vk, &read_ci, nullptr, &objects.readback) == VK_SUCCESS);
+    vkGetBufferMemoryRequirements(vk, objects.readback, &requirements);
+    allocation.allocationSize = requirements.size;
+    allocation.memoryTypeIndex = vk_pick_memory_type(properties, requirements.memoryTypeBits,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    CHECK(allocation.memoryTypeIndex != UINT32_MAX);
+    CHECK(vkAllocateMemory(vk, &allocation, nullptr, &objects.readback_memory) == VK_SUCCESS);
+    CHECK(vkBindBufferMemory(vk, objects.readback, objects.readback_memory, 0) == VK_SUCCESS);
+    VkImageMemoryBarrier image_barrier{};
+    image_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    image_barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    image_barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    image_barrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    image_barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    image_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    image_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    image_barrier.image = objects.image;
+    image_barrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+        VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &image_barrier);
+    VkBufferImageCopy copy{};
+    copy.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    copy.imageExtent = {32, 32, 1};
+    vkCmdCopyImageToBuffer(cmd, objects.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        objects.readback, 1, &copy);
+    VkMemoryBarrier host_barrier{};
+    host_barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+    host_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    host_barrier.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT,
+        0, 1, &host_barrier, 0, nullptr, 0, nullptr);
     CHECK(vkEndCommandBuffer(cmd) == VK_SUCCESS);
-    // No submitted work: discard references before exercising explicit reset/recreate.
+    VkFenceCreateInfo fence_ci{};
+    fence_ci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    CHECK(vkCreateFence(vk, &fence_ci, nullptr, &objects.fence) == VK_SUCCESS);
+    VkSubmitInfo submit{};
+    submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submit.commandBufferCount = 1;
+    submit.pCommandBuffers = &cmd;
+    const auto submitted = vkQueueSubmit(device.value.graphics_queue(), 1, &submit, objects.fence);
+    const auto waited = submitted == VK_SUCCESS ? vkWaitForFences(vk, 1, &objects.fence, VK_TRUE, UINT64_MAX) : submitted;
+    // Before any CHECK can unwind graphics/pass owners, retire submitted work.
+    const auto idle = vkDeviceWaitIdle(vk);
+    CHECK(submitted == VK_SUCCESS && waited == VK_SUCCESS && idle == VK_SUCCESS);
+    void* mapped = nullptr;
+    CHECK(vkMapMemory(vk, objects.readback_memory, 0, VK_WHOLE_SIZE, 0, &mapped) == VK_SUCCESS);
+    std::vector<uint8_t> pixels(static_cast<uint8_t*>(mapped), static_cast<uint8_t*>(mapped) + 32 * 32 * 4);
+    vkUnmapMemory(vk, objects.readback_memory);
+    const auto pixel_is = [&](int x, int y, int r, int g, int b, int a) {
+        const auto* p = pixels.data() + (y * 32 + x) * 4;
+        return p[0] == r && p[1] == g && p[2] == b && p[3] == a;
+    };
+    CHECK(pixel_is(1, 1, 0, 0, 0, 0));
+#ifdef SHS_OFFSCREEN_SHADER_DIR
+    CHECK(pixel_is(16, 12, 255, 64, 0, 255));
+    CHECK(pixel_is(16, 28, 0, 0, 0, 0));
+    std::fprintf(stderr, "PASS: submitted triangle, fence completion, RGBA8 known pixels\n");
+#else
+    CHECK(pixel_is(16, 12, 0, 0, 0, 0));
+#endif
+    // Completed work: discard references before explicit reset/recreate.
     CHECK(vkResetCommandPool(vk, objects.pool, 0) == VK_SUCCESS);
 #ifdef SHS_OFFSCREEN_SHADER_DIR
     graphics.reset();
@@ -207,6 +294,6 @@ int main()
     pass.reset();
     CHECK(!pass.framebuffer());
     CHECK(pass.initialize(vk, 1, objects.image, desc));
-    std::fprintf(stderr, "PASS: explicit offscreen attachments and value-stream begin/end recording (no submission)\n");
+    std::fprintf(stderr, "PASS: explicit offscreen attachments, submission/readback and reset/recreation\n");
     return 0;
 }
