@@ -18,6 +18,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace renderpath
+    {
     struct Scene;
     class ResourceRegistry;
     struct RendererResources;
@@ -108,4 +111,6 @@ namespace shs
         // --- Debug тохиргоо (сонголттой) ---
         int debug_view = 0;              // 0=сүүлчийн гаралтын зураг, 1=сүүдэр, 2=гүн, ... гэх мэт
     };
+
+    } // inline namespace renderpath
 } // namespace shs

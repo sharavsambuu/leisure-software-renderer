@@ -40,6 +40,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace renderpath
+    {
     struct PipelineExecutionPass
     {
         IRenderPass* pass = nullptr;
@@ -1042,4 +1045,6 @@ namespace shs
         PipelineRuntimeExecutor runtime_executor_{};
         VulkanLikeRuntime vk_like_runtime_{};
     };
+
+    } // inline namespace renderpath
 }

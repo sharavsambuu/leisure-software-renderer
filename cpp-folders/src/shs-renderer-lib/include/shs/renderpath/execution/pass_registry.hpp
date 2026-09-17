@@ -24,6 +24,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace renderpath
+    {
     struct PassFactoryDescriptor
     {
         TechniquePassContract contract{};
@@ -180,4 +183,6 @@ namespace shs
         std::unordered_map<std::string, Factory> factories_{};
         std::unordered_map<std::string, PassFactoryDescriptor> descriptors_{};
     };
+
+    } // inline namespace renderpath
 }

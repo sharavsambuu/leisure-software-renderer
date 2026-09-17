@@ -16,6 +16,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace renderpath
+    {
     template <typename TFrameInfo>
     struct VkRenderPathPassExecutionContext
     {
@@ -47,4 +50,6 @@ namespace shs
         bool post_color_valid = false;
         uint32_t post_color_source = 0u; // 0:none, 1:post_a, 2:post_b
     };
+
+    } // inline namespace renderpath
 }

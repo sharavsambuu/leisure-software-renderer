@@ -17,6 +17,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace renderpath
+    {
     template <typename TContext, typename TRecordShadowPasses, typename TMemoryBarrier>
     inline bool vk_execute_shadow_map_pass(
         TContext& ctx,
@@ -291,4 +294,6 @@ namespace shs
         ctx.scene_pass_executed = true;
         return true;
     }
+
+    } // inline namespace renderpath
 }

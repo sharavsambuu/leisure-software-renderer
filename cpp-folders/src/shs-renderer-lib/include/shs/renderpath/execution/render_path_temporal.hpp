@@ -16,6 +16,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace renderpath
+    {
     struct RenderPathTemporalSettings
     {
         bool jitter_enabled = false;
@@ -78,4 +81,6 @@ namespace shs
         out[2][1] += jitter_ndc.y;
         return out;
     }
+
+    } // inline namespace renderpath
 }

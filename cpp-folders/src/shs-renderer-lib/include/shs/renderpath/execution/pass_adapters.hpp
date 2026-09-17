@@ -36,6 +36,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace renderpath
+    {
     namespace detail
     {
         inline glm::mat4 make_item_model_matrix(const RenderItem& item)
@@ -1588,4 +1591,6 @@ namespace shs
         });
         return reg;
     }
+
+    } // inline namespace renderpath
 }

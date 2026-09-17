@@ -11,6 +11,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace renderpath
+    {
     struct RenderPathRuntimeState
     {
         bool view_occlusion_enabled = true;
@@ -27,5 +30,7 @@ namespace shs
             *this = RenderPathRuntimeState{};
         }
     };
+
+    } // inline namespace renderpath
 }
 

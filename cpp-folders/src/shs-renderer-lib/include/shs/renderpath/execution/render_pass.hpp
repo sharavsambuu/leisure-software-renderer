@@ -29,6 +29,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace renderpath
+    {
     struct LightCullingRuntimePayload
     {
         uint32_t tile_size = 16u;
@@ -304,4 +307,6 @@ namespace shs
     protected:
         bool enabled_ = true;
     };
+
+    } // inline namespace renderpath
 }

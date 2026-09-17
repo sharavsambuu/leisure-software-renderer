@@ -16,6 +16,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace renderpath
+    {
     inline void render_skybox_to_hdr(RT_ColorHDR& out_hdr, const Scene& scene, const ISkyModel& sky, IJobSystem* jobs = nullptr)
     {
         if (out_hdr.w <= 0 || out_hdr.h <= 0) return;
@@ -24,4 +27,6 @@ namespace shs
             shade_skybox_rows(out_hdr, scene, sky, yb, ye);
         });
     }
+
+    } // inline namespace renderpath
 } // namespace shs

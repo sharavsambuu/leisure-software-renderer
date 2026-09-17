@@ -15,6 +15,9 @@
 #include <shs/render/targets/rt_shadow.hpp>
 
 namespace shs {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace renderpath
+    {
 
 // must adapt this signature to color RT type.
 // Provide a tiny adapter function in demo if needed.
@@ -44,4 +47,6 @@ inline void blit_shadow_depth_to_color(
     }
 }
 
+
+    } // inline namespace renderpath
 } // namespace shs

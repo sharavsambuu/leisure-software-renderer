@@ -141,8 +141,8 @@ def main():
     targets = []
     for p in sorted(INCLUDE.rglob("*.hpp")):
         rel = p.relative_to(INCLUDE)
-        if "domains" in rel.parts or "execution" in rel.parts:
-            continue  # compatibility forwarders carry no declarations
+        if rel.parts[0] in ("domains", "execution"):
+            continue  # top-level compatibility forwarders carry no declarations
         text = p.read_text()
         m = BLOCK_OPEN.search(text)
         if not m:

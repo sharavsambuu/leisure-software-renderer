@@ -26,7 +26,12 @@
 
 namespace shs
 {
-    struct Context;
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace renderpath
+    {
+    // Context is app-owned (step 7 cutover); hoist it so unqualified/
+    // old-root spellings still resolve to shs::app::Context.
+    using ::shs::app::Context;
 
     class PassShadowMap
     {
@@ -208,4 +213,6 @@ namespace shs
     private:
         LightCamera light_cam_{};
     };
+
+    } // inline namespace renderpath
 }

@@ -19,6 +19,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace renderpath
+    {
     struct RenderPathLightGridRuntimeLayout
     {
         uint32_t frame_width = 0u;
@@ -149,4 +152,6 @@ namespace shs
             a.uses_light_grid == b.uses_light_grid &&
             a.uses_light_clusters == b.uses_light_clusters;
     }
+
+    } // inline namespace renderpath
 }

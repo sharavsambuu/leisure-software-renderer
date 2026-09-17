@@ -22,6 +22,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace renderpath
+    {
     struct RenderPathPassDispatchSample
     {
         std::string id{};
@@ -202,4 +205,6 @@ namespace shs
         std::unordered_map<uint16_t, Handler> typed_handlers_{};
         std::unordered_map<std::string, Handler> custom_handlers_{};
     };
+
+    } // inline namespace renderpath
 }

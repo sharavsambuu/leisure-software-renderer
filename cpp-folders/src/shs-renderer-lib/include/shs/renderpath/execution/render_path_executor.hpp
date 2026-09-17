@@ -26,6 +26,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace renderpath
+    {
     struct RenderPathResolvedState
     {
         RenderPathRecipe recipe{};
@@ -212,4 +215,6 @@ namespace shs
         bool active_plan_valid_ = false;
         std::size_t active_index_ = 0u;
     };
+
+    } // inline namespace renderpath
 }

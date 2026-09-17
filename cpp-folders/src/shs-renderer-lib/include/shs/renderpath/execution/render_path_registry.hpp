@@ -19,6 +19,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace renderpath
+    {
     class RenderPathRegistry
     {
     public:
@@ -66,4 +69,6 @@ namespace shs
     private:
         std::unordered_map<std::string, RenderPathRecipe> recipes_{};
     };
+
+    } // inline namespace renderpath
 }
