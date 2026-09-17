@@ -19,6 +19,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace task
+    {
     template<typename Fn>
     inline void parallel_for_1d(
         IJobSystem* js,
@@ -57,4 +60,6 @@ namespace shs
         }
         wg.wait();
     }
+
+    } // inline namespace task
 }

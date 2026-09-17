@@ -12,6 +12,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace platform
+    {
     struct PlatformInputState
     {
         bool quit = false;
@@ -43,4 +46,6 @@ namespace shs
         float mouse_dx = 0.0f;
         float mouse_dy = 0.0f;
     };
+
+    } // inline namespace platform
 }

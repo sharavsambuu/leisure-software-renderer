@@ -21,6 +21,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace sky
+    {
     struct CubemapData
     {
         // 0:+X, 1:-X, 2:+Y, 3:-Y, 4:+Z, 5:-Z
@@ -119,5 +122,7 @@ namespace shs
         CubemapData cubemap_{};
         float intensity_ = 1.0f;
     };
+
+    } // inline namespace sky
 }
 

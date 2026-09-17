@@ -6008,6 +6008,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "platform",
       "namespace_declarations": [
+        "platform",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -6030,6 +6031,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "platform",
       "namespace_declarations": [
+        "platform",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -6057,6 +6059,7 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "platform",
       "namespace_declarations": [
+        "platform",
         "shs"
       ],
       "visibility": "public-include-tree",
@@ -10451,7 +10454,8 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "sky",
       "namespace_declarations": [
-        "shs"
+        "shs",
+        "sky"
       ],
       "visibility": "public-include-tree",
       "direct_dependencies": [
@@ -10485,7 +10489,8 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "sky",
       "namespace_declarations": [
-        "shs"
+        "shs",
+        "sky"
       ],
       "visibility": "public-include-tree",
       "direct_dependencies": [
@@ -10578,7 +10583,8 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "sky",
       "namespace_declarations": [
-        "shs"
+        "shs",
+        "sky"
       ],
       "visibility": "public-include-tree",
       "direct_dependencies": [
@@ -10604,7 +10610,8 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "task",
       "namespace_declarations": [
-        "shs"
+        "shs",
+        "task"
       ],
       "visibility": "public-include-tree",
       "direct_dependencies": [
@@ -10632,7 +10639,8 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "task",
       "namespace_declarations": [
-        "shs"
+        "shs",
+        "task"
       ],
       "visibility": "public-include-tree",
       "direct_dependencies": [
@@ -10668,7 +10676,8 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "task",
       "namespace_declarations": [
-        "shs"
+        "shs",
+        "task"
       ],
       "visibility": "public-include-tree",
       "direct_dependencies": [
@@ -10708,7 +10717,8 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "task",
       "namespace_declarations": [
-        "shs"
+        "shs",
+        "task"
       ],
       "visibility": "public-include-tree",
       "direct_dependencies": [

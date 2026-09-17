@@ -21,6 +21,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace platform
+    {
     class SdlRuntime final : public IPlatformRuntime
     {
     public:
@@ -206,4 +209,6 @@ namespace shs
         bool left_mouse_held_ = false;
         bool ignore_next_mouse_dt_ = false;
     };
+
+    } // inline namespace platform
 }

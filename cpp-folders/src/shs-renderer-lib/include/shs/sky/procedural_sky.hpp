@@ -16,6 +16,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace sky
+    {
     class ProceduralSky final : public ISkyModel
     {
     public:
@@ -53,5 +56,7 @@ namespace shs
     private:
         glm::vec3 sun_direction_ws_{};
     };
+
+    } // inline namespace sky
 }
 

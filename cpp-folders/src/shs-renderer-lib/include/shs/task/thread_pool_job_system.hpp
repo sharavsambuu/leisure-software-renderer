@@ -23,6 +23,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace task
+    {
     class ThreadPoolJobSystem final : public IJobSystem
     {
     public:
@@ -113,5 +116,7 @@ namespace shs
         bool stop_ = false;
         std::atomic<int> active_{0};
     };
+
+    } // inline namespace task
 }
 

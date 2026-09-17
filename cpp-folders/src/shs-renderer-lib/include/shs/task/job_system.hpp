@@ -15,6 +15,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace task
+    {
     // Job-system contract (step 4.4, engine_domain_separation_migration.md):
     //
     // THREAD ACCESS
@@ -41,5 +44,7 @@ namespace shs
         virtual void wait_idle() = 0;
         virtual size_t worker_count() const = 0;
     };
+
+    } // inline namespace task
 }
 

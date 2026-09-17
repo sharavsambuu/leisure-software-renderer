@@ -14,11 +14,16 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace sky
+    {
     class ISkyModel
     {
     public:
         virtual ~ISkyModel() = default;
         virtual glm::vec3 sample(const glm::vec3& direction_ws) const = 0; // linear color
     };
+
+    } // inline namespace sky
 }
 

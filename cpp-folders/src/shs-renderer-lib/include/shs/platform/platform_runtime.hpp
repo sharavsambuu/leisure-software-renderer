@@ -17,6 +17,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace platform
+    {
     struct WindowDesc
     {
         std::string title{};
@@ -42,5 +45,7 @@ namespace shs
         virtual void upload_rgba8(const uint8_t* src, int width, int height, int src_pitch_bytes) = 0;
         virtual void present() = 0;
     };
+
+    } // inline namespace platform
 }
 

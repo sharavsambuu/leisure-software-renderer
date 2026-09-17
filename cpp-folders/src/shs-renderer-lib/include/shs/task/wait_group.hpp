@@ -16,6 +16,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace task
+    {
     class WaitGroup
     {
     public:
@@ -44,5 +47,7 @@ namespace shs
         std::mutex mtx_{};
         std::condition_variable cv_{};
     };
+
+    } // inline namespace task
 }
 
