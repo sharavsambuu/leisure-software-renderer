@@ -3,6 +3,13 @@
 > Status: **Living vocabulary index (2026-09-15)**. The single entry point for
 > "which struct/enum do I select when building a renderer?" per Constitution II §6.5.
 > Each entry: concept → type → header → owning module.
+>
+> **Terminology amendment (2026-09-17):** the term **"Domain POD" is retired**;
+> the official term is **Domain Value Object (DVO)** — see the terminology annex
+> `docs/spec/domain_value_object_law.md` (teaching:
+> `docs/education/domain_value_objects.md`). Prose in this catalog migrates at
+> next edit (T3); historical documents keep the old term (T2, archives are never
+> rewritten). Structural code nouns ("Core 4", pod homes) are unaffected.
 
 ## 1. Decision Axes (closed menus — pick one value each)
 

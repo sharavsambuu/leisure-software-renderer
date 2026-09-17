@@ -263,3 +263,28 @@ Pod-idiomatic C++23 subset (supplements Constitution II §8):
   PMR-backed), `std::mdspan` at tile kernels.
 - Restricted: coroutines live in execution edges only; concepts constrain API
   rims, never gateway bodies.
+
+---
+
+## 11. Contract Guardrails (amendment, 2026-09-17)
+
+**Contract-style invariant enforcement at module edges is project law**
+(Constitution II Rule 17). Conventions, review-blocking:
+
+> **Single-source note (redundancy hardening, 2026-09-17):** this section is a
+> *restatement* of Constitution II Rule 17 + Forbidden Pattern 7 for the
+> conventions review checklist — not an independent source. On any divergence,
+> Constitution II wins and the stricter reading applies (Constitution II §2.2).
+
+- Only the sanctioned macros — `SHS_PRE`, `SHS_POST`, `SHS_CONTRACT_ASSERT`
+  (`shs/core/contract_guardrails.hpp` bridge) — never raw `assert`/checks in
+  seam code, never contract syntax in installed public headers.
+- Conditions are **side-effect-free single expressions** of pure state reads;
+  they never gate control flow and never carry domain-recoverable failure
+  (that is `std::expected` + typed rejections, Constitution II Rules 8–12).
+- Debug/profile: checked, violations abort via the project handler;
+  release: native C++23 `[[assume]]` (zero cost); every expansion keys on
+  `__cpp_contracts` — no compiler sniffing. The bridge stays ≤ ~60 lines.
+- Governing docs: proposal `docs/backlog/contract_guardrails_adoption_proposal.md`
+  (adopted as law 2026-09-17), todo `docs/backlog/contract_guardrails_adoption_todo.md`,
+  teaching `docs/education/cpp26_contract_guardrails.md`.

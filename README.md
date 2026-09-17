@@ -50,6 +50,10 @@
 
     Constitution II (KDBA Kleisli Domain Boundary Architecture, Supreme Law 2026-09-16)
       docs/spec/value_oriented_programming.md
+      (§2.3 DVO backbone philosophy — everything is a Domain Separation or a
+       Domain Boundary; §6.7 + docs/spec/domain_value_object_law.md terminology
+       law: "Domain POD" = Domain Value Object (DVO); Rule 17 contract
+       guardrails at module edges)
 
     Constitution III (Domain-Owned Data Layout & Execution; legacy filename retained)
       docs/spec/dod_ecs_architecture.md

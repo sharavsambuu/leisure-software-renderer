@@ -57,6 +57,14 @@ SHS adopts KDBA in C++23: domain-owned, composable value transitions with explic
 > domain alike — is expressed as a pure gateway over four components:
 > Types (contract), Command (action), Gateway, Event. Nothing else mutates state."**
 
+> **Terminology amendment (2026-09-17, §6.7):** throughout this constitution,
+> prose occurrences of the retired term "Domain POD" — including §1's outcomes
+> and this section's historical quotes — mean **Domain Value Object (DVO)**;
+> see §2.3 for the DVO-backbone statement of this principle. Live prose migrates
+> at next edit (annex rule T3); the structural noun "pod" (file suffixes, gate
+> globs, Core 4 filenames) is unchanged (T5). The retired term remains a
+> recognized conversational alias (T6).
+
 This constitution binds **all code in this repository**: every module of
 `shs-renderer-lib` and every demo domain (tetris, snake, fps, …) alike.
 Concretely:
@@ -95,7 +103,7 @@ empty, per §6.1 — they still carry all four files.
 The laws above are restated in several places (principle, rules, tables, demos).
 To keep one authority per provision:
 
-1. **Precedence order**: apply Constitution III's 2026-09-17 governing clarification first (no ECS programming-model or uniform-signature mandate). §2.1 states *intent*; **§3 numbered rules are the
+1. **Precedence order**: apply Constitution III's 2026-09-17 governing clarification first (no ECS programming-model or uniform-signature mandate). §2.1 states *intent*; **§2.3 states the underlying philosophy** (the DVO backbone; it binds through the sections it cites); **§3 numbered rules are the
    enforceable minimum**; §6.2 is the **authoritative Core 4 suffix table**;
    §7.1/§7.2 are the **authoritative memory/layout laws**; the roadmap is
    *schedule*, never law. Where a restatement and a numbered rule disagree, the
@@ -109,6 +117,41 @@ To keep one authority per provision:
    citations (this rule exists because one already did: a "Rule 3.2" reference in
    §7.1 was corrected to Rule 2).
 4. **KDBA commit rule (replaces the in-place reconciliation)**: Rule 1's "immutable inputs" governs *intent inputs and views* (`std::span<const Command>`); arrows never mutate persistent state in place — purity means deterministic, side-effect-free *decisions* with atomic boundary commit, not owned-buffer copying.
+
+### 2.3 The DVO Backbone — Everything Is a Domain Separation or a Domain Boundary (amendment, 2026-09-17)
+
+> **"The Domain Value Object is the backbone of this architecture. Everything
+> in the system is either a Domain Separation or a Domain Boundary."**
+
+- A **Domain Separation** is a bounded context's closed set of DVOs plus its
+  command/event vocabulary (§6.2, Core 1–3): the *what* of a domain, isolated
+  from every other domain.
+- A **Domain Boundary** is the owning gateway (§6.2, Core 4) and its execution
+  edges: the only place DVOs transition, invariants are enforced, and effects
+  happen (§2 principle; Rules 8.1, 10).
+- **There is no third category.** Subsystems, planners, orchestrators, sagas —
+  all are pods over DVOs (§2.1). A construct that is neither a separation nor a
+  boundary is a design defect, flagged in review.
+
+**How DVO logic is built — the two instruments, both supreme law:**
+
+1. **Monadic pipelines (§8, supreme law)** — DVO transitions are built
+   exclusively as Kleisli arrow compositions
+   (`A -> expected<B, DomainError>` via `.and_then()` / `.transform()` /
+   `.or_else()`); "monads own flow" (the 7 KDBA dimensions, §8 saga law). The
+   railway, never the DVO type, carries failure; switch-case monoliths are
+   forbidden.
+2. **Contract guardrails (Rule 17; Constitution I §11)** — a DVO's defining
+   property, *always valid at every module edge*, is enforced by contract
+   guardrails at boundaries — never by phantom flags inside DVOs, never by
+   caller discipline. Contract guardrails are an **integral part of building a
+   DVO**, not an optional add-on.
+
+**Binding order**: this philosophy is realized by §2.1 (Core 4,
+everything-is-a-pod), §8 (Kleisli doctrine), Rule 17 (contract guardrails), and
+the DVO annex (`docs/spec/domain_value_object_law.md`, which defines the
+DVO/entity/gateway model). Where older prose says "Domain POD" for the *value*,
+read DVO (§6.7, rules T3/T6); the structural noun "pod" is unchanged (T5).
 
 
 ---
@@ -147,6 +190,7 @@ To keep one authority per provision:
 14. **Adapter Value Seam (amendment, 2026-09-17)**: When a pure consumer needs a value that an adapter produces, the value type is *extracted* into a pure value header that both sides include: the adapter *produces*, the pure consumer *consumes*. Pulling an adapter (or edge) header into a pure consumer is a boundary violation even when it "only needs the struct". The sanctioned seam is a GLM-only or dependency-free value header (e.g. `geometry/debug_mesh.hpp`, extracted from the Jolt debug-draw adapter).
 15. **Closed Exception Sets (amendment, 2026-09-17)**: Every gate grandfather list / exceptions manifest is a closed, shrink-only set. New headers can never join; a listed header leaves only when its violation is resolved *at source* (extraction, repoint, or deletion) — never by waiver, gate edit, or reclassification. A gate that scans an empty file set is vacuous and must FAIL: renames, relocations, and build-option flips update the gate in the same commit (extends Rule N3 to build options and file moves). The canonical header inventory is content-hashed; any header edit regenerates it in the same commit (`inventory_headers.py --write`) so the inventory check cannot drift.
 16. **Optional SDKs (amendment, 2026-09-17)**: Third-party SDKs (Vulkan, SDL2, Assimp, Jolt) are conditionally discovered behind CMake options with `SHS_HAS_<SDK>` PUBLIC feature guards (same shape as `SHS_HAS_JOLT`; default ON preserves existing consumer behavior). Every canonical value/contract header — and the library's full CTest suite — must pass with every optional SDK disabled, headless (lavapipe + `VK_LAYER_KHRONOS_validation` where Vulkan is exercised). An SDK is a capability the consumer selects, never an assumption the library makes.
+17. **Contract Guardrails at Module Edges (amendment, 2026-09-17)**: Bounded-context invariants are expressed as contract guardrails at module edges — **never as boolean flags inside Domain Value Objects, never as comment-only law**. Until native C++26 contracts (P2900) reach the toolchain baseline, the sanctioned form is the C++23 bridge (`SHS_PRE` / `SHS_POST` / `SHS_CONTRACT_ASSERT`, `shs/core/contract_guardrails.hpp`): debug/profile builds check and route violations to the project handler; release builds fold conditions to native C++23 `[[assume]]`. Hard sub-rules: conditions are side-effect-free single expressions of pure state reads; a contract never gates control flow (Rule 4.1 replay parity); the bridge stays ≤ ~60 lines with no framework growth; every expansion keys on `__cpp_contracts`, never compiler sniffing; public headers use the macros only (self-containment gate). Contracts cover *unreachable states only* — `expected` + typed rejections remain the only domain-failure path (Rules 8–12). Rationale and education: `docs/education/cpp26_contract_guardrails.md`; adopted from `docs/backlog/contract_guardrails_adoption_proposal.md` (2026-09-17). Implementation follows `docs/backlog/contract_guardrails_adoption_todo.md` (C1); until the bridge lands, comment-form contracts at seams are the interim sanctioned form.
 
 ---
 
@@ -158,6 +202,7 @@ To keep one authority per provision:
 4. **Dynamic Polymorphism in Hot Paths**: Using virtual method dispatch (`vtable`), `dynamic_cast`, or pointer-to-base switching inside simulation entities or rasterizer loops.
 5. **Side-Effect Out-Parameters**: Passing mutable references (`&out_projectiles`) to functions that secretly mutate caller state instead of returning explicit value bundles (KDBA: event/fact out-params retired — return `Step` by value; exclusive span out-buffers for hardware kernels per §5(1) remain).
 6. **Unbounded Frame Retainers**: Retaining pointers or references to memory allocated within the transient Frame Arena across frame boundaries.
+7. **Contract Misuse (amendment, 2026-09-17)**: Conditions with side effects (debug executes them; release may discard them — a direct Rule 4.1 violation); routing control flow or domain-recoverable failure through contracts (that is the `expected` railway's job, Rules 8–12); raw invariant checks in public headers instead of the sanctioned macros; growing the bridge header beyond a ~60-line, feature-test-keyed shim.
 
 ---
 
@@ -356,6 +401,19 @@ name the monolithic-reducer paradigm KDBA replaced, and they make a pod read as 
   edge object", not pod vocabulary. Collisions between the two (`LookCommand`) are why the
   pod vocabulary uses `*Intent` for alternatives and `Command` only for the variant type.
 
+### 6.7 Domain Value Object terminology law (annex, 2026-09-17)
+
+**The term "Domain POD" is retired; the official term is "Domain Value Object"
+(DVO).** A DVO is a plain, identity-free data value that belongs to exactly one
+bounded context and is always valid at every module edge — identity lives in
+registries (entities), invariants are enforced by the owning gateway, not by
+the type. (The annex's Part 2 definition is authoritative; the sentence above
+is a restatement for orientation.) The normative annex is `docs/spec/domain_value_object_law.md` (Parts
+0–6: rationale, the DVO/entity/gateway model, migration rules T1–T5); teaching
+lives in `docs/education/domain_value_objects.md`. Rule T1 (new text uses DVO;
+"Domain POD" is a review-blocking defect) and T5 (code symbols are out of
+scope) apply to this constitution's prose as well.
+
 ## 7. Dual-Tier Memory Specification
 
 ```
@@ -461,6 +519,12 @@ requirements instead of aspirations.
 ---
 
 ## 8. KDBA Kleisli Pipeline Doctrine (Supreme Law, 2026-09-16)
+
+> **Philosophy anchor (2026-09-17):** this doctrine is **instrument 1 of 2** for
+> building DVO logic, per §2.3 (the DVO backbone — everything is a Domain
+> Separation or a Domain Boundary); instrument 2 is contract guardrails
+> (Rule 17). This section is the single normative source for the railway;
+> §2.3 binds through it.
 
 ### Mandatory Standards
 - `std::span<const T>`: For immutable non-owning views across gateways, AI evaluators, and tile jobs.
