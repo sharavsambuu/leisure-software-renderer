@@ -23,6 +23,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace renderpath
+    {
     enum class RenderPathPreset : uint8_t
     {
         Forward = 0,
@@ -174,4 +177,6 @@ namespace shs
         }
         return ok;
     }
+
+    } // inline namespace renderpath
 }

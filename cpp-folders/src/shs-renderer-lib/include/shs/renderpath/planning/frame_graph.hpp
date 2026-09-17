@@ -31,6 +31,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace renderpath
+    {
     struct FrameGraphNode
     {
         IRenderPass* pass = nullptr;
@@ -210,4 +213,6 @@ namespace shs
         std::vector<size_t> execution_order_{};
         FrameGraphReport report_{};
     };
+
+    } // inline namespace renderpath
 }

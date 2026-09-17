@@ -17,6 +17,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace renderpath
+    {
     struct TechniquePassEntry
     {
         std::string id{};
@@ -105,4 +108,6 @@ namespace shs
         }
         return p;
     }
+
+    } // inline namespace renderpath
 }

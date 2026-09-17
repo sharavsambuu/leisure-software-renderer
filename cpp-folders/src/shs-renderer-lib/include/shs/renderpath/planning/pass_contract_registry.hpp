@@ -19,6 +19,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace renderpath
+    {
     inline bool lookup_standard_pass_contract(PassId pass_id, TechniquePassContract& out)
     {
         out = TechniquePassContract{};
@@ -324,4 +327,6 @@ namespace shs
         }
         return registry;
     }
+
+    } // inline namespace renderpath
 }

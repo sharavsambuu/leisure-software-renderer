@@ -18,6 +18,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace renderpath
+    {
     template <typename TContext>
     struct StandardRenderPathPassHandlers
     {
@@ -90,4 +93,6 @@ namespace shs
         ok = dispatcher.register_handler(PassId::DepthOfField, depth_of_field) && ok;
         return ok;
     }
+
+    } // inline namespace renderpath
 }

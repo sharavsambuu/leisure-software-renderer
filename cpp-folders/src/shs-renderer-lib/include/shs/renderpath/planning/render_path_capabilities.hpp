@@ -13,6 +13,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace renderpath
+    {
     struct RenderPathCapabilitySet
     {
         RenderBackendType backend = RenderBackendType::Software;
@@ -69,4 +72,6 @@ namespace shs
 
         return out;
     }
+
+    } // inline namespace renderpath
 }

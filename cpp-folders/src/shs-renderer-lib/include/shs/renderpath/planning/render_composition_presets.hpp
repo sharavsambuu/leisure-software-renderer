@@ -20,6 +20,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace renderpath
+    {
     enum class RenderCompositionPostStackPreset : uint8_t
     {
         Default = 0,
@@ -275,4 +278,6 @@ namespace shs
 
         return out;
     }
+
+    } // inline namespace renderpath
 }

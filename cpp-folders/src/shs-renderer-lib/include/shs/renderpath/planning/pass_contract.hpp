@@ -17,6 +17,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace renderpath
+    {
     enum class TechniquePassRole : uint8_t
     {
         Custom = 0,
@@ -409,4 +412,6 @@ namespace shs
     {
         return make_semantic_ref(s, ContractAccess::ReadWrite, d, alias);
     }
+
+    } // inline namespace renderpath
 }

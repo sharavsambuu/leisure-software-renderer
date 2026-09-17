@@ -24,6 +24,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace renderpath
+    {
     struct RenderPathBarrierAccess
     {
         std::string pass_id{};
@@ -386,4 +389,6 @@ namespace shs
         if (!out.errors.empty()) out.valid = false;
         return out;
     }
+
+    } // inline namespace renderpath
 }

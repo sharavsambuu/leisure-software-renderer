@@ -20,6 +20,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace renderpath
+    {
     struct FrameSceneData
     {
         Context* ctx = nullptr;
@@ -92,5 +95,7 @@ namespace shs
             const FrameCullData& cull,
             const RenderPathRuntimeState& runtime_state) = 0;
     };
+
+    } // inline namespace renderpath
 }
 

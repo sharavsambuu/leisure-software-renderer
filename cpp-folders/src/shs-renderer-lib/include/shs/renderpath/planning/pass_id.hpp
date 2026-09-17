@@ -15,6 +15,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace renderpath
+    {
     enum class PassId : uint16_t
     {
         Unknown = 0,
@@ -92,4 +95,6 @@ namespace shs
     {
         return std::string(pass_id_name(id));
     }
+
+    } // inline namespace renderpath
 }

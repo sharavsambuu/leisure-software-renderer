@@ -23,6 +23,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace renderpath
+    {
     struct RenderPathCompatibilityRules
     {
         bool require_shadow_map_pass_when_shadows_enabled = true;
@@ -350,4 +353,6 @@ namespace shs
     private:
         RenderPathCompatibilityRules rules_{};
     };
+
+    } // inline namespace renderpath
 }

@@ -25,6 +25,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace renderpath
+    {
     enum class RenderPathResourceKind : uint8_t
     {
         Texture2D = 0,
@@ -472,4 +475,6 @@ namespace shs
 
         return out;
     }
+
+    } // inline namespace renderpath
 }

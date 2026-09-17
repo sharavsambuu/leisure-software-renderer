@@ -18,6 +18,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace renderpath
+    {
     enum class RenderTechniquePreset : uint8_t
     {
         PBR = 0,
@@ -129,4 +132,6 @@ namespace shs
         fp.pass.light_shafts.enable = recipe.enable_light_shafts;
         fp.pass.motion_blur.enable = recipe.enable_motion_blur;
     }
+
+    } // inline namespace renderpath
 }
