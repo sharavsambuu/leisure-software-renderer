@@ -464,6 +464,27 @@ commits; keep mechanical moves separate from semantic changes.
   inventory regenerated (423 headers, content hashes).
 - Phase table: 1-4 COMPLETE, 5 COMPLETE, 6/7 not started (7 blocked on 4-6).
 
+### Status (2026-09-17, step 4.5 completion snapshot): task completion table
+
+Snapshot of every checkbox in this backlog at commit `2bd2bd6` (includes the
+pre-phase pilot evidence block at the top of the file):
+
+| # | Phase | Items | Status | Evidence |
+|---|-------|-------|--------|----------|
+| — | Pilot: camera convention compatibility | 5/5 | COMPLETE | Pilot evidence block (top of file) |
+| 1 | Inventory, decision record and baseline | 4/4 | COMPLETE | Manifest + KDBA amendments + clean build/CTest/boundary baseline (433 headers at baseline) |
+| 2 | Relocate headers without changing behavior | 4/4 | COMPLETE | Canonical layout + forwarding headers + dual-include-order smoke consumers |
+| 3 | Enforce actual dependency separation | 4/4 | COMPLETE | Renderpath ownership, conditional adapters, manifests + negative gate fixtures |
+| 4 | Clarify state ownership and harden contracts | 5/5 | COMPLETE | 4.1 input split, 4.2 settings owner, 4.3 identity policy, 4.4 lifecycle/failure semantics, 4.5 identity-gateway retirement (437 -> 423 headers) |
+| 5 | Make dependencies selectable by consumers | 4/4 | COMPLETE | Aggregate targets + conditional discovery + install/export/self-containment gates |
+| 6 | Prove engine integration through a vertical slice | 0/5 | NOT STARTED | Public-API-only host, deterministic replay, software/Vulkan parity, engine seams, completion/cancellation docs |
+| 7 | Namespace/API cutover and compatibility retirement | 0/5 | NOT STARTED (blocked on 2-6) | Namespace slices, alias policy, consumer migration, forwarding-header retirement, legacy-include rejection |
+
+**Totals: 26/36 checkboxes done (72%). Phases 1-5 COMPLETE, 6/7 not started.**
+Validation at HEAD: 32/32 CTest green (incl. `check_kdba_boundaries.sh`),
+zero warnings, inventory 423 headers. Next executable step: 6 (its
+dependencies 4 and 5 are complete); 7 remains blocked until 6 closes.
+
 ### 1. Inventory, decision record and baseline
 
 - [x] Create a machine-readable old-header -> canonical-header manifest covering
