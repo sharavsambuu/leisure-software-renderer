@@ -340,6 +340,11 @@ if(SHS_RENDERER_BUILD_TESTS)
     # contract macro in a math leaf / non-seam header FAILs, legal homes PASS.
     add_test(NAME shs_renderer_contract_placement_negative_test
         COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_contract_placement_negative_test.sh")
+    # W-C gateway rails (P2 + P5 owner rulings): negative fixture — a throw /
+    # bool-rim gateway FAILs, a dispatch without a static_assert tail FAILs,
+    # a conformant gateway PASSES.
+    add_test(NAME shs_renderer_gateway_rails_negative_test
+        COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_gateway_rails_negative_test.sh")
 
     add_executable(shs_renderer_tests
         tests/core_tests.cpp

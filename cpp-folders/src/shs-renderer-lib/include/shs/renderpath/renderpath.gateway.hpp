@@ -388,6 +388,14 @@ namespace shs::renderpath
                 {
                     detail::apply_set_runtime_toggle(state, cmd, events, step);
                 }
+                else
+                {
+                    // P5 exhaustiveness (owner ruling 2026-09-17): the command
+                    // variant is closed — an unhandled alternative must fail
+                    // to compile here, never silently swallow (no default:).
+                    static_assert(sizeof(T) == 0,
+                        "unhandled RenderPathCommand alternative in renderpath_gateway dispatch");
+                }
             }, command);
         }
         step.plan_generation = state.plan_generation;

@@ -479,6 +479,14 @@ if ! bash "${script_dir}/check_contract_placement.sh"; then
   failed=1
 fi
 
+# (9) Gateway rails gate (P2 + P5, owner rulings 2026-09-17): rims return
+#     Step values / std::expected rails (never bool/status/throw); closed
+#     command variants dispatch exhaustively (no 'default:' swallow; every
+#     std::visit carries a static_assert tail). See check_gateway_rails.sh.
+if ! bash "${script_dir}/check_gateway_rails.sh"; then
+  failed=1
+fi
+
 # Final enforcement gate (2026-09-16 hardening): every FAIL above must fail
 # the script. Negative-test proven: the tail-section gates (platform IO,
 # entropy, expected-vector, stringy events, phantom flags, event/error catalog

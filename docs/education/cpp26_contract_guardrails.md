@@ -302,3 +302,21 @@ Forcing a synthetic site to "complete" the rule would have created a fake
 contract — worse than a documented deviation, because fake contracts decay
 into noise that future readers stop trusting. Annotate what exists; schedule
 the rest.
+
+### 9.9 Close every if-constexpr dispatch with a static_assert tail
+
+An `if constexpr` chain over a closed variant with **no trailing else** is
+not exhaustive — a newly added alternative compiles silently and does
+nothing. The W-C audit found 2 of 4 gateway dispatches in exactly that
+shape. The fix is a trailing `else { static_assert(sizeof(T) == 0, ...); }`:
+compile-complete for handled alternatives, hard error for anything new.
+Text-scan the seam too (`default:` ban + static_assert-per-visit count) —
+`-Wswitch` cannot see if-constexpr chains at all.
+
+### 9.10 A text gate must not police its own prose
+
+The first version of the `default:` ban failed on comments *explaining* the
+ban. A textual gate scans code, so strip trailing `//` comments before the
+match (and keep fixture prose that mentions the token — that is exactly what
+the negative test should prove). A gate that fails on its own documentation
+trains people to avoid documenting gates.

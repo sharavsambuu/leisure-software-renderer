@@ -84,6 +84,21 @@ Inviolable design rules (full rationale in the education doc §6):
 
 ## 4. Pilot scope (deliverable C2)
 
+## 4. Pilot scope (deliverable C2)
+
+> **C2.4 retro verdict (2026-09-17, W-C):** the pilot caught a real tiering
+> violation (the transition table had to move to its pure-leaf home before the
+> compiler could assert it), one masked negative-test hand-break (isolated),
+> and needed exactly one pure allocation-free helper
+> (`renderpath_plan_pass_chain_registered`). Ergonomic verdict: single-
+> expression conditions hold up; every helper must be a P1-legal pure leaf.
+> Owner rulings granted: sweep beyond renderpath APPROVED (opens W-D, logic
+> pod first); P2 expected-rail exclusivity + P5 closed-variant exhaustiveness
+> enacted as blocking gates (see `tools/check_gateway_rails.sh`, boundary
+> gate 9). Sweep findings at ruling time: 0 throws in gateway seams, all rims
+> Step-valued (P2 clean); no `default:` swallow, but 2 of 4 gateway dispatches
+> lacked a compile-time exhaustiveness tail (P5 gap, closed same ruling).
+
 One bounded context, chosen because its invariants are exactly the shape
 contracts were designed for — **the renderpath pod**:
 

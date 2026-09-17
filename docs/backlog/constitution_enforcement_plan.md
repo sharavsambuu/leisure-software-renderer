@@ -73,17 +73,29 @@ C2.1–C2.3 of the adoption todo, made P1-legal by W-A:
 - CMake keeps both twins compiling: enforcement twin runs the checks; release
   twin proves the `[[assume]]` fold emits no check.
 
-## W-C — Joint retro → owner rulings (gates the traversal)
+## W-C — Joint retro → owner rulings (gates the traversal) — **DONE 2026-09-17**
 
-C2.4 of the adoption todo, folded with the proposal's deferred gates:
+C2.4 of the adoption todo, folded with the proposal's deferred gates. All
+four items closed in the joint retro (owner granted all rulings):
 
-1. **Findings retro** — did the pilot annotations catch anything? Did any
-   condition need a pure, allocation-free helper? Update proposal §4.
-2. **Ruling: sweep beyond renderpath** (adoption todo C2.4 gate) — opens W-D.
-3. **Ruling: P2** — expected-rail exclusivity at gateways (no `bool`/status
-   codes/out-params/exceptions as failure rails); pilot pod `frame`.
-4. **Ruling: P5** — closed-variant exhaustiveness (ban `default:` swallow in
-   `*.gateway.hpp` command dispatch).
+1. [x] **Findings retro** — DONE 2026-09-17: pilot caught a real tiering
+   violation (transition table moved to its pure-leaf home), one masked
+   negative-test hand-break (isolated), one pure helper needed
+   (`renderpath_plan_pass_chain_registered`). Verdict recorded in the
+   adoption proposal §4.
+2. [x] **Ruling: sweep beyond renderpath** — GRANTED: W-D opens, port order
+   unchanged (logic first).
+3. [x] **Ruling: P2 expected-rail exclusivity** — ENACTED as blocking:
+   `tools/check_gateway_rails.sh` (boundary gate 9) bans `throw` and
+   bool/integral status rails on `*_gateway` rims. Pilot pod `frame` already
+   conformant (empty §6.1 vocabulary, Step-valued rim); all 4 gateways green.
+4. [x] **Ruling: P5** — ENACTED: `default:` swallow banned in
+   `*.gateway.hpp` dispatch (comments stripped before the scan) and every
+   `std::visit` must carry a trailing `static_assert` exhaustiveness tail —
+   the audit found the real gap (if-constexpr chains with no tail silently
+   ignore new alternatives); tails added to the renderpath + logic dispatches.
+   Negative fixture: `shs_renderer_gateway_rails_negative_test` (CTest).
+
 
 ## W-D — The per-pod traversal (one slice per pod, one commit each)
 

@@ -255,6 +255,14 @@ namespace shs::logic
                 {
                     fsm_detail::apply_tick(state, cmd, context, desc, events, step);
                 }
+                else
+                {
+                    // P5 exhaustiveness (owner ruling 2026-09-17): the command
+                    // variant is closed — an unhandled alternative must fail
+                    // to compile here, never silently swallow (no default:).
+                    static_assert(sizeof(T) == 0,
+                        "unhandled FsmCommand alternative in logic_gateway dispatch");
+                }
             }, command);
         }
         return step;
