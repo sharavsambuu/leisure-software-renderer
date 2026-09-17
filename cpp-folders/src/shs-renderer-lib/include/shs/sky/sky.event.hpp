@@ -13,4 +13,7 @@
 namespace shs::sky
 {
     using SkyEvent = std::variant<std::monostate>;
+
+    static_assert(std::variant_size_v<SkyEvent> == 1,
+        "sky event vocabulary changed: it is empty by law (§6.1); update the pod pins");
 } // namespace shs::sky

@@ -13,4 +13,7 @@
 namespace shs::resources
 {
     using ResourcesEvent = std::variant<std::monostate>;
+
+    static_assert(std::variant_size_v<ResourcesEvent> == 1,
+        "resources event vocabulary changed: it is empty by law (§6.1); update the pod pins");
 } // namespace shs::resources

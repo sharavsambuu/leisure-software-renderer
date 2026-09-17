@@ -736,6 +736,7 @@
         "cpp-folders/src/shs-renderer-lib/tests/contract_guardrails_pilot_tests.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/contract_guardrails_replay_probe.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/contract_guardrails_tests.cpp",
+        "cpp-folders/src/shs-renderer-lib/tests/frame_guardrail_tests.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/logic_guardrail_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
@@ -2903,6 +2904,7 @@
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/include/shs/app/vertical_slice_host.hpp",
         "cpp-folders/src/shs-renderer-lib/tests/contract_guardrails_replay_probe.cpp",
+        "cpp-folders/src/shs-renderer-lib/tests/frame_guardrail_tests.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/frame_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"

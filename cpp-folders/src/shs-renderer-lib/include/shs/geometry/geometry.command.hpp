@@ -15,4 +15,8 @@
 namespace shs::geometry
 {
     using GeometryCommand = std::variant<std::monostate>;
+
+    static_assert(std::variant_size_v<GeometryCommand> == 1,
+        "geometry command vocabulary changed: it is empty by law (§6.1); "
+        "land a new intent as a named apply_* arrow behind a real gateway first");
 } // namespace shs::geometry

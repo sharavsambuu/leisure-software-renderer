@@ -165,6 +165,31 @@ resources → gfx → input** (input last — biggest vocabulary). Per pod:
 - [x] **Gates**: 41/41 CTest, boundary (incl. gates 8+9), include-graph,
   inventory same-commit (Rule 15).
 
+### Slices 3–8: geometry, lighting, sky, scene, resources, gfx — **DONE 2026-09-17** (batched, owner instruction)
+
+These six pods share one shape, so their audits were batched into one commit
+(deviation from one-commit-per-pod, by owner instruction: the pods are
+provably identical — empty closed vocabularies, no gateway seam):
+
+- [x] **Railway audit (each pod)**: `XCommand`/`XEvent` are
+  `std::variant<std::monostate>` — explicitly empty closed vocabularies
+  (Constitution §6.1); NO gateway exists yet, so there is no rim to audit or
+  annotate. Real intents arrive with the R5 edge migrations (each command
+  header names its migration step). Error family documented in
+  `ERROR_FLOW.md` ("Silent error rails" — monostate identity, no invented
+  `None` enum) — drift gate green. Registry/IO failures live outside these
+  gateways per the Run C audit table.
+- [x] **Hardening (the one real gap found)**: unlike `frame.event.hpp`, none
+  of the 12 command/event headers pinned their emptiness compile-time.
+  `static_assert(std::variant_size_v<X> == 1, ...)` pins added to all 12 —
+  the empty vocabulary is now provable, and vocabulary drift fails the build
+  (lesson 9.8: nothing else exists to annotate — no rim, no Rule 7.1 pair,
+  no state invariants).
+- [x] **Tests**: none added — no runtime seam exists; the pins are verified
+  by the build itself (every test target compiles these headers).
+- [x] **Gates**: full CTest, boundary (incl. gates 8+9), include-graph,
+  inventory same-commit (Rule 15).
+
 
 ## W-E — Standing / parallel throughout
 

@@ -13,4 +13,7 @@
 namespace shs::gfx
 {
     using GfxEvent = std::variant<std::monostate>;
+
+    static_assert(std::variant_size_v<GfxEvent> == 1,
+        "gfx event vocabulary changed: it is empty by law (§6.1); update the pod pins");
 } // namespace shs::gfx

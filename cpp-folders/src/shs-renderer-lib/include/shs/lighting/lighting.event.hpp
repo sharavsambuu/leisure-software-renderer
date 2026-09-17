@@ -13,4 +13,7 @@
 namespace shs::lighting
 {
     using LightingEvent = std::variant<std::monostate>;
+
+    static_assert(std::variant_size_v<LightingEvent> == 1,
+        "lighting event vocabulary changed: it is empty by law (§6.1); update the pod pins");
 } // namespace shs::lighting

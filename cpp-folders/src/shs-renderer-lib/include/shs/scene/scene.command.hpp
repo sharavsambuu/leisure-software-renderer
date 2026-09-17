@@ -14,4 +14,8 @@
 namespace shs::scene
 {
     using SceneCommand = std::variant<std::monostate>;
+
+    static_assert(std::variant_size_v<SceneCommand> == 1,
+        "scene command vocabulary changed: it is empty by law (§6.1); "
+        "land a new intent as a named apply_* arrow behind a real gateway first");
 } // namespace shs::scene
