@@ -18,6 +18,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace rhi
+    {
 #ifdef SHS_HAS_VULKAN
     inline uint32_t vk_find_memory_type(
         VkPhysicalDevice physical_device,
@@ -262,4 +265,6 @@ namespace shs
     }
 #endif
 #endif
+
+    } // inline namespace rhi
 }

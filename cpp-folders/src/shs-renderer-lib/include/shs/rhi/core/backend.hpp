@@ -16,8 +16,15 @@
 
 namespace shs
 {
+    // The context passed through the backend interface is the app-owned
+    // Context (definition in shs/app/context.hpp); forward-declared here at
+    // the root namespace so it denotes the same entity while the app module
+    // is still un-namespaced. Re-pointed to shs::app by the app cutover slice.
     struct Context;
 
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace rhi
+    {
     struct RenderBackendFrameInfo
     {
         uint64_t frame_index = 0;
@@ -38,4 +45,6 @@ namespace shs
         virtual void begin_frame(Context& ctx, const RenderBackendFrameInfo& frame) = 0;
         virtual void end_frame(Context& ctx, const RenderBackendFrameInfo& frame) = 0;
     };
+
+    } // inline namespace rhi
 }

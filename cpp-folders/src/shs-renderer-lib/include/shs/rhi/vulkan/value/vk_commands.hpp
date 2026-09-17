@@ -25,6 +25,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace rhi
+    {
     enum class VulkanRecordingError : uint8_t
     {
         DeviceUnavailable,
@@ -233,4 +236,6 @@ namespace shs
         }
         return {};
     }
+
+    } // inline namespace rhi
 }

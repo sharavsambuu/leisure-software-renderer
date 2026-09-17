@@ -14,6 +14,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace rhi
+    {
     struct BackendQueueCaps
     {
         uint32_t graphics_count = 0;
@@ -62,4 +65,6 @@ namespace shs
         bool depth_attachment_known = false;
         bool supports_depth_attachment = true;
     };
+
+    } // inline namespace rhi
 }

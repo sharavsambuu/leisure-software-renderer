@@ -25,6 +25,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace rhi
+    {
     [[nodiscard]] inline VkFormat vk_format_of(RHIFormat format)
     {
         switch (format)
@@ -389,4 +392,6 @@ namespace shs
         VkQueue graphics_queue_ = VK_NULL_HANDLE;
         VulkanDeviceInfo info_{};
     };
+
+    } // inline namespace rhi
 }

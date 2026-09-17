@@ -17,6 +17,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace rhi
+    {
     struct VkRenderPathBarrierTemplate
     {
         VkPipelineStageFlags src_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
@@ -143,4 +146,6 @@ namespace shs
         out.valid = (out.src_stage != 0u) && (out.dst_stage != 0u);
         return out;
     }
+
+    } // inline namespace rhi
 }

@@ -10,6 +10,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace rhi
+    {
 #ifdef SHS_HAS_VULKAN
 
     class VulkanDescriptorAllocator
@@ -131,4 +134,6 @@ namespace shs
     };
 
 #endif
+
+    } // inline namespace rhi
 }

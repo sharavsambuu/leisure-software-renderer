@@ -14,6 +14,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace rhi
+    {
     enum class RHIPipelineStage : uint8_t
     {
         Top = 0,
@@ -62,5 +65,7 @@ namespace shs
         RHIAccess src_access = RHIAccess::None;
         RHIAccess dst_access = RHIAccess::None;
     };
+
+    } // inline namespace rhi
 }
 

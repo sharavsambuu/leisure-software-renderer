@@ -23,6 +23,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace rhi
+    {
     struct VulkanFrameSyncStats
     {
         uint64_t begin_frames = 0;
@@ -105,4 +108,6 @@ namespace shs
         uint32_t slot_count_ = 2;
         VulkanFrameSyncStats stats_{};
     };
+
+    } // inline namespace rhi
 }

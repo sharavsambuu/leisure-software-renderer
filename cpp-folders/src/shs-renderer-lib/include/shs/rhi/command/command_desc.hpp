@@ -16,6 +16,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace rhi
+    {
     enum class RHIQueueClass : uint8_t
     {
         Graphics = 0,
@@ -113,5 +116,7 @@ namespace shs
     inline RHICmd rhi_cmd_dispatch(uint32_t x, uint32_t y, uint32_t z) { return RHICmd{RHICmdDispatchDesc{x, y, z}}; }
     inline RHICmd rhi_cmd_barrier(const RHIMemoryBarrierDesc& b) { return RHICmd{RHICmdBarrierDesc{b}}; }
     inline RHICmd rhi_cmd_end_pass() { return RHICmd{RHICmdEndPassDesc{}}; }
+
+    } // inline namespace rhi
 }
 

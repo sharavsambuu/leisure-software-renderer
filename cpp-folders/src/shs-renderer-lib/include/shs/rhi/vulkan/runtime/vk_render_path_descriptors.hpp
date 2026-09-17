@@ -18,6 +18,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace rhi
+    {
 #ifdef SHS_HAS_VULKAN
     enum class VkRenderPathGlobalBinding : uint32_t
     {
@@ -321,4 +324,6 @@ namespace shs
         vkUpdateDescriptorSets(device, 1, &write, 0, nullptr);
     }
 #endif
+
+    } // inline namespace rhi
 }

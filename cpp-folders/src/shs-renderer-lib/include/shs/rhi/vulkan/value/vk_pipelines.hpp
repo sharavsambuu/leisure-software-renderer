@@ -22,6 +22,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace rhi
+    {
     struct VulkanPipelineStats
     {
         uint64_t shader_module_creates = 0;
@@ -198,4 +201,6 @@ namespace shs
         ci.pAttachments = &attachment;
         return ci;
     }
+
+    } // inline namespace rhi
 }

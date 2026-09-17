@@ -8,6 +8,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace rhi
+    {
     // Fixed ABI: triangle list, no vertex attributes, descriptors or push constants,
     // one RGBA8 output, no depth/blending, static viewport/scissor.
     // Caller supplies trusted, validated SPIR-V matching that ABI. supports() checks
@@ -154,4 +157,6 @@ namespace shs
         uint64_t id_ = 0;
         uint64_t desc_hash_ = 0;
     };
+
+    } // inline namespace rhi
 }

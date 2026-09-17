@@ -19,6 +19,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace rhi
+    {
 // The whole uploader is Vulkan-runtime domain: every signature names
 // VulkanRenderBackend / Vk* types, so the class only exists when the build
 // has Vulkan (SHS_HAS_VULKAN). Keeps the header self-contained for consumers
@@ -244,4 +247,6 @@ namespace shs
         std::vector<uint8_t> image_initialized_{};
     };
 #endif // SHS_HAS_VULKAN
+
+    } // inline namespace rhi
 }

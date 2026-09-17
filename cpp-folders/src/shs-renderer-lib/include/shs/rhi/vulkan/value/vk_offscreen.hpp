@@ -12,6 +12,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace rhi
+    {
     class VulkanOffscreenPass
     {
     public:
@@ -119,4 +122,6 @@ namespace shs
         VkExtent2D extent_{};
         uint64_t target_ = 0;
     };
+
+    } // inline namespace rhi
 }

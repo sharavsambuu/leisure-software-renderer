@@ -39,6 +39,9 @@ struct SDL_Window;
 #ifdef SHS_HAS_VULKAN
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace rhi
+    {
     class VulkanRenderBackend final : public IRenderBackend
     {
     public:
@@ -2281,6 +2284,8 @@ namespace shs
         }
 #endif
     };
+
+    } // inline namespace rhi
 }
 #endif
 #endif

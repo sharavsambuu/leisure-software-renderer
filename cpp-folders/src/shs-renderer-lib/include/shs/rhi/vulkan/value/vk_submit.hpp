@@ -5,6 +5,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace rhi
+    {
     enum class VulkanSubmitStage { Prerequisite, FenceCreation, Submission, Completion };
 
     struct VulkanSubmitFailure
@@ -47,4 +50,6 @@ namespace shs
             return std::unexpected(VulkanSubmitFailure{stage, result});
         return {};
     }
+
+    } // inline namespace rhi
 }

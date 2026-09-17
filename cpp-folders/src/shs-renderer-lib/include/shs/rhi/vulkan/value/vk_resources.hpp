@@ -22,6 +22,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace rhi
+    {
     // ------------------------------------------------------------------
     // Pure create-info builders (GPU-free testable).
     // ------------------------------------------------------------------
@@ -205,4 +208,6 @@ namespace shs
         uint64_t next_sampler_id_ = 0;
         VulkanResourceStats stats_{};
     };
+
+    } // inline namespace rhi
 }

@@ -9,6 +9,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace rhi
+    {
     enum class VulkanExecutionError { NotPrepared, InvalidDescriptor, CreationFailed, RecordingFailed, SubmissionFailed, ReadbackFailed, UploadFailed };
     struct VulkanExecutionFailure
     {
@@ -150,4 +153,6 @@ namespace shs
         VkExtent2D extent_{};
         uint64_t bytes_ = 0;
     };
+
+    } // inline namespace rhi
 }

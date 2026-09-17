@@ -14,6 +14,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace rhi
+    {
     enum class VulkanCoreComponentId : unsigned char
     {
         InstanceAndValidation = 0,
@@ -56,5 +59,7 @@ namespace shs
         {VulkanCoreComponentId::DepthStencilAndMsaa, "Depth/Stencil + MSAA", "Depth attachment and anti-aliasing", "rhi/pipeline_desc.hpp"},
         {VulkanCoreComponentId::QueryAndDebug, "Query + Debug Utils", "Timing/profiling/object labels", "core/context.hpp debug stats + backend debug extensions"}
     }};
+
+    } // inline namespace rhi
 }
 

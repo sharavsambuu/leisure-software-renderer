@@ -15,6 +15,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace rhi
+    {
     enum class RHIShaderStage : uint8_t
     {
         Vertex = 0,
@@ -86,5 +89,7 @@ namespace shs
     {
         RHIShaderModuleDesc cs{};
     };
+
+    } // inline namespace rhi
 }
 

@@ -14,6 +14,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace rhi
+    {
     class OpenGLRenderBackend final : public IRenderBackend
     {
     public:
@@ -40,4 +43,6 @@ namespace shs
         void begin_frame(Context& ctx, const RenderBackendFrameInfo& frame) override { (void)ctx; (void)frame; }
         void end_frame(Context& ctx, const RenderBackendFrameInfo& frame) override { (void)ctx; (void)frame; }
     };
+
+    } // inline namespace rhi
 }

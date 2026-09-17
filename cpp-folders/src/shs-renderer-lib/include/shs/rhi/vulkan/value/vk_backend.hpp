@@ -36,6 +36,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace rhi
+    {
     using VulkanBufferPool = containers::FlatMap<uint64_t, VkBuffer>;
     using VulkanImagePool = containers::FlatMap<uint64_t, VkImage>;
     using VulkanMemoryPool = containers::FlatMap<uint64_t, VkDeviceMemory>;
@@ -607,4 +610,6 @@ namespace shs
         VkCommandBuffer command_buffer_ = VK_NULL_HANDLE;
         uint32_t frame_sync_slots_ = 2;
     };
+
+    } // inline namespace rhi
 }

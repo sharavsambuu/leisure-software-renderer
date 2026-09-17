@@ -21,6 +21,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace rhi
+    {
     inline uint32_t vk_frame_slot(uint64_t frame_index, uint32_t slot_count)
     {
         if (slot_count == 0u) return 0u;
@@ -128,5 +131,7 @@ namespace shs
         return vkAllocateDescriptorSets(device, &ai, out_sets.data()) == VK_SUCCESS;
     }
 #endif
+
+    } // inline namespace rhi
 }
 

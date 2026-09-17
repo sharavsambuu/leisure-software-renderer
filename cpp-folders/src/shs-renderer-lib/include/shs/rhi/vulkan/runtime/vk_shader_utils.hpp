@@ -21,6 +21,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace rhi
+    {
     inline bool vk_try_read_binary_file(const char* path, std::vector<char>& out_bytes) noexcept
     {
         out_bytes.clear();
@@ -97,4 +100,6 @@ namespace shs
         return out;
     }
 #endif
+
+    } // inline namespace rhi
 }

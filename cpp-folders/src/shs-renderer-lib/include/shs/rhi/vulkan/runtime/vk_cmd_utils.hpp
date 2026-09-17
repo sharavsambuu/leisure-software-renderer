@@ -17,6 +17,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace rhi
+    {
 #ifdef SHS_HAS_VULKAN
     inline VkViewport vk_make_viewport(uint32_t width, uint32_t height, bool flip_y)
     {
@@ -46,4 +49,6 @@ namespace shs
         vkCmdSetScissor(cmd, 0, 1, &sc);
     }
 #endif
+
+    } // inline namespace rhi
 }

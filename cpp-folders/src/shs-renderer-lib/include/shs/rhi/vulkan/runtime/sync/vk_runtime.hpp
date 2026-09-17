@@ -28,6 +28,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace rhi
+    {
     struct VulkanLikeRuntimeConfig
     {
         uint32_t frames_in_flight = 2;
@@ -292,4 +295,6 @@ namespace shs
         std::vector<FrameSlot> frame_slots_{};
         VulkanLikeRuntimeStats stats_{};
     };
+
+    } // inline namespace rhi
 }

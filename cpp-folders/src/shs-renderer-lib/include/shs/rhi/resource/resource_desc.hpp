@@ -15,6 +15,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace rhi
+    {
     enum class RHIFormat : uint16_t
     {
         Unknown = 0,
@@ -104,5 +107,7 @@ namespace shs
         bool enable_anisotropy = false;
         float max_anisotropy = 1.0f;
     };
+
+    } // inline namespace rhi
 }
 
