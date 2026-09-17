@@ -950,3 +950,37 @@ bypass typed transitions.
 First deliverable: per-header mapping/dependency manifest and baseline consumer
 matrix. Then move one leaf module as a compatibility pilot, not Vulkan or the
 input ownership rewrite. Document creation closes no implementation checkboxes.
+
+
+## Task completion table snapshot (2026-09-17, all steps complete)
+
+| # | Migration task | Status | Key commits | Verification at close |
+| --- | --- | --- | --- | --- |
+| 0 | Camera-convention relocation pilot (leaf move, governing-law amendment, dual-include CTest consumers) | Complete | (pre-backlog pilot; items ticked at top of this doc) | Full build + CTest green; old/new include orders both compile |
+| 1 | Inventory, decision record, baseline (machine-readable old->canonical manifest, KDBA decision record, build/CTest/boundary baseline) | Complete | `3dc8bc8` (reconcile + tick) | `engine_header_migration_manifest.json` + baseline recorded |
+| 2 | Relocate headers without behavior change (canonical paths, single-hop forwarders, CMake/umbrella/doc updates, old+new include smoke tests) | Complete | `0b13fa2`, `f289dfa`, `3dc8bc8` | All consumers compile in both include orders; forwarders tested |
+| 3 | Enforce dependency separation (renderpath ownership of recipe/plan definitions, adapter extraction, dependency manifests + negative gate fixtures) | Complete | `ccf7367`, `f289dfa`, `95f0264`, `3809c6e`, `21db496` | Boundary gates green; exceptions reduced manifest 3 -> 1 -> 0 remaining |
+| 4 | State ownership & contract hardening (4.1 app orchestration split, 4.2 settings owner, 4.3 identity policy, 4.4 lifecycle/failure policy, 4.5 gateway scaffolding retirement) | Complete | `368c83d` -> `2bd2bd6` (5 slices + fixup) | Full CTest + inventory regenerated per slice; phase 4 COMPLETE |
+| 5 | Consumer-selectable dependencies (aggregate compat targets, conditional SDL/Assimp discovery, install/export/package-consumer tests, self-contained public headers) | Complete | `9526708` | Headless minimal-config package-consumer test green; header self-containment gate |
+| 6 | Vertical-slice engine integration (public-API-only host, deterministic replay, software/Vulkan parity, physics/anim/audio seams, async/cancellation semantics) | Complete | `2bacc4f` | Public-API-only host builds & runs headless; replay/resize/parity verified |
+| 7 | Namespace/API cutover & compatibility retirement (owner-namespace slices, compat layer + tests, consumer migration + mapping/deprecation doc, forwarders kept & tested, legacy-include rejection gate) | Complete | `fc003d4` -> `b34cce5` (18 commits) | Full build + 35/35 CTest green; working tree clean |
+
+Step-7 slice/item detail:
+
+| Slice / item | Scope | Commit | Gate |
+| --- | --- | --- | --- |
+| Slice 1 | core | `fc003d4` | build + CTest + inventory |
+| Slice 2 | geometry | `23952bb` | build + CTest + inventory |
+| Slice 3 (+fixup) | lighting; scene_types stale fwd-decl cleanup | `b6a9677`, `3d05235` | build + CTest + inventory |
+| Slice 4 | camera | `036a076` | build + CTest + inventory |
+| Slice 5 | input | `31d0bfd` | build + CTest + inventory |
+| Slice 6 | sky / task / platform | `dde9e3d` | build + CTest + inventory |
+| Slice 7 | scene | `1bc0eaf` | build + CTest + inventory |
+| Slice 8 | render (`RenderBackendType` owned by `shs::render`) | `529cced` | build + CTest + inventory |
+| Slice 9 | rhi (Context fwd decl re-pointed to root) | `40ef8cb` | build + CTest + inventory |
+| Slice 10 / 10b | renderpath; renderpath/execution (tool forwarder-skip bug fixed) | `100e1ee`, `dfbc50b` | build + CTest + inventory |
+| Slice 11 | resources | `8d1abf4` | build + CTest + inventory |
+| Slice 12 | app (non-inline: plain nesting + root using-declarations; rhi `Context` -> `shs::app`) | `ff96c6c` | build + CTest + inventory |
+| Item 2 | `namespace_cutover_tests` (same-entity, overload lookup, ADL, serialization ids, mixed includes) | `0a24d2b` | 35/35 CTest |
+| Item 3 | Consumer migration (`root_spelling_migration.py`; 92 files, 320/392 tokens) | `72d2f19` | build + 35/35 CTest |
+| Items 3-5 | Mapping + deprecation schedule (`namespace_cutover_mapping.md`, 517 symbols); forwarders kept & tested; legacy-include gate verified | `b34cce5` | build + 35/35 CTest |
