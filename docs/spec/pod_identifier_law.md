@@ -7,7 +7,7 @@
 >
 > Purpose: in a value-oriented design **the names are the repository's only navigation
 > surface**. An engineer must be able to grep any noun this constitution uses and land on
-> real code — and must never read a Domain Pod as a Redux-style reducer container.
+> real code — and must never read a Domain Value Object as a Redux-style reducer container.
 
 ---
 

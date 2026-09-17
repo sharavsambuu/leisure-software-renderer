@@ -28,7 +28,7 @@ All high-volume simulation code must default to SoA or Archetype Chunked SoA lay
 
 ---
 
-## 3. Domain Pods Own Behavior; Tables Support Execution
+## 3. Domain Value Objects Own Behavior; Tables Support Execution
 
 The high-level engine is organized by domain ownership and typed KDBA composition, not a global entity/component world or inheritance hierarchy.
 

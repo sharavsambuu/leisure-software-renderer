@@ -18,7 +18,7 @@ SHS adopts KDBA in C++23: domain-owned, composable value transitions with explic
 - **Predictable Execution & Determinism**: Bit-for-bit reproducible state transitions enabling instant rollback netcode, headless CI balance testing, and time-travel debugging.
 - **Hardware Mechanical Sympathy**: Elimination of pointer-chasing and cache misses via Structure of Arrays (SoA) and $\mathcal{O}(1)$ Frame Memory Arenas.
 - **Strict Separation of Concerns**: Pure mathematical simulation in the center; hardware drivers, GPU submission, audio DAC, and OS I/O isolated strictly at execution edges.
-- **Bounded Domain Navigation**: A Glimmer/Ember-style Domain Pod structure that keeps massive game codebases modular, navigable, and free from cross-domain callback spaghetti.
+- **Bounded Domain Navigation**: A Glimmer/Ember-inspired Domain Value Object structure that keeps massive game codebases modular, navigable, and free from cross-domain callback spaghetti.
 
 ---
 
@@ -51,9 +51,9 @@ SHS adopts KDBA in C++23: domain-owned, composable value transitions with explic
 └──────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 2.1 The KDBA Domain Pod Constitution (Supreme Law, 2026-09-16 — supersedes 2026-09-15 Redux form)
+### 2.1 The KDBA Domain Value Object Constitution (Supreme Law, 2026-09-16 — supersedes 2026-09-15 Redux form)
 
-> **"Everything is a Domain Pod. Every stateful subsystem — engine module or demo
+> **"Everything is a Domain Value Object. Every stateful subsystem — engine module or demo
 > domain alike — is expressed as a pure gateway over four components:
 > Types (contract), Command (action), Gateway, Event. Nothing else mutates state."**
 
@@ -88,13 +88,13 @@ Concretely:
    Unmigrated code retains existing enforcement; a directory rename grants no
    exception. See the engine domain separation migration backlog.
 5. **Orchestrators are pods (KDBA saga)** — a multi-domain workflow is coordinated by
-   an orchestrator that is itself a Domain Pod with its own contract, actions,
+   an orchestrator that is itself a Domain Value Object with its own contract, actions,
    gateway, and events, composing sub-domain Kleisli gateways (`reserve:and_then(charge)`)
    speculatively in-memory with `.or_else()` compensation. No
    non-pod controller may own cross-domain state (god-object ban).
 
 No subsystem is exempt: the renderer's render path, the scene, input, camera,
-lighting, and every game domain are Domain Pods. "Pod-shaped by analogy" modules
+lighting, and every game domain are Domain Value Objects. "DVO-shaped by analogy" modules
 (pure-transform planners) are pods whose command/event vocabularies are explicitly
 empty, per §6.1 — they still carry all four files.
 
@@ -173,8 +173,8 @@ read DVO (§6.7, rules T3/T6); the structural noun "pod" is unchanged (T5).
 7. **Wait-Free Span Contract (Rule 7.1)**: Multi-threaded jobs must be pure functions that take an immutable `std::span<const T>` and write exclusively to a non-overlapping `std::span<U>`. No mutexes, atomics, or spinlocks are allowed inside worker threads.
 8. **KDBA Gateway (Rule 8.1)**: Domains never write another domain's PODs. Interaction is Commands in, Events out; sagas compose typed Kleisli gateways synchronously inside orchestrator pods, with immutable **Discrete Event Values** (`CombatEvent`, `QuestEvent`, `InventoryEvent`) as egress to downstream gateways/edges.
 9. **C++23 Value Abstractions**: Core APIs must leverage standard value types (`std::span`, `std::string_view` with `constexpr` hashing, `std::variant`, `std::pmr`, `std::expected`) to enforce safety and zero allocation overhead. The library baselines C++23 (Constitution I §10); the pod-idiomatic subset is defined in §8.
-10. **Universal Domain Pod Law (Constitution §2.1)**: Every stateful subsystem — in
-    `shs-renderer-lib` **and** in every demo — is a Domain Pod with the
+10. **Universal Domain Value Object Law (Constitution §2.1)**: Every stateful subsystem — in
+    `shs-renderer-lib` **and** in every demo — is a Domain Value Object with the
     mandatory Core 4 (`*.contract.hpp`, `*.command.hpp`, `*.gateway.hpp`,
     `*.event.hpp`, each in its own file) and all state transitions through its pure
     gateway. Domain logic lives under `shs/domains/<pod>/` (library) or
@@ -182,7 +182,7 @@ read DVO (§6.7, rules T3/T6); the structural noun "pod" is unchanged (T5).
     mechanically verified: the structure linter checks Core 4 completeness and zone
     include-direction in CI (roadmap P0.5/P5).
 11. **Bounded Contexts (KDBA gateway)**: A bounded context is a suite of cohesive Kleisli pipelines
-    operating over a shared set of Domain PODs, bound by one ubiquitous
+    operating over a shared set of Domain Value Objects, bound by one ubiquitous
     language (one error-enum family, one event vocabulary). Stages compose synchronously as Kleisli chains
     (`.and_then()` / `.transform()` / `.or_else()`) — including across contexts inside a saga orchestrator pod (typed gateway); direct POD writes across boundaries stay forbidden (Rule 8.1).
 12. **KDBA Saga (Transient Context vs Persistent Invariants)**: Multi-domain workflows execute speculatively in-memory over a transient `SagaContext` (stack/arena, in-flight tokens only) and commit atomically on 100% success; on failure the transient evaporates and persistent PODs stay pristine. Persistent PODs carry zero phantom flags (`is_pending`, `is_locked`, `retry_count`). Validate-before-mutate is preferred; the `.or_else()` compensator consumes the emitted receipt/fact — never ad hoc done-flags. A workflow that takes payment and then aborts without a refunding fact violates this rule (the wallet-leak shape). Before a production multi-domain workflow ships, test failure at every stage, reverse-order compensation, repeated compensation, and preservation of earlier facts. This atomicity requirement applies to an explicitly staged saga, not an ordinary sequential command batch. External effects cannot be undone by discarding transient memory: their edge protocol must specify idempotency keys, acknowledgement, retry, and compensation-failure handling; irreversible effects require an explicit recovery policy. The in-memory saga test is not proof of distributed atomicity.
@@ -214,16 +214,27 @@ read DVO (§6.7, rules T3/T6); the structural noun "pod" is unchanged (T5).
 
 ---
 
-## 6. Domain Pod Architecture & Module Directives
+## 6. Domain Value Object Architecture & Module Directives
 
-To maintain modularity, cognitive clarity, and zero-leak encapsulation across complex projects, all gameplay features and engine modules must follow the **Glimmer/Ember Pod Standard**. Per the Domain Pod Constitution (§2.1, Rule 10), this is **supreme law for the entire repository**: engine library modules and demo domains (tetris, snake, fps, …) are held to the identical Core 4 standard — the library is not exempt, and neither are the demos.
 
-### 6.1 Canonical Domain Pod Structure
-Gameplay features are organized as self-contained vertical slices in `domains/<domain_name>/` using standardized file suffixes. Every Domain Pod **must explicitly define the four core components** — **Types (contract), Command, Gateway, Event** — each in its own file. A pod never omits a core component: if a vocabulary is trivially small, it is still declared as an explicit closed type (e.g., `using FooCommand = std::variant<std::monostate>;`) so the pod's full state-transition surface remains greppable, auditable, and mechanically checkable.
+> **Module-layout amendment (2026-09-17, reconciles §6 with §3 Rules 13–16):** with
+> the knowledge-ownership migration (`docs/backlog/engine_domain_separation_migration.md`),
+> a DVO's canonical home is the knowledge-owning top-level module (`renderpath/`,
+> `render/frame/`, `camera/`, …), not a global `domains/` partition; `domains/<domain_name>/`
+> remains a valid address for every pod until its per-header manifest lands — no blind
+> recursive renaming (Rules 13–16). The §6.1 Core 4 suffix contract is unchanged and
+> travels with the header (T5). Local `planning/`/`execution/`/`adapters/`/`detail/`
+> are folder *roles*, not a global layer split, and stateless pure-leaf headers need
+> no empty gateway or invented commands/events.
+
+To maintain modularity, cognitive clarity, and zero-leak encapsulation across complex projects, all gameplay features and engine modules must follow the **Glimmer/Ember-inspired Domain Value Object standard**. Per the Domain Value Object Constitution (§2.1, Rule 10), this is **supreme law for the entire repository**: engine library modules and demo domains (tetris, snake, fps, …) are held to the identical Core 4 standard — the library is not exempt, and neither are the demos.
+
+### 6.1 Canonical Domain Value Object Structure
+Gameplay features are organized as self-contained vertical slices in `domains/<domain_name>/` using standardized file suffixes. Every Domain Value Object **must explicitly define the four core components** — **Types (contract), Command, Gateway, Event** — each in its own file. A pod never omits a core component: if a vocabulary is trivially small, it is still declared as an explicit closed type (e.g., `using FooCommand = std::variant<std::monostate>;`) so the pod's full state-transition surface remains greppable, auditable, and mechanically checkable.
 
 Multi-domain workflows add a constrained fifth element — the orchestrator/saga
 recipe — required only where a workflow spans bounded contexts (Rule 11). The
-orchestrator must itself be a Domain Pod (own contract/command/gateway/event);
+orchestrator must itself be a Domain Value Object (own contract/command/gateway/event);
 it composes sub-domain Kleisli gateways synchronously and emits its own
 facts as egress. A workflow controller that is not a pod is forbidden.
 
@@ -250,7 +261,7 @@ validate_cmd(cmd)
 
 ### 6.2 The Pod Suffix Laws
 
-**Core 4 — mandatory for every Domain Pod:**
+**Core 4 — mandatory for every Domain Value Object:**
 
 | File Suffix | Component | Required Contents | Strict Restrictions |
 | :--- | :--- | :--- | :--- |
@@ -279,7 +290,7 @@ validate_cmd(cmd)
 
 ### 6.4 Core Engine Module Directives
 - **Render Path Orchestration**: The dynamic render path system is the engine's first
-  formal Domain Pod (`domains/renderpath/`, Core 4). Recipe/plan types are the contract;
+  formal Domain Value Object (`domains/renderpath/`, Core 4). Recipe/plan types are the contract;
   `RenderPathCommand` intents (`SelectPathPresetIntent`, `SetRenderingTechniqueIntent`, …)
   are the command vocabulary; the `renderpath` Kleisli pipeline compiles and hot-swaps plans as a
   pure railway (invalid compile ⇒ keep previous plan + `PATH_SWAP_REJECTED` event);
@@ -296,7 +307,7 @@ validate_cmd(cmd)
   `*Intent` tokens (`input.command.hpp`) and applied through `input_gateway()` — the pod's
   single public gateway (`input.gateway.hpp`). The `ICommand` emitter hierarchy under
   `edge/` is cold edge-side queueing that *emits* pod vocabulary; it is not pod vocabulary.
-- **Module classification**: each engine module is either a formal Domain Pod or
+- **Module classification**: each engine module is either a formal Domain Value Object or
   "pod-shaped by analogy" (pure transforms named per the VOP pipeline above); the
   per-module mapping is maintained in `docs/roadmap/domain_pod_engine_rollout_roadmap.md` (P5).
 ---
@@ -433,9 +444,9 @@ scope) apply to this constitution's prose as well.
 
 
 
-### 7.1 Hot-Path Performance Law — Layout Speed Under Domain Pods
+### 7.1 Hot-Path Performance Law — Layout Speed Under Domain Value Objects
 
-**Orthogonality principle.** The Domain Pod pattern governs *state transitions*
+**Orthogonality principle.** The Domain Value Object pattern governs *state transitions*
 (vocabulary, gateway, events); data-oriented performance comes from *data layout and
 iteration* (SoA, contiguity, handles, chunked spans). The two axes are independent:
 a pod's contract type may be — and for hot domains must be — a chunked SoA table
@@ -734,7 +745,7 @@ by an imagined requirement.
 
 ### A.1 Correspondence table
 
-| VOP / Domain Pod construct | Functional-programming equivalent |
+| VOP / Domain Value Object construct | Functional-programming equivalent |
 | :--- | :--- |
 | KDBA pipeline: `(State, Commands, dt) -> expected<Step{Next, Events}, Err>` (HISTORY: redux `f -> (NewState, Events)`) | Kleisli chain (HISTORY: `foldl update`) |
 | `domains/` never including `execution/` | the `IO` boundary: pure functions cannot touch effects |
@@ -767,7 +778,7 @@ per-feature test harness is required to believe them.
 - **Kept:** PMR frame arenas, SoA hot tables (§7), zero-alloc frame budgets,
   cache-contiguous backing stores (§7.2) — layout and latency control that a
   GC'd lazy language gives up. "Pure functional core, data-oriented edges."
-- **Still hand-built** (see Domain Pod roadmap backlog): variant exhaustiveness
+- **Still hand-built** (see the DVO engine rollout backlog): variant exhaustiveness
   checking (GHC does this for free), immutability-by-default, semantic purity
   linters (no ambient entropy/time, no unordered-container iteration in
   gateways), and the pod replay test kit. The backlog is, in effect,
