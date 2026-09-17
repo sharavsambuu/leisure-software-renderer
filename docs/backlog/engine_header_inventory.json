@@ -3,7 +3,7 @@
   "scope": "cpp-folders/src/shs-renderer-lib/include",
   "coverage": "all .h/.hpp public headers; literal includes in all conditional branches",
   "approval": "proposed paths are inventory only; reviewed migrations live in engine_header_migration_manifest.json",
-  "header_count": 433,
+  "header_count": 434,
   "headers": [
     {
       "current": "shs/app/backend/backend_factory.hpp",
@@ -622,6 +622,30 @@
       ],
       "external_dependencies": [],
       "tracked_consumers": [],
+      "build_target": "review-values-vs-aggregate"
+    },
+    {
+      "current": "shs/core/contract_guardrails.hpp",
+      "proposed_canonical": "shs/core/contract_guardrails.hpp",
+      "review_status": "already-named-review-dependencies",
+      "proposed_owner": "core",
+      "namespace_declarations": [
+        "shs"
+      ],
+      "visibility": "public-include-tree",
+      "direct_dependencies": [
+        "cstdio",
+        "cstdlib"
+      ],
+      "internal_dependencies": [],
+      "external_dependencies": [
+        "cstdio",
+        "cstdlib"
+      ],
+      "tracked_consumers": [
+        "cpp-folders/src/shs-renderer-lib/tests/contract_guardrails_replay_probe.cpp",
+        "cpp-folders/src/shs-renderer-lib/tests/contract_guardrails_tests.cpp"
+      ],
       "build_target": "review-values-vs-aggregate"
     },
     {
@@ -6278,6 +6302,7 @@
       ],
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/include/shs/domains/frame/frame.gateway.hpp",
+        "cpp-folders/src/shs-renderer-lib/tests/contract_guardrails_replay_probe.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/frame_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"

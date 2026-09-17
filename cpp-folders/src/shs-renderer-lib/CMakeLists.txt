@@ -430,6 +430,80 @@ if(SHS_RENDERER_BUILD_TESTS)
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     )
 
+    # Contract guardrails bridge tests (Constitution II Rule 17, C1): the
+    # enforcement twin observes the violation handler; the release twin
+    # compiles the assume path with checks discarded.
+    add_executable(shs_renderer_contract_guardrails_tests
+        tests/contract_guardrails_tests.cpp
+    )
+    target_link_libraries(shs_renderer_contract_guardrails_tests PRIVATE shs::renderer-values)
+    target_compile_features(shs_renderer_contract_guardrails_tests PRIVATE cxx_std_23)
+    target_compile_definitions(shs_renderer_contract_guardrails_tests PRIVATE SHS_CONTRACTS_ENFORCED=1)
+    if(MSVC)
+        target_compile_options(shs_renderer_contract_guardrails_tests PRIVATE /W4)
+    else()
+        target_compile_options(shs_renderer_contract_guardrails_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+
+    add_executable(shs_renderer_contract_guardrails_release_tests
+        tests/contract_guardrails_tests.cpp
+    )
+    target_link_libraries(shs_renderer_contract_guardrails_release_tests PRIVATE shs::renderer-values)
+    target_compile_features(shs_renderer_contract_guardrails_release_tests PRIVATE cxx_std_23)
+    if(MSVC)
+        target_compile_options(shs_renderer_contract_guardrails_release_tests PRIVATE /W4)
+    else()
+        target_compile_options(shs_renderer_contract_guardrails_release_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+
+    add_test(
+        NAME shs_renderer_contract_guardrails_tests
+        COMMAND shs_renderer_contract_guardrails_tests
+    )
+    set_tests_properties(shs_renderer_contract_guardrails_tests PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    )
+
+    add_test(
+        NAME shs_renderer_contract_guardrails_release_tests
+        COMMAND shs_renderer_contract_guardrails_release_tests
+    )
+    set_tests_properties(shs_renderer_contract_guardrails_release_tests PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    )
+
+    # Replay parity (C1.4): identical probe source, only the contract mode
+    # differs; replay-relevant output must be byte-identical across the pair.
+    add_executable(shs_renderer_contract_replay_probe_enforced
+        tests/contract_guardrails_replay_probe.cpp
+    )
+    target_link_libraries(shs_renderer_contract_replay_probe_enforced PRIVATE shs::renderer-values)
+    target_compile_features(shs_renderer_contract_replay_probe_enforced PRIVATE cxx_std_23)
+    target_compile_definitions(shs_renderer_contract_replay_probe_enforced PRIVATE SHS_CONTRACTS_ENFORCED=1)
+    if(MSVC)
+        target_compile_options(shs_renderer_contract_replay_probe_enforced PRIVATE /W4)
+    else()
+        target_compile_options(shs_renderer_contract_replay_probe_enforced PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+
+    add_executable(shs_renderer_contract_replay_probe_assume
+        tests/contract_guardrails_replay_probe.cpp
+    )
+    target_link_libraries(shs_renderer_contract_replay_probe_assume PRIVATE shs::renderer-values)
+    target_compile_features(shs_renderer_contract_replay_probe_assume PRIVATE cxx_std_23)
+    if(MSVC)
+        target_compile_options(shs_renderer_contract_replay_probe_assume PRIVATE /W4)
+    else()
+        target_compile_options(shs_renderer_contract_replay_probe_assume PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+
+    add_test(
+        NAME shs_renderer_contract_replay_parity
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/contract_guardrails_replay_parity_test.py"
+            "$<TARGET_FILE:shs_renderer_contract_replay_probe_enforced>"
+            "$<TARGET_FILE:shs_renderer_contract_replay_probe_assume>"
+    )
+
     # R3 pod tests: input + frame Core 4, header-only value tests, no platform links.
     add_executable(shs_renderer_input_tests
         tests/input_tests.cpp
