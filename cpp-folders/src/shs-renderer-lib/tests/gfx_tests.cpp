@@ -3,9 +3,9 @@
 #include <variant>
 #include <vector>
 
-#include "shs/domains/gfx/gfx.contract.hpp"
-#include "shs/domains/gfx/gfx.gateway.hpp"
-#include "shs/domains/pod_test_kit.hpp"
+#include "shs/render/targets/gfx.contract.hpp"
+#include "shs/render/targets/gfx.gateway.hpp"
+#include "shs/core/testing/pod_test_kit.hpp"
 #include "identity_step_test.hpp"
 
 // Headless tests for the gfx pod (R5b P3.8: handle/buffer pins + identity).

@@ -17,13 +17,13 @@ static std::vector<uint32_t> read_spirv(const char* path)
 }
 #endif
 #include "vk_failure_injection.hpp"
-#include "shs/execution/rhi/drivers/vulkan/vk_backend.hpp"
+#include "shs/rhi/vulkan/value/vk_backend.hpp"
 #undef vkAllocateMemory
 #undef vkCreateGraphicsPipelines
 #undef vkCreateFence
 #undef vkQueueSubmit
 #undef vkMapMemory
-#include "shs/execution/sw_render/rasterizer.hpp"
+#include "shs/render/software/rasterizer.hpp"
 
 #define CHECK(condition) do { if (!(condition)) { \
     std::fprintf(stderr, "FAIL line %d: %s\n", __LINE__, #condition); return 1; } } while (false)

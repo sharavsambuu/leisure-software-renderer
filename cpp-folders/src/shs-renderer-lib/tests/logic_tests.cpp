@@ -4,9 +4,9 @@
 #include <variant>
 #include <vector>
 
-#include "shs/domains/logic/logic.contract.hpp"
-#include "shs/domains/logic/logic.gateway.hpp"
-#include "shs/domains/pod_test_kit.hpp"
+#include "shs/logic/logic.contract.hpp"
+#include "shs/logic/logic.gateway.hpp"
+#include "shs/core/testing/pod_test_kit.hpp"
 
 // Headless tests for the logic pod (R5b P3.10: table-driven FSM pins).
 // Links only shs::renderer-values. No callbacks anywhere on this path.

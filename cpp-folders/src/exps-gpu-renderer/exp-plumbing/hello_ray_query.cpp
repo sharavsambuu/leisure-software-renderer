@@ -12,14 +12,14 @@
 #include <SDL2/SDL_vulkan.h>
 #include <vulkan/vulkan.h>
 
-#include <shs/core/context.hpp>
+#include <shs/app/context.hpp>
 #include <shs/input/value_actions.hpp>
 #include <shs/input/value_input_latch.hpp>
 #include <shs/rhi/backend/backend_factory.hpp>
-#include <shs/rhi/drivers/vulkan/vk_backend.hpp>
-#include <shs/rhi/drivers/vulkan/vk_cmd_utils.hpp>
-#include <shs/rhi/drivers/vulkan/vk_shader_utils.hpp>
-#include <shs/rhi/drivers/vulkan/vk_memory_utils.hpp>
+#include <shs/rhi/vulkan/runtime/vk_backend.hpp>
+#include <shs/rhi/vulkan/runtime/vk_cmd_utils.hpp>
+#include <shs/rhi/vulkan/runtime/vk_shader_utils.hpp>
+#include <shs/rhi/vulkan/runtime/vk_memory_utils.hpp>
 
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>

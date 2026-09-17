@@ -3,9 +3,9 @@
 #include <variant>
 #include <vector>
 
-#include "shs/domains/lighting/lighting.contract.hpp"
-#include "shs/domains/lighting/lighting.gateway.hpp"
-#include "shs/domains/pod_test_kit.hpp"
+#include "shs/lighting/lighting.contract.hpp"
+#include "shs/lighting/lighting.gateway.hpp"
+#include "shs/core/testing/pod_test_kit.hpp"
 #include "identity_step_test.hpp"
 
 // Headless tests for the lighting pod (R4 P3.5: shading-term pins + identity).

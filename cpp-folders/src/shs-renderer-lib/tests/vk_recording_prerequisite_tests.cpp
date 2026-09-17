@@ -1,5 +1,5 @@
 #include <cstdio>
-#include "shs/execution/rhi/drivers/vulkan/vk_backend.hpp"
+#include "shs/rhi/vulkan/value/vk_backend.hpp"
 
 // Real handle/prerequisite coverage only: no submission and no pixel evidence.
 // Keep ICD-dependent checks separate from the GPU-free driver suite.

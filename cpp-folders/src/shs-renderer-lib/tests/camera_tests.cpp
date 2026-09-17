@@ -4,9 +4,9 @@
 #include <variant>
 #include <vector>
 
-#include "shs/domains/camera/camera.contract.hpp"
-#include "shs/domains/camera/camera.gateway.hpp"
-#include "shs/domains/pod_test_kit.hpp"
+#include "shs/camera/camera.contract.hpp"
+#include "shs/camera/camera.gateway.hpp"
+#include "shs/core/testing/pod_test_kit.hpp"
 #include "identity_step_test.hpp"
 
 // Headless tests for the camera pod (R5a P3.3: builder pins + identity).

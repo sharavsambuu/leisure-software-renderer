@@ -1,13 +1,4 @@
 #pragma once
 
-/*
-    SHS РЕНДЕРЕР САН
-
-    ФАЙЛ: gl_stack.hpp
-    МОДУЛЬ: rhi/drivers/opengl
-    ЗОРИЛГО: OpenGL backend-д шаардлагатай include-уудыг төвлөрүүлсэн aggregation header.
-*/
-
-
-#include "shs/execution/rhi/drivers/opengl/gl_backend.hpp"
-
+// Compatibility include: definitions live in the rhi-owned canonical header.
+#include "shs/rhi/opengl/gl_stack.hpp"

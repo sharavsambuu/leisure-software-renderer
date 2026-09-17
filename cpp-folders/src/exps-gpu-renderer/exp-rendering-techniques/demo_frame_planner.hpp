@@ -17,9 +17,9 @@
 #include <variant>
 #include <vector>
 
-#include <shs/execution/pipeline/pass_id.hpp>
-#include <shs/execution/pipeline/render_path_compiler.hpp>
-#include <shs/execution/pipeline/technique_profile.hpp>
+#include <shs/renderpath/planning/pass_id.hpp>
+#include <shs/renderpath/planning/render_path_compiler.hpp>
+#include <shs/renderpath/planning/technique_profile.hpp>
 #include <shs/frame/technique_mode.hpp>
 
 namespace shs::demo

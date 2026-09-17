@@ -26,7 +26,7 @@
 #include <shs/scene/scene_instance.hpp>
 #include <shs/camera/light_camera.hpp>
 #include <shs/lighting/shadow_sample.hpp>
-#include <shs/core/context.hpp>
+#include <shs/app/context.hpp>
 #include <shs/gfx/rt_types.hpp>
 #include <shs/gfx/rt_shadow.hpp>
 #include <shs/pipeline/render_composition_presets.hpp>

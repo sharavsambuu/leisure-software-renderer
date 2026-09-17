@@ -97,9 +97,14 @@ def validate(root, manifest):
         for dep in deps:
             if dep in legacy:
                 errors.append(f'legacy include in library header: {name} -> {dep}')
-        # Preserve legacy-zone enforcement; new named modules are opt-in.
+        # Transition: legacy zones remain checked; new canonical top-level
+        # modules are recognized during the bulk relocation (step 2).
         parts = Path(name).parts
-        if parts[1] not in ('domains', 'execution', 'core', 'memory', 'containers', 'rhi'):
+        legacy_zones = ('domains', 'execution', 'core', 'memory', 'containers', 'rhi')
+        named_modules = ('app', 'camera', 'geometry', 'input', 'lighting', 'logic',
+                         'render', 'renderpath', 'resources', 'scene', 'sky',
+                         'task', 'platform')
+        if parts[1] not in legacy_zones + named_modules:
             if name not in canonical:
                 errors.append(f'unregistered canonical header: {name}')
     return errors

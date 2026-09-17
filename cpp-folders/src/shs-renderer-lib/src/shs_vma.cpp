@@ -1,2 +1,2 @@
 #define VMA_IMPLEMENTATION
-#include "shs/rhi/drivers/vulkan/vk_vma.hpp"
+#include "shs/rhi/vulkan/runtime/vk_vma.hpp"

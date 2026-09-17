@@ -4,9 +4,9 @@
 #include <variant>
 #include <vector>
 
-#include "shs/domains/sky/sky.contract.hpp"
-#include "shs/domains/sky/sky.gateway.hpp"
-#include "shs/domains/pod_test_kit.hpp"
+#include "shs/sky/sky.contract.hpp"
+#include "shs/sky/sky.gateway.hpp"
+#include "shs/core/testing/pod_test_kit.hpp"
 #include "identity_step_test.hpp"
 
 // Headless tests for the sky pod (R5a P3.9: procedural-sky pins + identity).

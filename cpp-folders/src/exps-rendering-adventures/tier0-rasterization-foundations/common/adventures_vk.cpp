@@ -12,7 +12,7 @@
 
 #include <stb_image_write.h>
 
-#include "shs/rhi/drivers/vulkan/vk_shader_utils.hpp"
+#include "shs/rhi/vulkan/runtime/vk_shader_utils.hpp"
 
 namespace adventures
 {

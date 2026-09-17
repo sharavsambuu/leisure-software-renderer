@@ -6,9 +6,9 @@
 
 #include <vulkan/vulkan.h>
 
-#include "shs/core/context.hpp"
-#include "shs/execution/rhi/drivers/vulkan/vk_backend.hpp"
-#include "shs/execution/rhi/drivers/vulkan/vk_commands.hpp"
+#include "shs/app/context.hpp"
+#include "shs/rhi/vulkan/value/vk_backend.hpp"
+#include "shs/rhi/vulkan/value/vk_commands.hpp"
 
 // GPU-free value tests for the P2 Vulkan driver pod (roadmap P2 ctest gate:
 // shs_renderer_vop_vk_driver_tests). Every layer tested here is pure

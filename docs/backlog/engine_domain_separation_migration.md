@@ -166,6 +166,43 @@ commits; keep mechanical moves separate from semantic changes.
 - Phase table: 1 PARTIAL, 2 pilot-partial, 3 pilot-partial (manifest-driven
   checks cover reviewed leaves only), 4–7 not started.
 
+### Status (2026-09-17, bulk relocation run)
+
+- Bulk step-2 relocation landed: all 212 remaining legacy headers moved
+  (`git mv`) from `shs/domains/` and `shs/execution/` to their inventory
+  `proposed_canonical` destinations — collision-free, including the
+  pipeline split into `shs/renderpath/planning/` vs `shs/renderpath/execution/`,
+  `domains/gfx` into `shs/render/targets/`, and the Vulkan trees kept separate
+  as `shs/rhi/vulkan/value/` (desc driver) vs `shs/rhi/vulkan/runtime/`
+  (absorbed monolith backend) with no implementation merge.
+- Every retired path keeps a content-pinned single-hop forwarding header
+  (212 forwarders); `shs/domains/` and `shs/execution/` remain temporarily,
+  containing only forwarders — full removal is a separate breaking change.
+- All repository consumers repointed: includes, CMake references and test
+  fixtures; namespaces, symbols and implementations untouched (mechanical
+  move only). `tests/camera_include_compatibility_tests.cpp` deliberately
+  still includes the legacy path to keep exercising the forwarder.
+- `check_header_migration.py`: transitional named-module allow-list added
+  (app, camera, geometry, input, lighting, logic, render, renderpath,
+  resources, scene, sky, task, platform) so relocated headers are recognized
+  while the manifest stays reviewed-leaves-only; 16/16 checker tests green.
+- `check_kdba_boundaries.sh` taught the old/new layout: content, catalog and
+  gateway gates now scan legacy forwarders plus canonical module dirs
+  (purity gates — entropy/platform-IO/expected-vector — scan the value tier
+  only: `renderpath/planning`, `resources/storage`, pod dirs; execution/adapter
+  tiers stay IO/time-legal). Fixed two latent `set -o pipefail` crashes where
+  zero-match `grep` pipelines aborted the script silently.
+- Validation: full rebuild (all targets recompiled after the header moves)
+  + 22/22 CTest green (both Vulkan tests on lavapipe with
+  `VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation`),
+  boundary gate and inventory staleness check pass; inventory regenerated for
+  the new tree (still no include cycles, no missing internal includes).
+- Deferred to separate changes: cross-module cycle resolution (the
+  execution/adapter dependency cycle persists at the include level),
+  `domains/`+`execution/` forwarder-folder removal (breaking), `rhi/`
+  ownership decision (step 5), step-3 dependency-manifest enforcement
+  replacing path-token gates, SDK/compiler matrices.
+
 ### 1. Inventory, decision record and baseline
 - [ ] Create a machine-readable old-header -> canonical-header manifest covering
   every header, namespace owner, public/private status and build dependency.

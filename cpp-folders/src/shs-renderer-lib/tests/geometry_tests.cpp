@@ -4,9 +4,9 @@
 #include <variant>
 #include <vector>
 
-#include "shs/domains/geometry/geometry.contract.hpp"
-#include "shs/domains/geometry/geometry.gateway.hpp"
-#include "shs/domains/pod_test_kit.hpp"
+#include "shs/geometry/geometry.contract.hpp"
+#include "shs/geometry/geometry.gateway.hpp"
+#include "shs/core/testing/pod_test_kit.hpp"
 #include "identity_step_test.hpp"
 
 // Headless tests for the geometry pod (R4 P3.4: TBN operator pins + identity).

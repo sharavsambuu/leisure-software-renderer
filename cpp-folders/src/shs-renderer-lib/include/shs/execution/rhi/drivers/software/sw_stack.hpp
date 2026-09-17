@@ -1,15 +1,4 @@
 #pragma once
 
-/*
-    SHS РЕНДЕРЕР САН
-
-    ФАЙЛ: sw_stack.hpp
-    МОДУЛЬ: rhi/drivers/software
-    ЗОРИЛГО: Software backend-д шаардлагатай нийтлэг include-уудыг нэг дороос авах aggregation header.
-*/
-
-
-#include "shs/execution/rhi/drivers/software/sw_backend.hpp"
-#include "shs/domains/gfx/rt_types.hpp"
-#include "shs/execution/sw_render/rasterizer.hpp"
-
+// Compatibility include: definitions live in the rhi-owned canonical header.
+#include "shs/rhi/software/sw_stack.hpp"

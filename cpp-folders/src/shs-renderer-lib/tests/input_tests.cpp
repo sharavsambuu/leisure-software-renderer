@@ -4,8 +4,8 @@
 #include <variant>
 #include <vector>
 
-#include "shs/domains/input/input.contract.hpp"
-#include "shs/domains/pod_test_kit.hpp"
+#include "shs/input/input.contract.hpp"
+#include "shs/core/testing/pod_test_kit.hpp"
 
 // Headless tests for the input pod (R3: P3.1 + P4.1 + P4.2).
 // Links only shs::renderer-values + glm: no SDL, no Vulkan, no Context.

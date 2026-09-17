@@ -3,9 +3,9 @@
 #include <variant>
 #include <vector>
 
-#include "shs/domains/frame/frame.contract.hpp"
-#include "shs/domains/frame/frame.gateway.hpp"
-#include "shs/domains/pod_test_kit.hpp"
+#include "shs/render/frame/frame.contract.hpp"
+#include "shs/render/frame/frame.gateway.hpp"
+#include "shs/core/testing/pod_test_kit.hpp"
 
 // Headless tests for the frame pod (R3 P3.2: identity transition pins).
 // Links only shs::renderer-values + glm.

@@ -4,9 +4,9 @@
 #include <variant>
 #include <vector>
 
-#include "shs/domains/scene/scene.contract.hpp"
-#include "shs/domains/scene/scene.gateway.hpp"
-#include "shs/domains/pod_test_kit.hpp"
+#include "shs/scene/scene.contract.hpp"
+#include "shs/scene/scene.gateway.hpp"
+#include "shs/core/testing/pod_test_kit.hpp"
 #include "identity_step_test.hpp"
 
 // Headless tests for the scene pod (R5b P3.6: projection pins + identity).

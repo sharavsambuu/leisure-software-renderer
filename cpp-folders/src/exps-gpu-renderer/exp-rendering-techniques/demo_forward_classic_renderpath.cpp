@@ -39,7 +39,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-#include <shs/core/context.hpp>
+#include <shs/app/context.hpp>
 #include <shs/core/units.hpp>
 #include <shs/camera/camera_math.hpp>
 #include <shs/camera/convention.hpp>
@@ -82,14 +82,14 @@
 #include <shs/resources/loaders/primitive_import.hpp>
 #include <shs/resources/resource_registry.hpp>
 #include <shs/rhi/backend/backend_factory.hpp>
-#include <shs/rhi/drivers/vulkan/vk_backend.hpp>
-#include <shs/rhi/drivers/vulkan/vk_cmd_utils.hpp>
-#include <shs/rhi/drivers/vulkan/vk_frame_ownership.hpp>
-#include <shs/rhi/drivers/vulkan/vk_memory_utils.hpp>
-#include <shs/rhi/drivers/vulkan/vk_render_path_barrier_mapping.hpp>
-#include <shs/rhi/drivers/vulkan/vk_render_path_descriptors.hpp>
-#include <shs/rhi/drivers/vulkan/vk_render_path_temporal_resources.hpp>
-#include <shs/rhi/drivers/vulkan/vk_shader_utils.hpp>
+#include <shs/rhi/vulkan/runtime/vk_backend.hpp>
+#include <shs/rhi/vulkan/runtime/vk_cmd_utils.hpp>
+#include <shs/rhi/vulkan/runtime/vk_frame_ownership.hpp>
+#include <shs/rhi/vulkan/runtime/vk_memory_utils.hpp>
+#include <shs/rhi/vulkan/runtime/vk_render_path_barrier_mapping.hpp>
+#include <shs/rhi/vulkan/runtime/vk_render_path_descriptors.hpp>
+#include <shs/rhi/vulkan/runtime/vk_render_path_temporal_resources.hpp>
+#include <shs/rhi/vulkan/runtime/vk_shader_utils.hpp>
 #include <shs/scene/scene_types.hpp>
 
 namespace

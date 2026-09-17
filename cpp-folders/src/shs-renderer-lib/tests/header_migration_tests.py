@@ -54,7 +54,7 @@ class HeaderMigrationTests(unittest.TestCase):
         self.assertTrue(any('missing canonical' in e for e in self.errors()))
 
     def test_unregistered_header(self):
-        self.write('shs/camera/new.hpp', '#pragma once\n')
+        self.write('shs/widgets/new.hpp', '#pragma once\n')
         self.assertTrue(any('unregistered' in e for e in self.errors()))
 
     def test_retired_include(self):
@@ -62,7 +62,7 @@ class HeaderMigrationTests(unittest.TestCase):
         self.assertTrue(any('legacy include' in e for e in self.errors()))
 
     def test_driver_and_app_rejected_even_if_manifest_changed(self):
-        for dep in ('shs/execution/app/app.hpp', 'shs/rhi/drivers/vulkan/vk_backend.hpp'):
+        for dep in ('shs/execution/app/app.hpp', 'shs/rhi/vulkan/runtime/vk_backend.hpp'):
             with self.subTest(dep=dep):
                 self.write(dep, '#pragma once\n')
                 self.write(self.entry['canonical'], '#include "' + dep + '"\n')
@@ -105,10 +105,10 @@ class HeaderMigrationTests(unittest.TestCase):
         import inventory_headers as inventory
         self.assertEqual(inventory.components({'a': ['b'], 'b': ['a'], 'c': []}), [['a', 'b']])
         self.assertEqual(inventory.components({'a': ['b'], 'b': []}), [])
-        self.assertEqual(inventory.destination('shs/domains/gfx/edge/rt_registry.hpp')[0],
+        self.assertEqual(inventory.destination('shs/render/targets/storage/rt_registry.hpp')[0],
                          'shs/render/targets/storage/rt_registry.hpp')
-        value = inventory.destination('shs/execution/rhi/drivers/vulkan/vk_backend.hpp')[0]
-        runtime = inventory.destination('shs/rhi/drivers/vulkan/vk_backend.hpp')[0]
+        value = inventory.destination('shs/rhi/vulkan/value/vk_backend.hpp')[0]
+        runtime = inventory.destination('shs/rhi/vulkan/runtime/vk_backend.hpp')[0]
         self.assertNotEqual(value, runtime)
 
     def test_inventory_cli_exact_output_and_drift(self):

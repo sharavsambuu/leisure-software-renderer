@@ -1,3 +1,4 @@
-#ifdef SHS_HAS_VMA
-#include <vk_mem_alloc.h>
-#endif
+#pragma once
+
+// Compatibility include: definitions live in the rhi-owned canonical header.
+#include "shs/rhi/vulkan/runtime/vk_vma.hpp"

@@ -3,9 +3,9 @@
 #include <variant>
 #include <vector>
 
-#include "shs/domains/resources/resources.contract.hpp"
-#include "shs/domains/resources/resources.gateway.hpp"
-#include "shs/domains/pod_test_kit.hpp"
+#include "shs/resources/resources.contract.hpp"
+#include "shs/resources/resources.gateway.hpp"
+#include "shs/core/testing/pod_test_kit.hpp"
 #include "identity_step_test.hpp"
 
 // Headless tests for the resources pod (R5a P3.7: data-type + registry pins).

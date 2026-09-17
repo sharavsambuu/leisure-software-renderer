@@ -3,13 +3,13 @@
 #include <memory>
 #include <string>
 
-#include "shs/core/context.hpp"
-#include "shs/domains/frame/frame_params.hpp"
-#include "shs/domains/input/edge/camera_commands.hpp"
-#include "shs/domains/input/edge/command_processor.hpp"
-#include "shs/domains/input/value_commands.hpp"
-#include "shs/domains/input/value_input_latch.hpp"
-#include "shs/execution/pipeline/pluggable_pipeline.hpp"
+#include "shs/app/context.hpp"
+#include "shs/render/frame/frame_params.hpp"
+#include "shs/input/storage/camera_commands.hpp"
+#include "shs/input/storage/command_processor.hpp"
+#include "shs/input/value_commands.hpp"
+#include "shs/input/value_input_latch.hpp"
+#include "shs/renderpath/execution/pluggable_pipeline.hpp"
 
 namespace
 {

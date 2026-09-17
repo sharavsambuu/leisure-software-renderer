@@ -5,6 +5,20 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 lib_root="$(cd "${script_dir}/.." && pwd)"
 pipeline_dir="${lib_root}/include/shs/execution/pipeline"
 domains_dir="${lib_root}/include/shs/domains"
+# Transition (step 2 bulk relocation): content/catalog/gates must keep seeing
+# the same files after their move out of domains/. Scan the legacy forwarder
+# tree AND the canonical named-module dirs so gates cannot go silently vacuous.
+pod_scan_dirs=("${domains_dir}")
+for _m in app camera geometry input lighting logic render renderpath resources scene sky task platform; do
+  [[ -d "${lib_root}/include/shs/${_m}" ]] && pod_scan_dirs+=("${lib_root}/include/shs/${_m}")
+done
+# Purity gates (entropy/platform-IO/expected-vector) guard the VALUE tier only.
+# Execution/adapter tiers (renderpath/execution, resources/adapters, app, task,
+# platform) legitimately touch time and IO — they are the sanctioned edges.
+pod_purity_dirs=("${domains_dir}")
+for _m in camera geometry input lighting logic scene sky render/targets renderpath/planning resources/storage; do
+  [[ -d "${lib_root}/include/shs/${_m}" ]] && pod_purity_dirs+=("${lib_root}/include/shs/${_m}")
+done
 
 if command -v rg >/dev/null 2>&1; then
   search_cmd=(rg -n)
@@ -126,8 +140,8 @@ fi
 echo "[kdba-boundary] OK: zero node-based containers in hot-state zones (§7.2 rule 5)"
 
 cold_registry_hits="$(grep -rnE 'std::(list|map|set|unordered_map|unordered_set)[[:space:]]*<' \
-  "${lib_root}/include/shs/domains" 2>/dev/null | wc -l)"
-echo "[kdba-boundary] INFO: ${cold_registry_hits} node-container uses in domains/ (cold registries; migrate to FlatMap — tracked in docs/backlog/kdba_conformance_backlog.md)"
+  "${pod_scan_dirs[@]}" 2>/dev/null || true | wc -l)"
+echo "[kdba-boundary] INFO: ${cold_registry_hits} node-container uses in pod zones (cold registries; migrate to FlatMap — tracked in docs/backlog/kdba_conformance_backlog.md)"
 
 if [[ "${failed}" -ne 0 ]]; then
   exit 1
@@ -137,17 +151,17 @@ fi
 # NOTE: bare 'canvas' deliberately NOT gated (too generic; zero hits today but
 # future math comments would false-positive). SDL/fopen are the enforced IO set.
 entropy_hits="$(grep -rnE 'rand\(|srand\(|std::chrono|std::time\(|getenv\(|random_' \
-  "${lib_root}/include/shs/domains" 2>/dev/null || true)"
+  "${pod_purity_dirs[@]}" 2>/dev/null || true)"
 if [[ -n "${entropy_hits}" ]]; then
-  echo "[kdba-boundary] FAIL: ambient entropy/time in domains/ (dt arrives as input)"
+  echo "[kdba-boundary] FAIL: ambient entropy/time in pod zones (dt arrives as input)"
   echo "${entropy_hits}"
   failed=1
 else
-  echo "[kdba-boundary] OK: no ambient entropy/time in domains/"
+  echo "[kdba-boundary] OK: no ambient entropy/time in pod zones"
 fi
 
 unordered_hits="$(grep -rnE 'unordered_(map|set)' \
-  $(find "${domains_dir}" -name '*.gateway.hpp' | sort) 2>/dev/null || true)"
+  $(find "${pod_scan_dirs[@]}" -name '*.gateway.hpp' | sort) 2>/dev/null || true)"
 if [[ -n "${unordered_hits}" ]]; then
   echo "[kdba-boundary] FAIL: unordered container in gateway path (hash order breaks replay)"
   echo "${unordered_hits}"
@@ -157,20 +171,20 @@ else
 fi
 
 pio_hits="$(grep -rnE 'SDL_[A-Z]|<SDL2/|fopen\(' \
-  "${lib_root}/include/shs/domains" 2>/dev/null || true)"
+  "${pod_purity_dirs[@]}" 2>/dev/null || true)"
 if [[ -n "${pio_hits}" ]]; then
-  echo "[kdba-boundary] FAIL: platform IO token in domains/ (edges only)"
+  echo "[kdba-boundary] FAIL: platform IO token in pod zones (edges only)"
   echo "${pio_hits}"
   failed=1
 else
-  echo "[kdba-boundary] OK: no platform IO tokens in domains/"
+  echo "[kdba-boundary] OK: no platform IO tokens in pod zones"
 fi
 
 # KDBA Kleisli doctrine (amendment 2026-09-16, Constitution II §8): the monad
 # rides at chunk/batch level. A container of per-element expected values
 # breaks cache alignment and auto-vectorization — FAIL on sight.
 expected_vec_hits="$(grep -rnE 'vector<[[:space:]]*std::expected' \
-  "${lib_root}/include/shs/domains" 2>/dev/null || true)"
+  "${pod_purity_dirs[@]}" 2>/dev/null || true)"
 if [[ -n "${expected_vec_hits}" ]]; then
   echo "[kdba-boundary] FAIL: per-element expected container in domains/ (monad rides at chunk level, §8)"
   echo "${expected_vec_hits}"
@@ -182,7 +196,7 @@ fi
 # Closed event facts (Rule 12): events carry enums/ids/quantities, never
 # std::string members. Comment mentions are fine; member declarations fail.
 stringy_hits="$(grep -rnE 'std::string[[:space:]]+[A-Za-z_][A-Za-z0-9_]*;' \
-  $(find "${domains_dir}" -name '*.event.hpp' | sort) 2>/dev/null || true)"
+  $(find "${pod_scan_dirs[@]}" -name '*.event.hpp' | sort) 2>/dev/null || true)"
 if [[ -n "${stringy_hits}" ]]; then
   echo "[kdba-boundary] FAIL: std::string member in event fact (closed payloads only, Rule 12)"
   echo "${stringy_hits}"
@@ -194,7 +208,7 @@ fi
 # KDBA phantom-flag ban (Rule 12, Constitution II §8): persistent PODs carry
 # zero transitional flags. Any hit below is a hard FAIL.
 phantom_hits="$(grep -rniE 'is_pending|is_trading|is_locked|retry_count|is_validating|is_payment_pending|is_rolling_back' \
-  $(find "${domains_dir}" -name '*.contract.hpp' | sort) 2>/dev/null || true)"
+  $(find "${pod_scan_dirs[@]}" -name '*.contract.hpp' | sort) 2>/dev/null || true)"
 if [[ -n "${phantom_hits}" ]]; then
   echo "[kdba-boundary] FAIL: phantom flag in persistent POD contract (transient belongs in SagaContext, Rule 12)"
   echo "${phantom_hits}"
@@ -207,7 +221,7 @@ fi
 # in gateway.hpp are INFO-tracked, not FAIL — decomposition is the next
 # breaking-parts phase. New switch sites should justify themselves.
 mono_hits="$(grep -rnE 'switch[[:space:]]*\(' \
-  $(find "${domains_dir}" -name '*.gateway.hpp' | sort) 2>/dev/null || true)"
+  $(find "${pod_scan_dirs[@]}" -name '*.gateway.hpp' | sort) 2>/dev/null || true)"
 if [[ -n "${mono_hits}" ]]; then
   echo "[kdba-boundary] INFO: switch-case sites in gateways (monolith-decomposition backlog — decompose into Kleisli arrows; Constitution II §6.6)"
   echo "${mono_hits}"
@@ -218,9 +232,13 @@ fi
 # Event-flow catalog sync (R5b P4.5): every *Event struct in a pod
 # event.hpp must appear in docs/pods/EVENT_FLOW.md (tables mirror the
 # in-code name tables, which feed the P6 overlay labels).
-event_names="$(grep -rhE 'struct (Fsm[A-Za-z0-9_]+|[A-Za-z0-9_]+Event)\b' \
-  $(find "${domains_dir}" -name '*.event.hpp' | sort) 2>/dev/null \
-  | grep -oE '(Fsm[A-Za-z0-9_]+|[A-Za-z0-9_]+Event)\b' | sort -u)"
+event_files="$(find "${pod_scan_dirs[@]}" -name '*.event.hpp' | sort)"
+event_names=""
+if [[ -n "${event_files}" ]]; then
+  event_names="$(grep -rhE 'struct (Fsm[A-Za-z0-9_]+|[A-Za-z0-9_]+Event)\b' \
+    ${event_files} 2>/dev/null \
+    | grep -oE '(Fsm[A-Za-z0-9_]+|[A-Za-z0-9_]+Event)\b' | sort -u || true)"
+fi
 flow_doc="${lib_root}/../../../docs/pods/EVENT_FLOW.md"
 drift=0
 for ev in ${event_names}; do
@@ -238,9 +256,13 @@ fi
 # every closed error enum (*Error|*Rejection|*Reason) declared in a pod
 # event/contract header must appear in docs/pods/ERROR_FLOW.md — the failure
 # rail is a first-class vocabulary too (Rule 11: one error family per context).
-error_names="$(grep -rhE 'enum class [A-Za-z0-9_]*(Error|Rejection|Reason)\b' \
-  $(find "${domains_dir}" \( -name '*.event.hpp' -o -name '*.contract.hpp' \) | sort) 2>/dev/null \
-  | grep -oE '[A-Za-z0-9_]*(Error|Rejection|Reason)\b' | sort -u)"
+error_files="$(find "${pod_scan_dirs[@]}" \( -name '*.event.hpp' -o -name '*.contract.hpp' \) | sort)"
+error_names=""
+if [[ -n "${error_files}" ]]; then
+  error_names="$(grep -rhE 'enum class [A-Za-z0-9_]*(Error|Rejection|Reason)\b' \
+    ${error_files} 2>/dev/null \
+    | grep -oE '[A-Za-z0-9_]*(Error|Rejection|Reason)\b' | sort -u || true)"
+fi
 error_doc="${lib_root}/../../../docs/pods/ERROR_FLOW.md"
 edrift=0
 for err in ${error_names}; do
@@ -312,8 +334,13 @@ fi
 missing_gw=0
 for pod_dir in "${pod_dirs[@]}"; do
   pod="$(basename "${pod_dir}")"
-  gw_file="${pod_dir}/${pod}.gateway.hpp"
-  [[ -f "${gw_file}" ]] || continue
+  gw_file=""
+  while IFS= read -r f; do
+    if ! grep -q 'Compatibility include: definitions live in' "${f}" 2>/dev/null; then
+      gw_file="${f}"; break
+    fi
+  done < <(find "${pod_scan_dirs[@]}" -name "${pod}.gateway.hpp" | sort)
+  [[ -n "${gw_file}" ]] || continue
   defs="$(grep -nE "^[[:space:]]*(inline[[:space:]]+)?[A-Za-z_][A-Za-z_:<>0-9, ]*[[:space:]]+${pod}_gateway[[:space:]]*\\(" \
     "${gw_file}" 2>/dev/null || true)"
   if [[ -z "${defs}" ]]; then
@@ -342,8 +369,13 @@ kleisli_grandfathered_pods=()
 writer_gate=0
 for pod_dir in "${pod_dirs[@]}"; do
   pod="$(basename "${pod_dir}")"
-  gw_file="${pod_dir}/${pod}.gateway.hpp"
-  [[ -f "${gw_file}" ]] || continue
+  gw_file=""
+  while IFS= read -r f; do
+    if ! grep -q 'Compatibility include: definitions live in' "${f}" 2>/dev/null; then
+      gw_file="${f}"; break
+    fi
+  done < <(find "${pod_scan_dirs[@]}" -name "${pod}.gateway.hpp" | sort)
+  [[ -n "${gw_file}" ]] || continue
   if printf '%s\n' "${kleisli_migrated_pods[@]}" | grep -qx -- "${pod}"; then
     writer_hits="$(grep -nE "void[[:space:]]+${pod}_gateway[[:space:]]*\(" "${gw_file}" 2>/dev/null || true)"
     if [[ -n "${writer_hits}" ]]; then
@@ -372,7 +404,7 @@ fi
 #     legal; the discriminator pattern (switch over .type/.kind) is what is
 #     banned.
 gw_files=()
-while IFS= read -r f; do gw_files+=("${f}"); done < <(find "${domains_dir}" -name '*.gateway.hpp' | sort)
+while IFS= read -r f; do gw_files+=("${f}"); done < <(find "${pod_scan_dirs[@]}" -name '*.gateway.hpp' -exec grep -L 'Compatibility include: definitions live in' {} \; | sort)
 monolith_hits="$(grep -nE 'switch[[:space:]]*\([[:space:]]*[A-Za-z_]+(\.type|\.kind)[[:space:]]*\)' "${gw_files[@]}" 2>/dev/null || true)"
 if [[ -n "${monolith_hits}" ]]; then
   echo "[kdba-boundary] FAIL: switch over a command/action discriminator in a gateway (Rule 2 amended — use std::visit over the closed variant)"

@@ -15,7 +15,7 @@
 
 #include <shs/camera/camera_math.hpp>
 #include <shs/camera/convention.hpp>
-#include <shs/core/context.hpp>
+#include <shs/app/context.hpp>
 #include <shs/core/units.hpp>
 #include <shs/geometry/culling_software.hpp>
 #include <shs/geometry/culling_runtime.hpp>

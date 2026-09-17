@@ -4,8 +4,8 @@
 #include <variant>
 #include <vector>
 
-#include "shs/domains/pod_test_kit.hpp"
-#include "shs/domains/renderpath/renderpath.gateway.hpp"
+#include "shs/core/testing/pod_test_kit.hpp"
+#include "shs/renderpath/renderpath.gateway.hpp"
 
 // Pure value tests for the renderpath pod (roadmap P1 ctest gate:
 // shs_renderer_vop_renderpath_*). Zero Vulkan/SDL links: the test binary links

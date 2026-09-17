@@ -39,13 +39,13 @@ if(APPLE AND NOT Vulkan_FOUND AND DEFINED ENV{VULKAN_SDK})
 endif()
 
 # NOTE: since P2 the value-desc Vulkan driver pod lives HERE under
-# include/shs/execution/rhi/drivers/vulkan/ (header-only, pure translation +
+# include/shs/rhi/vulkan/value/ (header-only, pure translation +
 # hash-keyed explicit caches, GPU-free testable). The lib stays Vulkan-free by
 # default — the driver compiles only where Vulkan headers are used (test target
 # above, backend_factory under SHS_HAS_VULKAN).
 # Since 2026-09 the absorbed runtime edge from shs-gpu-lib also lives here:
-# include/shs/rhi/drivers/vulkan/ (SDL/windowed monolith backend) +
-# include/shs/pipeline/vk_* — gated behind SHS_HAS_VULKAN; its P3 pod
+# include/shs/rhi/vulkan/runtime/ (SDL/windowed monolith backend) +
+# include/shs/renderpath/execution/vk_* — gated behind SHS_HAS_VULKAN; its P3 pod
 # decomposition into the pod-aligned driver remains future work.
 
 option(SHS_RENDERER_BUILD_SHARED "Build shs_renderer as a shared library" OFF)
@@ -143,7 +143,7 @@ set(SHS_RENDERER_HAS_JOLT "${SHS_RENDERER_HAS_JOLT}" PARENT_SCOPE)
 # Vulkan runtime edge (absorbed from shs-gpu-lib, 2026-09): the monolith
 # backend + VMA implementation compile into shs_renderer only when Vulkan was
 # found; otherwise the lib stays GPU-free and the pod-aligned driver
-# (shs/execution/rhi/drivers/vulkan/) remains the only Vulkan code.
+# (shs/rhi/vulkan/value/) remains the only Vulkan code.
 set(SHS_RENDERER_HAS_VULKAN OFF)
 if(Vulkan_FOUND AND TARGET Vulkan::Vulkan)
     set(SHS_RENDERER_HAS_VULKAN ON)

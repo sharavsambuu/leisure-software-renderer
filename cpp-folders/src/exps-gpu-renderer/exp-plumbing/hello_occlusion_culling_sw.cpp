@@ -21,7 +21,7 @@
 #include <shs/geometry/scene_shape.hpp>
 #include <shs/scene/scene_culling.hpp>
 #include <shs/scene/scene_instance.hpp>
-#include <shs/core/context.hpp>
+#include <shs/app/context.hpp>
 #include <shs/gfx/rt_types.hpp>
 #include <shs/sw_render/debug_draw.hpp>
 #include <shs/input/value_actions.hpp>
