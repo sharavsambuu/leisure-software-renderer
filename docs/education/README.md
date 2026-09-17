@@ -9,6 +9,9 @@
 ## Live teaching
 
 - `kdba_kleisli_composition.md` — the primer.
+- `architectural_progression.md` — the personal history: eras, aha moments, and
+  how each self-discovered concept later mapped onto C++ features and known
+  patterns (Command, DDD, monads, sagas, DbC).
 - `domain_value_objects.md` — the "Domain POD" → **Domain Value Object** rename: the history, the DDD meaning, and why bounded contexts make the term real. Law: `docs/spec/domain_value_object_law.md` (2026-09-17).
 - `cpp26_contract_guardrails.md` — what C++26 contracts are, why they fit DVOs (invariants at module edges, not in types), the C++23 emulation bridge, and the mechanical C++26 switch path.
 
