@@ -5,8 +5,11 @@
 #include <vector>
 
 #include "shs/app/session_orchestrator.hpp"
+#include "shs/app/session_settings_sync.hpp"
 #include "shs/camera/camera_rig.hpp"
 #include "shs/input/input.contract.hpp"
+#include "shs/renderpath/planning/render_technique_presets.hpp"
+#include "shs/scene/scene_types.hpp"
 #include "shs/core/testing/pod_test_kit.hpp"
 
 // Step 4.1 regression suite (engine_domain_separation_migration.md).
@@ -15,6 +18,14 @@
 // (core_tests / input_tests) plus a bit-parity check against the pre-split
 // application math preserved inline below. Links only shs::renderer-values
 // + glm: no SDL, no Vulkan, no Context.
+//
+// Step 4.2 additions: SessionState is the ONE authoritative owner of
+// session camera settings (rig + projection) and session render settings
+// (light-shafts toggle); sync_session_to_scene / apply_session_render_settings
+// are the only write paths into the scene camera and per-frame FrameParams.
+// New pins: settings-carrying host independence, settings recorded-replay
+// determinism (toggles included), session->scene camera sync vs an inline
+// ViewCamera reference, recipe-then-session render-settings precedence.
 namespace
 {
     using shs::app::SessionState;
@@ -276,6 +287,156 @@ namespace
             shs::input::InputContext{0.016f}, events2);
         return down.camera.pitch == glm::radians(-85.0f);
     }
+
+    // ---- Step 4.2: one authoritative owner for camera/render settings ----
+
+    // Host independence with settings: two hosts carrying different camera
+    // projection settings and render toggles evolve independently under the
+    // same recorded log; projection settings are untouched by intent
+    // application (the orchestrator owns pose, not projection).
+    bool test_settings_host_independence()
+    {
+        const std::vector<shs::RuntimeCommand> commands = make_mixed_log();
+        const std::span<const shs::RuntimeCommand> span{
+            commands.data(), commands.size()};
+
+        SessionState a{};
+        a.fov_y_radians = glm::radians(90.0f);
+        a.znear = 0.1f;
+        a.zfar = 500.0f;
+        a.enable_light_shafts = false;
+
+        SessionState b{}; // all defaults
+
+        std::pmr::monotonic_buffer_resource arena{4096};
+        std::pmr::vector<shs::input::InputEvent> events{&arena};
+        shs::app::session_orchestrate(a, span, shs::input::InputContext{0.5f}, events);
+        std::pmr::vector<shs::input::InputEvent> events_b{&arena};
+        shs::app::session_orchestrate(b, span, shs::input::InputContext{0.5f}, events_b);
+
+        // Projection settings never move through intent application.
+        if (a.fov_y_radians != glm::radians(90.0f)) return false;
+        if (a.znear != 0.1f || a.zfar != 500.0f) return false;
+        if (b.fov_y_radians != glm::radians(60.0f)) return false;
+        if (b.znear != 0.1f || b.zfar != 200.0f) return false;
+        // Toggles evolve per host: the mixed log flips light shafts once,
+        // so each host ends in the opposite of its start value.
+        if (a.enable_light_shafts != true) return false;
+        if (b.enable_light_shafts != false) return false;
+        // Pose evolves independently (same log, aligned start pose).
+        a.camera.yaw = 1.0f;
+        b.camera.yaw = 1.0f;
+        a.camera.pos.y = 0.0f;
+        b.camera.pos.y = 0.0f;
+        return a.camera == b.camera && a.quit_requested && b.quit_requested;
+    }
+
+    // Recorded replay with toggles: a toggle-heavy log replayed on three
+    // fresh hosts yields bit-identical session state (settings included)
+    // and identical fact logs.
+    bool test_settings_recorded_replay()
+    {
+        std::vector<shs::RuntimeCommand> commands{};
+        commands.push_back(shs::make_toggle_light_shafts_intent());
+        commands.push_back(shs::make_toggle_light_shafts_intent());
+        commands.push_back(shs::make_toggle_bot_intent());
+        commands.push_back(shs::make_move_local_intent(glm::vec3(0.0f, 0.0f, 1.0f), 2.0f));
+        commands.push_back(shs::make_toggle_light_shafts_intent());
+        const std::span<const shs::RuntimeCommand> span{
+            commands.data(), commands.size()};
+
+        SessionState a{};
+        SessionState b{};
+        SessionState c{};
+        std::pmr::monotonic_buffer_resource arena{4096};
+        std::pmr::vector<shs::input::InputEvent> events_a{&arena};
+        std::pmr::vector<shs::input::InputEvent> events_b{&arena};
+        std::pmr::vector<shs::input::InputEvent> events_c{&arena};
+        shs::app::session_orchestrate(a, span, shs::input::InputContext{0.25f}, events_a);
+        shs::app::session_orchestrate(b, span, shs::input::InputContext{0.25f}, events_b);
+        shs::app::session_orchestrate(c, span, shs::input::InputContext{0.25f}, events_c);
+
+        // Odd toggle count: light shafts must end OFF on every host.
+        return a == b && b == c && events_a == events_b && events_b == events_c
+            && !a.enable_light_shafts;
+    }
+
+    // Session -> scene camera sync: canonical funnel projects rig pose AND
+    // session projection settings; matrices bit-match an independent
+    // ViewCamera reference built from the session settings.
+    bool test_session_scene_camera_sync()
+    {
+        shs::app::SessionState s{};
+        s.camera.pos = glm::vec3(1.5f, 2.0f, -3.0f);
+        s.camera.yaw = 0.8f;
+        s.camera.pitch = -0.15f;
+        s.fov_y_radians = glm::radians(75.0f);
+        s.znear = 0.25f;
+        s.zfar = 500.0f;
+
+        shs::Scene scene{};
+        scene.cam.viewproj = glm::mat4{1.0f};
+
+        shs::app::sync_session_to_scene(s, scene, 1.7777f);
+
+        // Session is authoritative: scene projection settings are OVERWRITTEN
+        // from the session, not preserved.
+        if (scene.cam.fov_y_radians != s.fov_y_radians) return false;
+        if (scene.cam.znear != s.znear || scene.cam.zfar != s.zfar) return false;
+
+        // Independent reference: same deterministic math path.
+        shs::ViewCamera vc{};
+        vc.pos = s.camera.pos;
+        vc.target = s.camera.pos + s.camera.forward();
+        vc.up = {0.0f, 1.0f, 0.0f};
+        vc.fov_y_radians = s.fov_y_radians;
+        vc.znear = s.znear;
+        vc.zfar = s.zfar;
+        vc.viewproj = glm::mat4{1.0f};
+        vc.update_matrices(1.7777f);
+
+        return scene.cam.pos == vc.pos && scene.cam.target == vc.target
+            && scene.cam.up == vc.up && scene.cam.view == vc.view
+            && scene.cam.proj == vc.proj && scene.cam.viewproj == vc.viewproj
+            && scene.cam.prev_viewproj == vc.prev_viewproj;
+    }
+
+    // Session -> FrameParams render settings: the canonical funnel writes
+    // both the legacy flat toggle and the pass-block field the light-shafts
+    // pass consumes; applied AFTER the technique recipe, the session owner
+    // wins; unrelated FrameParams fields are untouched.
+    bool test_session_render_settings_sync()
+    {
+        shs::app::SessionState s{};
+        s.enable_light_shafts = true; // session default
+
+        shs::FrameParams fp{};
+        const float exposure_before = fp.exposure;
+        const int steps_before = fp.pass.light_shafts.steps;
+
+        // Planning-level recipe defaults light shafts OFF; apply it first.
+        const shs::RenderTechniqueRecipe recipe =
+            shs::make_builtin_render_technique_recipe(shs::RenderTechniquePreset::PBR);
+        shs::apply_render_technique_recipe_to_frame_params(recipe, fp);
+        if (fp.pass.light_shafts.enable) return false; // recipe default applied
+
+        // Session funnel: runtime owner wins over the recipe default.
+        shs::app::apply_session_render_settings(s, fp);
+        if (!fp.pass.light_shafts.enable) return false;
+        if (!fp.enable_light_shafts) return false;
+
+        // Toggle in the session (as the orchestrator would), re-project.
+        s.enable_light_shafts = false;
+        shs::app::apply_session_render_settings(s, fp);
+        if (fp.pass.light_shafts.enable) return false;
+        if (fp.enable_light_shafts) return false;
+
+        // Funnel touches ONLY the two toggle fields.
+        if (fp.exposure != exposure_before) return false;
+        if (fp.pass.light_shafts.steps != steps_before) return false;
+        if (fp.pass.tonemap.exposure != recipe.tonemap_exposure) return false;
+        return true;
+    }
 } // namespace
 
 int main()
@@ -289,6 +450,10 @@ int main()
     ok = test_kit_determinism() && ok;
     ok = test_pipeline_composition() && ok;
     ok = test_clamp_saturation() && ok;
+    ok = test_settings_host_independence() && ok;
+    ok = test_settings_recorded_replay() && ok;
+    ok = test_session_scene_camera_sync() && ok;
+    ok = test_session_render_settings_sync() && ok;
 
     if (!ok)
     {

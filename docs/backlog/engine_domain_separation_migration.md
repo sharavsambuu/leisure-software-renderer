@@ -397,6 +397,20 @@ commits; keep mechanical moves separate from semantic changes.
   installed package — binary-compatible only when consumer and package agree
   on those ABIs.
 
+### Status (2026-09-17, step 4.2: authoritative camera/render settings owner)
+
+- Step 4 second item completed: `shs::app::SessionState` established as the
+  one authoritative owner of session-scoped camera settings (rig + fov/
+  znear/zfar) and session render settings (light-shafts toggle), with two
+  canonical sync funnels (`shs/app/session_settings_sync.hpp`) into the
+  scene camera and per-frame FrameParams; recipe-then-session precedence
+  pinned. Evidence in the step-4 checkbox above. Suite 11/11 green; gates
+  green; inventory 436. Full-build + CTest evidence recorded in the commit
+  message.
+- Phase table: 1-3 COMPLETE, 4 at 2/5 (remaining: scene/resource identity
+  policy; thread/arena lifetime + failure semantics; identity-only gateway
+  retirement), 5 COMPLETE, 6/7 not started (7 blocked on 4-6).
+
 ### 1. Inventory, decision record and baseline
 
 - [x] Create a machine-readable old-header -> canonical-header manifest covering
@@ -504,8 +518,38 @@ Depends on 3; behavior changes require regression tests first.
   canonical entry is `input_latch_gateway`); negative-tested (entry-point
   rename FAILs exit 1, then reverted). Header inventory regenerated
   434→435. CTest 30/30.)
-- [ ] Establish one authoritative owner for camera and render settings; test
+- [x] Establish one authoritative owner for camera and render settings; test
   multiple independent host instances and recorded-input replay.
+  (Done 2026-09-17: `shs::app::SessionState` is the ONE authoritative owner
+  of session camera settings — rig pose plus projection `fov_y_radians`/
+  `znear`/`zfar`, defaults identical to `shs::Camera`/`ViewCamera` so
+  projections stay bit-preserved — and session render settings (light-shafts
+  toggle; resolving the three-way default drift with
+  `FrameParams::enable_light_shafts` and the technique recipe's
+  `enable_light_shafts = false`). Scene `shs::Camera` and per-frame
+  `FrameParams` are renderer PROJECTIONS of session state, written only
+  through two new canonical funnels in `shs/app/session_settings_sync.hpp`:
+  `sync_session_to_scene()` (rig + session projection settings -> scene
+  camera via `ViewCamera`, field order and matrix math identical to the
+  pre-4.2 `shs::sync_camera_to_scene`, which stays as the compat path with
+  scene-sourced settings, now doc-flagged for the step-7 ledger) and
+  `apply_session_render_settings()` (session toggle -> BOTH the legacy flat
+  `fp.enable_light_shafts` and the pass-block field the light-shafts pass
+  actually consumes; apply AFTER
+  `apply_render_technique_recipe_to_frame_params` so the runtime owner wins
+  over planning-level recipe defaults; funnel touches no other field).
+  Regression tests FIRST, all in `shs_renderer_session_orchestration_tests`:
+  settings-carrying host independence (two hosts, different fov/planes/
+  toggle, same recorded mixed log — per-host toggle evolution pinned,
+  projection settings untouched by intent application), settings
+  recorded-input replay (toggle-heavy log, three fresh hosts, bit-identical
+  state + fact logs), session->scene camera sync pinned bit-exact against
+  an independent `ViewCamera` reference (including prev_viewproj
+  first-call semantics), recipe-then-session precedence and
+  only-two-fields funnel pins. 11/11 tests in the suite green. Gate
+  results: include-graph gate OK (acyclic, `app -> render/frame` value-tier
+  edge legal — `frame_params.hpp` is pure), header-migration gate OK,
+  inventory regenerated 435->436 (new `session_settings_sync.hpp`).)
 - [ ] Define scene/resource identity policy: duplicate names/IDs, stale handles,
   deletion/recreation, vector-reference invalidation and renderer projections.
 - [ ] Document and test thread access, arena lifetimes, shutdown ordering,

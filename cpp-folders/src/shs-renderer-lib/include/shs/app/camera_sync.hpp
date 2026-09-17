@@ -16,6 +16,13 @@
 
 namespace shs
 {
+    // Pre-4.2 compatibility path (step 4.2,
+    // engine_domain_separation_migration.md): projection settings are read
+    // from the scene copy. The canonical camera-settings funnel is
+    // shs::app::sync_session_to_scene (shs/app/session_settings_sync.hpp),
+    // which sources pose AND projection settings from the authoritative
+    // app-owned SessionState. This overload is kept for existing scene-side
+    // consumers; behavior is unchanged.
     inline void sync_camera_to_scene(CameraRig& rig, Scene& scene, float aspect)
     {
         ViewCamera vc{};

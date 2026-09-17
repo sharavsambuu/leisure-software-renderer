@@ -44,9 +44,22 @@ namespace shs::app
     // One authoritative owner: app (step 4.1). Fields and defaults are
     // verbatim from the retired shs::input::RuntimeState so old behavior
     // is bit-preserved.
+    //
+    // Step 4.2 (engine_domain_separation_migration.md): this aggregate is
+    // also the ONE authoritative owner of session-scoped camera settings
+    // (projection: fov/znear/zfar, defaults identical to shs::Camera and
+    // shs::ViewCamera) and session render settings (light-shafts toggle).
+    // Scene shs::Camera and FrameParams are per-frame renderer PROJECTIONS
+    // of this state, written only through the canonical sync funnels in
+    // shs/app/session_settings_sync.hpp. Hosts must not edit the
+    // projections directly; toggles applied here win over technique-level
+    // recipe defaults.
     struct SessionState
     {
         CameraRig camera{};
+        float fov_y_radians = glm::radians(60.0f);
+        float znear = 0.1f;
+        float zfar  = 200.0f;
         bool enable_light_shafts = true;
         bool quit_requested = false;
         bool bot_enabled = false;
