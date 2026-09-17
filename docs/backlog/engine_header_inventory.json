@@ -730,11 +730,13 @@
       ],
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/include/shs/logic/logic.gateway.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/render/frame/frame.gateway.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/planning/render_path_compiler.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/renderpath.gateway.hpp",
         "cpp-folders/src/shs-renderer-lib/tests/contract_guardrails_pilot_tests.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/contract_guardrails_replay_probe.cpp",
-        "cpp-folders/src/shs-renderer-lib/tests/contract_guardrails_tests.cpp"
+        "cpp-folders/src/shs-renderer-lib/tests/contract_guardrails_tests.cpp",
+        "cpp-folders/src/shs-renderer-lib/tests/logic_guardrail_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -2651,6 +2653,7 @@
         "variant"
       ],
       "tracked_consumers": [
+        "cpp-folders/src/shs-renderer-lib/tests/logic_guardrail_tests.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/logic_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
@@ -2876,6 +2879,7 @@
       "direct_dependencies": [
         "cstdint",
         "memory_resource",
+        "shs/core/contract_guardrails.hpp",
         "shs/render/frame/frame.command.hpp",
         "shs/render/frame/frame.contract.hpp",
         "shs/render/frame/frame.event.hpp",
@@ -2884,6 +2888,7 @@
         "variant"
       ],
       "internal_dependencies": [
+        "shs/core/contract_guardrails.hpp",
         "shs/render/frame/frame.command.hpp",
         "shs/render/frame/frame.contract.hpp",
         "shs/render/frame/frame.event.hpp"
@@ -7390,6 +7395,7 @@
     "memory": [],
     "platform": [],
     "render": [
+      "core",
       "geometry",
       "lighting",
       "resources",

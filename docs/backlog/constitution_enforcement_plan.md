@@ -136,6 +136,35 @@ resources → gfx → input** (input last — biggest vocabulary). Per pod:
 - [x] **Gates**: 39/39 CTest, boundary (incl. gates 8+9), include-graph,
   inventory same-commit.
 
+### Slice 2: frame pod — **DONE 2026-09-17**
+
+- [x] **Railway audit**: the pinned identity transition (K1.5). Gateway is
+  assembly-only and the command vocabulary is EMPTY by law (§6.1) — planners
+  rebuild `FrameParams` per frame instead of reducing it, so there are no
+  transition bodies to audit. Dispatch exhaustiveness is stronger than the P5
+  tail: the visit body's `static_assert(is_same_v<T, monostate>)` makes any
+  new alternative ill-formed outright; `frame.event.hpp` pins the empty event
+  vocabulary with a `static_assert` + count. Rim is Step-valued
+  (`FrameStep`, no bool rail, no throw — P2 green, gate 9). Error family
+  documented in `ERROR_FLOW.md` ("Infallible monostate identity; no mutations
+  or multi-step flows") — drift gate green. No phantom flags, no swallow.
+- [x] **Guardrail annotations**: one true runtime rim invariant existed —
+  zero-signal-loss for the identity pod is
+  `commands_observed == commands.size()` (applied = facts = rejected = 0);
+  rim `SHS_POST` added. The negative leg is not reachable through the public
+  seam (no input can carry a non-monostate command — the variant is closed),
+  so the compile-time pins are the negative story: the twins compile against
+  the real header, so vocabulary drift breaks the build. Lesson 9.8 applied:
+  nothing else exists to annotate (no Rule 7.1 dst/src pair, no
+  caller-owned state invariants — `FrameParams` is pure config the gateway
+  ignores by identity law).
+- [x] **Tests**: `shs_renderer_frame_guardrail_tests` + release twin —
+  silence + completeness proof (batch of 3 monostate commands fully
+  observed, no events, handler untouched in enforced build / assume path in
+  release).
+- [x] **Gates**: 41/41 CTest, boundary (incl. gates 8+9), include-graph,
+  inventory same-commit (Rule 15).
+
 
 ## W-E — Standing / parallel throughout
 

@@ -20,6 +20,7 @@
 #include <type_traits>
 #include <variant>
 
+#include "shs/core/contract_guardrails.hpp"
 #include "shs/render/frame/frame.command.hpp"
 #include "shs/render/frame/frame.contract.hpp"
 #include "shs/render/frame/frame.event.hpp"
@@ -60,6 +61,12 @@ namespace shs::frame
             }, command);
             step.commands_observed += 1;
         }
+        // Rim postcondition (W-D frame slice, 2026-09-17): zero-signal-loss
+        // for the identity pod — every consumed command was observed, none
+        // dropped or transformed. Trivial by construction today; the guard
+        // binds the loop when the first real knob (exposure, debug view)
+        // replaces monostate and the visit grows real arrows.
+        SHS_POST(step.commands_observed == commands.size());
         return step;
     }
 } // namespace shs::frame
