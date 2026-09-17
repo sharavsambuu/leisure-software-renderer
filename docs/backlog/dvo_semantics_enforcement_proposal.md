@@ -54,6 +54,19 @@ in §5 Allowed Exceptions) before the gate turns blocking; one pilot pod first
 
 ## P3 — Checker follows the module migration (Rules 13–16)
 
+**DONE-BY-AMENDMENT (2026-09-17, W-E bookkeeping pass):** this item is
+overtaken by the 2026-09-17 forwarder-tree retirement (`c9928d2`), which
+removed the legacy `shs/domains/` + `shs/execution/` trees entirely.
+`check_kdba_boundaries.sh` now scans the canonical owner tree directly (the
+hardcoded `pod_scan_dirs` pod list at the gate's head), so scan roots no
+longer need manifest derivation — and the migration manifest
+(`engine_header_migration_manifest.json`) is empty by design after the
+retirement, making manifest-derived roots moot. The prefix hazard P3 guarded
+against cannot recur: there is no legacy prefix left to hardcode. The suffix
+globs (`*.contract.hpp`, `*.command.hpp`, `*.event.hpp`, `*.gateway.hpp`)
+remain the invariant, unchanged. Original proposal text below is retained for
+the record.
+
 `check_kdba_boundaries.sh` currently globs `domains/*/*.gateway.hpp` etc. When
 headers move per manifest, the gate must follow: scan roots derive from the
 migration manifest (`engine_header_migration_manifest.json`), not a hardcoded

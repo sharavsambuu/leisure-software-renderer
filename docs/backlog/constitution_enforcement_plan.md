@@ -260,7 +260,9 @@ rim under both gate 8 (placement) and gate 9 (rails) scans.
   moved every checker scan root off `domains/` onto the canonical owner tree;
   P3's prefix hazard is resolved by that amendment (manifest-derived roots are
   moot — the migration manifest is empty by design after the retirement).
-  Record as done-by-amendment next time the proposal is touched.
+  **Recorded done-by-amendment (2026-09-17)** in
+  `dvo_semantics_enforcement_proposal.md` §P3 — the proposal was touched by
+  this pass, which was the recorded trigger.
 
 ## Sequencing
 
