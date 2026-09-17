@@ -165,5 +165,18 @@ class HeaderMigrationTests(unittest.TestCase):
         self.assertIn('content drift', result.stderr)
 
 
+class ForwarderRetirementTests(unittest.TestCase):
+    """Step-7 item 4 removal (2026-09-17): the legacy forwarder trees must
+    stay gone — a reintroduced shs/domains/ or shs/execution/ directory is a
+    regression, not a compatibility feature."""
+
+    def test_legacy_forwarder_trees_are_gone(self):
+        base = (migration.ROOT / 'cpp-folders/src/shs-renderer-lib'
+                / 'include/shs')
+        for legacy in ('domains', 'execution'):
+            self.assertFalse((base / legacy).exists(),
+                             f'legacy forwarder tree shs/{legacy}/ was reintroduced')
+
+
 if __name__ == '__main__':
     unittest.main()

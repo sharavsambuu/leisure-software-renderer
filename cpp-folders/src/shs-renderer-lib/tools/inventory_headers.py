@@ -23,47 +23,13 @@ PLANNERS = {
 
 
 def destination(name):
-    parts = name.split('/')
-    if name == 'shs/domains/pod_test_kit.hpp':
-        return 'shs/core/testing/pod_test_kit.hpp', 'review-test-support-ownership'
+    # The legacy shs/domains/ + shs/execution/ forwarder trees were removed
+    # (migration step-7 item 4); only the reviewed rhi/vulkan value/runtime
+    # split and the app-context proposal remain as pending proposals.
     if name == 'shs/core/context.hpp':
         return 'shs/app/context.hpp', 'split-values-from-runtime-before-move'
     if name.startswith('shs/rhi/drivers/vulkan/'):
         return name.replace('shs/rhi/drivers/vulkan/', 'shs/rhi/vulkan/runtime/'), 'review-vulkan-runtime-ownership'
-    if name.startswith('shs/domains/'):
-        owner, tail = parts[2], '/'.join(parts[3:])
-        if owner == 'sky' and tail == 'skybox_renderer.hpp':
-            return 'shs/renderpath/execution/skybox_renderer.hpp', 'review-rendering-adapter'
-        if tail.startswith('jolt_'):
-            return f'shs/{owner}/adapters/jolt/{tail}', 'extract-adapter-dependencies'
-        if tail.startswith('edge/'):
-            role = 'adapters' if ('import' in tail or 'loader' in tail) else 'storage'
-            owner = {'frame': 'render/frame', 'gfx': 'render/targets'}.get(owner, owner)
-            return f'shs/{owner}/{role}/{tail[5:]}', 'review-storage-or-adapter'
-        owner = {'frame': 'render/frame', 'gfx': 'render/targets'}.get(owner, owner)
-        return f'shs/{owner}/{tail}', 'proposed-preserve-filename'
-    if name.startswith('shs/execution/'):
-        zone, tail = parts[2], '/'.join(parts[3:])
-        if zone == 'pipeline':
-            role = 'planning' if tail in PLANNERS else 'execution'
-            return f'shs/renderpath/{role}/{tail}', 'review-planning-execution-split'
-        if zone == 'rhi':
-            if tail.startswith('drivers/vulkan/'):
-                return 'shs/rhi/vulkan/value/' + tail[len('drivers/vulkan/'):], 'review-vulkan-value-ownership'
-            if tail.startswith('drivers/'):
-                return 'shs/rhi/' + tail[len('drivers/'):], 'review-backend-ownership'
-            if tail.startswith('backend/'):
-                return 'shs/app/' + tail, 'review-composition-boundary'
-            if tail == 'sync/vk_runtime.hpp':
-                return 'shs/rhi/vulkan/runtime/sync/vk_runtime.hpp', 'review-vulkan-runtime-ownership'
-            return 'shs/rhi/' + tail, 'review-neutrality-and-runtime-reexports'
-        if zone == 'platform' and tail == 'free_camera_bridge.hpp':
-            return 'shs/app/free_camera_bridge.hpp', 'review-composition-boundary'
-        if zone == 'platform' and tail.startswith('loaders/'):
-            return 'shs/resources/adapters/' + tail[len('loaders/'):], 'review-import-adapter'
-        owner = {'passes': 'renderpath/execution/passes', 'shader': 'render/shader',
-                 'sw_render': 'render/software', 'job': 'task'}.get(zone, zone)
-        return f'shs/{owner}/{tail}', 'proposed-preserve-filename'
     return name, 'already-named-review-dependencies'
 
 

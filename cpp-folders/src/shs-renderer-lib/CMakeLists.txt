@@ -348,26 +348,12 @@ if(SHS_RENDERER_BUILD_TESTS)
         target_compile_options(shs_renderer_tests PRIVATE -Wall -Wextra -Wpedantic)
     endif()
 
-    # Canonical/compatibility include ordering must preserve one definition.
-    foreach(order IN ITEMS canonical legacy)
-        set(camera_include_target shs_renderer_camera_include_${order}_tests)
-        add_executable(${camera_include_target} tests/camera_include_compatibility_tests.cpp)
-        target_link_libraries(${camera_include_target} PRIVATE shs::renderer-values)
-        if(order STREQUAL "legacy")
-            target_compile_definitions(${camera_include_target} PRIVATE SHS_TEST_LEGACY_INCLUDE_FIRST=1)
-        endif()
-        if(MSVC)
-            target_compile_options(${camera_include_target} PRIVATE /W4)
-        else()
-            target_compile_options(${camera_include_target} PRIVATE -Wall -Wextra -Wpedantic)
-        endif()
-        add_test(NAME ${camera_include_target} COMMAND ${camera_include_target})
-    endforeach()
-
     # Step-7 namespace cutover compatibility: old (shs::X) vs new
     # (shs::<owner>::X) spellings must denote the same entities; overload
-    # lookup, ADL, serialization ids and mixed legacy/canonical includes
-    # keep working. Namespaces can break ABI: aliases do not guarantee
+    # lookup, ADL and serialization ids keep working. (The legacy
+    # compatibility include-order tests were retired together with the
+    # shs/domains/ + shs/execution/ forwarder trees — migration step-7
+    # item 4.) Namespaces can break ABI: aliases do not guarantee
     # binary compatibility (see migration doc step 7).
     add_executable(shs_renderer_namespace_cutover_tests
         tests/namespace_cutover_tests.cpp

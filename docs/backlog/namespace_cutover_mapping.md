@@ -16,22 +16,29 @@ app). Generated 2026-09-17 by `tools/namespace_spelling_mapping.py`.
   app header adds explicit root-scope using-declarations
   (`using app::Context;` etc.) and the rhi interface forward-declares
   `shs::app::Context` with a root using-hoist.
-- Legacy include paths still work and are tested:
-  - `shs/domains/<module>/...` forwarders (step-1 compatibility includes),
-  - `shs/execution/...` forwarders,
-  - CTest: `shs_renderer_camera_include_{canonical,legacy}_tests`
-    (both include orders), `shs_renderer_header_self_containment_test`
-    (all public headers standalone),
-    `shs_renderer_namespace_cutover_tests` (same-entity, overload lookup,
-    ADL, serialization ids, mixed legacy/canonical includes).
+- Legacy include paths (RETIRED 2026-09-17, accelerated by owner directive —
+  the repository-wide consumer migration completed, so the forwarder window
+  closed early):
+  - `shs/domains/<module>/...` and `shs/execution/...` forwarders were
+    DELETED (191 headers); `include/shs/` now holds canonical owner modules
+    only. `tests/header_migration_tests.py::ForwarderRetirementTests`
+    negative-tests the retirement (reintroduction is a regression).
+  - The forwarder include-order tests
+    (`shs_renderer_camera_include_{canonical,legacy}_tests`) were retired
+    with the forwarders; the mixed-include clause of
+    `shs_renderer_namespace_cutover_tests` was folded back to canonical
+    includes only.
+  - Still active: `shs_renderer_header_self_containment_test` (all public
+    headers standalone), `shs_renderer_namespace_cutover_tests`
+    (same-entity, overload lookup, ADL, serialization ids).
 
 ## Deprecation schedule (release-specific)
 
 | Release | Action |
 | --- | --- |
-| 0.1.x (current compatibility release) | Old root spellings, `inline namespace` compat wrappers and `shs/domains/`, `shs/execution/` forwarders are supported and tested. Repository consumers already use the new spellings (step-7 item 3). |
-| 0.2.0 (next breaking release) | Announce removal: root `shs::` spellings and `shs/domains/` + `shs/execution/` forwarders are deprecated; migration is mechanical via `tools/root_spelling_migration.py` and the mapping table below. ABI is NOT guaranteed across the rename even where names resolve. |
-| 0.2.0 + 1 (announced breaking release) | Remove the public forwarding headers (`shs/domains/`, `shs/execution/`) and the inline-namespace wrappers / root using-declarations; keep the owner spellings only. Until then the forwarders stay tested. |
+| 0.1.x (current compatibility release) | Old root spellings and `inline namespace` compat wrappers / root using-declarations are supported and tested. Repository consumers already use the new spellings (step-7 item 3). |
+| 0.2.0 (next breaking release) | Announce removal of the root `shs::` spellings; migration is mechanical via `tools/root_spelling_migration.py` and the mapping table below. ABI is NOT guaranteed across the rename even where names resolve. |
+| ~~0.2.0 + 1~~ → **DONE 2026-09-17** | The public forwarding headers (`shs/domains/`, `shs/execution/`, 191 files) were removed AHEAD of schedule by owner directive, since every tracked consumer had already cut over (step-7 items 3–5 verified). The inline-namespace wrappers / root using-declarations REMAIN until the announced breaking release — old spellings (`shs::AABB`) still resolve; only the old *include paths* are gone. |
 
 Repository state after item 3: canonical sources, tests and example consumers
 (`cpp-folders/src/**`, including all `exps-*` tutorials) use owner spellings;

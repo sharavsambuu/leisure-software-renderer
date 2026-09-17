@@ -1,19 +1,6 @@
 {
   "schema_version": 1,
   "scope": "cpp-folders/src/shs-renderer-lib/include",
-  "coverage": "pilot only; full header inventory pending",
-  "headers": [
-    {
-      "old": "shs/domains/camera/convention.hpp",
-      "canonical": "shs/camera/convention.hpp",
-      "owner": "camera",
-      "namespace": "shs",
-      "visibility": "public",
-      "status": "migrated-with-forwarder",
-      "policy": "pure-leaf",
-      "direct_dependencies": ["glm/glm.hpp", "glm/gtc/matrix_transform.hpp"],
-      "build_target": "shs::renderer-values",
-      "compatibility": "Retain old include and symbols until announced breaking release"
-    }
-  ]
+  "coverage": "compatibility mappings; the shs/domains/ + shs/execution/ forwarder trees were removed 2026-09-17 (migration step-7 item 4), so this manifest is currently empty",
+  "headers": []
 }

@@ -11,14 +11,15 @@
 //      spelled either way;
 //   3. serialization identifiers (stable enum ids + string mappings used by
 //      persisted configs) are unchanged by the namespace move;
-//   4. legacy compatibility includes (`shs/domains/...`) and canonical owner
-//      headers can be mixed in one translation unit in either order.
+//   4. legacy compatibility includes (`shs/domains/...`) could be mixed with
+//      canonical owner headers in one translation unit — this contract was
+//      retired 2026-09-17 together with the forwarder trees themselves
+//      (step-7 item 4 removal); the gate now rejects the old paths.
 //
 // Namespace changes can break ABI even when names resolve: aliases do not
 // guarantee binary compatibility (see the step-7 checklist).
 
-#include "shs/domains/geometry/aabb.hpp" // legacy forwarder include
-#include "shs/geometry/aabb.hpp"         // canonical owner include (same TU)
+#include "shs/geometry/aabb.hpp" // canonical owner include
 
 #include "shs/app/backend/backend_factory.hpp"
 #include "shs/app/context.hpp"

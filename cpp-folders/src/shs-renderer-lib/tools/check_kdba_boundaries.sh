@@ -3,20 +3,19 @@ set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 lib_root="$(cd "${script_dir}/.." && pwd)"
-pipeline_dir="${lib_root}/include/shs/execution/pipeline"
-domains_dir="${lib_root}/include/shs/domains"
-# Transition (step 2 bulk relocation): content/catalog/gates must keep seeing
-# the same files after their move out of domains/. Scan the legacy forwarder
-# tree AND the canonical named-module dirs so gates cannot go silently vacuous.
-pod_scan_dirs=("${domains_dir}")
-for _m in app camera geometry input lighting logic render renderpath resources scene sky task platform; do
+# Forwarder retirement (migration step-7 item 4): the legacy shs/domains/ +
+# shs/execution/ trees are GONE. Pod gates scan the canonical owner tree
+# directly; the renderpath planner seam lives in shs/renderpath/planning/.
+pipeline_dir="${lib_root}/include/shs/renderpath/planning"
+pod_scan_dirs=()
+for _m in app camera geometry input lighting logic render renderpath resources scene sky task platform render/frame render/targets; do
   [[ -d "${lib_root}/include/shs/${_m}" ]] && pod_scan_dirs+=("${lib_root}/include/shs/${_m}")
 done
 # Purity gates (entropy/platform-IO/expected-vector) guard the VALUE tier only.
 # Execution/adapter tiers (renderpath/execution, resources/adapters, app, task,
 # platform) legitimately touch time and IO — they are the sanctioned edges.
-pod_purity_dirs=("${domains_dir}")
-for _m in camera geometry input lighting logic scene sky render/targets renderpath/planning resources/storage; do
+pod_purity_dirs=()
+for _m in camera geometry input lighting logic scene sky render/frame render/targets renderpath/planning resources/storage; do
   [[ -d "${lib_root}/include/shs/${_m}" ]] && pod_purity_dirs+=("${lib_root}/include/shs/${_m}")
 done
 
@@ -61,61 +60,42 @@ check_pattern 'dynamic_cast[[:space:]]*<' "planner headers use dynamic_cast poli
 # Unmigrated zones retain every existing KDBA check below.
 "${PYTHON:-python3}" "${script_dir}/check_header_migration.py"
 
-# Domain direction law: headers under shs/domains/ must never directly include
-# execution zones (canonical include text). Legacy-path includes that resolve
-# through migration facades are counted as advisory until P5 canonicalization.
+# Domain direction law: value-tier pod headers must never directly include
+# adapter/execution zones (canonical include text). The legacy facade-advisory
+# counting retired together with the forwarder tree (migration step-7 item 4).
 #
-# Sanctioned carve-out (roadmap P1): shs/domains/renderpath/ is the contract
-# seam — its contract re-exports the recipe/plan/capabilities spine from
-# execution/pipeline/. No other domain pod may include execution zones.
-#
-# Known P5 debt (grandfathered INFO, tracked by the Core 4 completeness item):
-# these pre-canon domain headers predate the direction law and still reach into
-# execution zones directly. New headers must never join this list — the check
-# below FAILs on any file not grandfathered here.
-forbidden_domains_include='shs/(execution|pipeline|passes|rhi|sw_render|platform|shader|app|job)/'
-# Grandfather list evicted R2 (P2.1-P2.4 resolved; any hit below is a hard FAIL).
-# shs/rhi/* remains a canonical-continue ONLY as the P3-pending monolith marker.
-grandfathered_execution_includes=()
-legacy_count=0
-for h in $(find "${domains_dir}" -name '*.hpp' | sort); do
+# Sanctioned carve-out (roadmap P1): the renderpath pod's ROOT seam files
+# (shs/renderpath/*.hpp — contract re-exports the recipe/plan/capabilities
+# spine from renderpath/planning + renderpath/execution). Subdirectories are
+# execution-tier and get no carve-out. No other value-tier pod may include an
+# adapter/execution zone.
+forbidden_execution_include='shs/(renderpath/execution|renderpath/planning|resources/adapters|rhi|app|task|platform|render/software|render/shader|job)/'
+for h in $(find "${pod_purity_dirs[@]}" -name '*.hpp' | sort); do
   rel="${h#"${lib_root}/include/"}"
   case "${rel}" in
-    shs/domains/renderpath/*)
-      echo "[kdba-boundary] INFO: ${rel} is the renderpath contract seam (P1-sanctioned execution re-exports)"
+    shs/renderpath/*)
+      # Root seam only — subdirs (planning/, execution/) are execution-tier.
+      [[ "$(dirname "${rel}")" == shs/renderpath ]] || continue
+      echo "[kdba-boundary] INFO: ${rel} is the renderpath contract seam (P1-sanctioned planning/execution re-exports)"
       continue
       ;;
   esac
-  hits="$("${search_cmd[@]}" "#include[[:space:]]*[<\"]${forbidden_domains_include}" "${h}" 2>/dev/null || true)"
+  hits="$("${search_cmd[@]}" "#include[[:space:]]*[<\"]${forbidden_execution_include}" "${h}" 2>/dev/null || true)"
   if [[ -n "${hits}" ]]; then
-    grandfathered=0
-    for gf in "${grandfathered_execution_includes[@]}"; do
-      if [[ "${rel}" == "${gf}" ]]; then
-        grandfathered=1
-        break
-      fi
-    done
-    if [[ "${grandfathered}" -eq 1 ]]; then
-      echo "[kdba-boundary] INFO: ${rel} carries grandfathered execution-zone includes (grandfathered Core 4 debt — tracked in docs/backlog/domain_pod_hardening_backlog.md)"
-    else
-      echo "[kdba-boundary] FAIL: domain header ${rel} directly includes an execution zone"
-      echo "${hits}"
-      failed=1
-    fi
+    echo "[kdba-boundary] FAIL: value-tier pod header ${rel} directly includes an adapter/execution zone"
+    echo "${hits}"
+    failed=1
   fi
-  n="$(grep -cE '#include[[:space:]]*[<\"]shs/(pipeline|passes|rhi|sw_render|platform|shader|app|job)/' "${h}" 2>/dev/null || true)"
-  legacy_count=$((legacy_count + n))
 done
 if [[ "${failed}" -ne 0 ]]; then
   exit 1
 fi
-echo "[kdba-boundary] OK: domain headers carry no direct execution-zone includes"
-echo "[kdba-boundary] INFO: ${legacy_count} legacy-path includes in domains/ resolve via migration facades (canonicalization tracked in docs/backlog/kdba_conformance_backlog.md)"
+echo "[kdba-boundary] OK: value-tier pod headers carry no direct adapter/execution-zone includes"
 
 # §7.2 rule 5 (roadmap P1.5 DoD): no node-based containers in hot-state zones.
 # Hot-state zones are the shared primitive utilities (memory/, containers/,
 # frame/) and the domain pods' state headers; cold string-keyed registries in
-# domains/resources + domains/gfx are flagged INFO until their P5 migration.
+# the resources + gfx cold registries are flagged INFO until their migration.
 node_container_pattern='std::(list|map|set|unordered_map|unordered_set)[[:space:]]*<'
 hot_state_dirs=(
   "${lib_root}/include/shs/memory"
@@ -147,7 +127,7 @@ if [[ "${failed}" -ne 0 ]]; then
   exit 1
 fi
 
-# Semantic purity (R3 P4.3): no ambient entropy/time, no platform IO in domains/.
+# Semantic purity (R3 P4.3): no ambient entropy/time, no platform IO in pod zones.
 # NOTE: bare 'canvas' deliberately NOT gated (too generic; zero hits today but
 # future math comments would false-positive). SDL/fopen are the enforced IO set.
 entropy_hits="$(grep -rnE 'rand\(|srand\(|std::chrono|std::time\(|getenv\(|random_' \
@@ -186,7 +166,7 @@ fi
 expected_vec_hits="$(grep -rnE 'vector<[[:space:]]*std::expected' \
   "${pod_purity_dirs[@]}" 2>/dev/null || true)"
 if [[ -n "${expected_vec_hits}" ]]; then
-  echo "[kdba-boundary] FAIL: per-element expected container in domains/ (monad rides at chunk level, §8)"
+  echo "[kdba-boundary] FAIL: per-element expected container in pod zones (monad rides at chunk level, §8)"
   echo "${expected_vec_hits}"
   failed=1
 else
@@ -288,10 +268,22 @@ fi
 # below makes that failure mode impossible.
 # ---------------------------------------------------------------------------
 core4_roles=(contract command event gateway)
+# Pod enumeration over the canonical owner tree (forwarder tree retired):
+# <pod>:<canonical home> pairs — frame lives under render/, gfx under targets/.
+core4_pod_homes=(
+  camera camera geometry geometry input input lighting lighting logic logic
+  renderpath renderpath resources resources scene scene sky sky
+  frame render/frame gfx render/targets
+)
 pod_dirs=()
-while IFS= read -r d; do
-  pod_dirs+=("${d}")
-done < <(find "${domains_dir}" -mindepth 1 -maxdepth 1 -type d | sort)
+pod_names=()
+for (( _pi=0; _pi<${#core4_pod_homes[@]}; _pi+=2 )); do
+  _d="${lib_root}/include/shs/${core4_pod_homes[_pi+1]}"
+  if [[ -d "${_d}" ]]; then
+    pod_names+=("${core4_pod_homes[_pi]}")
+    pod_dirs+=("${_d}")
+  fi
+done
 
 # (1) Non-vacuity: every pod carries the full Core 4 under canonical names.
 #     Exception (identity-gateway retirement, migration step 4.5): pods whose
@@ -302,8 +294,9 @@ done < <(find "${domains_dir}" -mindepth 1 -maxdepth 1 -type d | sort)
 #     with a real command vocabulary and a §2.2 law amendment.
 retired_identity_gateways=(camera geometry gfx lighting resources scene sky)
 vacuity=0
-for pod_dir in "${pod_dirs[@]}"; do
-  pod="$(basename "${pod_dir}")"
+for _pi in "${!pod_dirs[@]}"; do
+  pod_dir="${pod_dirs[_pi]}"
+  pod="${pod_names[_pi]}"
   for role in "${core4_roles[@]}"; do
     if [[ "${role}" == "gateway" ]] \
       && printf '%s\n' "${retired_identity_gateways[@]}" | grep -qx -- "${pod}"; then
@@ -317,9 +310,9 @@ for pod_dir in "${pod_dirs[@]}"; do
   done
 done
 for glob in '*.gateway.hpp' '*.event.hpp' '*.contract.hpp'; do
-  n="$(find "${domains_dir}" -name "${glob}" | wc -l)"
+  n="$(find "${pod_scan_dirs[@]}" -name "${glob}" | wc -l)"
   if [[ "${n}" -eq 0 ]]; then
-    echo "[kdba-boundary] FAIL: glob ${glob} matched zero files under domains/ (gate would enforce the wrong tree)"
+    echo "[kdba-boundary] FAIL: glob ${glob} matched zero files in pod zones (gate would enforce the wrong tree)"
     vacuity=1
     failed=1
   fi
@@ -332,21 +325,22 @@ fi
 #     reappear in the pod layer (§6.6: <Pod>Command variant + *Intent tokens,
 #     <pod>_gateway entry point).
 legacy_hits="$(grep -rnE '\breduce_|\breducers?\b|\b[A-Z][A-Za-z]*Action\b|\.reducer\.hpp|\.action\.hpp' \
-  "${domains_dir}" "${lib_root}/tests" 2>/dev/null || true)"
+  "${pod_scan_dirs[@]}" "${lib_root}/tests" 2>/dev/null || true)"
 if [[ -n "${legacy_hits}" ]]; then
-  echo "[kdba-boundary] FAIL: legacy reducer/action vocabulary in domains/ (use <pod>_gateway + <Pod>Command/*Intent)"
+  echo "[kdba-boundary] FAIL: legacy reducer/action vocabulary in pod zones (use <pod>_gateway + <Pod>Command/*Intent)"
   echo "${legacy_hits}"
   failed=1
 else
-  echo "[kdba-boundary] OK: no legacy reducer/action vocabulary in domains/"
+  echo "[kdba-boundary] OK: no legacy reducer/action vocabulary in pod zones"
 fi
 
 # (3) Gateway presence: every pod exposes its <pod>_gateway entry point.
 #     Retired identity pods (step 4.5) must NOT expose one — an identity
 #     gateway regrowth is a drift violation, not a conformance win.
 missing_gw=0
-for pod_dir in "${pod_dirs[@]}"; do
-  pod="$(basename "${pod_dir}")"
+for _pi in "${!pod_dirs[@]}"; do
+  pod_dir="${pod_dirs[_pi]}"
+  pod="${pod_names[_pi]}"
   if printf '%s\n' "${retired_identity_gateways[@]}" | grep -qx -- "${pod}"; then
     if find "${pod_scan_dirs[@]}" -name "${pod}.gateway.hpp" 2>/dev/null | grep -q .; then
       echo "[kdba-boundary] FAIL: pod ${pod} identity gateway was retired (migration step 4.5); reintroduce only with a real command vocabulary (§2.2 amendment law)"
@@ -397,8 +391,9 @@ fi
 kleisli_migrated_pods=(frame input logic renderpath)
 kleisli_grandfathered_pods=()
 writer_gate=0
-for pod_dir in "${pod_dirs[@]}"; do
-  pod="$(basename "${pod_dir}")"
+for _pi in "${!pod_dirs[@]}"; do
+  pod_dir="${pod_dirs[_pi]}"
+  pod="${pod_names[_pi]}"
   gw_file=""
   while IFS= read -r f; do
     if ! grep -q 'Compatibility include: definitions live in' "${f}" 2>/dev/null; then

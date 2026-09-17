@@ -904,12 +904,18 @@ Depends on 2-6.
   + 35/35 CTest green after the rewrite.)
 - [x] Remove public forwarding headers only in an announced breaking release
   after a compatibility release and consumer migration. Until then, test them.
-  (Done 2026-09-17: forwarders are NOT removed; `shs/domains/` and
-  `shs/execution/` stay and are tested — `shs_renderer_camera_include_*
-  _tests` compile both include orders, `shs_renderer_header_self_containment
-  _test` compiles every forwarder standalone, `namespace_cutover_tests` mixes
-  legacy forwarder + canonical owner includes in one TU. Removal is scheduled
-  for an announced breaking release per the mapping doc's schedule.)
+  — AMENDED 2026-09-17 (owner directive, same day): with the repository-wide
+  consumer migration verified complete (items 3-5), the forwarder window was
+  closed EARLY — `shs/domains/` + `shs/execution/` (191 forwarders) and the
+  unused `shs/scene/storage/system_processors.hpp` legacy seam are DELETED.
+  The forwarder-specific tests were retired with them: camera include-order
+  CTests removed (their coexistence purpose is void), `namespace_cutover_tests`
+  folded to canonical includes, a new `ForwarderRetirementTests` negative gate
+  fails if the trees ever reappear. `check_kdba_boundaries.sh` now scans the
+  canonical owner tree only (planner seam re-pointed to
+  `shs/renderpath/planning/`; renderpath root seam is the sole sanctioned
+  carve-out). The inline-namespace wrappers / root using-declarations REMAIN —
+  old root spellings still resolve until the 0.2.0-declared breaking release.
 - [x] Reject new legacy includes in canonical sources; retire linter exemptions
   and archive mappings rather than losing migration history.
   (Done 2026-09-17: `tools/check_header_migration.py` errors on legacy
@@ -923,6 +929,10 @@ Depends on 2-6.
 
 Exit: canonical sources no longer depend on `shs/domains/` or top-level
 `shs/execution/`; compatibility facades are explicitly supported or retired.
+**Step 7 COMPLETE (2026-09-17) — and extended the same day: the forwarder
+trees themselves were removed (item 4 accelerated by owner directive);
+remaining compat surface is namespace-only (inline wrappers + root
+using-declarations) pending the 0.2.0 breaking announcement.**
 
 ## Validation, rollback and related work
 
