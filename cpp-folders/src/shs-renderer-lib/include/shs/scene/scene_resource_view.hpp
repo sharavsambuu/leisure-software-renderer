@@ -18,6 +18,11 @@ namespace shs
 {
     struct SceneResourceView
     {
+        // Renderer projection (step 4.3): resolves scene asset handles into
+        // registry pointers PER CALL. Returned pointers are valid only until
+        // the next registry mutation (add_*/clear()) — projections must
+        // never cache them across frames or across registry writes. Handle 0
+        // ("unbound") resolves to nullptr by policy.
         const ResourceRegistry* resources = nullptr;
 
         const MeshData* mesh(const RenderItem& item) const

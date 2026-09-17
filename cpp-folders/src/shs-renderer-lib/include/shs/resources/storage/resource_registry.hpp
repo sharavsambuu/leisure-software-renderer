@@ -20,9 +20,29 @@
 
 namespace shs
 {
+    /*
+        IDENTITY POLICY (step 4.3, engine_domain_separation_migration.md):
+        - Handles are 1-based indices; 0 = "unbound"; every getter returns
+          nullptr for 0 or out-of-range handles (stale-handle null rule).
+        - Append-only: add_* never invalidates existing handles. A duplicate
+          key deliberately REBINDS the key lookup to the newest asset
+          (last-wins); the previously returned handle keeps resolving to the
+          older asset, so already-bound scene items stay intact.
+        - Per-asset deletion is NOT supported (index handles would silently
+          invalidate sibling handles). The only reset is clear(), which
+          bumps generation(): handles minted before clear() are stale —
+          re-derive them via find_* after clearing (a stale handle may alias
+          a re-added asset's slot, so generation must be checked).
+        - Pointers handed out by get_* are valid only until the next
+          registry mutation (vector reallocation); renderer projections must
+          re-resolve per frame (SceneResourceView) and never cache them.
+    */
     class ResourceRegistry
     {
     public:
+        // Identity epoch (step 4.3): bumped by every clear(). Handles minted
+        // in an older generation are stale and must be re-derived via find_*.
+        uint64_t generation() const { return generation_; }
         MeshAssetHandle add_mesh(MeshData mesh, const std::string& key = {})
         {
             meshes_.push_back(std::move(mesh));
@@ -113,9 +133,11 @@ namespace shs
             mesh_by_key_.clear();
             texture_by_key_.clear();
             material_by_key_.clear();
+            generation_ += 1; // identity epoch: pre-clear handles are stale
         }
 
     private:
+        uint64_t generation_ = 0;
         std::vector<MeshData> meshes_{};
         std::vector<Texture2DData> textures_{};
         std::vector<MaterialData> materials_{};

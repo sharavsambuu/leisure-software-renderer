@@ -3,7 +3,7 @@
   "scope": "cpp-folders/src/shs-renderer-lib/include",
   "coverage": "all .h/.hpp public headers; literal includes in all conditional branches",
   "approval": "proposed paths are inventory only; reviewed migrations live in engine_header_migration_manifest.json",
-  "header_count": 436,
+  "header_count": 437,
   "headers": [
     {
       "current": "shs/app/backend/backend_factory.hpp",
@@ -220,6 +220,7 @@
       ],
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/include/shs/app/runtime_state.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/app/session_settings_sync.hpp",
         "cpp-folders/src/shs-renderer-lib/tests/core_tests.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/input_tests.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/session_orchestration_tests.cpp"
@@ -595,6 +596,7 @@
       ],
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/include/shs/app/camera_sync.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/app/session_settings_sync.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/camera/camera.contract.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/domains/camera/view_camera.hpp"
       ],
@@ -6377,6 +6379,7 @@
         "cstdint"
       ],
       "tracked_consumers": [
+        "cpp-folders/src/shs-renderer-lib/include/shs/app/session_settings_sync.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/domains/frame/frame_params.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/render/frame/frame.contract.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/render/shader/builtin_shaders.hpp",
@@ -10436,6 +10439,32 @@
       "build_target": "review-values-vs-aggregate"
     },
     {
+      "current": "shs/scene/scene_identity.hpp",
+      "proposed_canonical": "shs/scene/scene_identity.hpp",
+      "review_status": "already-named-review-dependencies",
+      "proposed_owner": "scene",
+      "namespace_declarations": [
+        "shs"
+      ],
+      "visibility": "public-include-tree",
+      "direct_dependencies": [
+        "cstddef",
+        "shs/scene/scene_objects.hpp",
+        "shs/scene/scene_types.hpp",
+        "span"
+      ],
+      "internal_dependencies": [
+        "shs/scene/scene_objects.hpp",
+        "shs/scene/scene_types.hpp"
+      ],
+      "external_dependencies": [
+        "cstddef",
+        "span"
+      ],
+      "tracked_consumers": [],
+      "build_target": "review-values-vs-aggregate"
+    },
+    {
       "current": "shs/scene/scene_instance.hpp",
       "proposed_canonical": "shs/scene/scene_instance.hpp",
       "review_status": "already-named-review-dependencies",
@@ -10546,6 +10575,7 @@
         "cpp-folders/src/exps-gpu-renderer/exp-plumbing/hello_rendering_paths.cpp",
         "cpp-folders/src/exps-gpu-renderer/exp-rendering-techniques/demo_forward_classic_renderpath.cpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/app/camera_sync.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/app/session_settings_sync.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/domains/scene/scene_types.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/passes/pass_light_shafts.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/passes/pass_pbr_forward.hpp",

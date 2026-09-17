@@ -7,6 +7,15 @@
     МОДУЛЬ: scene
     ЗОРИЛГО: Рендерлэх объектуудыг (SceneObject) удирдах, хадгалах, өгөгдлийн бүтцийг 
             тодорхойлох болон объект бүрийн тогтмол дугаар (stable_object_id) үүсгэх логик.
+
+    IDENTITY POLICY (step 4.3, engine_domain_separation_migration.md):
+    object_id нь тогтвортой танигч (stable identity): 0 хоосон гэсэн үг.
+    Нэрээс гаргаж авсан FNV-1a id нь устгаж дахин үүсгэсэн ч мөн адил
+    хадгалагдана (deletion/recreation нь identity-г хадгална). Ижил нэрээр
+    олдсон тохиолдолд find() эхнийхийг (first-wins) буцаана; remove() эхний
+    тааралдлыг устгана. add()-ийн буцаасан reference дараагийн add()/remove()-
+    ийн дараа хүчингүй болно (vector-reference invalidation) — хадгалахыг
+    хориглоно; renderer projection нь to_render_items()-ийн хуулбар ашиглана.
 */
 
 
@@ -57,6 +66,49 @@ namespace shs
             objects_.push_back(std::move(obj));
             return objects_.back();
         }
+
+        // Deletion policy (step 4.3): removes the FIRST object with the
+        // given name. The object_id is name-derived, so re-adding an equal
+        // name later recreates the SAME identity (deletion/recreation
+        // preserves identity by construction). Returns false when no object
+        // carries the name.
+        bool remove(const std::string& name)
+        {
+            for (auto it = objects_.begin(); it != objects_.end(); ++it)
+            {
+                if (it->name == name)
+                {
+                    objects_.erase(it);
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Duplicate-name policy (step 4.3): names are not unique by
+        // contract; find() resolves first-wins. This detector makes
+        // accidental duplicates visible to hosts that want strictness:
+        // it counts repeats after the first occurrence.
+        size_t count_duplicate_names() const
+        {
+            size_t duplicates = 0;
+            for (size_t i = 0; i < objects_.size(); ++i)
+            {
+                for (size_t j = 0; j < i; ++j)
+                {
+                    if (objects_[j].name == objects_[i].name)
+                    {
+                        duplicates += 1;
+                        break;
+                    }
+                }
+            }
+            return duplicates;
+        }
+
+        bool has_duplicate_names() const { return count_duplicate_names() != 0; }
+
+        size_t object_count() const { return objects_.size(); }
 
         SceneObject* find(const std::string& name)
         {

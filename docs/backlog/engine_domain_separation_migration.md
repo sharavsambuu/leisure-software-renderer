@@ -407,9 +407,23 @@ commits; keep mechanical moves separate from semantic changes.
   pinned. Evidence in the step-4 checkbox above. Suite 11/11 green; gates
   green; inventory 436. Full-build + CTest evidence recorded in the commit
   message.
-- Phase table: 1-3 COMPLETE, 4 at 2/5 (remaining: scene/resource identity
-  policy; thread/arena lifetime + failure semantics; identity-only gateway
-  retirement), 5 COMPLETE, 6/7 not started (7 blocked on 4-6).
+- Phase table: 1-3 COMPLETE, 4 at 3/5 (remaining: thread/arena lifetime +
+  failure semantics; identity-only gateway retirement), 5 COMPLETE, 6/7 not
+  started (7 blocked on 4-6).
+
+### Status (2026-09-17, step 4.3: scene/resource identity policy)
+
+- Step 4 third item completed: the scene/resource identity policy is written
+  in one place per owner and enforced by API + tests —
+  `shs/scene/scene_identity.hpp` (policy statement + `audit_scene_identity`),
+  `SceneObjectSet::remove`/`count_duplicate_names` (deletion/recreation
+  preserves the name-derived id; duplicate names detectable, find() stays
+  first-wins), `ResourceRegistry::generation()` epoch (clear() is the only
+  reset; handles are append-only index handles with deliberate last-wins key
+  rebinding), and `SceneResourceView` pinned as the per-call renderer
+  projection. Evidence in the step-4 checkbox above. Suite 4/4 green; gates
+  green; inventory 437.
+
 
 ### 1. Inventory, decision record and baseline
 
@@ -550,8 +564,28 @@ Depends on 3; behavior changes require regression tests first.
   results: include-graph gate OK (acyclic, `app -> render/frame` value-tier
   edge legal — `frame_params.hpp` is pure), header-migration gate OK,
   inventory regenerated 435->436 (new `session_settings_sync.hpp`).)
-- [ ] Define scene/resource identity policy: duplicate names/IDs, stale handles,
+- [x] Define scene/resource identity policy: duplicate names/IDs, stale handles,
   deletion/recreation, vector-reference invalidation and renderer projections.
+  (Done 2026-09-17: policy written where it is enforced — new
+  `shs/scene/scene_identity.hpp` states the full contract and adds
+  `audit_scene_identity` over renderer projections (object_id 0 reserved,
+  duplicates counted after first owner, `SceneIdentityReport::valid()`).
+  `SceneObjectSet` gains `remove(name)` (deletes FIRST match; re-adding an
+  equal name recreates the SAME FNV-1a id — deletion/recreation preserves
+  identity) plus `count_duplicate_names()`/`has_duplicate_names()` for the
+  deliberate first-wins `find()` policy, and documents the
+  vector-reference invalidation hazard of `add()`'s returned reference.
+  `ResourceRegistry` gains `generation()` (bumped by `clear()`), with the
+  policy pinned as: 1-based handles, 0 = unbound -> nullptr, append-only
+  duplicate-key rebinding (last-wins, old handle still resolves to the old
+  asset), no per-asset deletion (would invalidate sibling index handles),
+  stale pre-clear handles must be re-derived via `find_*` (a stale handle
+  aliases re-added slots). `SceneResourceView` documented as the per-call
+  renderer projection that never caches registry pointers. New
+  `shs_renderer_scene_identity_tests` suite (4 tests) pins all of the above,
+  including projection-copy independence from later set mutations and the
+  generation-epoch stale-handle rule. Gates green; inventory regenerated
+  436->437 (new `scene_identity.hpp`).)
 - [ ] Document and test thread access, arena lifetimes, shutdown ordering,
   rejection preservation and partial-batch/event-allocation failure semantics.
 - [ ] Retire identity-only gateway scaffolding only after consumer migration
