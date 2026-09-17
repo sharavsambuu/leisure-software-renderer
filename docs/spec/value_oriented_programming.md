@@ -304,9 +304,13 @@ validate_cmd(cmd)
 - **Scene**: Canonical transform: `SceneObjectSet::to_render_items(view, proj, &arena) -> RenderItemSpan`.
 - **Lighting**: Canonical transform: `LightSet::to_cullable_gpu(...)` producing flat GPU-ready tile buffers.
 - **Input / Controls**: OS events are tokenized into a closed `RuntimeCommand` stream of
-  `*Intent` tokens (`input.command.hpp`) and applied through `input_gateway()` — the pod's
-  single public gateway (`input.gateway.hpp`). The `ICommand` emitter hierarchy under
-  `edge/` is cold edge-side queueing that *emits* pod vocabulary; it is not pod vocabulary.
+  `*Intent` tokens (`input.command.hpp`); the input pod translates and the app
+  orchestrator applies them — `shs::app::session_orchestrate()` is the single
+  canonical application gateway (step 4.1 of the domain-separation migration;
+  camera/render/session state is app-owned `SessionState`). The input pod's own
+  public entry is the translation gateway `input_latch_gateway()`. The `ICommand`
+  emitter hierarchy under `edge/` is cold edge-side queueing that *emits* pod
+  vocabulary; it is not pod vocabulary.
 - **Module classification**: each engine module is either a formal Domain Value Object or
   "pod-shaped by analogy" (pure transforms named per the VOP pipeline above); the
   per-module mapping is maintained in `docs/roadmap/domain_pod_engine_rollout_roadmap.md` (P5).

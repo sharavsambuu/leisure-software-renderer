@@ -476,8 +476,34 @@ are detected, not merely hidden under new paths. **Step 3 COMPLETE (2026-09-17).
 
 ### 4. Clarify state ownership and harden contracts
 Depends on 3; behavior changes require regression tests first.
-- [ ] Split input translation from camera/render/session application through
+- [x] Split input translation from camera/render/session application through
   explicit app orchestration. Preserve move/look/clamp and toggle behavior.
+  (Done 2026-09-17: `shs/app/session_orchestrator.hpp` is the explicit
+  orchestration host — `shs::app::SessionState` (camera rig + light-shafts/
+  bot/quit settings) and `session_orchestrate()`, the single canonical
+  application gateway with the per-intent arrows moved VERBATIM from the
+  retired `shs::input::input_gateway` (basis transform, dt scaling, ±85°
+  pitch clamp, toggle semantics, zero-signal-loss fact emission, tally —
+  behavior bit-preserved). The K1.4 interim note ("camera rig lives in the
+  input pod until an orchestrator host exists") is resolved: `RuntimeState`
+  left `input_state.hpp`, the input pod is translation-only
+  (`input_latch_gateway` + `value_commands` emitters + `CommandProcessor::
+  collect_runtime_commands`; the fact-log-dropping `apply_commands` edge
+  convenience retired). Regression tests FIRST: new
+  `shs_renderer_session_orchestration_tests` (golden mixed-log pins
+  z=2.0/yaw=π/2+0.1/pitch=0.05, bit-parity vs inline pre-split reference
+  math, host-instance independence, recorded-input replay, kit determinism,
+  pipeline composition, clamp saturation) + `input_tests.cpp`/`core_tests.cpp`
+  pins repointed to the orchestrator, all green. Compat: root
+  `shs::RuntimeState` alias preserved (= `SessionState`) in
+  `shs/app/runtime_state.hpp`; retired symbols `shs::input::input_gateway`
+  and `CommandProcessor::apply_commands` had only test consumers (migrated)
+  — parked exps-gpu-renderer demos reference them (latent, out of build,
+  feeds the step-7 compatibility ledger). Gate (7b) refined: a pod's
+  `<pod>_gateway` entry point may live in any sibling pod header (input's
+  canonical entry is `input_latch_gateway`); negative-tested (entry-point
+  rename FAILs exit 1, then reverted). Header inventory regenerated
+  434→435. CTest 30/30.)
 - [ ] Establish one authoritative owner for camera and render settings; test
   multiple independent host instances and recorded-input replay.
 - [ ] Define scene/resource identity policy: duplicate names/IDs, stale handles,

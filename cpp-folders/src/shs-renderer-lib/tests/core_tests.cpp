@@ -4,6 +4,7 @@
 #include <string>
 
 #include "shs/app/context.hpp"
+#include "shs/app/session_orchestrator.hpp"
 #include "shs/render/frame/frame_params.hpp"
 #include "shs/input/storage/camera_commands.hpp"
 #include "shs/input/storage/command_processor.hpp"
@@ -149,7 +150,7 @@ namespace
 
     bool test_runtime_command_gateway()
     {
-        shs::RuntimeState s{};
+        shs::app::SessionState s{};
         s.camera.pos = glm::vec3(0.0f, 0.0f, 0.0f);
         s.camera.yaw = glm::half_pi<float>();
         s.camera.pitch = 0.0f;
@@ -166,9 +167,9 @@ namespace
 
         std::pmr::monotonic_buffer_resource arena{4096};
         std::pmr::vector<shs::input::InputEvent> events{&arena};
-        shs::input::input_gateway(s, std::span<const shs::RuntimeCommand>{commands.data(), commands.size()},
+        shs::app::session_orchestrate(s, std::span<const shs::RuntimeCommand>{commands.data(), commands.size()},
             shs::input::InputContext{0.5f}, events);
-        const shs::RuntimeState& out = s;
+        const shs::app::SessionState& out = s;
         if (!approx_eq(out.camera.pos.z, 2.0f)) return false;
         if (!approx_eq(out.camera.yaw, glm::half_pi<float>() + 0.1f)) return false;
         if (!approx_eq(out.camera.pitch, 0.05f)) return false;
@@ -240,7 +241,7 @@ namespace
 
     bool test_command_processor_value_reduce()
     {
-        shs::RuntimeState s{};
+        shs::app::SessionState s{};
         s.camera.pos = glm::vec3(0.0f, 0.0f, 0.0f);
         s.camera.yaw = glm::half_pi<float>();
         s.camera.pitch = 0.0f;
@@ -251,7 +252,15 @@ namespace
         proc.emplace<shs::LookCommand>(10.0f, -5.0f, 0.01f);
         proc.emplace<shs::ToggleLightShaftsCommand>();
 
-        const shs::RuntimeState out = proc.apply_commands(s, 0.5f);
+        // Step 4.1: the processor is translation-only now; the host applies
+        // the collected batch through the explicit app orchestrator.
+        const std::vector<shs::RuntimeCommand> commands = proc.collect_runtime_commands();
+        std::pmr::monotonic_buffer_resource arena{1024};
+        std::pmr::vector<shs::input::InputEvent> events{&arena};
+        shs::app::session_orchestrate(s,
+            std::span<const shs::RuntimeCommand>{commands.data(), commands.size()},
+            shs::input::InputContext{0.5f}, events);
+        const shs::app::SessionState& out = s;
         if (!approx_eq(out.camera.pos.z, 2.0f)) return false;
         if (!approx_eq(out.camera.yaw, glm::half_pi<float>() + 0.1f)) return false;
         if (!approx_eq(out.camera.pitch, 0.05f)) return false;

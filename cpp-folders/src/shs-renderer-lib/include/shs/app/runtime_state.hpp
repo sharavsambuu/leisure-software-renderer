@@ -10,8 +10,9 @@
 */
 
 
-// Edge-zone re-export: RuntimeState is input-domain state (P2.3).
-#include "shs/input/input_state.hpp"
+// Edge-zone alias: the session aggregate (camera rig + render/session
+// settings) is app-owned since step 4.1; the old root symbol stays valid.
+#include "shs/app/session_orchestrator.hpp"
 
 namespace shs
 {

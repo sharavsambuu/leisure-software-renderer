@@ -16,7 +16,6 @@
 #include <vector>
 
 #include "shs/input/input.command.hpp"
-#include "shs/input/input.gateway.hpp"
 #include "shs/input/storage/command.hpp"
 
 namespace shs
@@ -49,21 +48,12 @@ namespace shs
             return commands;
         }
 
-        RuntimeState apply_commands(RuntimeState state, float dt)
-        {
-            const std::vector<RuntimeCommand> commands = collect_runtime_commands();
-            if (commands.empty()) return state;
-
-            // K5.1 (Run B): the pod's single public Kleisli gateway, driven
-            // directly from the edge; this edge convenience drops the fact
-            // log (a frame-arena sink would be the replay-ready form).
-            std::pmr::monotonic_buffer_resource arena{1024};
-            std::pmr::vector<shs::input::InputEvent> events{&arena};
-            shs::input::input_gateway(state,
-                std::span<const RuntimeCommand>{commands.data(), commands.size()},
-                shs::input::InputContext{dt}, events);
-            return state;
-        }
+        // Step 4.1 (domain separation): application moved OUT of the input
+        // pod. The former apply_commands() edge convenience is retired —
+        // cold queueing + command translation (above) is this class's whole
+        // job; the host applies the collected batch through the explicit
+        // app orchestrator, shs::app::session_orchestrate, which also
+        // preserves the fact log this method used to drop.
 
     private:
         std::vector<CommandPtr> queue_{};

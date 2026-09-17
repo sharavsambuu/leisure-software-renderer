@@ -17,7 +17,7 @@ This roadmap makes Value-Oriented Programming (VOP) a hard architectural rule in
 - Migrated `demo_forward_classic_renderpath` input/camera path to value actions + gateway flow.
 - Migrated `demo_forward_classic_renderpath` discrete key controls to queued key actions applied in a per-frame gateway step.
 - Migrated `demo_forward_classic_renderpath` movement/mouse input state to core input-latch gateway flow.
-- Removed command mutation execution path (`execute_all`) and kept only value reduction (`collect_runtime_commands` + `apply_commands`).
+- Removed command mutation execution path (`execute_all`) and kept only value reduction (`collect_runtime_commands` +, since step 4.1, the app orchestrator `session_orchestrate`).
 - Hardened `ICommand` to strict value emission contract (`RuntimeAction to_runtime_action() const`).
 - Simplified camera command classes to action-emission only.
 - Extended `shs_renderer_tests` with command-processor value reduction coverage.

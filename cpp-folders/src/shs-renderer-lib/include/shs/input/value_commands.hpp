@@ -6,10 +6,11 @@
     FILE: value_commands.hpp
     MODULE: input
     PURPOSE: Pure command emitters (InputState latch -> RuntimeCommand spans).
-             K5.1 (Run B): the legacy by-value runtime_state_gateway wrapper
-             is RETIRED — one pod, one public gateway
-             (shs::input::input_gateway); the edge consumer
-             (edge/command_processor.hpp) drives it directly.
+    PURPOSE: Pure command emitters (InputState latch -> RuntimeCommand spans).
+             Step 4.1 (domain separation): this pod owns TRANSLATION only —
+             the state-mutating gateway retired to the explicit app
+             orchestrator shs::app::session_orchestrate, which the host
+             drives with the batch emitted here.
 */
 
 
@@ -29,7 +30,6 @@
 #include <glm/glm.hpp>
 
 #include "shs/input/input.command.hpp"
-#include "shs/input/input.gateway.hpp"
 #include "shs/input/input_state.hpp"
 
 namespace shs

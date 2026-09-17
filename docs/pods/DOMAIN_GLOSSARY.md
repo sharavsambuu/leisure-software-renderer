@@ -83,7 +83,7 @@ the alternatives get verb phrases*:
 | Event | `<Pod>Event` | `<FactPhrase>Event` | `InputEvent = std::variant<CameraTranslatedEvent, RuntimeFlagToggledEvent, ...>` |
 | Failure rail | `<Pod>RejectionReason` | `<WhyPhrase>` | `PathSwapRejectionReason::EmptyPassChain` |
 | Environment | `<Pod>Context` | (fields only) | `LogicContext<TStateId>`, `FrameContext` |
-| Entry point | `<pod>_gateway(...)` | — | `renderpath_gateway`, `input_gateway`, `gfx_gateway` |
+| Entry point | `<pod>_gateway(...)` | — | `renderpath_gateway`, `input_latch_gateway`, `gfx_gateway` |
 
 Banned in pod code (`check_kdba_boundaries.sh` hard FAIL): `reduce_*`, `reducer`,
 `*Action`, `*.reducer.hpp`, `*.action.hpp`. Inside `edge/`, `Command` means *executable
@@ -108,7 +108,7 @@ litmus demands; edge code under `<pod>/edge/`). Event catalog:
 | Pod | Home | Notes |
 | :--- | :--- | :--- |
 | `renderpath` | `shs/domains/renderpath/` | First formal pod; gateway wraps the compiler; invalid ⇒ keep + reject. |
-| `input` | `shs/domains/input/` (+ `edge/` queue) | `input_gateway` canonical; legacy `runtime_state_gateway` delegates. |
+| `input` | `shs/domains/input/` (+ `edge/` queue) | Translation-only pod: `input_latch_gateway` canonical (step 4.1); application lives in the app orchestrator `shs::app::session_orchestrate`. |
 | `frame` | `shs/domains/frame/` | Empty vocabs (monostate); identity gateway, pinned. |
 | `geometry` | `shs/domains/geometry/` | TBN operator ingested (rung 08); culling runtimes migrate later. |
 | `lighting` | `shs/domains/lighting/` | Lambert terms ingested (rung 08); culling runtimes migrate later. |

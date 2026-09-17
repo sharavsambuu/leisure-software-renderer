@@ -535,6 +535,27 @@ if(SHS_RENDERER_BUILD_TESTS)
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     )
 
+    # Step 4.1: explicit app orchestration regression suite (state ownership,
+    # host-instance independence, recorded-input replay), value-tier only.
+    add_executable(shs_renderer_session_orchestration_tests
+        tests/session_orchestration_tests.cpp
+    )
+    target_link_libraries(shs_renderer_session_orchestration_tests PRIVATE shs::renderer-values)
+    target_compile_features(shs_renderer_session_orchestration_tests PRIVATE cxx_std_23)
+    if(MSVC)
+        target_compile_options(shs_renderer_session_orchestration_tests PRIVATE /W4)
+    else()
+        target_compile_options(shs_renderer_session_orchestration_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+
+    add_test(
+        NAME shs_renderer_session_orchestration_tests
+        COMMAND shs_renderer_session_orchestration_tests
+    )
+    set_tests_properties(shs_renderer_session_orchestration_tests PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    )
+
     add_executable(shs_renderer_geometry_tests
         tests/geometry_tests.cpp
     )

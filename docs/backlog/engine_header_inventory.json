@@ -3,7 +3,7 @@
   "scope": "cpp-folders/src/shs-renderer-lib/include",
   "coverage": "all .h/.hpp public headers; literal includes in all conditional branches",
   "approval": "proposed paths are inventory only; reviewed migrations live in engine_header_migration_manifest.json",
-  "header_count": 434,
+  "header_count": 435,
   "headers": [
     {
       "current": "shs/app/backend/backend_factory.hpp",
@@ -168,16 +168,60 @@
       ],
       "visibility": "public-include-tree",
       "direct_dependencies": [
-        "shs/input/input_state.hpp"
+        "shs/app/session_orchestrator.hpp"
       ],
       "internal_dependencies": [
-        "shs/input/input_state.hpp"
+        "shs/app/session_orchestrator.hpp"
       ],
       "external_dependencies": [],
       "tracked_consumers": [
         "cpp-folders/src/exps-gpu-renderer/exp-plumbing/hello_rendering_paths.cpp",
         "cpp-folders/src/exps-gpu-renderer/exp-rendering-techniques/demo_forward_classic_renderpath.cpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/execution/app/runtime_state.hpp"
+      ],
+      "build_target": "review-values-vs-aggregate"
+    },
+    {
+      "current": "shs/app/session_orchestrator.hpp",
+      "proposed_canonical": "shs/app/session_orchestrator.hpp",
+      "review_status": "already-named-review-dependencies",
+      "proposed_owner": "app",
+      "namespace_declarations": [
+        "detail",
+        "shs",
+        "shs::app"
+      ],
+      "visibility": "public-include-tree",
+      "direct_dependencies": [
+        "cstdint",
+        "glm/glm.hpp",
+        "memory_resource",
+        "shs/camera/camera_rig.hpp",
+        "shs/input/input.command.hpp",
+        "shs/input/input.event.hpp",
+        "shs/input/input.gateway.hpp",
+        "span",
+        "type_traits",
+        "variant"
+      ],
+      "internal_dependencies": [
+        "shs/camera/camera_rig.hpp",
+        "shs/input/input.command.hpp",
+        "shs/input/input.event.hpp",
+        "shs/input/input.gateway.hpp"
+      ],
+      "external_dependencies": [
+        "cstdint",
+        "glm/glm.hpp",
+        "memory_resource",
+        "span",
+        "type_traits",
+        "variant"
+      ],
+      "tracked_consumers": [
+        "cpp-folders/src/shs-renderer-lib/include/shs/app/runtime_state.hpp",
+        "cpp-folders/src/shs-renderer-lib/tests/core_tests.cpp",
+        "cpp-folders/src/shs-renderer-lib/tests/input_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -359,8 +403,7 @@
         "cpp-folders/src/shs-renderer-lib/include/shs/app/camera_sync.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/camera/camera.contract.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/camera/follow_camera.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/domains/camera/camera_rig.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/input/input_state.hpp"
+        "cpp-folders/src/shs-renderer-lib/include/shs/domains/camera/camera_rig.hpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -5179,7 +5222,6 @@
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/include/shs/domains/input/input.command.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/input/input.contract.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/input/input.gateway.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/input/storage/command_processor.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/input/value_commands.hpp"
       ],
@@ -5249,8 +5291,7 @@
       ],
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/include/shs/domains/input/input.event.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/input/input.contract.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/input/input.gateway.hpp"
+        "cpp-folders/src/shs-renderer-lib/include/shs/input/input.contract.hpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -5260,39 +5301,19 @@
       "review_status": "already-named-review-dependencies",
       "proposed_owner": "input",
       "namespace_declarations": [
-        "detail",
         "shs::input"
       ],
       "visibility": "public-include-tree",
       "direct_dependencies": [
-        "cstdint",
-        "glm/glm.hpp",
-        "memory_resource",
-        "shs/input/input.command.hpp",
-        "shs/input/input.event.hpp",
-        "shs/input/input_state.hpp",
-        "span",
-        "type_traits",
-        "variant"
+        "cstdint"
       ],
-      "internal_dependencies": [
-        "shs/input/input.command.hpp",
-        "shs/input/input.event.hpp",
-        "shs/input/input_state.hpp"
-      ],
+      "internal_dependencies": [],
       "external_dependencies": [
-        "cstdint",
-        "glm/glm.hpp",
-        "memory_resource",
-        "span",
-        "type_traits",
-        "variant"
+        "cstdint"
       ],
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/include/shs/domains/input/input.gateway.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/input/input.contract.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/input/storage/command_processor.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/input/value_commands.hpp"
+        "cpp-folders/src/shs-renderer-lib/include/shs/input/input.contract.hpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -5306,19 +5327,17 @@
       ],
       "visibility": "public-include-tree",
       "direct_dependencies": [
-        "shs/camera/camera_rig.hpp"
+        "cstdint"
       ],
-      "internal_dependencies": [
-        "shs/camera/camera_rig.hpp"
+      "internal_dependencies": [],
+      "external_dependencies": [
+        "cstdint"
       ],
-      "external_dependencies": [],
       "tracked_consumers": [
         "cpp-folders/src/exps-gpu-renderer/exp-plumbing/hello_rendering_paths.cpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/app/runtime_state.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/domains/input/input_state.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/input/human_controller.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/input/input.contract.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/input/input.gateway.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/input/value_commands.hpp"
       ],
       "build_target": "review-values-vs-aggregate"
@@ -5390,7 +5409,6 @@
       "direct_dependencies": [
         "memory_resource",
         "shs/input/input.command.hpp",
-        "shs/input/input.gateway.hpp",
         "shs/input/storage/command.hpp",
         "span",
         "utility",
@@ -5398,7 +5416,6 @@
       ],
       "internal_dependencies": [
         "shs/input/input.command.hpp",
-        "shs/input/input.gateway.hpp",
         "shs/input/storage/command.hpp"
       ],
       "external_dependencies": [
@@ -5431,7 +5448,6 @@
         "glm/glm.hpp",
         "memory_resource",
         "shs/input/input.command.hpp",
-        "shs/input/input.gateway.hpp",
         "shs/input/input_state.hpp",
         "span",
         "variant",
@@ -5439,7 +5455,6 @@
       ],
       "internal_dependencies": [
         "shs/input/input.command.hpp",
-        "shs/input/input.gateway.hpp",
         "shs/input/input_state.hpp"
       ],
       "external_dependencies": [
@@ -10936,9 +10951,7 @@
       "resources",
       "scene"
     ],
-    "input": [
-      "camera"
-    ],
+    "input": [],
     "lighting": [
       "camera",
       "geometry",
@@ -10993,7 +11006,6 @@
       "app",
       "camera",
       "geometry",
-      "input",
       "lighting",
       "render",
       "renderpath",
