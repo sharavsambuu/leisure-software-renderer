@@ -221,7 +221,8 @@
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/include/shs/app/runtime_state.hpp",
         "cpp-folders/src/shs-renderer-lib/tests/core_tests.cpp",
-        "cpp-folders/src/shs-renderer-lib/tests/input_tests.cpp"
+        "cpp-folders/src/shs-renderer-lib/tests/input_tests.cpp",
+        "cpp-folders/src/shs-renderer-lib/tests/session_orchestration_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -401,9 +402,11 @@
       ],
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/include/shs/app/camera_sync.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/app/session_orchestrator.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/camera/camera.contract.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/camera/follow_camera.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/domains/camera/camera_rig.hpp"
+        "cpp-folders/src/shs-renderer-lib/include/shs/domains/camera/camera_rig.hpp",
+        "cpp-folders/src/shs-renderer-lib/tests/session_orchestration_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -768,6 +771,7 @@
         "cpp-folders/src/shs-renderer-lib/tests/renderpath_tests.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/resources_tests.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/scene_tests.cpp",
+        "cpp-folders/src/shs-renderer-lib/tests/session_orchestration_tests.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/sky_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
@@ -5220,6 +5224,7 @@
         "variant"
       ],
       "tracked_consumers": [
+        "cpp-folders/src/shs-renderer-lib/include/shs/app/session_orchestrator.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/domains/input/input.command.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/input/input.contract.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/input/storage/command_processor.hpp",
@@ -5265,7 +5270,8 @@
       "external_dependencies": [],
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/include/shs/domains/input/input.contract.hpp",
-        "cpp-folders/src/shs-renderer-lib/tests/input_tests.cpp"
+        "cpp-folders/src/shs-renderer-lib/tests/input_tests.cpp",
+        "cpp-folders/src/shs-renderer-lib/tests/session_orchestration_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -5290,6 +5296,7 @@
         "variant"
       ],
       "tracked_consumers": [
+        "cpp-folders/src/shs-renderer-lib/include/shs/app/session_orchestrator.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/domains/input/input.event.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/input/input.contract.hpp"
       ],
@@ -5312,6 +5319,7 @@
         "cstdint"
       ],
       "tracked_consumers": [
+        "cpp-folders/src/shs-renderer-lib/include/shs/app/session_orchestrator.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/domains/input/input.gateway.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/input/input.contract.hpp"
       ],
