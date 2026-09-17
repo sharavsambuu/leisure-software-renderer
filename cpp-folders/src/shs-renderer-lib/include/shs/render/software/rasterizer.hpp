@@ -23,6 +23,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace render
+    {
     enum class RasterizerCullMode
     {
         None = 0,
@@ -440,4 +443,6 @@ namespace shs
         }
         return stats;
     }
+
+    } // inline namespace render
 }

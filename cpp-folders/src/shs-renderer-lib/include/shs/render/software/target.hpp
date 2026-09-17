@@ -14,6 +14,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace render
+    {
     struct RenderTargetDesc
     {
         int width = 0;
@@ -28,5 +31,7 @@ namespace shs
         uint32_t id = 0;
         bool valid() const { return id != 0; }
     };
+
+    } // inline namespace render
 }
 

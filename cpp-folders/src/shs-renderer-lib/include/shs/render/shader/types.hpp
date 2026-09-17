@@ -21,6 +21,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace render
+    {
     constexpr uint32_t SHS_MAX_VARYINGS = 12;
     constexpr uint32_t SHS_MAX_UNIFORM_VECS = 64;
     constexpr uint32_t SHS_MAX_UNIFORM_MATS = 16;
@@ -150,4 +153,6 @@ namespace shs
         if (slot < SHS_MAX_UNIFORM_MATS) return u.mats[slot];
         return fallback;
     }
+
+    } // inline namespace render
 }

@@ -16,6 +16,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace render
+    {
     struct Motion2f
     {
         float x = 0.0f;
@@ -155,4 +158,6 @@ namespace shs
     
     using RT_ColorDepthMotion = RT_ColorDepthVelocity;
     using DefaultRT           = RT_ColorDepthVelocity;
+
+    } // inline namespace render
 }

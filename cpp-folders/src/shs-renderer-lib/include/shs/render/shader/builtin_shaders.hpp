@@ -22,6 +22,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace render
+    {
     inline glm::vec3 srgb_to_linear_rgb(const Color& c)
     {
         const float r = std::pow((float)c.r / 255.0f, 2.2f);
@@ -243,4 +246,6 @@ namespace shs
 
         return p;
     }
+
+    } // inline namespace render
 }

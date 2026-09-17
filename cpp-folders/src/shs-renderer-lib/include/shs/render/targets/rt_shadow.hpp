@@ -14,6 +14,9 @@
 #include <algorithm>
 
 namespace shs {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace render
+    {
 
 struct RT_ShadowDepth {
     int w = 0;
@@ -39,4 +42,6 @@ struct RT_ShadowDepth {
     inline const float& at(int x, int y) const { return depth[(size_t)y * (size_t)w + (size_t)x]; }
 };
 
+
+    } // inline namespace render
 } // namespace shs

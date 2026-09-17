@@ -12,6 +12,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace render
+    {
 namespace debug_draw
 {
 
@@ -204,4 +207,6 @@ inline void draw_mesh_blinn_phong_transformed(
 }
 
 } // namespace debug_draw
+
+    } // inline namespace render
 } // namespace shs

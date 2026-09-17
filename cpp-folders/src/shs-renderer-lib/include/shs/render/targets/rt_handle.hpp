@@ -14,6 +14,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace render
+    {
     struct RTHandle
     {
         uint32_t id = 0; // 0 = invalid
@@ -25,5 +28,7 @@ namespace shs
     struct RT_Depth : RTHandle {};
     struct RT_Motion : RTHandle {};
     struct RT_Shadow : RTHandle {};
+
+    } // inline namespace render
 }
 

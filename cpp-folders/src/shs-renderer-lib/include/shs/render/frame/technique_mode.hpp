@@ -13,6 +13,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace render
+    {
     enum class TechniqueMode : uint8_t
     {
         Forward = 0,
@@ -53,4 +56,6 @@ namespace shs
     {
         return (mask & technique_mode_bit(m)) != 0u;
     }
+
+    } // inline namespace render
 }

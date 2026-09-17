@@ -15,6 +15,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace render
+    {
     enum class RenderBackendType : uint8_t
     {
         Software = 0,
@@ -32,4 +35,6 @@ namespace shs
         }
         return "unknown";
     }
+
+    } // inline namespace render
 }

@@ -23,6 +23,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace render
+    {
     enum class RTKind : uint8_t
     {
         Unknown = 0,
@@ -266,4 +269,6 @@ namespace shs
         std::unordered_map<std::string, TransientMotion> transient_motion_{};
         std::unordered_map<std::string, TransientShadow> transient_shadow_{};
     };
+
+    } // inline namespace render
 }

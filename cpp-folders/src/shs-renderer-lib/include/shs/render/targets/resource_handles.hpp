@@ -16,6 +16,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace render
+    {
     // ---------------------------------------------
     // RendererResources: бүх pass-уудын хамтын RT-ууд
     // ---------------------------------------------
@@ -65,4 +68,6 @@ namespace shs
             tmp_b        = RT_ColorLDR(w, h);
         }
     };
+
+    } // inline namespace render
 } // namespace shs

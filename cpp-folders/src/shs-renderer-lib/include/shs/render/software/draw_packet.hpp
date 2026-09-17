@@ -16,6 +16,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace render
+    {
     struct DrawPacket
     {
         uint32_t mesh = 0;
@@ -23,5 +26,7 @@ namespace shs
         glm::mat4 model{1.0f};
         uint32_t sort_key = 0;
     };
+
+    } // inline namespace render
 }
 

@@ -16,6 +16,9 @@
 
 namespace shs
 {
+// namespace-cutover: inline compatibility wrapper (step 7)
+    inline namespace render
+    {
     struct TonemapParams
     {
         bool operator==(const TonemapParams&) const = default;
@@ -187,4 +190,6 @@ namespace shs
         TechniqueParams technique{};
 
     };
+
+    } // inline namespace render
 }
