@@ -62,9 +62,14 @@ resource lifetimes remain at the execution edge.
   draw/dispatch rejection and translation stopping at the first rejected command.
   Buffer binds now reject missing/null handles instead of silently doing nothing.
   The command-buffer and missing-buffer branches still need dedicated coverage.
-  Whole-stream preflight, broader ID checks, recording-order validation and stage
-  diagnostics remain open. Translation is fail-fast, not transactional: earlier
-  calls are not rolled back. Spy/headless tests prove contracts, not GPU rendering.
+  Nested-pass preflight now scans the whole stream before any sink calls and
+  reports `InvalidRecordingOrder` at the second begin-pass command. Its regression
+  failed at runtime before the fix and passed afterward (including a leading
+  barrier that must not reach the sink). Each stream starts outside a pass.
+  Other whole-stream preflight, broader ID checks, remaining recording-order
+  validation and stage diagnostics remain open. Sink failures are still fail-fast,
+  not transactional: earlier calls are not rolled back. Spy/headless tests prove
+  contracts, not GPU rendering.
 - [ ] **G2 Minimal offscreen graphics realization** — implement actual attachment
   setup, pipeline creation/binding and begin/end-pass recording in the new driver.
   Acceptance: render one deterministic scene through value commands; supported

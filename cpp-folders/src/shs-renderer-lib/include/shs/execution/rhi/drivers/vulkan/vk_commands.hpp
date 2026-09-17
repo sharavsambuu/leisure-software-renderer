@@ -30,7 +30,8 @@ namespace shs
         DeviceUnavailable,
         CommandBufferUnavailable,
         UnsupportedCommand,
-        MissingBuffer
+        MissingBuffer,
+        InvalidRecordingOrder
     };
 
     struct VulkanRecordingFailure
@@ -60,6 +61,22 @@ namespace shs
     [[nodiscard]] std::expected<void, VulkanRecordingFailure> record_commands(
         std::span<const RHICmd> stream, Sink& sink)
     {
+        // Preflight nested passes before issuing any sink calls. Each stream
+        // starts outside a pass. Other ordering/resource checks remain separate.
+        bool inside_pass = false;
+        for (std::size_t i = 0; i < stream.size(); ++i)
+        {
+            if (std::holds_alternative<RHICmdBeginPassDesc>(stream[i].payload))
+            {
+                if (inside_pass)
+                    return std::unexpected(VulkanRecordingFailure{
+                        VulkanRecordingError::InvalidRecordingOrder, i});
+                inside_pass = true;
+            }
+            else if (std::holds_alternative<RHICmdEndPassDesc>(stream[i].payload))
+                inside_pass = false;
+        }
+
         const auto invoke = [](auto&& call) -> std::expected<void, VulkanRecordingError> {
             if constexpr (std::is_void_v<decltype(call())>)
             {

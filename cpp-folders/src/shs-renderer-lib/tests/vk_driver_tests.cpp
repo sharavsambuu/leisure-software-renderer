@@ -315,6 +315,21 @@ namespace
         return true;
     }
 
+    bool test_nested_pass_rejected_before_recording()
+    {
+        const shs::RHICmd stream[] = {
+            shs::rhi_cmd_barrier({}),
+            shs::rhi_cmd_begin_pass({}),
+            shs::rhi_cmd_begin_pass({}),
+            shs::rhi_cmd_end_pass(),
+            shs::rhi_cmd_end_pass()
+        };
+        SpySink sink;
+        const auto result = shs::record_commands(stream, sink);
+        return !result && result.error().code == shs::VulkanRecordingError::InvalidRecordingOrder &&
+               result.error().command_index == 2 && sink.calls.empty();
+    }
+
     bool test_command_stream_rejection()
     {
         struct RejectingSink : SpySink
@@ -491,6 +506,7 @@ int main()
         {"vk_command_stream_translation", test_command_stream_translation},
         {"vk_command_stream_dispatch_barrier", test_command_stream_dispatch_and_barrier},
         {"vk_command_stream_rejection", test_command_stream_rejection},
+        {"vk_nested_pass_preflight", test_nested_pass_rejected_before_recording},
         {"vk_recorder_unsupported_commands", test_recorder_unsupported_commands},
         {"vk_frame_sync_slots", test_frame_sync_slots},
         {"vk_frame_sync_triple_buffer", test_frame_sync_triple_buffer},
