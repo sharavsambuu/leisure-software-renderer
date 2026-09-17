@@ -363,7 +363,42 @@ commits; keep mechanical moves separate from semantic changes.
   repointed; boundary gates taught old/new paths; old+new include-order
   smoke consumers in CTest; namespaces/symbols untouched.
 
+### Status (2026-09-17, step 5 packaging: install/export + consumer and self-containment gates)
+
+- Step 5 COMPLETE — all four checkboxes ticked with evidence above. Remaining
+  migration work is steps 4, 6 and 7 only (user rulings / live host).
+- Packaging: `install(TARGETS/DIRECTORY/EXPORT)`, `configure_package_config_file`,
+  SameMajorVersion version file (0.1.0), `install(EXPORT shs_rendererTargets
+  NAMESPACE shs::)`. Exported interface is leakage-free: source-tree,
+  build-tree and stb include dirs and FetchContent-owned Jolt/xsimd/VMA links
+  are `$<BUILD_INTERFACE:...>`-wrapped (verified by audit: no public header
+  uses `stb_*`; no `.cpp` includes non-shs headers).
+- Two new gates registered as CTest (both PASS in the vcpkg-toolchain tree):
+  - `shs_renderer_package_consumer_test` — scratch-prefix install →
+    `find_package(shs_renderer)` → installed-interface leak scan → headless
+    consumer build + run (end-to-end PASS).
+  - `shs_renderer_header_self_containment_test` — all 433 public headers
+    compiled standalone (`-fsyntax-only`, no `SHS_HAS_*` defines) against the
+    target's INTERFACE include dirs. First run failed on 18 headers; fixes:
+    missing includes (`renderpath.event.hpp` → `renderpath.command.hpp`; five
+    `renderpath/execution/passes/*` → explicit `shs/app/context.hpp`; missing
+    `geometry/aabb.hpp` in `culling_query.hpp`), guard alignment
+    (`vk_swapchain_uploader.hpp` fully Vulkan-gated; `pass_adapters.hpp`
+    Jolt-typed sections gated with graceful directional-only fallback), and
+    removal of 7 dead never-compilable `culling_query.hpp` overloads over
+    phantom types (`SweptCapsule`, `SweptOBB`, `KDOP18/26`, `MeshletHull`,
+    `ClusterHull` — none defined anywhere; header had zero consumers).
+- Validation: clean reconfigure + full build, **26/26 CTest green** (includes
+  package-consumer, self-containment, inventory, include-graph, Vulkan
+  lavapipe+validation suites). Inventory regenerated (433 headers unchanged).
+- Phase table: 1-3 COMPLETE, **5 COMPLETE**, 4/6 NOT STARTED, 7 blocked on 4-6.
+- Known limitation (documented in `shs_rendererConfig.cmake.in`): Jolt, xsimd
+  and VMA are consumed via FetchContent in-tree and are NOT re-exported by the
+  installed package — binary-compatible only when consumer and package agree
+  on those ABIs.
+
 ### 1. Inventory, decision record and baseline
+
 - [x] Create a machine-readable old-header -> canonical-header manifest covering
   every header, namespace owner, public/private status and build dependency.
   Resolve pipeline/RHI splits, existing `rhi/` overlap and cross-module cycles.
@@ -457,19 +492,55 @@ by API/tests, not only directory placement.
 
 ### 5. Make dependencies selectable by consumers
 Depends on 3; may proceed alongside 4.
-- [ ] Preserve `shs_renderer` and `shs::renderer` as aggregate compatibility
+- [x] Preserve `shs_renderer` and `shs::renderer` as aggregate compatibility
   targets. Add component targets only for real dependency seams, not competing
   software/GPU libraries.
+  (Done 2026-09-17: `shs_renderer` + `shs::renderer` alias preserved unchanged;
+  the only added component is the `shs_renderer_values` INTERFACE target
+  (`shs::renderer-values`) for the value-layer-only seam. Both are exported in
+  `shs_rendererTargets` and re-aliased by `shs_rendererConfig.cmake`.)
 - [x] Make SDL/SDL_image and Assimp discovery conditional on enabled adapters.
   (Done 2026-09-17: `SHS_RENDERER_WITH_SDL2` / `SHS_RENDERER_WITH_ASSIMP`
   options, default ON for unchanged behavior; with both OFF the full tree
   configures, builds and passes 24/24 CTest with zero windowing/asset-import
   SDKs. Keep C++23 and GLM baseline — untouched.)
-- [ ] Add install/export/package-consumer tests: minimal headless configuration
+- [x] Add install/export/package-consumer tests: minimal headless configuration
   and separately enabled software, Vulkan and platform adapters. Preserve
   static/shared options; document binary compatibility limitations.
-- [ ] Make public headers self-contained and exported target dependencies minimal.
+  (Done 2026-09-17: `install(TARGETS/DIRECTORY/EXPORT shs_rendererTargets
+  NAMESPACE shs::)`, `configure_package_config_file` + SameMajorVersion version
+  file (0.1.0), and `cmake/shs_rendererConfig.cmake.in` with required
+  `find_dependency(glm)` and conditional SDL2+SDL2_image / assimp / Vulkan deps
+  via `@SHS_RENDERER_PKG_WITH_*@`; `shs::renderer` / `shs::renderer-values`
+  aliases recreated by the config. Static/shared preserved via the existing
+  `SHS_RENDERER_BUILD_SHARED` option. New CTest
+  `shs_renderer_package_consumer_test` installs to a scratch prefix, consumes
+  via `find_package(shs_renderer)` with the vcpkg toolchain, scans the installed
+  interface for source-tree/build-tree path leakage (none found), then builds
+  and runs a headless GLM-only consumer against the installed package —
+  PASS. Jolt/xsimd/VMA are build-interface-only links and are documented in the
+  config as a binary-compatibility limitation, not re-exported.)
+- [x] Make public headers self-contained and exported target dependencies minimal.
   Reject source-tree/build-tree path leakage in installed packages.
+  (Done 2026-09-17: build-tree/stb include dirs and FetchContent-owned Jolt/
+  xsimd/VMA links wrapped in `$<BUILD_INTERFACE:...>` — in-tree behavior
+  unchanged, nothing internal leaks into the installed interface; no public
+  header uses `stb_*` and no `.cpp` includes non-shs headers. New CTest
+  `shs_renderer_header_self_containment_test` compiles all 433 public headers
+  standalone with `-fsyntax-only` and no `SHS_HAS_*` defines against the
+  target's INTERFACE include dirs. First run exposed 18 failing headers (~8
+  canonical + forwarders); fixed: `renderpath.event.hpp` missing
+  `renderpath.command.hpp` include; 5 `renderpath/execution/passes/*` headers
+  rode on transitively-included `shs/app/context.hpp` (now included directly,
+  matching `pass_context.hpp`/`render_pass.hpp` precedent); `pass_adapters.hpp`
+  Jolt-typed light-shape/culling sections and `vk_swapchain_uploader.hpp`
+  (Vulkan-typed throughout) now carry the same `SHS_HAS_*` guards as their
+  adapters; `geometry/culling_query.hpp` lost 7 dead never-compilable
+  overloads referencing types defined nowhere in the tree (`SweptCapsule`,
+  `SweptOBB`, `KDOP18/26` + helpers, `MeshletHull`, `ClusterHull`, and a
+  `ConvexPolyhedron` overload using a nonexistent vertices helper — the header
+  has zero consumers) and gained the missing `geometry/aabb.hpp` include.
+  Final state: 433/433 headers self-contained, full 26/26 CTest green.)
 
 Exit: downstream neutral consumers configure/build/install without optional SDKs;
 aggregate-target consumers still build.

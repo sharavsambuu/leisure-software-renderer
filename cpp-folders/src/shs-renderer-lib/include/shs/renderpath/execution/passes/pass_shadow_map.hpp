@@ -9,6 +9,7 @@
 */
 
 
+#include "shs/app/context.hpp"
 #include "shs/scene/scene_types.hpp"
 #include "shs/render/frame/frame_params.hpp"
 #include "shs/render/targets/rt_handle.hpp"

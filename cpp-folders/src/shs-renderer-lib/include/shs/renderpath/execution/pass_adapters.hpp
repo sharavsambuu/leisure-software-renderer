@@ -17,6 +17,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include "shs/geometry/adapters/jolt/jolt_culling.hpp"
+#include "shs/geometry/scene_shape.hpp"
 #include "shs/geometry/adapters/jolt/jolt_adapter.hpp"
 #include "shs/geometry/adapters/jolt/jolt_shapes.hpp"
 #include "shs/render/targets/rt_handle.hpp"
@@ -81,6 +82,12 @@ namespace shs
             return glm::vec3(hp) / hp.w;
         }
 
+// CullingCell/kind and the cell helpers live in the Jolt-guarded adapter
+// (shs/geometry/adapters/jolt/jolt_culling.hpp), so every use below is gated
+// the same way to keep this header self-contained without SHS_HAS_JOLT
+// (migration step 5). Without Jolt the payload keeps its directional-only
+// default counts.
+#if defined(SHS_HAS_JOLT) && ((SHS_HAS_JOLT + 0) == 1)
         inline CullingCell make_screen_tile_culling_cell(
             const glm::mat4& view_proj,
             int viewport_w,
@@ -125,6 +132,7 @@ namespace shs
             culling_cell_add_plane(cell, make_oriented_plane_from_points(ntl, ntr, ftr, inside)); // top
             return cell;
         }
+#endif // SHS_HAS_JOLT
 
         inline glm::mat4 make_basis_transform(
             const glm::vec3& position,
@@ -164,6 +172,7 @@ namespace shs
             axis_z = normalize_or(glm::cross(axis_x, axis_y), glm::vec3(0.0f, 0.0f, 1.0f));
         }
 
+#if defined(SHS_HAS_JOLT) && ((SHS_HAS_JOLT + 0) == 1)
         inline void append_local_light_shapes_from_set(
             const LightSet& set,
             std::vector<SceneShape>& out_shapes)
@@ -215,6 +224,7 @@ namespace shs
                 push_shape(jolt::make_tube_area_light_volume(l.half_length, l.radius), model);
             }
         }
+#endif // SHS_HAS_JOLT
 
         inline bool technique_uses_light_culling(const FrameParams& fp)
         {
@@ -262,6 +272,12 @@ namespace shs
 
             const uint32_t directional_light_count = (scene.sun.intensity > 0.0f) ? 1u : 0u;
 
+            // SceneShape and the cell-culling helpers are Jolt-adapter domain
+            // (SHS_HAS_JOLT-guarded headers), so the light-shape collection and
+            // cell culling only exist with Jolt; without it the payload keeps
+            // directional-only default counts (migration step 5).
+            uint32_t local_visible_count = 0;
+#if defined(SHS_HAS_JOLT) && ((SHS_HAS_JOLT + 0) == 1)
             std::vector<SceneShape> local_light_shapes{};
             if (scene.local_lights)
             {
@@ -288,15 +304,19 @@ namespace shs
                     local_light_shapes.swap(visible_shapes);
                 }
             }
+#endif // SHS_HAS_JOLT
 
             auto& fwdp = *light_culling;
             fwdp.tile_size = tile_size;
             fwdp.tile_count_x = tile_x;
             fwdp.tile_count_y = tile_y;
             fwdp.max_lights_per_tile = max_per_tile;
-            fwdp.visible_light_count = directional_light_count + static_cast<uint32_t>(local_light_shapes.size());
+            fwdp.visible_light_count = directional_light_count + local_visible_count;
             fwdp.tile_light_counts.assign((size_t)total_tiles, std::min(max_per_tile, directional_light_count));
 
+#if defined(SHS_HAS_JOLT) && ((SHS_HAS_JOLT + 0) == 1)
+            local_visible_count = static_cast<uint32_t>(local_light_shapes.size());
+            fwdp.visible_light_count = directional_light_count + local_visible_count;
             if (!local_light_shapes.empty())
             {
                 const CullTolerance tile_cull_tol{}; // Use defaults or customize if needed
@@ -329,6 +349,7 @@ namespace shs
                     }
                 }
             }
+#endif // SHS_HAS_JOLT
             return true;
         }
 

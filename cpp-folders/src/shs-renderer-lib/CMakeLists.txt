@@ -122,12 +122,17 @@ if(SHS_RENDERER_WITH_ASSIMP)
     find_package(assimp CONFIG REQUIRED)
 endif()
 
-# Include paths that your headers need
+# Include paths that your headers need. Migration step 5 (packaging): the
+# source-tree, build-tree and stb dirs stay BUILD_INTERFACE-only so in-tree
+# behavior is unchanged while the exported target carries exactly the package
+# include dir (self-contained headers; no source-tree/build-tree leakage in
+# installed packages — Rule 15 closed exception set).
 target_include_directories(shs_renderer PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_BINARY_DIR}
-    ${stb_SOURCE_DIR}
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}>
+    $<BUILD_INTERFACE:${stb_SOURCE_DIR}>
+    $<INSTALL_INTERFACE:include>
 )
 
 # Link deps that demos will inherit automatically. SDL2/Assimp are optional
@@ -149,14 +154,19 @@ if(SHS_RENDERER_WITH_ASSIMP)
     target_compile_definitions(shs_renderer PUBLIC SHS_HAS_ASSIMP=1)
 endif()
 
+# Jolt and xsimd are FetchContent-owned in-tree (parent CMakeLists), so their
+# linkage is BUILD_INTERFACE-only: the compiled target keeps linking them
+# in-tree unchanged, but the installed package does not re-export them
+# (consumers enable those features via their own Jolt/xsimd targets —
+# documented binary-compatibility limitation, migration step 5).
 set(SHS_RENDERER_HAS_XSIMD OFF)
 if(TARGET xsimd)
     set(SHS_RENDERER_HAS_XSIMD ON)
-    target_link_libraries(shs_renderer PUBLIC xsimd)
+    target_link_libraries(shs_renderer PUBLIC $<BUILD_INTERFACE:xsimd>)
     target_compile_definitions(shs_renderer PUBLIC SHS_HAS_XSIMD=1)
 elseif(TARGET xsimd::xsimd)
     set(SHS_RENDERER_HAS_XSIMD ON)
-    target_link_libraries(shs_renderer PUBLIC xsimd::xsimd)
+    target_link_libraries(shs_renderer PUBLIC $<BUILD_INTERFACE:xsimd::xsimd>)
     target_compile_definitions(shs_renderer PUBLIC SHS_HAS_XSIMD=1)
 endif()
 set(SHS_RENDERER_HAS_XSIMD "${SHS_RENDERER_HAS_XSIMD}" PARENT_SCOPE)
@@ -164,7 +174,7 @@ set(SHS_RENDERER_HAS_XSIMD "${SHS_RENDERER_HAS_XSIMD}" PARENT_SCOPE)
 set(SHS_RENDERER_HAS_JOLT OFF)
 if(TARGET Jolt)
     set(SHS_RENDERER_HAS_JOLT ON)
-    target_link_libraries(shs_renderer PUBLIC Jolt)
+    target_link_libraries(shs_renderer PUBLIC $<BUILD_INTERFACE:Jolt>)
     target_compile_definitions(shs_renderer PUBLIC SHS_HAS_JOLT=1)
 endif()
 set(SHS_RENDERER_HAS_JOLT "${SHS_RENDERER_HAS_JOLT}" PARENT_SCOPE)
@@ -183,7 +193,8 @@ if(Vulkan_FOUND AND TARGET Vulkan::Vulkan)
     target_compile_definitions(shs_renderer PUBLIC SHS_HAS_VULKAN=1)
     target_link_libraries(shs_renderer PUBLIC Vulkan::Vulkan)
     if(TARGET GPUOpen::VulkanMemoryAllocator)
-        target_link_libraries(shs_renderer PUBLIC GPUOpen::VulkanMemoryAllocator)
+        target_link_libraries(shs_renderer PUBLIC
+            $<BUILD_INTERFACE:GPUOpen::VulkanMemoryAllocator>)
         target_compile_definitions(shs_renderer PUBLIC SHS_HAS_VMA=1)
     endif()
 endif()
@@ -196,21 +207,72 @@ set(SHS_SDL2_HAS_VULKAN "${SHS_SDL2_HAS_VULKAN}" PARENT_SCOPE)
 add_library(shs_renderer_values INTERFACE)
 add_library(shs::renderer-values ALIAS shs_renderer_values)
 target_include_directories(shs_renderer_values INTERFACE
-    ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_BINARY_DIR}
-    ${stb_SOURCE_DIR}
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}>
+    $<BUILD_INTERFACE:${stb_SOURCE_DIR}>
+    $<INSTALL_INTERFACE:include>
 )
 target_compile_features(shs_renderer_values INTERFACE cxx_std_23)
 # glm is header-only; safe to propagate without linking any compiled lib.
 target_link_libraries(shs_renderer_values INTERFACE glm::glm)
 if(TARGET xsimd::xsimd)
-    target_link_libraries(shs_renderer_values INTERFACE xsimd::xsimd)
+    target_link_libraries(shs_renderer_values INTERFACE $<BUILD_INTERFACE:xsimd::xsimd>)
     target_compile_definitions(shs_renderer_values INTERFACE SHS_HAS_XSIMD=1)
 elseif(TARGET xsimd)
-    target_link_libraries(shs_renderer_values INTERFACE xsimd)
+    target_link_libraries(shs_renderer_values INTERFACE $<BUILD_INTERFACE:xsimd>)
     target_compile_definitions(shs_renderer_values INTERFACE SHS_HAS_XSIMD=1)
 endif()
+
+# ---------------------------------------------------------------------------
+# Install / export (migration step 5: make the library consumable as an
+# installed package while preserving `shs_renderer` / `shs::renderer` and
+# `shs::renderer-values` as the aggregate compatibility seams).
+#
+# Design (Rule 14 adapter value seam / Rule 15 closed exception sets):
+# - in-tree behavior unchanged: source-tree, build-tree, stb include dirs and
+#   FetchContent-owned Jolt/xsimd/VMA links are all $<BUILD_INTERFACE:...>,
+#   so nothing they carry enters the export;
+# - the exported interface is minimal: `include/` + glm, plus SDL2/Assimp/
+#   Vulkan only when THIS build enabled them (Config re-discovers exactly
+#   those); SHS_HAS_* feature guards travel with the binaries as
+#   INTERFACE_COMPILE_DEFINITIONS, so package flags always match the build;
+# - Config.cmake recreates the aggregate aliases (`shs::renderer`,
+#   `shs::renderer-values`) for installed consumers.
+include(GNUInstallDirs)
+install(TARGETS shs_renderer shs_renderer_values
+    EXPORT shs_rendererTargets
+    ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+    LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+    INCLUDES DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+)
+install(DIRECTORY include/shs DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
+set(SHS_RENDERER_PKG_WITH_SDL2 "${SHS_RENDERER_WITH_SDL2}")
+set(SHS_RENDERER_PKG_WITH_ASSIMP "${SHS_RENDERER_WITH_ASSIMP}")
+set(SHS_RENDERER_PKG_WITH_VULKAN "${SHS_RENDERER_HAS_VULKAN}")
+set(SHS_RENDERER_CONFIG_OUT
+    "${CMAKE_CURRENT_BINARY_DIR}/cmake/shs_rendererConfig.cmake")
+configure_package_config_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/shs_rendererConfig.cmake.in"
+    "${SHS_RENDERER_CONFIG_OUT}"
+    INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/shs_renderer"
+)
+write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/cmake/shs_rendererConfigVersion.cmake"
+    VERSION 0.1.0
+    COMPATIBILITY SameMajorVersion
+)
+install(FILES
+    "${SHS_RENDERER_CONFIG_OUT}"
+    "${CMAKE_CURRENT_BINARY_DIR}/cmake/shs_rendererConfigVersion.cmake"
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/shs_renderer"
+)
+install(EXPORT shs_rendererTargets
+    FILE shs_rendererTargets.cmake
+    NAMESPACE shs::
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/shs_renderer"
+)
 
 option(SHS_RENDERER_BUILD_TESTS "Build shs_renderer core tests" ON)
 if(SHS_RENDERER_BUILD_TESTS)
@@ -218,6 +280,56 @@ if(SHS_RENDERER_BUILD_TESTS)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
     add_test(NAME shs_renderer_header_migration_tests
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/header_migration_tests.py")
+
+    # Migration step 5 — install/export/package-consumer tests: install this
+    # build into a scratch prefix, reject source-tree/build-tree path leakage
+    # in the installed package, then configure/build/run a minimal headless
+    # consumer through find_package + the aggregate `shs::renderer` /
+    # `shs::renderer-values` compatibility seams.
+    set(_shs_pkg_consumer_args
+        "${CMAKE_BINARY_DIR}"
+        "${CMAKE_SOURCE_DIR}")
+    if(CMAKE_TOOLCHAIN_FILE)
+        list(APPEND _shs_pkg_consumer_args "${CMAKE_TOOLCHAIN_FILE}")
+    endif()
+    if(CMAKE_CXX_COMPILER)
+        list(APPEND _shs_pkg_consumer_args "${CMAKE_CXX_COMPILER}")
+    endif()
+    add_test(NAME shs_renderer_package_consumer_test
+        COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/package_consumer_test.sh"
+            ${_shs_pkg_consumer_args})
+
+    # Migration step 5 — self-contained public headers gate: every public
+    # header compiles standalone with only the exported dependency include
+    # dirs, no SHS_HAS_* defines and no build-tree/stb include dirs.
+    set(_shs_selfcont_targets
+        glm::glm SDL2::SDL2 SDL2_image::SDL2_image assimp::assimp
+        Vulkan::Vulkan GPUOpen::VulkanMemoryAllocator Jolt xsimd xsimd::xsimd)
+    set(_shs_selfcont_inc "")
+    foreach(_shs_t IN LISTS _shs_selfcont_targets)
+        if(TARGET ${_shs_t})
+            get_target_property(_shs_t_inc "${_shs_t}" INTERFACE_INCLUDE_DIRECTORIES)
+            foreach(_shs_d IN LISTS _shs_t_inc)
+                if(_shs_d AND NOT "${_shs_d}" MATCHES "^\\$<" AND EXISTS "${_shs_d}")
+                    list(APPEND _shs_selfcont_inc "${_shs_d}")
+                endif()
+            endforeach()
+            unset(_shs_t_inc)
+        endif()
+    endforeach()
+    list(APPEND _shs_selfcont_inc "${CMAKE_CURRENT_SOURCE_DIR}/include")
+    list(REMOVE_DUPLICATES _shs_selfcont_inc)
+    set(_shs_selfcont_flags
+        "${CMAKE_CURRENT_BINARY_DIR}/shs_selfcont_include_flags.txt")
+    file(WRITE "${_shs_selfcont_flags}" "")
+    foreach(_shs_d IN LISTS _shs_selfcont_inc)
+        file(APPEND "${_shs_selfcont_flags}" "-I${_shs_d}\n")
+    endforeach()
+    add_test(NAME shs_renderer_header_self_containment_test
+        COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/header_self_containment_test.sh"
+            "${_shs_selfcont_flags}"
+            "${CMAKE_CURRENT_SOURCE_DIR}"
+            "${CMAKE_CXX_COMPILER}")
     add_test(NAME shs_renderer_header_inventory_check
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/inventory_headers.py")
     add_test(NAME shs_renderer_include_graph_tests

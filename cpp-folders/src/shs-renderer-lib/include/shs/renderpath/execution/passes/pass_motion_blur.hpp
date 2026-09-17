@@ -10,6 +10,7 @@
 */
 
 
+#include "shs/app/context.hpp"
 #include "shs/render/frame/frame_params.hpp"
 #include "shs/render/targets/rt_handle.hpp"
 #include "shs/render/targets/storage/rt_registry.hpp"

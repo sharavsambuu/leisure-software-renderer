@@ -21,6 +21,7 @@
 #include <variant>
 
 #include "shs/render/frame/technique_mode.hpp"
+#include "shs/renderpath/renderpath.command.hpp"
 #include "shs/renderpath/renderpath.contract.hpp"
 
 namespace shs::renderpath

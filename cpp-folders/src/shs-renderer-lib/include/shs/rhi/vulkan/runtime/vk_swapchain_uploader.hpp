@@ -19,6 +19,11 @@
 
 namespace shs
 {
+// The whole uploader is Vulkan-runtime domain: every signature names
+// VulkanRenderBackend / Vk* types, so the class only exists when the build
+// has Vulkan (SHS_HAS_VULKAN). Keeps the header self-contained for consumers
+// without Vulkan (migration step 5).
+#ifdef SHS_HAS_VULKAN
     class VulkanSwapchainUploader
     {
     public:
@@ -238,4 +243,5 @@ namespace shs
         uint64_t tracked_swapchain_generation_ = 0;
         std::vector<uint8_t> image_initialized_{};
     };
+#endif // SHS_HAS_VULKAN
 }

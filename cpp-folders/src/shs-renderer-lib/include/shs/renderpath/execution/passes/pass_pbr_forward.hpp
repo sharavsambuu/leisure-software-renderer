@@ -9,6 +9,7 @@
 */
 
 
+#include "shs/app/context.hpp"
 #include "shs/render/software/rasterizer.hpp"
 #include "shs/resources/storage/resource_registry.hpp"
 #include "shs/scene/scene_types.hpp"

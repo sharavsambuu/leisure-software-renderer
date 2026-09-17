@@ -14,6 +14,7 @@
 #include <variant>
 #include <vector>
 
+#include "shs/geometry/aabb.hpp"
 #include "shs/geometry/convex_cell.hpp"
 #include "shs/geometry/volumes.hpp"
 
@@ -131,23 +132,6 @@ namespace shs
             r * glm::length(perp);
     }
 
-    inline float support_max_dot(const SweptCapsule& swept, const glm::vec3& dir)
-    {
-        const float r0 = std::max(swept.at_t0.radius, 0.0f) * glm::length(dir);
-        const float r1 = std::max(swept.at_t1.radius, 0.0f) * glm::length(dir);
-        float best = glm::dot(dir, swept.at_t0.a) + r0;
-        best = std::max(best, glm::dot(dir, swept.at_t0.b) + r0);
-        best = std::max(best, glm::dot(dir, swept.at_t1.a) + r1);
-        best = std::max(best, glm::dot(dir, swept.at_t1.b) + r1);
-        return best;
-    }
-
-    inline float support_max_dot(const SweptOBB& swept, const glm::vec3& dir)
-    {
-        // SweptOBB-ийг эхлэл болон төгсгөлийн OBB хоёрын convex hull гэж үзвэл support нь max(h0, h1) байна.
-        return std::max(support_max_dot(swept.at_t0, dir), support_max_dot(swept.at_t1, dir));
-    }
-
     template<typename ShapeT>
     inline CullClass classify_support_shape(
         const ShapeT& shape,
@@ -223,68 +207,6 @@ namespace shs
         const CullTolerance& tol = {})
     {
         return classify_support_shape(cylinder, cell, tol);
-    }
-
-    inline CullClass classify(
-        const ConvexPolyhedron& hull,
-        const ConvexCell& cell,
-        const CullTolerance& tol = {})
-    {
-        const std::vector<glm::vec3> verts = convex_polyhedron_vertices(hull);
-        if (verts.empty()) return classify(conservative_bounds_sphere(hull), cell, tol);
-        return classify_convex_vertices(verts, cell, tol);
-    }
-
-    inline CullClass classify(
-        const KDOP18& kdop,
-        const ConvexCell& cell,
-        const CullTolerance& tol = {})
-    {
-        const std::vector<glm::vec3> verts = kdop18_vertices(kdop);
-        if (verts.empty()) return classify(conservative_bounds_sphere(kdop), cell, tol);
-        return classify_convex_vertices(verts, cell, tol);
-    }
-
-    inline CullClass classify(
-        const KDOP26& kdop,
-        const ConvexCell& cell,
-        const CullTolerance& tol = {})
-    {
-        const std::vector<glm::vec3> verts = kdop26_vertices(kdop);
-        if (verts.empty()) return classify(conservative_bounds_sphere(kdop), cell, tol);
-        return classify_convex_vertices(verts, cell, tol);
-    }
-
-    inline CullClass classify(
-        const SweptCapsule& swept,
-        const ConvexCell& cell,
-        const CullTolerance& tol = {})
-    {
-        return classify_support_shape(swept, cell, tol);
-    }
-
-    inline CullClass classify(
-        const SweptOBB& swept,
-        const ConvexCell& cell,
-        const CullTolerance& tol = {})
-    {
-        return classify_support_shape(swept, cell, tol);
-    }
-
-    inline CullClass classify(
-        const MeshletHull& meshlet,
-        const ConvexCell& cell,
-        const CullTolerance& tol = {})
-    {
-        return classify(meshlet.hull, cell, tol);
-    }
-
-    inline CullClass classify(
-        const ClusterHull& cluster,
-        const ConvexCell& cell,
-        const CullTolerance& tol = {})
-    {
-        return classify(cluster.hull, cell, tol);
     }
 
 }

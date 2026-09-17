@@ -1,0 +1,50 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+# glm is a required, header-only baseline of the value layer.
+find_dependency(glm CONFIG)
+
+# Optional adapters are re-discovered only when THIS package build enabled
+# them — the SHS_HAS_* feature guards on the exported target always match.
+if(@SHS_RENDERER_PKG_WITH_SDL2@)
+    find_dependency(SDL2 CONFIG)
+    find_dependency(SDL2_image CONFIG)
+    if(NOT TARGET SDL2_image::Main)
+        if(TARGET SDL2_image::SDL2_image)
+            add_library(SDL2_image::Main ALIAS SDL2_image::SDL2_image)
+        elseif(TARGET SDL2_image::SDL2_image-static)
+            add_library(SDL2_image::Main ALIAS SDL2_image::SDL2_image-static)
+        elseif(TARGET SDL2_image-static)
+            add_library(SDL2_image::Main ALIAS SDL2_image-static)
+        endif()
+    endif()
+endif()
+if(@SHS_RENDERER_PKG_WITH_ASSIMP@)
+    find_dependency(assimp CONFIG)
+endif()
+if(@SHS_RENDERER_PKG_WITH_VULKAN@)
+    find_dependency(Vulkan)
+endif()
+
+# Binary-compatibility limitations (documented, migration step 5):
+# - Jolt, xsimd and VulkanMemoryAllocator are FetchContent-owned in-tree and
+#   are intentionally NOT re-exported. If this package was built with
+#   SHS_HAS_JOLT=1 / SHS_HAS_XSIMD=1 / SHS_HAS_VMA=1 and a consumer compiles
+#   the correspondingly guarded public headers, the consumer must provide
+#   those targets (or headers) itself before/while consuming this package.
+if(NOT TARGET shs_renderer)
+    include("${CMAKE_CURRENT_LIST_DIR}/shs_rendererTargets.cmake")
+endif()
+
+# Aggregate compatibility seams (migration step 5): in-tree consumers use the
+# `shs::renderer` / `shs::renderer-values` aliases; installed consumers get
+# the same names here.
+if(NOT TARGET shs::renderer)
+    add_library(shs::renderer ALIAS shs::shs_renderer)
+endif()
+if(NOT TARGET shs::renderer-values)
+    add_library(shs::renderer-values ALIAS shs::shs_renderer_values)
+endif()
+
+check_required_components(shs_renderer)

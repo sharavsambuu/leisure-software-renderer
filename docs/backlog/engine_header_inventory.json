@@ -119,6 +119,11 @@
         "cpp-folders/src/exps-gpu-renderer/exp-rendering-techniques/demo_forward_classic_renderpath.cpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/core/context.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/passes/pass_context.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/passes/pass_light_shafts.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/passes/pass_motion_blur.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/passes/pass_pbr_forward.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/passes/pass_shadow_map.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/passes/pass_tonemap.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/render_pass.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/render_path_executor.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/planning/render_path_capabilities.hpp",
@@ -4139,6 +4144,7 @@
         "cpp-folders/src/shs-renderer-lib/include/shs/geometry/adapters/jolt/jolt_debug_draw.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/geometry/adapters/jolt/jolt_occlusion_culling.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/geometry/convex_cell.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/geometry/culling_query.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/geometry/culling_software.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/geometry/geometry.contract.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/geometry/scene_shape.hpp",
@@ -4570,12 +4576,14 @@
       "direct_dependencies": [
         "algorithm",
         "cmath",
+        "shs/geometry/aabb.hpp",
         "shs/geometry/convex_cell.hpp",
         "shs/geometry/volumes.hpp",
         "variant",
         "vector"
       ],
       "internal_dependencies": [
+        "shs/geometry/aabb.hpp",
         "shs/geometry/convex_cell.hpp",
         "shs/geometry/volumes.hpp"
       ],
@@ -4995,6 +5003,7 @@
         "cpp-folders/src/shs-renderer-lib/include/shs/geometry/adapters/jolt/jolt_renderable.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/lighting/adapters/jolt/jolt_light_culling.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/lighting/light_runtime.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/pass_adapters.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/scene/scene_elements.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/scene/scene_instance.hpp"
       ],
@@ -6882,6 +6891,7 @@
         "shs/geometry/adapters/jolt/jolt_adapter.hpp",
         "shs/geometry/adapters/jolt/jolt_culling.hpp",
         "shs/geometry/adapters/jolt/jolt_shapes.hpp",
+        "shs/geometry/scene_shape.hpp",
         "shs/lighting/light_set.hpp",
         "shs/render/shader/program.hpp",
         "shs/render/software/rasterizer.hpp",
@@ -6901,6 +6911,7 @@
         "shs/geometry/adapters/jolt/jolt_adapter.hpp",
         "shs/geometry/adapters/jolt/jolt_culling.hpp",
         "shs/geometry/adapters/jolt/jolt_shapes.hpp",
+        "shs/geometry/scene_shape.hpp",
         "shs/lighting/light_set.hpp",
         "shs/render/shader/program.hpp",
         "shs/render/software/rasterizer.hpp",
@@ -7015,6 +7026,7 @@
         "algorithm",
         "cmath",
         "glm/glm.hpp",
+        "shs/app/context.hpp",
         "shs/render/frame/frame_params.hpp",
         "shs/render/targets/rt_handle.hpp",
         "shs/render/targets/storage/rt_registry.hpp",
@@ -7023,6 +7035,7 @@
         "vector"
       ],
       "internal_dependencies": [
+        "shs/app/context.hpp",
         "shs/render/frame/frame_params.hpp",
         "shs/render/targets/rt_handle.hpp",
         "shs/render/targets/storage/rt_registry.hpp",
@@ -7053,6 +7066,7 @@
       "direct_dependencies": [
         "algorithm",
         "cmath",
+        "shs/app/context.hpp",
         "shs/render/frame/frame_params.hpp",
         "shs/render/targets/rt_handle.hpp",
         "shs/render/targets/storage/rt_registry.hpp",
@@ -7060,6 +7074,7 @@
         "vector"
       ],
       "internal_dependencies": [
+        "shs/app/context.hpp",
         "shs/render/frame/frame_params.hpp",
         "shs/render/targets/rt_handle.hpp",
         "shs/render/targets/storage/rt_registry.hpp",
@@ -7090,6 +7105,7 @@
         "cmath",
         "glm/glm.hpp",
         "glm/gtc/matrix_transform.hpp",
+        "shs/app/context.hpp",
         "shs/render/frame/frame_params.hpp",
         "shs/render/shader/builtin_shaders.hpp",
         "shs/render/software/rasterizer.hpp",
@@ -7103,6 +7119,7 @@
         "unordered_map"
       ],
       "internal_dependencies": [
+        "shs/app/context.hpp",
         "shs/render/frame/frame_params.hpp",
         "shs/render/shader/builtin_shaders.hpp",
         "shs/render/software/rasterizer.hpp",
@@ -7167,6 +7184,7 @@
         "cmath",
         "glm/gtc/matrix_transform.hpp",
         "limits",
+        "shs/app/context.hpp",
         "shs/camera/light_camera.hpp",
         "shs/geometry/aabb.hpp",
         "shs/render/frame/frame_params.hpp",
@@ -7177,6 +7195,7 @@
         "shs/scene/scene_types.hpp"
       ],
       "internal_dependencies": [
+        "shs/app/context.hpp",
         "shs/camera/light_camera.hpp",
         "shs/geometry/aabb.hpp",
         "shs/render/frame/frame_params.hpp",
@@ -7236,12 +7255,14 @@
       "direct_dependencies": [
         "algorithm",
         "cmath",
+        "shs/app/context.hpp",
         "shs/render/frame/frame_params.hpp",
         "shs/render/targets/rt_handle.hpp",
         "shs/render/targets/storage/rt_registry.hpp",
         "shs/task/parallel_for.hpp"
       ],
       "internal_dependencies": [
+        "shs/app/context.hpp",
         "shs/render/frame/frame_params.hpp",
         "shs/render/targets/rt_handle.hpp",
         "shs/render/targets/storage/rt_registry.hpp",
@@ -8221,6 +8242,7 @@
       "tracked_consumers": [
         "cpp-folders/src/exps-gpu-renderer/exp-rendering-techniques/demo_renderpath_bridge.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/domains/renderpath/renderpath.command.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/renderpath.event.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/renderpath.gateway.hpp"
       ],
       "build_target": "review-values-vs-aggregate"
@@ -8268,11 +8290,13 @@
         "compare",
         "cstdint",
         "shs/render/frame/technique_mode.hpp",
+        "shs/renderpath/renderpath.command.hpp",
         "shs/renderpath/renderpath.contract.hpp",
         "variant"
       ],
       "internal_dependencies": [
         "shs/render/frame/technique_mode.hpp",
+        "shs/renderpath/renderpath.command.hpp",
         "shs/renderpath/renderpath.contract.hpp"
       ],
       "external_dependencies": [
