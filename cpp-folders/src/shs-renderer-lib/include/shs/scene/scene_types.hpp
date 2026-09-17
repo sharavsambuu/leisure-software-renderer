@@ -14,12 +14,13 @@
 #include <vector>
 #include <glm/glm.hpp>
 
+#include "shs/lighting/light_set.hpp"
+#include "shs/resources/storage/resource_registry.hpp"
+#include "shs/sky/sky_model.hpp"
+
 namespace shs
 {
     // Орчин үеийн пасс болон пайплайнуудын ашиглах ертөнцийн үндсэн бүтэц.
-    class ISkyModel;
-    class ResourceRegistry;
-    struct LightSet;
 
     // ------------------------------------------
     // Хөнгөн handle-ууд (demo бүр өөрийн asset системтэй байж болно)

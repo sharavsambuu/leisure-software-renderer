@@ -5619,7 +5619,8 @@
         "cpp-folders/src/exps-gpu-renderer/exp-rendering-techniques/demo_forward_classic_renderpath.cpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/domains/lighting/light_set.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/lighting/lighting.contract.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/pass_adapters.hpp"
+        "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/pass_adapters.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/scene/scene_types.hpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -8630,6 +8631,7 @@
         "cpp-folders/src/shs-renderer-lib/include/shs/resources/loaders/primitive_import.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/resources/resources.contract.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/scene/scene_resource_view.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/scene/scene_types.hpp",
         "cpp-folders/src/shs-renderer-lib/tests/scene_identity_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
@@ -10307,9 +10309,16 @@
       "direct_dependencies": [
         "cstdint",
         "glm/glm.hpp",
+        "shs/lighting/light_set.hpp",
+        "shs/resources/storage/resource_registry.hpp",
+        "shs/sky/sky_model.hpp",
         "vector"
       ],
-      "internal_dependencies": [],
+      "internal_dependencies": [
+        "shs/lighting/light_set.hpp",
+        "shs/resources/storage/resource_registry.hpp",
+        "shs/sky/sky_model.hpp"
+      ],
       "external_dependencies": [
         "cstdint",
         "glm/glm.hpp",
@@ -10566,6 +10575,7 @@
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/include/shs/domains/sky/sky_model.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/skybox_renderer.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/scene/scene_types.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/sky/cubemap_sky.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/sky/procedural_sky.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/sky/sky.contract.hpp"
@@ -10770,8 +10780,10 @@
     "scene": [
       "app",
       "geometry",
+      "lighting",
       "render",
-      "resources"
+      "resources",
+      "sky"
     ],
     "sky": [
       "resources"
