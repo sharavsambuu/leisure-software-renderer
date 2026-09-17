@@ -22,6 +22,30 @@ int main()
             result.error().stage != VulkanRecordingStage::Prerequisite ||
             result.error().command != VulkanCommandKind::None) return 1;
     }
+    RHIBufferDesc buffer_desc{};
+    buffer_desc.size_bytes = 64;
+    buffer_desc.usage = RHIBufferUsage_Vertex;
+    RHIImageDesc image_desc{};
+    image_desc.width = image_desc.height = 8;
+    image_desc.format = RHIFormat::RGBA8_UNorm;
+    image_desc.usage = RHIImageUsage_ColorAttachment;
+    const auto old_buffer = backend.create_buffer(buffer_desc);
+    const auto old_image = backend.create_image(image_desc);
+    if (!old_buffer || !old_image) return 1;
+    backend.shutdown();
+    backend.shutdown();
+    if (backend.resource_stats().live_buffers || backend.resource_stats().live_images ||
+        backend.create_buffer(buffer_desc) || backend.create_image(image_desc))
+    {
+        std::fprintf(stderr, "FAIL: shutdown retained retired resource records\n");
+        return 1;
+    }
+    if (!backend.initialize_device()) return 1;
+    const auto new_buffer = backend.create_buffer(buffer_desc);
+    const auto new_image = backend.create_image(image_desc);
+    if (new_buffer <= old_buffer || new_image <= old_image ||
+        backend.create_buffer(buffer_desc) != new_buffer || backend.create_image(image_desc) != new_image)
+        return 1;
     backend.shutdown();
 
     VulkanDeviceManager device;

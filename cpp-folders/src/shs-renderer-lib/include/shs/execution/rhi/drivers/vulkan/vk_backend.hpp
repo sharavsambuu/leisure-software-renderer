@@ -29,6 +29,8 @@
 #include "shs/execution/rhi/drivers/vulkan/vk_pipelines.hpp"
 #include "shs/execution/rhi/drivers/vulkan/vk_commands.hpp"
 #include "shs/execution/rhi/drivers/vulkan/vk_sync.hpp"
+#include "shs/execution/rhi/drivers/vulkan/vk_submit.hpp"
+#include "shs/execution/rhi/drivers/vulkan/vk_readback.hpp"
 #include "shs/execution/rhi/drivers/vulkan/vk_offscreen.hpp"
 #include "shs/execution/rhi/drivers/vulkan/vk_offscreen_pipeline.hpp"
 
@@ -266,7 +268,7 @@ namespace shs
             return device_.initialize(desc);
         }
 
-        void shutdown() { destroy_gpu_objects(); device_.shutdown(); }
+        void shutdown() { reset_offscreen(); destroy_gpu_objects(); device_.shutdown(); }
 
         // ---- event-driven GPU object creation (arch §4 rule 3) ------------
         // Called only from PATH_COMPILED / resource-plan handling. Identical
@@ -283,6 +285,60 @@ namespace shs
         {
             return resources_.intern_image(d, [this](uint64_t id, const RHIImageDesc& im) {
                 return create_image_gpu(id, im);
+            });
+        }
+
+        // Explicit single-target preparation. Reset before resize; callers must
+        // retire borrowed command buffers before reset/shutdown. Synchronous
+        // execute_offscreen itself never leaves successful work in flight.
+        [[nodiscard]] std::expected<uint64_t, VulkanExecutionFailure> prepare_offscreen(
+            const RHIImageDesc& image, const RHIGraphicsPipelineDesc& pipeline)
+        {
+            if (!device_ready() || offscreen_.framebuffer())
+                return std::unexpected(VulkanExecutionFailure{VulkanExecutionError::NotPrepared});
+            if (!VulkanOffscreenPass::supports(image) || !VulkanOffscreenPipeline::supports(pipeline) ||
+                !(image.usage & RHIImageUsage_TransferSrc))
+                return std::unexpected(VulkanExecutionFailure{VulkanExecutionError::InvalidDescriptor});
+            offscreen_target_ = create_image(image);
+            if (!offscreen_target_ || !offscreen_.initialize(device_.device(), offscreen_target_,
+                    *images_.find(offscreen_target_), image))
+            {
+                reset_offscreen();
+                return std::unexpected(VulkanExecutionFailure{VulkanExecutionError::CreationFailed});
+            }
+            const auto id = pipelines_.intern_graphics(pipeline, [&](uint64_t key, const auto& desc) {
+                return graphics_.initialize(key, desc, offscreen_);
+            });
+            if (!id || (!graphics_.pipeline() && !graphics_.initialize(id, pipeline, offscreen_)) ||
+                !readback_.initialize(device_, offscreen_.extent()))
+            {
+                reset_offscreen();
+                return std::unexpected(VulkanExecutionFailure{VulkanExecutionError::CreationFailed});
+            }
+            return id;
+        }
+
+        void reset_offscreen()
+        {
+            readback_.reset();
+            graphics_.reset();
+            offscreen_.reset();
+            offscreen_target_ = 0;
+        }
+        [[nodiscard]] uint64_t offscreen_target() const { return offscreen_target_; }
+
+        [[nodiscard]] std::expected<void, VulkanExecutionFailure> execute_offscreen(
+            std::span<const RHICmd> stream, std::span<uint8_t> rgba)
+        {
+            if (!offscreen_.framebuffer())
+                return std::unexpected(VulkanExecutionFailure{VulkanExecutionError::NotPrepared});
+            if (stream.empty() || !std::holds_alternative<RHICmdBeginPassDesc>(stream.front().payload) ||
+                !std::holds_alternative<RHICmdEndPassDesc>(stream.back().payload))
+                return std::unexpected(VulkanExecutionFailure{VulkanExecutionError::InvalidDescriptor});
+            return readback_.execute(*images_.find(offscreen_target_), rgba, [&](VkCommandBuffer command) {
+                VulkanCommandRecorder recorder{device_.device(), command, buffers_, images_,
+                    &pipelines_, &offscreen_, &graphics_};
+                return record_commands(stream, recorder);
             });
         }
 
@@ -303,6 +359,13 @@ namespace shs
         // queue compatibility and external synchronization. A non-null handle
         // alone cannot establish Vulkan recording state or device ownership.
         void set_command_buffer(VkCommandBuffer cmd) { command_buffer_ = cmd; }
+
+        // Explicit submission, separate from frame-slot bookkeeping. The caller
+        // must have ended recording on the borrowed command buffer.
+        [[nodiscard]] std::expected<void, VulkanSubmitFailure> submit_commands_sync()
+        {
+            return vulkan_submit_sync(device_.device(), device_.graphics_queue(), command_buffer_);
+        }
 
         // ---- IRenderBackend ------------------------------------------------
 
@@ -418,6 +481,9 @@ namespace shs
                     if (VkDeviceMemory* m = image_memory_.find(id)) vkFreeMemory(device_.device(), *m, nullptr);
                 }
             }
+            buffers_.clear(); images_.clear();
+            buffer_memory_.clear(); image_memory_.clear();
+            resources_.clear(); pipelines_.clear();
             live_buffer_ids_.clear();
             live_image_ids_.clear();
             command_buffer_ = VK_NULL_HANDLE;
@@ -427,6 +493,10 @@ namespace shs
         VulkanResourceRegistry resources_;
         VulkanPipelineCache pipelines_;
         VulkanFrameSync frame_sync_;
+        VulkanOffscreenPass offscreen_;
+        VulkanOffscreenPipeline graphics_;
+        VulkanReadback readback_;
+        uint64_t offscreen_target_ = 0;
         VulkanBufferPool buffers_{std::pmr::get_default_resource()};
         VulkanImagePool images_{std::pmr::get_default_resource()};
         VulkanMemoryPool buffer_memory_{std::pmr::get_default_resource()};

@@ -171,6 +171,24 @@ resource lifetimes remain at the execution edge.
   submission/readback, injected Vulkan failures, and software parity remain open.
   Backend shutdown cache invalidation also needs coverage before device recreation
   is exposed: existing registries currently retain retired resource records.
+  — PARTIAL 2026-09-17 (backend integration): `VulkanRenderBackend` now exposes
+  explicit `prepare_offscreen` / `execute_offscreen` / `reset_offscreen` for the
+  fixed procedural ABI. The driver owns command pool/buffer and host-visible
+  staging allocation; submission waits on a fence and readback invalidates the
+  mapped allocation (including noncoherent memory). Tests compare the complete
+  backend output against the independent driver fixture and known pixels, repeat
+  execution, reject malformed streams/output sizes, recover after rejection,
+  resize, and shutdown/recreate. Shutdown clears resource/pipeline lookups without
+  recycling ID counters. An isolated real-device regression failed on the old
+  shutdown implementation and passed with the fix; buffer/image IDs increase
+  across recreation. Full build and validation-enabled lavapipe CTest: 18/18.
+  This closes reusable backend submission/readback and shutdown-invalidation
+  coverage for this synchronous slice, not all G2/G3 acceptance. Images remain
+  registry-owned until shutdown; reset retires attachment/pipeline/transfer owners.
+  Still open: vertex/index upload and consumed-geometry proof, injected Vulkan
+  allocation/submission failures, broader preparation failure cleanup, and G4.
+  The concrete Vulkan backend API is tested; generic factory-interface execution
+  and asynchronous retirement are not claimed.
 - [ ] **G4 Library SW/Vulkan equivalence** — run the same minimal scene/policy
   through actual library execution paths with documented per-output tolerances
   and independent known-answer checks. Wire portable CTest gates and retain

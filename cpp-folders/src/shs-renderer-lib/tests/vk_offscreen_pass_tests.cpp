@@ -243,18 +243,12 @@ int main()
     vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT,
         0, 1, &host_barrier, 0, nullptr, 0, nullptr);
     CHECK(vkEndCommandBuffer(cmd) == VK_SUCCESS);
-    VkFenceCreateInfo fence_ci{};
-    fence_ci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    CHECK(vkCreateFence(vk, &fence_ci, nullptr, &objects.fence) == VK_SUCCESS);
-    VkSubmitInfo submit{};
-    submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submit.commandBufferCount = 1;
-    submit.pCommandBuffers = &cmd;
-    const auto submitted = vkQueueSubmit(device.value.graphics_queue(), 1, &submit, objects.fence);
-    const auto waited = submitted == VK_SUCCESS ? vkWaitForFences(vk, 1, &objects.fence, VK_TRUE, UINT64_MAX) : submitted;
-    // Before any CHECK can unwind graphics/pass owners, retire submitted work.
-    const auto idle = vkDeviceWaitIdle(vk);
-    CHECK(submitted == VK_SUCCESS && waited == VK_SUCCESS && idle == VK_SUCCESS);
+    const auto missing_command = vulkan_submit_sync(vk, device.value.graphics_queue(), VK_NULL_HANDLE);
+    CHECK(!missing_command && missing_command.error().stage == VulkanSubmitStage::Prerequisite);
+    VulkanRenderBackend uninitialized;
+    const auto missing_device = uninitialized.submit_commands_sync();
+    CHECK(!missing_device && missing_device.error().stage == VulkanSubmitStage::Prerequisite);
+    CHECK(vulkan_submit_sync(vk, device.value.graphics_queue(), cmd));
     void* mapped = nullptr;
     CHECK(vkMapMemory(vk, objects.readback_memory, 0, VK_WHOLE_SIZE, 0, &mapped) == VK_SUCCESS);
     std::vector<uint8_t> pixels(static_cast<uint8_t*>(mapped), static_cast<uint8_t*>(mapped) + 32 * 32 * 4);
@@ -267,6 +261,54 @@ int main()
 #ifdef SHS_OFFSCREEN_SHADER_DIR
     CHECK(pixel_is(16, 12, 255, 64, 0, 255));
     CHECK(pixel_is(16, 28, 0, 0, 0, 0));
+    VulkanRenderBackend backend;
+    CHECK(backend.initialize_device());
+    auto prepared = backend.prepare_offscreen(desc, pd);
+    CHECK(prepared);
+    CHECK(!backend.prepare_offscreen(desc, pd));
+    const RHICmd backend_stream[] = {rhi_cmd_begin_pass({backend.offscreen_target(), 0, true, false}),
+        rhi_cmd_bind_pipeline(*prepared), rhi_cmd_draw({3}), rhi_cmd_end_pass()};
+    std::vector<uint8_t> backend_pixels(pixels.size(), 123);
+    CHECK(backend.execute_offscreen(backend_stream, backend_pixels));
+    CHECK(backend_pixels == pixels);
+    CHECK(backend.execute_offscreen(backend_stream, backend_pixels));
+    CHECK(backend_pixels == pixels);
+    const RHICmd malformed[] = {backend_stream[0], rhi_cmd_draw({3}), rhi_cmd_end_pass()};
+    auto failed = backend.execute_offscreen(malformed, backend_pixels);
+    CHECK(!failed && failed.error().code == VulkanExecutionError::RecordingFailed);
+    CHECK(failed.error().recording.code == VulkanRecordingError::MissingBinding);
+    CHECK(failed.error().recording.command_index == 1);
+    CHECK(backend_pixels == pixels);
+    CHECK(!backend.execute_offscreen({}, backend_pixels));
+    CHECK(!backend.execute_offscreen(backend_stream, std::span<uint8_t>(backend_pixels).first(1)));
+    CHECK(backend.execute_offscreen(backend_stream, backend_pixels));
+    backend.reset_offscreen();
+    CHECK(!backend.execute_offscreen(backend_stream, backend_pixels));
+    auto resized = desc;
+    resized.width = 64;
+    resized.height = 64;
+    prepared = backend.prepare_offscreen(resized, pd);
+    CHECK(prepared);
+    const RHICmd resized_stream[] = {rhi_cmd_begin_pass({backend.offscreen_target(), 0, true, false}),
+        rhi_cmd_bind_pipeline(*prepared), rhi_cmd_draw({3}), rhi_cmd_end_pass()};
+    backend_pixels.resize(64 * 64 * 4);
+    CHECK(backend.execute_offscreen(resized_stream, backend_pixels));
+    CHECK(backend_pixels[(24 * 64 + 32) * 4] == 255);
+    CHECK(backend_pixels[(24 * 64 + 32) * 4 + 1] == 64);
+    CHECK(backend_pixels[0] == 0 && backend_pixels[3] == 0);
+    const auto retired_target = backend.offscreen_target();
+    backend.shutdown();
+    CHECK(backend.resource_stats().live_images == 0);
+    CHECK(backend.create_image(resized) == 0); // never return a retired cache hit
+    CHECK(backend.initialize_device());
+    prepared = backend.prepare_offscreen(resized, pd);
+    CHECK(prepared && backend.offscreen_target() != retired_target);
+    const RHICmd recreated_stream[] = {rhi_cmd_begin_pass({backend.offscreen_target(), 0, true, false}),
+        rhi_cmd_bind_pipeline(*prepared), rhi_cmd_draw({3}), rhi_cmd_end_pass()};
+    CHECK(backend.execute_offscreen(recreated_stream, backend_pixels));
+    CHECK(!backend.execute_offscreen(resized_stream, backend_pixels));
+    backend.shutdown();
+    std::fprintf(stderr, "PASS: backend synchronous execution, repeated readback, rejection recovery and resize\n");
     std::fprintf(stderr, "PASS: submitted triangle, fence completion, RGBA8 known pixels\n");
 #else
     CHECK(pixel_is(16, 12, 0, 0, 0, 0));

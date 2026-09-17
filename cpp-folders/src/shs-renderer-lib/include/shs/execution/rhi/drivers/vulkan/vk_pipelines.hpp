@@ -111,6 +111,12 @@ namespace shs
             return hash ? compute_.find(*hash) : nullptr;
         }
 
+        void clear()
+        {
+            shader_modules_.clear(); graphics_.clear(); compute_.clear();
+            graphics_hash_by_id_.clear(); compute_hash_by_id_.clear();
+        }
+
         [[nodiscard]] const VulkanPipelineStats& stats() const { return stats_; }
 
     private:

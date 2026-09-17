@@ -181,6 +181,14 @@ namespace shs
         [[nodiscard]] const VulkanResourceRecord* find_image(uint64_t id) const { return images_by_id_.find(id); }
         [[nodiscard]] const VulkanResourceRecord* find_sampler(uint64_t id) const { return samplers_by_id_.find(id); }
 
+        // Retire lookup records, but never recycle stable IDs or lifetime counters.
+        void clear()
+        {
+            buffers_.clear(); images_.clear(); samplers_.clear();
+            buffers_by_id_.clear(); images_by_id_.clear(); samplers_by_id_.clear();
+            stats_.live_buffers = stats_.live_images = stats_.live_samplers = 0;
+        }
+
         [[nodiscard]] const VulkanResourceStats& stats() const { return stats_; }
 
     private:
