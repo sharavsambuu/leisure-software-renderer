@@ -14,6 +14,7 @@
   patterns (Command, DDD, monads, sagas, DbC).
 - `domain_value_objects.md` — the "Domain POD" → **Domain Value Object** rename: the history, the DDD meaning, and why bounded contexts make the term real. Law: `docs/spec/domain_value_object_law.md` (2026-09-17).
 - `cpp26_contract_guardrails.md` — what C++26 contracts are, why they fit DVOs (invariants at module edges, not in types), the C++23 emulation bridge, and the mechanical C++26 switch path.
+- `../backlog/cpp26_refactoring_candidates.md` — standing (unratified) list of C++26-era refactoring candidates for when wide-adopted compilers land: contracts via the runbook, `std::expected` vs the house Result, reflection vs hand-written pod/enum machinery, and explicit out-of-scope items.
 
 ## Provenance (verbatim, never edit)
 

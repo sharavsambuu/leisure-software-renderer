@@ -88,8 +88,15 @@ acceptable (it is not — any byte difference aborts the run).
 
 ## 6. Bookkeeping after execution
 
+## 6. Bookkeeping after execution
+
 - Mark C4.3 DONE in the adoption todo with the commit hash.
 - Re-snapshot the §7.1 toolchain table (Clang status may have moved by then).
 - Record the P4 standing item as DONE in the DVO proposal.
 - Standing Rule 7.1 deviations review is triggered by the first true dst/src
   job entry, not by this run.
+- Re-open `cpp26_refactoring_candidates.md` (same directory): the baseline
+  bump is the trigger for re-checking its candidates — reflection,
+  expansion statements, constexpr exceptions, and `std::expected` all open
+  in the GCC 16+ window; each needs its own proposal + ruling.
+
