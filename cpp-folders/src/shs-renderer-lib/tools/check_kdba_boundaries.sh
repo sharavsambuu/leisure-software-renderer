@@ -43,12 +43,42 @@ check_pattern 'dynamic_cast[[:space:]]*<' "planner headers use dynamic_cast poli
 
 # --- P0.5 pod-first tree restructure checks ---
 
+# Named-module pilot: a strict leaf dependency allowlist, not a directory exemption.
+# Expand only alongside the manifest, tests and the owning module's boundary rules.
+canonical_camera="${lib_root}/include/shs/camera/convention.hpp"
+legacy_camera="${domains_dir}/camera/convention.hpp"
+if [[ ! -f "${canonical_camera}" ]] || ! cmp -s "${legacy_camera}" <(printf '%s\n' \
+  '#pragma once' '' \
+  '// Compatibility include: definitions live in the camera-owned canonical header.' \
+  '#include "shs/camera/convention.hpp"'); then
+  echo "[kdba-boundary] FAIL: camera convention compatibility mapping drift"
+  exit 1
+fi
+camera_dependencies="$(grep -E '^[[:space:]]*#[[:space:]]*include' "${canonical_camera}" || true)"
+if [[ "${camera_dependencies}" != $'#include <glm/glm.hpp>\n#include <glm/gtc/matrix_transform.hpp>' ]] || \
+   grep -qE 'rand\(|srand\(|std::chrono|std::time\(|getenv\(|random_|SDL_|fopen\(' "${canonical_camera}"; then
+  echo "[kdba-boundary] FAIL: canonical camera convention is not a pure GLM leaf"
+  exit 1
+fi
+for header in $(find "${lib_root}/include/shs/camera" -type f | sort); do
+  if [[ "${header}" != "${canonical_camera}" ]]; then
+    echo "[kdba-boundary] FAIL: unregistered canonical camera header ${header}"
+    exit 1
+  fi
+done
+if grep -R -nF 'shs/domains/camera/convention.hpp' "${lib_root}/include"; then
+  echo "[kdba-boundary] FAIL: library headers use retired camera convention path"
+  exit 1
+fi
+echo "[kdba-boundary] OK: canonical camera leaf and single-hop compatibility header"
+
 # Facade sanity: every migration facade must forward to exactly one existing
 # canonical header, which must not be the facade itself (guards self-include).
 facade_count=0
 for facade in $(find "${lib_root}/include/shs" -name '*.hpp' | sort); do
   rel="${facade#"${lib_root}/include/"}"
   case "${rel}" in
+    shs/camera/convention.hpp) continue ;; # validated above, never a facade
     shs/domains/*|shs/execution/*|shs/core/*|shs/memory/*|shs/containers/*|shs/rhi/*) continue ;;
   esac
   facade_count=$((facade_count + 1))

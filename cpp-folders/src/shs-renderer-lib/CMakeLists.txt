@@ -198,6 +198,22 @@ if(SHS_RENDERER_BUILD_TESTS)
         target_compile_options(shs_renderer_tests PRIVATE -Wall -Wextra -Wpedantic)
     endif()
 
+    # Canonical/compatibility include ordering must preserve one definition.
+    foreach(order IN ITEMS canonical legacy)
+        set(camera_include_target shs_renderer_camera_include_${order}_tests)
+        add_executable(${camera_include_target} tests/camera_include_compatibility_tests.cpp)
+        target_link_libraries(${camera_include_target} PRIVATE shs::renderer-values)
+        if(order STREQUAL "legacy")
+            target_compile_definitions(${camera_include_target} PRIVATE SHS_TEST_LEGACY_INCLUDE_FIRST=1)
+        endif()
+        if(MSVC)
+            target_compile_options(${camera_include_target} PRIVATE /W4)
+        else()
+            target_compile_options(${camera_include_target} PRIVATE -Wall -Wextra -Wpedantic)
+        endif()
+        add_test(NAME ${camera_include_target} COMMAND ${camera_include_target})
+    endforeach()
+
     # P1 renderpath pod tests: pure value tests, frame-arena events, no
     # platform links (only shs::renderer-values + glm headers).
     add_executable(shs_renderer_renderpath_tests

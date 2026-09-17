@@ -68,10 +68,17 @@ Concretely:
    closed type (Constitution II §6.1/6.2).
 2. **Kleisli arrows are the only state transitions (KDBA, 2026-09-16)** — every transition is a composition of atomic arrows `A -> expected<B, DomainError>` via `.and_then()` / `.transform()` / `.or_else()`; switch-case gateway monoliths are forbidden. Deterministic (Rule 4.1); side effects exist only at execution edges. Terminology (2026-09-16): a pod's **gateway** is its *public Kleisli gateway* — the single assembly point of the arrow chain returning `expected<Step{NextState, Events}, ClosedEnumError>` (§6.2 `*.gateway.hpp`); the word never denotes a `switch(action.type)` function, which is precisely the forbidden monolith.
 3. **Cross-domain interaction is Commands in, Events out (KDBA gateway)** (Rule 8.1, Rule 11) — no direct POD writes across boundaries; sagas compose sub-domain Kleisli gateways synchronously inside an orchestrator pod, with immutable Domain Events as egress.
-4. **Physical layout mirrors the law** — domain logic lives in `shs/domains/<pod>/`
-   (library) or `domains/<pod>/` (demos); execution edges live in the edge zone
-   (`shs/execution/…`); primitives in `shs/core|memory|containers`. The structure
-   linter enforces this mechanically (roadmap P0.5/P5).
+4. **Physical layout mirrors ownership** — the library is migrating from
+   `shs/domains/<pod>/` and `shs/execution/…` to named capability modules under
+   `shs/<owner>/`, with execution/adapters local to their owner. Demo layout is
+   unchanged. During migration, only explicitly mapped and boundary-tested
+   canonical headers may leave the legacy zones; old public includes forward
+   to the single canonical definition. The first approved pilot is
+   `shs/domains/camera/convention.hpp` -> `shs/camera/convention.hpp`.
+   This layout amendment (2026-09-17) overrides older library-path mandates,
+   not Core 4, purity, domain-write isolation, or orchestrator requirements.
+   Unmigrated code retains existing enforcement; a directory rename grants no
+   exception. See the engine domain separation migration backlog.
 5. **Orchestrators are pods (KDBA saga)** — a multi-domain workflow is coordinated by
    an orchestrator that is itself a Domain Pod with its own contract, actions,
    gateway, and events, composing sub-domain Kleisli gateways (`reserve:and_then(charge)`)

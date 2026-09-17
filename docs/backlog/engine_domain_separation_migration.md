@@ -1,6 +1,32 @@
 # Engine-ready module boundaries: proposal and migration backlog
 
-Status: proposed target architecture; implementation not started.
+Status: migration started; camera convention compatibility pilot implemented.
+
+## Pilot evidence (2026-09-17)
+
+- [x] Move the stateless camera convention implementation to its named owner;
+  keep a single-hop old-path forwarding header and preserve every public symbol.
+- [x] Update all four library include consumers and amend the governing layout
+  rule without relaxing Core 4 or state/side-effect ownership requirements.
+- [x] Add two headless CTest consumers (old/new include orders) with independent
+  LH and depth-range known answers. Canonical implementation is byte-identical
+  to the pre-migration header.
+- [x] Enforce the canonical leaf's exact GLM include dependencies, compatibility
+  mapping and no legacy include use in library headers. An isolated negative
+  fixture injecting an app dependency was rejected by the boundary gate.
+- [x] Baseline full configured build + 18/18 CTest; post-move reconfigure/full
+  build + 20/20 CTest including the boundary gate. Linux Release, static library,
+  cached vcpkg toolchain, lavapipe and Vulkan validation enabled. No fresh-cache,
+  installed-package, alternate-platform or shared-library claim is made.
+
+The [machine-readable manifest](engine_header_migration_manifest.json) covers
+this pilot only, not the full tree. Step 1 remains partial: complete header/DAG
+inventory, consumer/SDK matrix and broad ownership decisions are still pending.
+This leaf pilot intentionally precedes completing that inventory to validate
+compatibility/enforcement mechanics without changing subsystem behavior.
+No full module migration or step 2 completion is claimed. The narrowly pinned
+boundary rule must be generalized with tested manifests before more headers move.
+
 Date: 2026-09-17.
 Scope: `/home/sharavsambuu/src/dev/leisure-software-renderer/cpp-folders/src/shs-renderer-lib` and its repository consumers.
 

@@ -13,7 +13,7 @@
 
 #include "shs/domains/camera/camera_math.hpp"
 #include "shs/domains/camera/camera_rig.hpp"
-#include "shs/domains/camera/convention.hpp"
+#include "shs/camera/convention.hpp"
 #include "shs/domains/camera/follow_camera.hpp"
 #include "shs/domains/camera/free_camera.hpp"
 #include "shs/domains/camera/light_camera.hpp"

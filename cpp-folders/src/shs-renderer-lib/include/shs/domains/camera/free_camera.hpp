@@ -15,7 +15,7 @@
 #include <glm/gtc/constants.hpp>
 
 #include "shs/domains/camera/camera_math.hpp"
-#include "shs/domains/camera/convention.hpp"
+#include "shs/camera/convention.hpp"
 
 namespace shs
 {
