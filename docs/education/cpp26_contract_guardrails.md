@@ -215,5 +215,90 @@ the C++20→C++23 bump):
 1. The adoption proposal: `docs/backlog/contract_guardrails_adoption_proposal.md`.
 2. The adoption todo: `docs/backlog/contract_guardrails_adoption_todo.md`.
 3. `domain_value_objects.md` — why the invariants belong to gateways (DVOs).
-4. cppreference "C++26 compiler support" — track GCC 16/17 and Clang progress
+4. §9 below — what placing real annotations taught us (read before scaling).
+5. cppreference "C++26 compiler support" — track GCC 16/17 and Clang progress
    before any baseline ruling.
+
+## 9. Implementation lessons (W-A/W-B pilot, 2026-09-17)
+
+Everything above was written before a single annotation existed. The C2
+renderpath pilot (gateway commit rim, compiler transition assert, wait-free
+span rim) was the first time the bridge, the placement law, and negative-test
+twins were exercised against real domain code. These are the things that were
+only learned by doing:
+
+### 9.1 A placement law is only real when a checker enforces it
+
+The ratified rule ("edge contracts at seams, value contracts in leaves") was
+agreed in a retro — but the moment annotations were written by hand, two
+header files immediately disagreed with the law's intent. A prose rule does
+not survive manual application; it needs a text-scan gate wired into the
+existing boundary script, plus a negative fixture proving the checker fires.
+**Lesson**: every new constitutional rule ships with (a) a mechanical gate,
+(b) a negative test, (c) a one-sentence amendment to the canonical law text —
+all in the same commit.
+
+### 9.2 Distinguish the macro *definition site* from *use sites*
+
+The first version of the placement checker flagged the bridge header itself
+(`core/contract_guardrails.hpp`) as a violation, because the macros'
+definitions textually live there. The law governs where contracts are
+*used*, not where they are *defined*. Any textual scan of a codebase needs an
+explicit exemption list for definition sites, or the tool polices its own
+foundation.
+
+### 9.3 Header roles are per-kind, not per-header
+
+The naive classifier was "gateway/contract headers = edge macros, everything
+else = value macros". Wrong: a `*.contract.hpp` legitimately hosts *both* —
+the edge macros of the domain seam it documents and the value-level
+`SHS_CONTRACT_ASSERT` of the DVOs it constrains. The working model tracks a
+separate legality flag per macro kind per header class. Simple two-category
+roles collapse the first time a real header plays both parts.
+
+### 9.4 Assert the *dependent* direction of a lookup table
+
+The compiler transition table maps `technique_mode → render_technique` and is
+many-to-one (several modes produce the same technique). Asserting
+`mode_of(technique) == technique_mode` fires false positives on every
+collapsing entry; asserting `table[mode] == plan.technique` never does. When
+an invariant references a mapping, assert in the direction the mapping is
+actually written — the inverse of a many-to-one table is not a function.
+
+### 9.5 Moving an invariant's table can force a vocabulary move
+
+Giving the compiler a `SHS_CONTRACT_ASSERT` on the transition table exposed
+that the table lived in a higher-tier header (`render_path_presets.hpp`),
+while the asserting compiler could not include it without a cycle. The fix
+was to move the *vocabulary* (the table) to the pure-leaf header
+(`render_path_recipe.hpp`) where it belonged all along. Contracts act as a
+ratchet: once an invariant is stated where the code runs, the supporting
+tables migrate to the tier that can see them.
+
+### 9.6 Isolate the hand-break in negative tests
+
+The first "commit a hand-broken plan" test never fired its postcondition —
+because *another* compatibility rule (shadow-map pass required when shadows
+enabled) rejected the plan upstream, so the commit rim was never reached and
+the intended violation was masked. A negative test must produce exactly one
+hand-break: relax every unrelated rule in the fixture so the only path to
+rejection is the invariant under test. A green negative test that fires for
+the wrong reason is worth less than no test.
+
+### 9.7 Observe the handler; never depend on process death
+
+The negative twins install a capture handler and assert
+`kind + expression-text` after each violation. This survives both build twins
+(enforced and assume) and pins the *semantics* of the annotation, not just
+"something aborted". It also documents the expected violation at the test
+site — a readable spec of what each rim guarantees.
+
+### 9.8 Record deviations instead of force-fitting annotations
+
+Rule 7.1's "sizes-equal" half had no dst/src span pair anywhere in the pod —
+so only the non-overlap half was annotated, and the gap was written into the
+todo with a retro trigger ("place it when the first true job entry lands").
+Forcing a synthetic site to "complete" the rule would have created a fake
+contract — worse than a documented deviation, because fake contracts decay
+into noise that future readers stop trusting. Annotate what exists; schedule
+the rest.
