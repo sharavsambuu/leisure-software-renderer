@@ -11,29 +11,12 @@
 
 
 #include <cstdint>
+#include "shs/render/frame/backend_type.hpp"
 #include "shs/rhi/core/capabilities.hpp"
 
 namespace shs
 {
     struct Context;
-
-    enum class RenderBackendType : uint8_t
-    {
-        Software = 0,
-        OpenGL = 1,
-        Vulkan = 2
-    };
-
-    inline const char* render_backend_type_name(RenderBackendType type)
-    {
-        switch (type)
-        {
-            case RenderBackendType::Software: return "software";
-            case RenderBackendType::OpenGL: return "opengl";
-            case RenderBackendType::Vulkan: return "vulkan";
-        }
-        return "unknown";
-    }
 
     struct RenderBackendFrameInfo
     {

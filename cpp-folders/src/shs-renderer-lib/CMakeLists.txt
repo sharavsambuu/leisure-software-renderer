@@ -191,6 +191,10 @@ if(SHS_RENDERER_BUILD_TESTS)
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/header_migration_tests.py")
     add_test(NAME shs_renderer_header_inventory_check
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/inventory_headers.py")
+    add_test(NAME shs_renderer_include_graph_tests
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/include_graph_tests.py")
+    add_test(NAME shs_renderer_include_graph_gate
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_include_graph.py")
 
     add_executable(shs_renderer_tests
         tests/core_tests.cpp

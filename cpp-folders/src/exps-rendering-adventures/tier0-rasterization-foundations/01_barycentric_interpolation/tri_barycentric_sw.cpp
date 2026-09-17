@@ -5,6 +5,7 @@
 //
 // Run: t0_tri_barycentric_sw [out.png]
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <string>

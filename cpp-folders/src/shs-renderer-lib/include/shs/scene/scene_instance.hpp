@@ -13,7 +13,6 @@
 #include <cstdint>
 #include <glm/glm.hpp>
 #include "shs/geometry/scene_shape.hpp"
-#include "shs/geometry/adapters/jolt/jolt_adapter.hpp"
 
 namespace shs
 {

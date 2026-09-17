@@ -155,6 +155,24 @@ commits; keep mechanical moves separate from semantic changes.
 - Step 1 remains PARTIAL: consumer/SDK matrix (fresh-cache, installed-package,
   shared builds) and the compiler matrix are not yet recorded; the manifest
   covers only reviewed pilots, as designed.
+- Matrix records (2026-09-17, this environment — GCC 13.3.0 only; clang
+  unavailable, so the compiler matrix is explicitly limited, not silently
+  skipped):
+  - Incremental (existing `cpp-folders/build`): configure + build + 24/24
+    CTest green with `VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation`
+    (no ICD overrides; lavapipe).
+  - Fresh-cache Release (`build-matrix-fresh`): configure, full build and
+    CTest from an empty cache — 24/24 CTest green. First run caught a real
+    latent IWYU bug the incremental build masked:
+    `tier0-rasterization-foundations/01_barycentric_interpolation/tri_barycentric_sw.cpp`
+    used `std::min/max({...})` without `#include <algorithm>` (the demo
+    chain pulls no shs headers, so the exposure is independent of the
+    relocations); fixed with an additive include, then re-run green.
+  - Shared build (`BUILD_SHARED_LIBS=ON`, `build-matrix-shared`): configure,
+    build and CTest — 24/24 CTest green; the library and all consumers link
+    and run as shared objects with no further changes.
+  - Not run here (unavailable in env): installed-package consumer, clang/msvc
+    compilers. Unsupported configurations are explicit, not silently skipped.
 - Inventory finding: no include cycles between the 220 headers and no missing
   internal includes; the proposed module mapping still has one cross-module
   cycle (`proposed_module_cycles` in the inventory) driven by execution-zone
@@ -202,6 +220,52 @@ commits; keep mechanical moves separate from semantic changes.
   `domains/`+`execution/` forwarder-folder removal (breaking), `rhi/`
   ownership decision (step 5), step-3 dependency-manifest enforcement
   replacing path-token gates, SDK/compiler matrices.
+
+### Status (2026-09-17, cycle decomposition + include-graph gate)
+
+- The 11-module proposed cycle decomposes into six module pairs (app↔scene,
+  geometry↔resources, geometry↔scene, lighting↔render, render↔resources,
+  renderpath↔rhi, resources↔sky). Enumerated every non-forwarder
+  `#include "shs/..."` edge pair; classified each by dependency direction:
+  most are direction-legal tier edges (adapter→value, execution→value,
+  value→value) rather than true violations.
+- Structural fixes landed (no symbol/ABI changes):
+  - `RenderBackendType` + `render_backend_type_name()` moved from
+    `shs/rhi/core/backend.hpp` to a new neutral value header
+    `shs/render/frame/backend_type.hpp` (rhi/core/backend.hpp includes it,
+    so all consumers compile unchanged); `renderpath/planning` headers
+    (`render_path_recipe.hpp`, `render_path_presets.hpp`) repointed — this
+    removes the value-tier `planning → rhi` back-edge that made
+    renderpath↔rhi a tier violation rather than just a module pair.
+  - `scene/scene_instance.hpp`: dropped an unused direct include of
+    `geometry/adapters/jolt/jolt_adapter.hpp` (scene_shape.hpp already
+    provides the Jolt-gated types it consumes).
+- New transitive include-graph gate `tools/check_include_graph.py`
+  (wired as CTest `shs_renderer_include_graph_gate` + fixture tests
+  `shs_renderer_include_graph_tests`): R1 no header-level include cycles
+  (forwarders resolved), R2 raw SDK includes only in integration-tier
+  headers (adapter paths, `rhi/`, driver-adjacent `renderpath/execution/vk_*`,
+  or `SHS_HAS_*`-feature-guarded files), R3 value-tier headers must not
+  reach adapter/SDK-bearing integration headers transitively. Self-test
+  covers negative fixtures (planted cycle, SDK in value file, value→adapter)
+  plus a non-vacuity guard asserting the gate sees the live tree
+  (220 canonical headers, 63 integration-tier).
+- Remaining tier violations are tracked, not hidden, in
+  `tools/engine_include_exceptions.json` (7 entries, each with reason +
+  tracking note): the umbrella/gateway re-export seams
+  (`scene.contract/gateway`, `resources.contract/gateway`),
+  `lighting/light_runtime.hpp`, `render/software/debug_draw.hpp` and
+  `renderpath/execution/pass_adapters.hpp`. The test suite fails on stale
+  exceptions (fixed-but-still-listed) and on malformed entries.
+- Validation: full build + 24/24 CTest green (22 existing + 2 new gate
+  tests; Vulkan tests on lavapipe with
+  `VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation`), header-migration
+  checker green, inventory regenerated (220 canonical headers).
+- Environment note: SDK/compiler matrix limited to what this machine
+  provides — GCC 13.3.0 only (clang not installed). Fresh-cache Release
+  configure/build/CTest and `BUILD_SHARED_LIBS=ON` runs recorded in the
+  step-1 matrix notes.
+
 
 ### 1. Inventory, decision record and baseline
 - [ ] Create a machine-readable old-header -> canonical-header manifest covering

@@ -15,11 +15,11 @@
 #include <vector>
 
 #include "shs/render/frame/technique_mode.hpp"
+#include "shs/render/frame/backend_type.hpp"
 #include "shs/lighting/light_culling_mode.hpp"
 #include "shs/renderpath/planning/render_path_recipe.hpp"
 #include "shs/renderpath/execution/render_path_registry.hpp"
 #include "shs/renderpath/planning/technique_profile.hpp"
-#include "shs/rhi/core/backend.hpp"
 
 namespace shs
 {

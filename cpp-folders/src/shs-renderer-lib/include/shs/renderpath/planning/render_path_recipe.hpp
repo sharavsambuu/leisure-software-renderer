@@ -14,9 +14,9 @@
 #include <vector>
 
 #include "shs/render/frame/technique_mode.hpp"
+#include "shs/render/frame/backend_type.hpp"
 #include "shs/renderpath/planning/pass_id.hpp"
 #include "shs/renderpath/execution/render_path_runtime_state.hpp"
-#include "shs/rhi/core/backend.hpp"
 
 namespace shs
 {

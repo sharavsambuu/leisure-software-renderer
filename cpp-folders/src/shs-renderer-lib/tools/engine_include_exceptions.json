@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "description": "Tracked value-tier -> adapter/SDK reachability exceptions for the include-graph gate (tools/check_include_graph.py). Every entry must carry a reason and a tracking note; unlisted violations fail the gate.",
+  "exceptions": [
+    {
+      "header": "lighting/light_runtime.hpp",
+      "rule": "R3-value-reaches-adapter",
+      "reason": "Ungated light-culling runtime that consumes Jolt shape adapters and scene integration types directly; not feature-guarded yet.",
+      "tracking": "Guard with SHS_HAS_JOLT or split pure light-selection math from Jolt-backed culling during the R5b lighting convergence."
+    },
+    {
+      "header": "render/software/debug_draw.hpp",
+      "rule": "R3-value-reaches-adapter",
+      "reason": "Software debug-draw path reaches Jolt debug-draw adapter transitively.",
+      "tracking": "Evaluate an observer/callback seam so render/software does not link adapter code; decide with the rhi-ownership work (migration step 5)."
+    },
+    {
+      "header": "renderpath/execution/pass_adapters.hpp",
+      "rule": "R3-value-reaches-adapter",
+      "reason": "Execution-tier pass adapter aggregation header (not vk_*-prefixed, so not auto-classified as driver-adjacent) includes SDK-bearing execution headers.",
+      "tracking": "Fold under the renderpath/execution vk_* driver-adjacent classification or split; revisit when rhi/vulkan ownership is decided (migration step 5)."
+    },
+    {
+      "header": "resources/resources.contract.hpp",
+      "rule": "R3-value-reaches-adapter",
+      "reason": "Discoverability umbrella re-exports loader/adapter includes (resource_import, primitive_import) alongside the value spine.",
+      "tracking": "Split adapter re-exports into an edge subfolder per the R5b convergence ruling recorded in the header comment."
+    },
+    {
+      "header": "resources/resources.gateway.hpp",
+      "rule": "R3-value-reaches-adapter",
+      "reason": "Gateway umbrella re-exports adapter includes together with value types.",
+      "tracking": "Same split ruling as resources/resources.contract.hpp."
+    },
+    {
+      "header": "scene/scene.contract.hpp",
+      "rule": "R3-value-reaches-adapter",
+      "reason": "Discoverability umbrella includes SHS_HAS_JOLT-gated integration headers (scene_elements, scene_instance) so the SDK leaks in when Jolt is enabled.",
+      "tracking": "Split integration re-exports from the pod-spine contract during the R5b scene convergence."
+    },
+    {
+      "header": "scene/scene.gateway.hpp",
+      "rule": "R3-value-reaches-adapter",
+      "reason": "Gateway umbrella includes SHS_HAS_JOLT-gated integration headers; same SDK leak path as the scene contract.",
+      "tracking": "Same split ruling as scene/scene.contract.hpp."
+    }
+  ]
+}
