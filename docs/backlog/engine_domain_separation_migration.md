@@ -251,12 +251,23 @@ commits; keep mechanical moves separate from semantic changes.
   plus a non-vacuity guard asserting the gate sees the live tree
   (220 canonical headers, 63 integration-tier).
 - Remaining tier violations are tracked, not hidden, in
-  `tools/engine_include_exceptions.json` (7 entries, each with reason +
-  tracking note): the umbrella/gateway re-export seams
-  (`scene.contract/gateway`, `resources.contract/gateway`),
+  `tools/engine_include_exceptions.json` (3 entries, down from 7): the
+  R5b umbrella split was executed — `scene/scene.contract.hpp` no longer
+  re-exports the Jolt-gated integration headers (`scene_elements`,
+  `scene_instance`) and `resources/resources.contract.hpp` no longer
+  re-exports the assimp adapter (`adapters/resource_import.hpp`); both
+  contracts (and their gateways, which include only the contracts plus
+  `<variant>`-only command/event headers) now compile with zero optional
+  SDKs (verified standalone: `g++ -fsyntax-only` with GLM only, no
+  Jolt/Assimp include paths). The adapters remain discoverable at their
+  canonical homes (`shs/scene/scene_elements.hpp`,
+  `shs/scene/scene_instance.hpp`, `shs/resources/adapters/resource_import.hpp`;
+  old-path `shs/domains/*/edge/` forwarders still map to them). Remaining
+  exceptions, each with reason + tracking note:
   `lighting/light_runtime.hpp`, `render/software/debug_draw.hpp` and
-  `renderpath/execution/pass_adapters.hpp`. The test suite fails on stale
-  exceptions (fixed-but-still-listed) and on malformed entries.
+  `renderpath/execution/pass_adapters.hpp` (all step-5 rhi-ownership
+  decisions). The test suite fails on stale exceptions
+  (fixed-but-still-listed) and on malformed entries.
 - Validation: full build + 24/24 CTest green (22 existing + 2 new gate
   tests; Vulkan tests on lavapipe with
   `VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation`), header-migration

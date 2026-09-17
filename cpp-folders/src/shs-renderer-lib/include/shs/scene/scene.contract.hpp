@@ -9,13 +9,15 @@
              Item/object/transform values + the to_render_items projection are
              the pod spine. Store CLASSES (SceneObjectSet, SceneElementSet,
              World) and ISystem are edge candidates — method-mutated tables
-             like the resource registries; they stay visible but migrate to an
-             edge subfolder with the R5b convergence (same ruling).
+             like the resource registries. R5b convergence executed: the
+             SHS_HAS_JOLT-gated integration headers (scene_elements.hpp,
+             scene_instance.hpp) are NO LONGER re-exported here — include
+             shs/scene/scene_elements.hpp / shs/scene/scene_instance.hpp
+             directly (old-path edge forwarders still map to them). The
+             contract now compiles with zero optional SDKs.
 */
 
 #include "shs/scene/scene_bindings.hpp"
-#include "shs/scene/scene_elements.hpp"
-#include "shs/scene/scene_instance.hpp"
 #include "shs/scene/scene_objects.hpp"
 #include "shs/scene/scene_types.hpp"
 

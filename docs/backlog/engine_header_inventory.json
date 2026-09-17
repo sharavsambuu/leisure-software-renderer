@@ -8408,8 +8408,7 @@
       ],
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/include/shs/domains/resources/edge/resource_import.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/resources/adapters/asset_manager.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/resources/resources.contract.hpp"
+        "cpp-folders/src/shs-renderer-lib/include/shs/resources/adapters/asset_manager.hpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -8604,7 +8603,6 @@
       ],
       "visibility": "public-include-tree",
       "direct_dependencies": [
-        "shs/resources/adapters/resource_import.hpp",
         "shs/resources/ibl.hpp",
         "shs/resources/loaders/primitive_import.hpp",
         "shs/resources/material.hpp",
@@ -8613,7 +8611,6 @@
         "shs/resources/texture.hpp"
       ],
       "internal_dependencies": [
-        "shs/resources/adapters/resource_import.hpp",
         "shs/resources/ibl.hpp",
         "shs/resources/loaders/primitive_import.hpp",
         "shs/resources/material.hpp",
@@ -10117,15 +10114,11 @@
       "visibility": "public-include-tree",
       "direct_dependencies": [
         "shs/scene/scene_bindings.hpp",
-        "shs/scene/scene_elements.hpp",
-        "shs/scene/scene_instance.hpp",
         "shs/scene/scene_objects.hpp",
         "shs/scene/scene_types.hpp"
       ],
       "internal_dependencies": [
         "shs/scene/scene_bindings.hpp",
-        "shs/scene/scene_elements.hpp",
-        "shs/scene/scene_instance.hpp",
         "shs/scene/scene_objects.hpp",
         "shs/scene/scene_types.hpp"
       ],
@@ -10308,7 +10301,6 @@
         "cpp-folders/src/shs-renderer-lib/include/shs/domains/scene/scene_elements.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/lighting/light_culling_runtime.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/lighting/light_runtime.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/scene/scene.contract.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/scene/scene_culling.hpp"
       ],
       "build_target": "review-values-vs-aggregate"
@@ -10341,8 +10333,7 @@
         "cpp-folders/src/exps-gpu-renderer/exp-plumbing/hello_occlusion_culling_vk.cpp",
         "cpp-folders/src/exps-gpu-renderer/exp-plumbing/hello_soft_shadow_culling_sw.cpp",
         "cpp-folders/src/exps-gpu-renderer/exp-plumbing/hello_soft_shadow_culling_vk.cpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/domains/scene/scene_instance.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/scene/scene.contract.hpp"
+        "cpp-folders/src/shs-renderer-lib/include/shs/domains/scene/scene_instance.hpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },

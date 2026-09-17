@@ -19,30 +19,6 @@
       "rule": "R3-value-reaches-adapter",
       "reason": "Execution-tier pass adapter aggregation header (not vk_*-prefixed, so not auto-classified as driver-adjacent) includes SDK-bearing execution headers.",
       "tracking": "Fold under the renderpath/execution vk_* driver-adjacent classification or split; revisit when rhi/vulkan ownership is decided (migration step 5)."
-    },
-    {
-      "header": "resources/resources.contract.hpp",
-      "rule": "R3-value-reaches-adapter",
-      "reason": "Discoverability umbrella re-exports loader/adapter includes (resource_import, primitive_import) alongside the value spine.",
-      "tracking": "Split adapter re-exports into an edge subfolder per the R5b convergence ruling recorded in the header comment."
-    },
-    {
-      "header": "resources/resources.gateway.hpp",
-      "rule": "R3-value-reaches-adapter",
-      "reason": "Gateway umbrella re-exports adapter includes together with value types.",
-      "tracking": "Same split ruling as resources/resources.contract.hpp."
-    },
-    {
-      "header": "scene/scene.contract.hpp",
-      "rule": "R3-value-reaches-adapter",
-      "reason": "Discoverability umbrella includes SHS_HAS_JOLT-gated integration headers (scene_elements, scene_instance) so the SDK leaks in when Jolt is enabled.",
-      "tracking": "Split integration re-exports from the pod-spine contract during the R5b scene convergence."
-    },
-    {
-      "header": "scene/scene.gateway.hpp",
-      "rule": "R3-value-reaches-adapter",
-      "reason": "Gateway umbrella includes SHS_HAS_JOLT-gated integration headers; same SDK leak path as the scene contract.",
-      "tracking": "Same split ruling as scene/scene.contract.hpp."
     }
   ]
 }
