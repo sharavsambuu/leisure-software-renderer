@@ -54,17 +54,22 @@ Source: `dvo_semantics_enforcement_proposal.md` P1 (ratified — owner go-ahead
 
 C2.1–C2.3 of the adoption todo, made P1-legal by W-A:
 
-- [ ] **C2.1 gateway batch-rim postconditions** — `SHS_POST` on the committed
-  plan in `renderpath.gateway.hpp`: pass chain non-empty; every pass entry
-  references a registered technique. Negative test: enforced twin installs a
-  custom violation handler, feeds a hand-broken plan, asserts kind/expression
-  capture.
-- [ ] **C2.2 transition-table asserts** — `SHS_CONTRACT_ASSERT` on the leg
-  invariants of the three closed-enum dispatches (`technique`/`reason`/
-  `toggle`). The W-C retro rules whether any decomposes into named arrows or
-  stays a sanctioned closed-enum value dispatch.
-- [ ] **C2.3 wait-free span preconditions** — `SHS_PRE` at the job entries
-  (Rule 7.1: spans non-overlapping, sizes equal) + negative test.
+- [x] **C2.1 gateway batch-rim postconditions** — DONE 2026-09-17: `SHS_POST`
+  on the committed plan in `try_swap_plan` (`renderpath.gateway.hpp`): pass
+  chain non-empty; every pass entry references a registered technique (pure
+  helper `renderpath_plan_pass_chain_registered`). Negative test: enforced
+  twin installs the capture handler, commits a hand-broken empty-chain plan
+  (compatibility rules relaxed), asserts kind/expression capture.
+- [x] **C2.2 transition-table asserts** — DONE 2026-09-17, P1-legal: the
+  technique-mode table moved to its pure-leaf home (`render_path_recipe.hpp`)
+  and the compiler asserts the plan/recipe table row
+  (`SHS_CONTRACT_ASSERT` in `render_path_compiler.hpp`, gate-8 allowlisted).
+  The `reason`/`toggle` legs stay INFO-tracked dispatches; the W-C retro rules
+  whether they decompose into named arrows or move to contract headers.
+- [x] **C2.3 wait-free span preconditions** — DONE 2026-09-17: `SHS_PRE` at
+  the `renderpath_gateway` rim (commands span vs events buffer never alias).
+  Recorded deviation: the sizes-equal half of Rule 7.1 has no dst/src job
+  entry in this pod yet — the C2.4 retro places it when one lands.
 - CMake keeps both twins compiling: enforcement twin runs the checks; release
   twin proves the `[[assume]]` fold emits no check.
 

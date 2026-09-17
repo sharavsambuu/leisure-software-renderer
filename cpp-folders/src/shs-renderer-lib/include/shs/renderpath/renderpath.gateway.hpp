@@ -58,6 +58,7 @@
 #include <type_traits>
 #include <variant>
 
+#include "shs/core/contract_guardrails.hpp"
 #include "shs/renderpath/renderpath.command.hpp"
 #include "shs/renderpath/renderpath.contract.hpp"
 #include "shs/renderpath/renderpath.event.hpp"
@@ -141,11 +142,22 @@ namespace shs::renderpath
         return false;
     }
 
+    // C2.1 helper: pure, allocation-free read — every compiled pass entry
+    // references a registered technique (resolved standard pass id, non-empty
+    // textual id). Feeds the commit-rim SHS_POST below; never gates control
+    // flow (bridge rule: single-expression, side-effect-free conditions).
+    inline bool renderpath_plan_pass_chain_registered(const RenderPathExecutionPlan& plan)
+    {
+        for (const RenderPathCompiledPass& pass : plan.pass_chain)
+        {
+            if (pass.pass_id == PassId::Unknown || pass.id.empty()) return false;
+        }
+        return true;
+    }
+
     namespace detail
     {
         // Honest fallible channel (VOP spec §8, R4 P4.6): the compiler returns
-        // expected natively; the pod maps the native reason to its event enum.
-        // No string classification exists anywhere on this path anymore.
         inline std::expected<RenderPathExecutionPlan, PathSwapRejectionReason>
         compile_render_path_plan(
             const RenderPathRecipe& candidate,
@@ -180,6 +192,12 @@ namespace shs::renderpath
                     state.recipe = candidate;
                     state.plan = std::move(candidate_plan);
                     state.plan_generation += 1;
+                    // C2.1 (Rule 17, edge law at the commit rim): the committed
+                    // plan is non-empty and every pass entry references a
+                    // registered technique (resolved standard pass id). A
+                    // hand-broken plan is the negative test (enforced twin).
+                    SHS_POST(!state.plan.pass_chain.empty()
+                        && renderpath_plan_pass_chain_registered(state.plan));
                     accepted = true;
                     events.push_back(PathCompiledEvent{
                         state.plan.technique_mode,
@@ -338,6 +356,12 @@ namespace shs::renderpath
         const RenderPathCapabilitySet& caps,
         std::pmr::vector<RenderPathEvent>& events)
     {
+        // C2.3 (Rule 7.1 wait-free rim): the commands span is the immutable
+        // input half of the job; the events buffer is the output half — the
+        // two storages must never alias. (The sizes-equal half of Rule 7.1
+        // has no dst/src job entry in this pod yet; recorded for the C2.4
+        // retro before sweeping further pods.)
+        SHS_PRE(static_cast<const void*>(commands.data()) != static_cast<const void*>(events.data()));
         RenderPathStep step{};
         for (const RenderPathCommand& command : commands)
         {

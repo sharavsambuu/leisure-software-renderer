@@ -478,6 +478,48 @@ if(SHS_RENDERER_BUILD_TESTS)
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     )
 
+    # C2 pilot negative tests (renderpath pod, W-B): the enforcement twin
+    # observes the handler on hand-broken plans / illegal transition-table
+    # rows / aliased spans; the release twin compiles the assume path.
+    add_executable(shs_renderer_contract_pilot_tests
+        tests/contract_guardrails_pilot_tests.cpp
+    )
+    target_link_libraries(shs_renderer_contract_pilot_tests PRIVATE shs::renderer-values)
+    target_compile_features(shs_renderer_contract_pilot_tests PRIVATE cxx_std_23)
+    target_compile_definitions(shs_renderer_contract_pilot_tests PRIVATE SHS_CONTRACTS_ENFORCED=1)
+    if(MSVC)
+        target_compile_options(shs_renderer_contract_pilot_tests PRIVATE /W4)
+    else()
+        target_compile_options(shs_renderer_contract_pilot_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+
+    add_executable(shs_renderer_contract_pilot_release_tests
+        tests/contract_guardrails_pilot_tests.cpp
+    )
+    target_link_libraries(shs_renderer_contract_pilot_release_tests PRIVATE shs::renderer-values)
+    target_compile_features(shs_renderer_contract_pilot_release_tests PRIVATE cxx_std_23)
+    if(MSVC)
+        target_compile_options(shs_renderer_contract_pilot_release_tests PRIVATE /W4)
+    else()
+        target_compile_options(shs_renderer_contract_pilot_release_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+
+    add_test(
+        NAME shs_renderer_contract_pilot_tests
+        COMMAND shs_renderer_contract_pilot_tests
+    )
+    set_tests_properties(shs_renderer_contract_pilot_tests PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    )
+
+    add_test(
+        NAME shs_renderer_contract_pilot_release_tests
+        COMMAND shs_renderer_contract_pilot_release_tests
+    )
+    set_tests_properties(shs_renderer_contract_pilot_release_tests PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    )
+
     # Replay parity (C1.4): identical probe source, only the contract mode
     # differs; replay-relevant output must be byte-identical across the pair.
     add_executable(shs_renderer_contract_replay_probe_enforced

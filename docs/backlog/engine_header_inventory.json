@@ -729,6 +729,8 @@
         "cstdlib"
       ],
       "tracked_consumers": [
+        "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/planning/render_path_compiler.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/renderpath.gateway.hpp",
         "cpp-folders/src/shs-renderer-lib/tests/contract_guardrails_replay_probe.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/contract_guardrails_tests.cpp"
       ],
@@ -4493,6 +4495,7 @@
         "expected",
         "optional",
         "shs/app/context.hpp",
+        "shs/core/contract_guardrails.hpp",
         "shs/renderpath/execution/pass_registry.hpp",
         "shs/renderpath/planning/render_path_capabilities.hpp",
         "shs/renderpath/planning/render_path_recipe.hpp",
@@ -4503,6 +4506,7 @@
       ],
       "internal_dependencies": [
         "shs/app/context.hpp",
+        "shs/core/contract_guardrails.hpp",
         "shs/renderpath/execution/pass_registry.hpp",
         "shs/renderpath/planning/render_path_capabilities.hpp",
         "shs/renderpath/planning/render_path_recipe.hpp",
@@ -4889,6 +4893,7 @@
         "cstdint",
         "expected",
         "memory_resource",
+        "shs/core/contract_guardrails.hpp",
         "shs/renderpath/renderpath.command.hpp",
         "shs/renderpath/renderpath.contract.hpp",
         "shs/renderpath/renderpath.event.hpp",
@@ -4898,6 +4903,7 @@
         "variant"
       ],
       "internal_dependencies": [
+        "shs/core/contract_guardrails.hpp",
         "shs/renderpath/renderpath.command.hpp",
         "shs/renderpath/renderpath.contract.hpp",
         "shs/renderpath/renderpath.event.hpp"
@@ -7385,6 +7391,7 @@
     "renderpath": [
       "app",
       "camera",
+      "core",
       "geometry",
       "lighting",
       "render",

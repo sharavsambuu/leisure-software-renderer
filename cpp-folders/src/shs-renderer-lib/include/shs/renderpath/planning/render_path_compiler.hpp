@@ -15,6 +15,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "shs/core/contract_guardrails.hpp"
 #include "shs/app/context.hpp"
 #include "shs/renderpath/execution/pass_registry.hpp"
 #include "shs/renderpath/planning/render_path_capabilities.hpp"
@@ -116,6 +117,12 @@ namespace shs
             plan.backend = recipe.backend;
             plan.technique_mode = recipe.technique_mode;
             plan.render_technique = recipe.render_technique;
+            // C2.2 (Rule 17, P1: value invariants live in the pure leaf): the
+            // technique-mode transition table — a compiled plan's technique is
+            // the table image of its mode. Only legal table rows compile; a
+            // hand-mismatched pair is the negative test (enforced twin).
+            SHS_CONTRACT_ASSERT(
+                render_path_rendering_technique_for_mode(plan.technique_mode) == plan.render_technique);
             plan.runtime_state = recipe.runtime_defaults;
 
             auto push_warning = [&plan](const std::string& msg) {

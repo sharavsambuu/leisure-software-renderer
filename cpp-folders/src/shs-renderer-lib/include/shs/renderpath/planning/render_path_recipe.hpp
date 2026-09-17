@@ -134,6 +134,29 @@ namespace shs
         bool operator==(const RenderPathRecipe&) const = default;
     };
 
+    // Technique-mode transition table (C2.2, P1 pure-leaf placement): the
+    // closed-enum image of a technique mode in rendering-technique space.
+    // The compiler asserts a compiled plan's technique is exactly this table
+    // image of its mode (Rule 17, value invariant); presets and pod arrows
+    // derive their pairs through this table, so the assert never fires on
+    // house input. Moved here (was render_path_presets.hpp) so the pure leaf
+    // compiler header can state the invariant without an include cycle.
+    inline RenderPathRenderingTechnique render_path_rendering_technique_for_mode(TechniqueMode mode)
+    {
+        switch (mode)
+        {
+            case TechniqueMode::Forward:
+                return RenderPathRenderingTechnique::ForwardLit;
+            case TechniqueMode::ForwardPlus:
+            case TechniqueMode::ClusteredForward:
+                return RenderPathRenderingTechnique::ForwardPlus;
+            case TechniqueMode::Deferred:
+            case TechniqueMode::TiledDeferred:
+                return RenderPathRenderingTechnique::Deferred;
+        }
+        return RenderPathRenderingTechnique::ForwardPlus;
+    }
+
     inline RenderPathRecipe make_default_soft_shadow_culling_recipe(RenderBackendType backend)
     {
         RenderPathRecipe recipe{};

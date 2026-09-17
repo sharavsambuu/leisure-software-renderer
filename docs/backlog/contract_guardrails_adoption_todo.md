@@ -28,9 +28,9 @@
 
 ## C2 — Pilot annotations (renderpath pod only)
 
-- [ ] **C2.1 `renderpath_gateway` commit postconditions** — `SHS_POST` on the committed plan: pass chain non-empty; every pass entry references a registered technique. DoD: annotations + a negative test (debug build rejects a hand-broken plan).
-- [ ] **C2.2 `RenderPathCompiler` transition asserts** — `SHS_CONTRACT_ASSERT` on the technique-mode transition table. DoD: annotations + negative test.
-- [ ] **C2.3 Rule 7.1 span preconditions** — `SHS_PRE` at the wait-free job entries: spans non-overlapping, sizes equal. DoD: annotations + negative test.
+- [x] **C2.1 `renderpath_gateway` commit postconditions** — DONE 2026-09-17: `SHS_POST` on the committed plan in `try_swap_plan` (pass chain non-empty; every pass entry resolves to a registered standard pass id via the pure helper `renderpath_plan_pass_chain_registered`). Negative test: enforced twin commits a hand-broken empty-chain plan (compatibility rules relaxed) and observes kind=post. DONE in `tests/contract_guardrails_pilot_tests.cpp` (both CMake twins).
+- [x] **C2.2 `RenderPathCompiler` transition asserts** — DONE 2026-09-17, P1-legal placement: the technique-mode transition table moved to its pure leaf home (`render_path_recipe.hpp`); the compiler asserts a compiled plan's technique is the table image of its mode (`SHS_CONTRACT_ASSERT` in `render_path_compiler.hpp`, allowlisted pure leaf). Negative test: hand-mismatched technique/mode pair fires kind=assertion. `map_rejection` (reason leg) and `apply_runtime_toggle` (toggle leg) stay INFO-tracked closed-enum dispatches — their leg invariants would need the mappings moved to event/contract headers; ruled at the C2.4 retro, not forced now.
+- [x] **C2.3 Rule 7.1 span preconditions** — DONE 2026-09-17: `SHS_PRE` at the `renderpath_gateway` wait-free rim — the immutable commands span and the events output buffer must never alias. Deviation recorded: the *sizes-equal* half of Rule 7.1 has no dst/src job entry in the renderpath pod yet (no input/output span pair exists under `include/shs`); the non-overlap half landed, and the C2.4 retro places the sizes-equal half at the first true dst/src job entry when one lands. Negative test: aliased span storage fires kind=pre.
 - [ ] **C2.4 Pilot retro** — measure: did the annotations catch anything? Did any condition need a helper (pure, allocation-free)? Update proposal §4 with findings before sweeping further pods. DoD: retro notes recorded; sweep is blocked on the ruling it produces.
 
 ## C3 — Conventions + documentation sweep

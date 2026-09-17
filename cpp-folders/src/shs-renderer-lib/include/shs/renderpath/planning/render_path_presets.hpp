@@ -74,21 +74,9 @@ namespace shs
         return RenderPathPreset::ForwardPlus;
     }
 
-    inline RenderPathRenderingTechnique render_path_rendering_technique_for_mode(TechniqueMode mode)
-    {
-        switch (mode)
-        {
-            case TechniqueMode::Forward:
-                return RenderPathRenderingTechnique::ForwardLit;
-            case TechniqueMode::ForwardPlus:
-            case TechniqueMode::ClusteredForward:
-                return RenderPathRenderingTechnique::ForwardPlus;
-            case TechniqueMode::Deferred:
-            case TechniqueMode::TiledDeferred:
-                return RenderPathRenderingTechnique::Deferred;
-        }
-        return RenderPathRenderingTechnique::ForwardPlus;
-    }
+    // render_path_rendering_technique_for_mode moved to
+    // shs/renderpath/planning/render_path_recipe.hpp (pure leaf value
+    // vocabulary) so the compiler can assert the transition table (C2.2).
 
     inline LightCullingMode default_light_culling_mode_for_mode(TechniqueMode mode)
     {

@@ -26,10 +26,11 @@ scan_root="${SHS_PLACEMENT_SCAN_ROOT:-${lib_root}/include/shs}"
 # value). Each entry must be pure-tier computation (no IO, no platform), named
 # here with its justification:
 leaf_value_allowlist=(
-  # shs/renderpath/planning/render_path_compiler.hpp — pure planner compiler
+  # Paths are scan-root relative (scan root include/shs, so no shs/ prefix).
+  # renderpath/planning/render_path_compiler.hpp — pure planner compiler
   # (pod_purity_dirs tier): states the compiled-plan value invariants
   # (C2.2 technique-mode transition table).
-  "shs/renderpath/planning/render_path_compiler.hpp"
+  "renderpath/planning/render_path_compiler.hpp"
 )
 
 if [[ ! -d "${scan_root}" ]]; then
