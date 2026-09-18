@@ -3,7 +3,7 @@
   "scope": "cpp-folders/src/shs-renderer-lib/include",
   "coverage": "all .h/.hpp public headers; literal includes in all conditional branches",
   "approval": "proposed paths are inventory only; reviewed migrations live in engine_header_migration_manifest.json",
-  "header_count": 237,
+  "header_count": 224,
   "headers": [
     {
       "current": "shs/app/backend/backend_factory.hpp",
@@ -3309,6 +3309,7 @@
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/passes/pass_pbr_forward.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/rhi/software/sw_stack.hpp",
         "cpp-folders/src/shs-renderer-lib/tests/rasterizer_coverage_golden_tests.cpp",
+        "cpp-folders/src/shs-renderer-lib/tests/rasterizer_tile_parity_tests.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/sw_vk_parity_tests.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/vk_offscreen_pass_tests.cpp"
       ],
@@ -5677,227 +5678,6 @@
       "build_target": "review-values-vs-aggregate"
     },
     {
-      "current": "shs/rhi/drivers/vulkan/vk_backend.hpp",
-      "proposed_canonical": "shs/rhi/vulkan/runtime/vk_backend.hpp",
-      "review_status": "review-vulkan-runtime-ownership",
-      "proposed_owner": "rhi",
-      "namespace_declarations": [],
-      "visibility": "public-include-tree",
-      "direct_dependencies": [
-        "shs/rhi/vulkan/runtime/vk_backend.hpp"
-      ],
-      "internal_dependencies": [
-        "shs/rhi/vulkan/runtime/vk_backend.hpp"
-      ],
-      "external_dependencies": [],
-      "tracked_consumers": [],
-      "build_target": "review-values-vs-aggregate"
-    },
-    {
-      "current": "shs/rhi/drivers/vulkan/vk_cmd_utils.hpp",
-      "proposed_canonical": "shs/rhi/vulkan/runtime/vk_cmd_utils.hpp",
-      "review_status": "review-vulkan-runtime-ownership",
-      "proposed_owner": "rhi",
-      "namespace_declarations": [],
-      "visibility": "public-include-tree",
-      "direct_dependencies": [
-        "shs/rhi/vulkan/runtime/vk_cmd_utils.hpp"
-      ],
-      "internal_dependencies": [
-        "shs/rhi/vulkan/runtime/vk_cmd_utils.hpp"
-      ],
-      "external_dependencies": [],
-      "tracked_consumers": [],
-      "build_target": "review-values-vs-aggregate"
-    },
-    {
-      "current": "shs/rhi/drivers/vulkan/vk_component_notes.hpp",
-      "proposed_canonical": "shs/rhi/vulkan/runtime/vk_component_notes.hpp",
-      "review_status": "review-vulkan-runtime-ownership",
-      "proposed_owner": "rhi",
-      "namespace_declarations": [],
-      "visibility": "public-include-tree",
-      "direct_dependencies": [
-        "shs/rhi/vulkan/runtime/vk_component_notes.hpp"
-      ],
-      "internal_dependencies": [
-        "shs/rhi/vulkan/runtime/vk_component_notes.hpp"
-      ],
-      "external_dependencies": [],
-      "tracked_consumers": [],
-      "build_target": "review-values-vs-aggregate"
-    },
-    {
-      "current": "shs/rhi/drivers/vulkan/vk_descriptor_allocator.hpp",
-      "proposed_canonical": "shs/rhi/vulkan/runtime/vk_descriptor_allocator.hpp",
-      "review_status": "review-vulkan-runtime-ownership",
-      "proposed_owner": "rhi",
-      "namespace_declarations": [],
-      "visibility": "public-include-tree",
-      "direct_dependencies": [
-        "shs/rhi/vulkan/runtime/vk_descriptor_allocator.hpp"
-      ],
-      "internal_dependencies": [
-        "shs/rhi/vulkan/runtime/vk_descriptor_allocator.hpp"
-      ],
-      "external_dependencies": [],
-      "tracked_consumers": [],
-      "build_target": "review-values-vs-aggregate"
-    },
-    {
-      "current": "shs/rhi/drivers/vulkan/vk_frame_ownership.hpp",
-      "proposed_canonical": "shs/rhi/vulkan/runtime/vk_frame_ownership.hpp",
-      "review_status": "review-vulkan-runtime-ownership",
-      "proposed_owner": "rhi",
-      "namespace_declarations": [],
-      "visibility": "public-include-tree",
-      "direct_dependencies": [
-        "shs/rhi/vulkan/runtime/vk_frame_ownership.hpp"
-      ],
-      "internal_dependencies": [
-        "shs/rhi/vulkan/runtime/vk_frame_ownership.hpp"
-      ],
-      "external_dependencies": [],
-      "tracked_consumers": [],
-      "build_target": "review-values-vs-aggregate"
-    },
-    {
-      "current": "shs/rhi/drivers/vulkan/vk_memory_utils.hpp",
-      "proposed_canonical": "shs/rhi/vulkan/runtime/vk_memory_utils.hpp",
-      "review_status": "review-vulkan-runtime-ownership",
-      "proposed_owner": "rhi",
-      "namespace_declarations": [],
-      "visibility": "public-include-tree",
-      "direct_dependencies": [
-        "shs/rhi/vulkan/runtime/vk_memory_utils.hpp"
-      ],
-      "internal_dependencies": [
-        "shs/rhi/vulkan/runtime/vk_memory_utils.hpp"
-      ],
-      "external_dependencies": [],
-      "tracked_consumers": [],
-      "build_target": "review-values-vs-aggregate"
-    },
-    {
-      "current": "shs/rhi/drivers/vulkan/vk_render_path_barrier_mapping.hpp",
-      "proposed_canonical": "shs/rhi/vulkan/runtime/vk_render_path_barrier_mapping.hpp",
-      "review_status": "review-vulkan-runtime-ownership",
-      "proposed_owner": "rhi",
-      "namespace_declarations": [],
-      "visibility": "public-include-tree",
-      "direct_dependencies": [
-        "shs/rhi/vulkan/runtime/vk_render_path_barrier_mapping.hpp"
-      ],
-      "internal_dependencies": [
-        "shs/rhi/vulkan/runtime/vk_render_path_barrier_mapping.hpp"
-      ],
-      "external_dependencies": [],
-      "tracked_consumers": [],
-      "build_target": "review-values-vs-aggregate"
-    },
-    {
-      "current": "shs/rhi/drivers/vulkan/vk_render_path_descriptors.hpp",
-      "proposed_canonical": "shs/rhi/vulkan/runtime/vk_render_path_descriptors.hpp",
-      "review_status": "review-vulkan-runtime-ownership",
-      "proposed_owner": "rhi",
-      "namespace_declarations": [],
-      "visibility": "public-include-tree",
-      "direct_dependencies": [
-        "shs/rhi/vulkan/runtime/vk_render_path_descriptors.hpp"
-      ],
-      "internal_dependencies": [
-        "shs/rhi/vulkan/runtime/vk_render_path_descriptors.hpp"
-      ],
-      "external_dependencies": [],
-      "tracked_consumers": [],
-      "build_target": "review-values-vs-aggregate"
-    },
-    {
-      "current": "shs/rhi/drivers/vulkan/vk_render_path_temporal_resources.hpp",
-      "proposed_canonical": "shs/rhi/vulkan/runtime/vk_render_path_temporal_resources.hpp",
-      "review_status": "review-vulkan-runtime-ownership",
-      "proposed_owner": "rhi",
-      "namespace_declarations": [],
-      "visibility": "public-include-tree",
-      "direct_dependencies": [
-        "shs/rhi/vulkan/runtime/vk_render_path_temporal_resources.hpp"
-      ],
-      "internal_dependencies": [
-        "shs/rhi/vulkan/runtime/vk_render_path_temporal_resources.hpp"
-      ],
-      "external_dependencies": [],
-      "tracked_consumers": [],
-      "build_target": "review-values-vs-aggregate"
-    },
-    {
-      "current": "shs/rhi/drivers/vulkan/vk_shader_utils.hpp",
-      "proposed_canonical": "shs/rhi/vulkan/runtime/vk_shader_utils.hpp",
-      "review_status": "review-vulkan-runtime-ownership",
-      "proposed_owner": "rhi",
-      "namespace_declarations": [],
-      "visibility": "public-include-tree",
-      "direct_dependencies": [
-        "shs/rhi/vulkan/runtime/vk_shader_utils.hpp"
-      ],
-      "internal_dependencies": [
-        "shs/rhi/vulkan/runtime/vk_shader_utils.hpp"
-      ],
-      "external_dependencies": [],
-      "tracked_consumers": [],
-      "build_target": "review-values-vs-aggregate"
-    },
-    {
-      "current": "shs/rhi/drivers/vulkan/vk_stack.hpp",
-      "proposed_canonical": "shs/rhi/vulkan/runtime/vk_stack.hpp",
-      "review_status": "review-vulkan-runtime-ownership",
-      "proposed_owner": "rhi",
-      "namespace_declarations": [],
-      "visibility": "public-include-tree",
-      "direct_dependencies": [
-        "shs/rhi/vulkan/runtime/vk_stack.hpp"
-      ],
-      "internal_dependencies": [
-        "shs/rhi/vulkan/runtime/vk_stack.hpp"
-      ],
-      "external_dependencies": [],
-      "tracked_consumers": [],
-      "build_target": "review-values-vs-aggregate"
-    },
-    {
-      "current": "shs/rhi/drivers/vulkan/vk_swapchain_uploader.hpp",
-      "proposed_canonical": "shs/rhi/vulkan/runtime/vk_swapchain_uploader.hpp",
-      "review_status": "review-vulkan-runtime-ownership",
-      "proposed_owner": "rhi",
-      "namespace_declarations": [],
-      "visibility": "public-include-tree",
-      "direct_dependencies": [
-        "shs/rhi/vulkan/runtime/vk_swapchain_uploader.hpp"
-      ],
-      "internal_dependencies": [
-        "shs/rhi/vulkan/runtime/vk_swapchain_uploader.hpp"
-      ],
-      "external_dependencies": [],
-      "tracked_consumers": [],
-      "build_target": "review-values-vs-aggregate"
-    },
-    {
-      "current": "shs/rhi/drivers/vulkan/vk_vma.hpp",
-      "proposed_canonical": "shs/rhi/vulkan/runtime/vk_vma.hpp",
-      "review_status": "review-vulkan-runtime-ownership",
-      "proposed_owner": "rhi",
-      "namespace_declarations": [],
-      "visibility": "public-include-tree",
-      "direct_dependencies": [
-        "shs/rhi/vulkan/runtime/vk_vma.hpp"
-      ],
-      "internal_dependencies": [
-        "shs/rhi/vulkan/runtime/vk_vma.hpp"
-      ],
-      "external_dependencies": [],
-      "tracked_consumers": [],
-      "build_target": "review-values-vs-aggregate"
-    },
-    {
       "current": "shs/rhi/opengl/gl_backend.hpp",
       "proposed_canonical": "shs/rhi/opengl/gl_backend.hpp",
       "review_status": "already-named-review-dependencies",
@@ -6168,7 +5948,6 @@
         "cpp-folders/src/exps-gpu-renderer/exp-plumbing/hello_rendering_paths.cpp",
         "cpp-folders/src/exps-gpu-renderer/exp-plumbing/hello_soft_shadow_culling_vk.cpp",
         "cpp-folders/src/exps-gpu-renderer/exp-rendering-techniques/demo_forward_classic_renderpath.cpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/rhi/drivers/vulkan/vk_backend.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/rhi/vulkan/runtime/vk_stack.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/rhi/vulkan/runtime/vk_swapchain_uploader.hpp"
       ],
@@ -6201,8 +5980,7 @@
         "cpp-folders/src/exps-gpu-renderer/exp-plumbing/hello_ray_query.cpp",
         "cpp-folders/src/exps-gpu-renderer/exp-plumbing/hello_rendering_paths.cpp",
         "cpp-folders/src/exps-gpu-renderer/exp-plumbing/hello_soft_shadow_culling_vk.cpp",
-        "cpp-folders/src/exps-gpu-renderer/exp-rendering-techniques/demo_forward_classic_renderpath.cpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/rhi/drivers/vulkan/vk_cmd_utils.hpp"
+        "cpp-folders/src/exps-gpu-renderer/exp-rendering-techniques/demo_forward_classic_renderpath.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -6224,7 +6002,6 @@
         "array"
       ],
       "tracked_consumers": [
-        "cpp-folders/src/shs-renderer-lib/include/shs/rhi/drivers/vulkan/vk_component_notes.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/rhi/vulkan/runtime/vk_backend.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/rhi/vulkan/runtime/vk_stack.hpp"
       ],
@@ -6253,9 +6030,7 @@
         "vector",
         "vulkan/vulkan.h"
       ],
-      "tracked_consumers": [
-        "cpp-folders/src/shs-renderer-lib/include/shs/rhi/drivers/vulkan/vk_descriptor_allocator.hpp"
-      ],
+      "tracked_consumers": [],
       "build_target": "review-values-vs-aggregate"
     },
     {
@@ -6285,8 +6060,7 @@
       ],
       "tracked_consumers": [
         "cpp-folders/src/exps-gpu-renderer/exp-plumbing/hello_rendering_paths.cpp",
-        "cpp-folders/src/exps-gpu-renderer/exp-rendering-techniques/demo_forward_classic_renderpath.cpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/rhi/drivers/vulkan/vk_frame_ownership.hpp"
+        "cpp-folders/src/exps-gpu-renderer/exp-rendering-techniques/demo_forward_classic_renderpath.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -6320,7 +6094,6 @@
         "cpp-folders/src/exps-gpu-renderer/exp-plumbing/hello_rendering_paths.cpp",
         "cpp-folders/src/exps-gpu-renderer/exp-plumbing/hello_soft_shadow_culling_vk.cpp",
         "cpp-folders/src/exps-gpu-renderer/exp-rendering-techniques/demo_forward_classic_renderpath.cpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/rhi/drivers/vulkan/vk_memory_utils.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/rhi/vulkan/runtime/vk_backend.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/rhi/vulkan/runtime/vk_render_path_temporal_resources.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/rhi/vulkan/runtime/vk_swapchain_uploader.hpp"
@@ -6353,8 +6126,7 @@
       ],
       "tracked_consumers": [
         "cpp-folders/src/exps-gpu-renderer/exp-plumbing/hello_rendering_paths.cpp",
-        "cpp-folders/src/exps-gpu-renderer/exp-rendering-techniques/demo_forward_classic_renderpath.cpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/rhi/drivers/vulkan/vk_render_path_barrier_mapping.hpp"
+        "cpp-folders/src/exps-gpu-renderer/exp-rendering-techniques/demo_forward_classic_renderpath.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -6382,8 +6154,7 @@
       "tracked_consumers": [
         "cpp-folders/src/exps-gpu-renderer/exp-plumbing/hello_modern_vulkan.cpp",
         "cpp-folders/src/exps-gpu-renderer/exp-plumbing/hello_rendering_paths.cpp",
-        "cpp-folders/src/exps-gpu-renderer/exp-rendering-techniques/demo_forward_classic_renderpath.cpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/rhi/drivers/vulkan/vk_render_path_descriptors.hpp"
+        "cpp-folders/src/exps-gpu-renderer/exp-rendering-techniques/demo_forward_classic_renderpath.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -6417,8 +6188,7 @@
       ],
       "tracked_consumers": [
         "cpp-folders/src/exps-gpu-renderer/exp-plumbing/hello_rendering_paths.cpp",
-        "cpp-folders/src/exps-gpu-renderer/exp-rendering-techniques/demo_forward_classic_renderpath.cpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/rhi/drivers/vulkan/vk_render_path_temporal_resources.hpp"
+        "cpp-folders/src/exps-gpu-renderer/exp-rendering-techniques/demo_forward_classic_renderpath.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -6458,8 +6228,7 @@
         "cpp-folders/src/exps-gpu-renderer/exp-plumbing/hello_rendering_paths.cpp",
         "cpp-folders/src/exps-gpu-renderer/exp-plumbing/hello_soft_shadow_culling_vk.cpp",
         "cpp-folders/src/exps-gpu-renderer/exp-rendering-techniques/demo_forward_classic_renderpath.cpp",
-        "cpp-folders/src/exps-rendering-adventures/tier0-rasterization-foundations/common/adventures_vk.cpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/rhi/drivers/vulkan/vk_shader_utils.hpp"
+        "cpp-folders/src/exps-rendering-adventures/tier0-rasterization-foundations/common/adventures_vk.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -6479,9 +6248,7 @@
         "shs/rhi/vulkan/runtime/vk_component_notes.hpp"
       ],
       "external_dependencies": [],
-      "tracked_consumers": [
-        "cpp-folders/src/shs-renderer-lib/include/shs/rhi/drivers/vulkan/vk_stack.hpp"
-      ],
+      "tracked_consumers": [],
       "build_target": "review-values-vs-aggregate"
     },
     {
@@ -6512,9 +6279,7 @@
         "cstring",
         "vector"
       ],
-      "tracked_consumers": [
-        "cpp-folders/src/shs-renderer-lib/include/shs/rhi/drivers/vulkan/vk_swapchain_uploader.hpp"
-      ],
+      "tracked_consumers": [],
       "build_target": "review-values-vs-aggregate"
     },
     {
@@ -6533,7 +6298,6 @@
       ],
       "tracked_consumers": [
         "cpp-folders/src/exps-gpu-renderer/exp-plumbing/hello_modern_vulkan.cpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/rhi/drivers/vulkan/vk_vma.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/rhi/vulkan/runtime/vk_memory_utils.hpp",
         "cpp-folders/src/shs-renderer-lib/src/shs_vma.cpp"
       ],
@@ -7524,6 +7288,7 @@
       ],
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/tests/lifecycle_semantics_tests.cpp",
+        "cpp-folders/src/shs-renderer-lib/tests/rasterizer_tile_parity_tests.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/vertical_slice_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
@@ -7659,58 +7424,6 @@
     "shs/app/context.hpp": [
       "shs/app/context.hpp",
       "shs/core/context.hpp"
-    ],
-    "shs/rhi/vulkan/runtime/vk_backend.hpp": [
-      "shs/rhi/drivers/vulkan/vk_backend.hpp",
-      "shs/rhi/vulkan/runtime/vk_backend.hpp"
-    ],
-    "shs/rhi/vulkan/runtime/vk_cmd_utils.hpp": [
-      "shs/rhi/drivers/vulkan/vk_cmd_utils.hpp",
-      "shs/rhi/vulkan/runtime/vk_cmd_utils.hpp"
-    ],
-    "shs/rhi/vulkan/runtime/vk_component_notes.hpp": [
-      "shs/rhi/drivers/vulkan/vk_component_notes.hpp",
-      "shs/rhi/vulkan/runtime/vk_component_notes.hpp"
-    ],
-    "shs/rhi/vulkan/runtime/vk_descriptor_allocator.hpp": [
-      "shs/rhi/drivers/vulkan/vk_descriptor_allocator.hpp",
-      "shs/rhi/vulkan/runtime/vk_descriptor_allocator.hpp"
-    ],
-    "shs/rhi/vulkan/runtime/vk_frame_ownership.hpp": [
-      "shs/rhi/drivers/vulkan/vk_frame_ownership.hpp",
-      "shs/rhi/vulkan/runtime/vk_frame_ownership.hpp"
-    ],
-    "shs/rhi/vulkan/runtime/vk_memory_utils.hpp": [
-      "shs/rhi/drivers/vulkan/vk_memory_utils.hpp",
-      "shs/rhi/vulkan/runtime/vk_memory_utils.hpp"
-    ],
-    "shs/rhi/vulkan/runtime/vk_render_path_barrier_mapping.hpp": [
-      "shs/rhi/drivers/vulkan/vk_render_path_barrier_mapping.hpp",
-      "shs/rhi/vulkan/runtime/vk_render_path_barrier_mapping.hpp"
-    ],
-    "shs/rhi/vulkan/runtime/vk_render_path_descriptors.hpp": [
-      "shs/rhi/drivers/vulkan/vk_render_path_descriptors.hpp",
-      "shs/rhi/vulkan/runtime/vk_render_path_descriptors.hpp"
-    ],
-    "shs/rhi/vulkan/runtime/vk_render_path_temporal_resources.hpp": [
-      "shs/rhi/drivers/vulkan/vk_render_path_temporal_resources.hpp",
-      "shs/rhi/vulkan/runtime/vk_render_path_temporal_resources.hpp"
-    ],
-    "shs/rhi/vulkan/runtime/vk_shader_utils.hpp": [
-      "shs/rhi/drivers/vulkan/vk_shader_utils.hpp",
-      "shs/rhi/vulkan/runtime/vk_shader_utils.hpp"
-    ],
-    "shs/rhi/vulkan/runtime/vk_stack.hpp": [
-      "shs/rhi/drivers/vulkan/vk_stack.hpp",
-      "shs/rhi/vulkan/runtime/vk_stack.hpp"
-    ],
-    "shs/rhi/vulkan/runtime/vk_swapchain_uploader.hpp": [
-      "shs/rhi/drivers/vulkan/vk_swapchain_uploader.hpp",
-      "shs/rhi/vulkan/runtime/vk_swapchain_uploader.hpp"
-    ],
-    "shs/rhi/vulkan/runtime/vk_vma.hpp": [
-      "shs/rhi/drivers/vulkan/vk_vma.hpp",
-      "shs/rhi/vulkan/runtime/vk_vma.hpp"
     ]
   },
   "vulkan_decision": "Keep value/ and runtime/ separate under rhi/vulkan; no implementation merge or symbol/ABI claim. Review required before relocation."
