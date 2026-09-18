@@ -35,15 +35,22 @@
       stay fail-fast; headless evidence only. Pass/pipeline realization and
       in-pass execution are G2; factory-facing execution is G3. Next in this
       track: K-G2.
-- [ ] **K-G2 Minimal offscreen graphics realization** — finish attachment
+- [x] **K-G2 Minimal offscreen graphics realization** — finish attachment
       setup / pipeline creation+binding / begin-end-pass recording breadth in
       the new driver (slice 1 partial: `b2d7d79`; realization now at
       `shs/rhi/vulkan/value/vk_offscreen.hpp` after the R5 sweep). Acceptance:
       one deterministic scene through value commands; explicit
       formats/layouts/features; failed creation unwinds; zero validation
       errors on an available backend. Depends on G1.
-- [ ] **K-G3 remaining: staging→device-local copy upload + factory-facing
-      execution** — most of G3 is partial-complete (submission/readback,
+      CLOSED 2026-09-18: acceptance evidenced end-to-end — deterministic scene
+      through value commands to known pixels, explicit supports() tables, unwind
+      on failure (incl. injected Vulkan faults), validation-clean lavapipe runs,
+      SW/Vulkan triangle parity; see the kdba G2 DONE entry. Follow-on work
+      belongs to G3 (upload tail — landed, factory-facing execution) and G4.
+- [ ] **K-G3 remaining: factory-facing execution** — staging→device-local copy
+      upload landed 2026-09-18 (GPUOnly TransferDst staging copy + barrier, real-device
+      pixel parity; see kdba G3 PARTIAL note). Remaining G3 slices are partial-complete
+      (submission/readback,
       shutdown cache-invalidation, upload + failure-injection slices, triangle
       parity vs the software rasterizer). Depends on G2.
 - [ ] **K-G4 Library SW/Vulkan equivalence** — same minimal scene/policy

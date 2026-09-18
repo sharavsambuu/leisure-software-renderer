@@ -370,6 +370,43 @@ int main()
     CHECK(backend_pixels == last_good); // untouched by the failed submission
     CHECK(backend.execute_offscreen(uploaded_stream, backend_pixels));
     CHECK(backend_pixels == pixels);
+    // ---- staging→device-local upload: GPUOnly buffers go through a staging
+    // copy, and the consumed geometry must render identically to the
+    // CPU-visible fixture.
+    RHIBufferDesc gpu_vb_desc{};
+    gpu_vb_desc.size_bytes = sizeof(vertices);
+    gpu_vb_desc.usage = RHIBufferUsage_Vertex | RHIBufferUsage_TransferDst;
+    gpu_vb_desc.memory = RHIMemoryClass::GPUOnly;
+    auto gpu_ib_desc = gpu_vb_desc;
+    gpu_ib_desc.size_bytes = sizeof(indices);
+    gpu_ib_desc.usage = RHIBufferUsage_Index | RHIBufferUsage_TransferDst;
+    const auto gpu_vb = backend.create_buffer(gpu_vb_desc),
+        gpu_ib = backend.create_buffer(gpu_ib_desc);
+    CHECK(gpu_vb && gpu_ib);
+    RHIBufferDesc no_copy_desc{};
+    no_copy_desc.size_bytes = sizeof(vertices);
+    no_copy_desc.usage = RHIBufferUsage_Vertex; // missing TransferDst
+    no_copy_desc.memory = RHIMemoryClass::GPUOnly;
+    const auto no_copy = backend.create_buffer(no_copy_desc);
+    CHECK(no_copy);
+    const auto no_copy_result = backend.upload_buffer(no_copy, bytes_of(vertices));
+    CHECK(!no_copy_result && no_copy_result.error().code == VulkanExecutionError::InvalidDescriptor);
+    CHECK(backend.upload_buffer(gpu_vb, bytes_of(vertices)));
+    CHECK(backend.upload_buffer(gpu_ib, bytes_of(indices)));
+    const RHICmd gpu_stream[] = {rhi_cmd_begin_pass({backend.offscreen_target(), 0, true, false}),
+        rhi_cmd_bind_pipeline(*prepared), rhi_cmd_bind_vertex_buffer(gpu_vb, 0),
+        rhi_cmd_bind_index_buffer(gpu_ib, 0, false), rhi_cmd_draw_indexed({3}), rhi_cmd_end_pass()};
+    CHECK(backend.execute_offscreen(gpu_stream, backend_pixels));
+    CHECK(backend_pixels == pixels); // device-local draw matches the CPU-visible fixture
+    float moved_vertices[] = {-0.25f, -0.5f, 0.75f, -0.5f, 0.25f, 0.5f};
+    CHECK(backend.upload_buffer(gpu_vb, bytes_of(moved_vertices)));
+    CHECK(backend.execute_offscreen(gpu_stream, backend_pixels));
+    CHECK(backend_pixels != pixels); // the re-uploaded geometry moved the triangle
+    // Restore the reference scene: the parity evidence below compares
+    // backend_pixels against the software rasterizer's fixed triangle.
+    CHECK(backend.upload_buffer(gpu_vb, bytes_of(vertices)));
+    CHECK(backend.execute_offscreen(gpu_stream, backend_pixels));
+    CHECK(backend_pixels == pixels);
     MeshData mesh;
     for (int v = 0; v < 3; ++v) mesh.positions.push_back({vertices[v * 2], vertices[v * 2 + 1], 0});
     mesh.indices = {0, 1, 2};

@@ -153,6 +153,109 @@ namespace shs
         VkExtent2D extent_{};
         uint64_t bytes_ = 0;
     };
+    // Synchronous staging→device-local upload. Creates a transient host-visible
+    // staging buffer, records a full-size copy plus a transfer→vertex-input
+    // barrier that makes the bytes visible to vertex/index consumption, submits
+    // and waits, then releases every transient object before returning. The
+    // destination must already exist, carry TRANSFER_DST usage and have no
+    // pending work; success means the bytes are resident in device-local memory.
+    [[nodiscard]] inline std::expected<void, VkResult> vulkan_buffer_upload_sync(
+        VkDevice device, VkPhysicalDevice physical, VkQueue queue, uint32_t queue_family,
+        VkBuffer dst, VkDeviceSize dst_offset, std::span<const uint8_t> bytes)
+    {
+        if (!device || !physical || !queue || !dst || bytes.empty())
+            return std::unexpected(VK_ERROR_INITIALIZATION_FAILED);
+        VkBuffer staging = VK_NULL_HANDLE;
+        VkDeviceMemory staging_memory = VK_NULL_HANDLE;
+        VkCommandPool pool = VK_NULL_HANDLE;
+        const auto fail = [&](VkResult r) {
+            if (pool) vkDestroyCommandPool(device, pool, nullptr);
+            if (staging_memory) vkFreeMemory(device, staging_memory, nullptr);
+            if (staging) vkDestroyBuffer(device, staging, nullptr);
+            return std::unexpected(r);
+        };
+        VkBufferCreateInfo buffer_info{};
+        buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        buffer_info.size = bytes.size();
+        buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        if (vkCreateBuffer(device, &buffer_info, nullptr, &staging) != VK_SUCCESS)
+            return std::unexpected(VK_ERROR_UNKNOWN);
+        VkMemoryRequirements reqs{};
+        vkGetBufferMemoryRequirements(device, staging, &reqs);
+        VkPhysicalDeviceMemoryProperties props{};
+        vkGetPhysicalDeviceMemoryProperties(physical, &props);
+        const uint32_t type = vk_pick_memory_type(props, reqs.memoryTypeBits,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+        if (type == UINT32_MAX) return fail(VK_ERROR_UNKNOWN);
+        VkMemoryAllocateInfo allocation{};
+        allocation.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        allocation.allocationSize = reqs.size;
+        allocation.memoryTypeIndex = type;
+        VkResult result = vkAllocateMemory(device, &allocation, nullptr, &staging_memory);
+        if (result != VK_SUCCESS) return fail(result);
+        if (vkBindBufferMemory(device, staging, staging_memory, 0) != VK_SUCCESS)
+            return fail(VK_ERROR_UNKNOWN);
+        void* mapped = nullptr;
+        result = vkMapMemory(device, staging_memory, 0, bytes.size(), 0, &mapped);
+        if (result != VK_SUCCESS) return fail(result);
+        std::memcpy(mapped, bytes.data(), bytes.size());
+        if ((props.memoryTypes[type].propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) == 0)
+        {
+            VkMappedMemoryRange range{};
+            range.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
+            range.memory = staging_memory;
+            range.size = VK_WHOLE_SIZE;
+            result = vkFlushMappedMemoryRanges(device, 1, &range);
+            if (result != VK_SUCCESS)
+            {
+                vkUnmapMemory(device, staging_memory);
+                return fail(result);
+            }
+        }
+        vkUnmapMemory(device, staging_memory);
+        VkCommandPoolCreateInfo pool_info{};
+        pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+        pool_info.queueFamilyIndex = queue_family;
+        if (vkCreateCommandPool(device, &pool_info, nullptr, &pool) != VK_SUCCESS)
+            return fail(VK_ERROR_UNKNOWN);
+        VkCommandBufferAllocateInfo command_info{};
+        command_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        command_info.commandPool = pool;
+        command_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        command_info.commandBufferCount = 1;
+        VkCommandBuffer command = VK_NULL_HANDLE;
+        if (vkAllocateCommandBuffers(device, &command_info, &command) != VK_SUCCESS)
+            return fail(VK_ERROR_UNKNOWN);
+        VkCommandBufferBeginInfo begin{};
+        begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        result = vkBeginCommandBuffer(command, &begin);
+        if (result != VK_SUCCESS) return fail(result);
+        VkBufferCopy copy{};
+        copy.srcOffset = 0;
+        copy.dstOffset = dst_offset;
+        copy.size = bytes.size();
+        vkCmdCopyBuffer(command, staging, dst, 1, &copy);
+        VkBufferMemoryBarrier barrier{};
+        barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+        barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT | VK_ACCESS_INDEX_READ_BIT;
+        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.buffer = dst;
+        barrier.offset = dst_offset;
+        barrier.size = bytes.size();
+        vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, 0, 0, nullptr, 1, &barrier, 0, nullptr);
+        result = vkEndCommandBuffer(command);
+        if (result != VK_SUCCESS) return fail(result);
+        if (const auto submitted = vulkan_submit_sync(device, queue, command); !submitted)
+            return fail(submitted.error().result);
+        vkDestroyCommandPool(device, pool, nullptr);
+        vkFreeMemory(device, staging_memory, nullptr);
+        vkDestroyBuffer(device, staging, nullptr);
+        return {};
+    }
 
     } // inline namespace rhi
 }

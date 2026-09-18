@@ -298,23 +298,42 @@ namespace shs
             });
         }
 
-        // CPU-visible coherent upload; caller retires any borrowed submissions
-        // before updating. Only explicitly CPUVisible buffers are writable here.
+        // CPU-visible coherent upload, or a staging→device-local copy for
+        // GPUOnly buffers carrying TransferDst usage. Caller retires any
+        // borrowed submissions before updating.
         [[nodiscard]] std::expected<void, VulkanExecutionFailure> upload_buffer(
             uint64_t id, std::span<const uint8_t> bytes)
         {
             const auto* desc = buffer_descs_.find(id);
             const auto* memory = buffer_memory_.find(id);
-            if (!device_ready() || !desc || !memory || desc->memory != RHIMemoryClass::CPUVisible ||
+            if (!device_ready() || !desc || !memory ||
+                (desc->memory != RHIMemoryClass::CPUVisible && desc->memory != RHIMemoryClass::GPUOnly) ||
                 bytes.size() != desc->size_bytes || bytes.empty())
                 return std::unexpected(VulkanExecutionFailure{VulkanExecutionError::InvalidDescriptor});
             std::vector<uint8_t> shadow(bytes.begin(), bytes.end());
-            void* mapped = nullptr;
-            const auto result = vkMapMemory(device_.device(), *memory, 0, bytes.size(), 0, &mapped);
-            if (result != VK_SUCCESS)
-                return std::unexpected(VulkanExecutionFailure{VulkanExecutionError::UploadFailed, result});
-            std::memcpy(mapped, bytes.data(), bytes.size());
-            vkUnmapMemory(device_.device(), *memory);
+            if (desc->memory == RHIMemoryClass::GPUOnly)
+            {
+                // vkCmdCopyBuffer demands TRANSFER_DST; demand it up front so the
+                // rejection is typed and the recording stays validation-clean.
+                if (!(desc->usage & RHIBufferUsage_TransferDst))
+                    return std::unexpected(VulkanExecutionFailure{VulkanExecutionError::InvalidDescriptor});
+                const auto* gpu_buffer = buffers_.find(id);
+                if (!gpu_buffer)
+                    return std::unexpected(VulkanExecutionFailure{VulkanExecutionError::InvalidDescriptor});
+                const auto copied = vulkan_buffer_upload_sync(device_.device(), device_.physical(),
+                    device_.graphics_queue(), device_.info().graphics_queue_family, *gpu_buffer, 0, bytes);
+                if (!copied)
+                    return std::unexpected(VulkanExecutionFailure{VulkanExecutionError::UploadFailed, copied.error()});
+            }
+            else
+            {
+                void* mapped = nullptr;
+                const auto result = vkMapMemory(device_.device(), *memory, 0, bytes.size(), 0, &mapped);
+                if (result != VK_SUCCESS)
+                    return std::unexpected(VulkanExecutionFailure{VulkanExecutionError::UploadFailed, result});
+                std::memcpy(mapped, bytes.data(), bytes.size());
+                vkUnmapMemory(device_.device(), *memory);
+            }
             uploaded_.insert_or_assign(id, std::move(shadow));
             return {};
         }

@@ -115,11 +115,22 @@ resource lifetimes remain at the execution edge.
   `RHIPipelineStage`/`RHIAccess` sets. Fail-fast non-transactional sink
   semantics stand; headless/spy evidence only; pass/pipeline realization and
   in-pass execution remain G2, factory-facing execution G3.
-- [ ] **G2 Minimal offscreen graphics realization** — implement actual attachment
+- [x] **G2 Minimal offscreen graphics realization** — implement actual attachment
   setup, pipeline creation/binding and begin/end-pass recording in the new driver.
   Acceptance: render one deterministic scene through value commands; supported
   formats/layouts/features are explicit, failures release acquired resources,
   and Vulkan validation reports no errors on an available backend. Depends on G1.
+  — DONE 2026-09-18: all G2 acceptance criteria are evidenced end-to-end. One
+  deterministic scene runs through value commands to known RGBA8 pixels:
+  attachment realization (slice 1), pipeline realization + in-pass binding with
+  cache identity (slice 2), non-indexed draw recording (slice 3), and backend
+  submission/readback verifying independent known pixels. The support set is
+  explicit (`supports()` tables on pass and pipeline), failed creation unwinds
+  (including injected Vulkan allocation/pipeline/submit/map faults), and
+  validation-enabled lavapipe runs report no errors. The same scene also drives
+  the library SW/Vulkan triangle-parity evidence. No code gap remains against
+  the stated acceptance; the staging→device-local upload tail (G3, landed
+  2026-09-18 below) and factory-facing execution (G3) are the follow-on tracks.
   — PARTIAL 2026-09-17 (slice 1, `b2d7d79`): new
   `execution/rhi/drivers/vulkan/vk_offscreen.hpp` — explicit (non-lazy) owned
   (Path staleness recorded 2026-09-18: that realization now lives at
@@ -241,6 +252,19 @@ resource lifetimes remain at the execution edge.
   raster stats) are asserted alongside the comparison. This is recipe-level
   evidence for the fixed offscreen ABI, not full G4: single triangle, no
   depth/motion paths, no portable CTest gate beyond the existing target.
+  — PARTIAL 2026-09-18 (staging→device-local upload): `upload_buffer` now accepts
+  `RHIMemoryClass::GPUOnly` buffers carrying TransferDst usage: a transient
+  host-visible staging buffer is created and bound, a one-time command buffer
+  records a full-size `vkCmdCopyBuffer` plus a transfer→vertex-input buffer
+  barrier, the copy is submitted behind a fence, and every transient object is
+  released on success and on every failure path. Missing TransferDst usage,
+  wrong size, empty bytes and unknown IDs are rejected before any copy; the
+  CPU-side shadow updates only after a completed copy. Real-device evidence
+  (lavapipe, validation enabled): a GPUOnly vertex/index pair renders the same
+  known pixels as the CPU-visible fixture, and a re-upload moves the consumed
+  triangle. `vulkan_buffer_upload_sync` lives in `vk_readback.hpp` (the
+  synchronous-transfer owner). Factory-facing execution remains the open G3
+  item.
 - [ ] **G4 Library SW/Vulkan equivalence** — run the same minimal scene/policy
   through actual library execution paths with documented per-output tolerances
   and independent known-answer checks. Wire portable CTest gates and retain
