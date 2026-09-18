@@ -63,6 +63,14 @@ int main()
     if (empty || empty.error().code != E::CommandBufferUnavailable ||
         empty.error().stage != VulkanRecordingStage::Prerequisite ||
         empty.error().command_index != SIZE_MAX) return 1;
+    // A non-empty stream must hit the same command-buffer prerequisite before
+    // any stream validation or sink call (G1 tail closure).
+    const RHICmd nonempty[] = {rhi_cmd_barrier({}), rhi_cmd_bind_pipeline(47)};
+    const auto nonempty_result = record_commands(nonempty, unavailable);
+    if (nonempty_result || nonempty_result.error().code != E::CommandBufferUnavailable ||
+        nonempty_result.error().stage != VulkanRecordingStage::Prerequisite ||
+        nonempty_result.error().command_index != SIZE_MAX ||
+        nonempty_result.error().command != VulkanCommandKind::None) return 1;
 
     // RAII pool is destroyed before its device, including on assertion failure.
     struct Pool

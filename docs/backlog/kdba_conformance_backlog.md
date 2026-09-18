@@ -49,7 +49,7 @@ resource lifetimes remain at the execution edge.
   asymmetry: `intern_compute` shares the same ID/hash distinction but exposes no
   `find_compute`; when compute ID lookup is needed, reuse the proven ID→hash
   index pattern instead of keying a hash map by ID.
-- [ ] **G1 Explicit recording failures** — replace silent unsupported/no-device
+- [x] **G1 Explicit recording failures** — DONE 2026-09-18: replace silent unsupported/no-device
   recording with a closed error vocabulary and command/stage diagnostics. Test
   unsupported commands, missing IDs and invalid recording order; preparation
   rejects invalid streams before GPU effects where possible. Do not claim GPU
@@ -99,6 +99,22 @@ resource lifetimes remain at the execution edge.
   handle whose recording state is caller-managed. Fail-fast semantics unchanged;
   earlier calls are not rolled back. Spy/headless tests prove contracts, not GPU
   rendering.
+  Tail closure (2026-09-18): the command-buffer prerequisite branch is now
+  proven for non-empty streams in both suites — a stream that would fail order
+  preflight still reports the prerequisite failure (correct stage, index
+  `SIZE_MAX`, command `None`) before any stream inspection or sink call,
+  headless (`DeviceUnavailable`) and on a real device
+  (`CommandBufferUnavailable`). A spy with a failing `recording_ready` hook
+  proves prerequisite precedence over whole-stream validation — including
+  streams that would fail order preflight — with zero sink calls issued.
+  Missing-buffer branch coverage (null/unknown IDs through direct calls and
+  `record_commands`, exact index/stage/resource_id attribution) and
+  order-validation breadth (nested/unmatched/terminated passes, binding
+  leakage, index alignment, barrier stage/access ranges) were already
+  table-pinned; the enum range checks are complete for the closed
+  `RHIPipelineStage`/`RHIAccess` sets. Fail-fast non-transactional sink
+  semantics stand; headless/spy evidence only; pass/pipeline realization and
+  in-pass execution remain G2, factory-facing execution G3.
 - [ ] **G2 Minimal offscreen graphics realization** — implement actual attachment
   setup, pipeline creation/binding and begin/end-pass recording in the new driver.
   Acceptance: render one deterministic scene through value commands; supported

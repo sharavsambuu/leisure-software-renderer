@@ -25,14 +25,16 @@
 
 ### A1. GPU execution path (owner: [`kdba_conformance_backlog.md`](kdba_conformance_backlog.md) §"GPU execution path — selected next work")
 
-- [ ] **K-G1 tail — explicit recording failures** — dedicated command-buffer /
-      missing-buffer branch coverage; broader ID checks; remaining
-      recording-order validation; stage-diagnostics breadth. Mostly landed
-      2026-09-17 (closed error vocabulary `MissingPipeline`/`MissingImage`/
-      `MissingBinding`/`InvalidCommand`/`InvalidRecordingOrder`, whole-stream
-      preflight, real-device prerequisite suite). Non-goals stand: sink
-      failures stay fail-fast (no transactional rollback); headless evidence
-      only. Depends on: —
+- [x] **K-G1 tail — explicit recording failures** — CLOSED 2026-09-18:
+      command-buffer prerequisite branch proven for non-empty streams (headless
+      recorder suite + real-device prerequisite suite, correct
+      stage/index/command attribution); `recording_ready` prerequisite
+      precedence proven over stream validation with zero sink calls;
+      missing-buffer branch and order-validation/stage-diagnostics breadth
+      already table-pinned. Full CTest 50/50. Non-goals stand: sink failures
+      stay fail-fast; headless evidence only. Pass/pipeline realization and
+      in-pass execution are G2; factory-facing execution is G3. Next in this
+      track: K-G2.
 - [ ] **K-G2 Minimal offscreen graphics realization** — finish attachment
       setup / pipeline creation+binding / begin-end-pass recording breadth in
       the new driver (slice 1 partial: `b2d7d79`; realization now at

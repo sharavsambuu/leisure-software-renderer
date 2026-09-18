@@ -372,10 +372,49 @@ namespace
         if (empty || empty.error().code != shs::VulkanRecordingError::DeviceUnavailable ||
             empty.error().command_index != SIZE_MAX ||
             empty.error().stage != shs::VulkanRecordingStage::Prerequisite) return false;
+        // A non-empty stream must hit the same prerequisite rejection before any
+        // stream inspection or sink call (G1 command-buffer branch, headless).
+        const shs::rhi::RHICmd nonempty[] = {shs::rhi::rhi_cmd_barrier({}),
+            shs::rhi::rhi_cmd_bind_pipeline(47)};
+        const auto nonempty_result = shs::rhi::record_commands(nonempty, recorder);
+        if (nonempty_result ||
+            nonempty_result.error().code != shs::VulkanRecordingError::DeviceUnavailable ||
+            nonempty_result.error().command_index != SIZE_MAX ||
+            nonempty_result.error().stage != shs::VulkanRecordingStage::Prerequisite ||
+            nonempty_result.error().command != shs::VulkanCommandKind::None) return false;
         const auto bind = recorder.bind_vertex_buffer({123, 0});
         const auto barrier = recorder.barrier({});
         return !bind && bind.error() == shs::VulkanRecordingError::DeviceUnavailable &&
                !barrier && barrier.error() == shs::VulkanRecordingError::DeviceUnavailable;
+    }
+
+    bool test_recording_ready_precedence()
+    {
+        using namespace shs;
+        // A failing optional readiness hook is a prerequisite: it wins over
+        // whole-stream validation, even for streams that would fail order
+        // preflight, and no sink call is issued for either stream.
+        struct UnreadySink : SpySink
+        {
+            std::expected<void, VulkanRecordingError> recording_ready() const
+            { return std::unexpected(VulkanRecordingError::DeviceUnavailable); }
+        };
+        const std::vector<RHICmd> streams[] = {
+            {},
+            {rhi_cmd_barrier({}), rhi_cmd_begin_pass({}), rhi_cmd_end_pass()},
+            {rhi_cmd_begin_pass({}), rhi_cmd_begin_pass({})} // invalid order, never reached
+        };
+        for (const auto& stream : streams)
+        {
+            UnreadySink sink;
+            const auto result = record_commands(stream, sink);
+            if (result || result.error().code != VulkanRecordingError::DeviceUnavailable ||
+                result.error().command_index != SIZE_MAX ||
+                result.error().stage != VulkanRecordingStage::Prerequisite ||
+                result.error().command != VulkanCommandKind::None || !sink.calls.empty())
+                return false;
+        }
+        return true;
     }
 
     bool test_recording_failure_positions()
@@ -694,6 +733,7 @@ int main()
         {"vk_command_stream_rejection", test_command_stream_rejection},
         {"vk_nested_pass_preflight", test_nested_pass_rejected_before_recording},
         {"vk_recorder_unsupported_commands", test_recorder_unsupported_commands},
+        {"vk_recording_ready_precedence", test_recording_ready_precedence},
         {"vk_command_preflight_table", test_command_preflight_table},
         {"vk_recording_failure_positions", test_recording_failure_positions},
         {"vk_recorder_resource_preflight", test_recorder_resource_preflight},
