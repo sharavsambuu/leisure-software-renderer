@@ -6,6 +6,50 @@
 > and all demos alike, rolled into the library tree, the dynamic render path
 > system, and the Vulkan backend.
 > Architecture details: `docs/arch/render_path_domain_pod_architecture.md`.
+>
+> **Reconciliation banner (2026-09-18, owner ruling — FINAL).** The *architecture*
+> in this roadmap stands; its **name and its tree plan are superseded**. The owner
+> ruled 2026-09-18 that the DVO architecture is final and binding:
+> domain-context-separated **Domain Value Objects** with monadic (Kleisli) gateway
+> composition and contract guardrails
+> ([`domain_value_object_law.md`](../spec/domain_value_object_law.md); Constitution II
+> §2.1/§2.2/§8 + Rule 17). The retired term itself (defined in the annex, Part 0 —
+> it is not respelled in live edits, T1/T4) is replaced by **DVO**. This banner is
+> DVO-spelled; the untouched prose below is part of the T4 shrink-only set and
+> migrates at its next substantive edit (T3).
+>
+> What that ruling settles for the phases below:
+>
+> 1. **P0.5's recorded target tree is historical only.** The executed
+>    domain-separation migration (archived:
+>    `docs/outdated/engine_domain_separation_migration.md`) followed by the
+>    namespace/root-spelling cutover (`docs/backlog/namespace_cutover_mapping.md`,
+>    0 open items) landed a **flat owner-namespace tree** —
+>    `shs/{core,memory,containers,renderpath,render,scene,lighting,input,camera,`
+>    `geometry,sky,resources,logic,rhi,task,platform,app}` — with
+>    `.contract.hpp`/`.gateway.hpp` suffixes. `shs/domains/` and `shs/execution/`
+>    **do not exist** in the tree.
+> 2. **The parked semantics-hardening backlog below is CLOSED AS SUPERSEDED.**
+>    Its frozen copy is `docs/outdated/domain_pod_hardening_backlog.md` (T2 archive,
+>    never edited), and the enforcement program it anticipated was *executed* as the
+>    W-A…W-E traversal in `docs/backlog/constitution_enforcement_plan.md` (0 open
+>    items; guardrail placement, gateway-rail and purity gates each with negative
+>    twins). Only two of its ideas survive as live work — see item 4.
+> 3. **Verified done but previously unticketed: P3 boxes 1–3** (input/camera action
+>    extraction, renderpath-command routing, per-frame planner) — evidence:
+>    `exps-gpu-renderer/exp-rendering-techniques/demo_{input_actions,renderpath_bridge,`
+>    `frame_planner}.hpp` (417 lines) with CTest-registered suites
+>    `shs_demo_{input_actions,renderpath_bridge,frame_planner}_tests`.
+> 4. **Genuinely open remainder** — the only live work in this file: P3 box 4
+>    (monolith → thin composition; the file is 9,800 lines against a <1.5k DoD),
+>    P3 box 6 (open pass-ID / light-registry extensibility), P3 box 7 (migrate or
+>    retire the `hello_*_vulkan` probes), P5 box 1 (role/suffix completion — 0
+>    `.plan.hpp` / `.edge.hpp` splits exist today), P5 box 4 (retire
+>    `frame_graph.hpp` / `pluggable_pipeline.hpp`; PATH_COMPILED-gated), P4
+>    (demo-internal Core 4 debt), P6 (host-blocked replay/rollback). Value-semantics
+>    core work is owned by
+>    [`value_oriented_programming_first_class_roadmap.md`](value_oriented_programming_first_class_roadmap.md),
+>    not by this file.
 
 ## Vision
 
@@ -102,6 +146,17 @@ include/shs/
 **DoD**: tree matches the target map; all facade headers forward correctly; build +
 existing `ctest` suite green; boundary linter (from old P5, pulled forward) enforces
 `domains/ → {core, memory, containers, domains}` include-direction from day one.
+
+> **Staleness note (2026-09-18, owner ruling).** This recorded target tree is
+> **historical**. `shs/domains/` + `shs/execution/` never became the final shape:
+> the executed domain-separation migration (archived,
+> `docs/outdated/engine_domain_separation_migration.md`) and the following
+> namespace/root-spelling cutover flattened the tree into owner namespaces
+> (`shs/{renderpath,render,scene,lighting,input,camera,geometry,sky,resources,logic,`
+> `rhi,task,platform,app}` + the `core`/`memory`/`containers` primitives) and added
+> the `.contract.hpp`/`.gateway.hpp` role suffixes. Read the paths below as the
+> migration's historical record, not as current spellings — see the reconciliation
+> banner at the top of this file.
 
 > **Status (2026-09-15): DONE.** All zones moved: `frame/input/camera/scene/lighting/
 > sky/gfx/geometry/resources/logic` → `shs/domains/…`, `pipeline/passes/rhi/sw_render/
@@ -272,11 +327,17 @@ device (no ICD in CI), so it lands with Phase J / P6 integration rather than her
 
 Goal: `demo_forward_classic_renderpath.cpp` (9,373 lines) → thin pod composition.
 
-- [ ] Extract input/camera edges to `shs/input` tokenizer + action tokens.
-- [ ] Route all path configuration through `renderpath` pod commands (menu/UI edge
+- [x] Extract input/camera edges to `shs/input` tokenizer + action tokens.
+      **Verified done 2026-09-18** (was unticketed): `demo_input_actions.hpp`
+      (151 lines) + `shs_demo_input_actions_tests` in CTest; the demo consumes
+      `shs/input/value_actions.hpp`.
+- [x] Route all path configuration through `renderpath` DVO commands (menu/UI edge
       emits `SelectPathPresetIntent`, `SetRenderingTechniqueIntent`, …).
-- [ ] Extract per-frame planner into a `plan`-style pure function emitting
-      `CommandDesc` spans.
+      **Verified done 2026-09-18**: `demo_renderpath_bridge.hpp` (87 lines) +
+      `shs_demo_renderpath_bridge_tests` (links `shs::renderer-values`).
+- [x] Extract per-frame planner into a `plan`-style pure function emitting
+      `CommandDesc` spans. **Verified done 2026-09-18**: `demo_frame_planner.hpp`
+      (179 lines) + `shs_demo_frame_planner_tests` in CTest.
 - [ ] Main loop becomes: input edge → gateways → plan → executor edge → present
       (tetris shape).
 - [ ] Hybrid / GPU-free demo mode — demos must honor the backend factory's
@@ -431,8 +492,23 @@ outside arenas; event log overlay ships in the demo.
 - P0.5 is moves-only (no content edits) and one module per commit with facade shims,
   so review and rollback stay trivial; P5 does the content-level suffixing later.
 
-## Backlog — POD Semantics Hardening (parked 2026-09-15; work later)
+## Backlog — Semantics Hardening (parked 2026-09-15) — **CLOSED AS SUPERSEDED 2026-09-18**
 
+> **Superseded (2026-09-18, owner ruling).** This section is closed. Two reasons:
+> (1) its proposals were absorbed — the frozen copy is
+> `docs/outdated/domain_pod_hardening_backlog.md` (T2 archive, never edited), and
+> the enforcement program it anticipated was executed as the W-A…W-E traversal in
+> [`constitution_enforcement_plan.md`](../backlog/constitution_enforcement_plan.md)
+> (0 open items: guardrail placement, gateway-rail and purity gates, each with
+> negative twins); (2) the "Run 1–5" slot plan it references no longer exists, and
+> the retired terminology is defined in `domain_value_object_law.md` (read **DVO**,
+> spell it DVO — T1). Read the boxes below as history. The two ideas that stay live
+> are carried by the reconciliation banner at the top of this file: **semantic
+> purity checks** (extend the existing DVO gates rather than the old `domains/`
+> boundary linter) and **generated event-flow docs** (`P4` box 3).
+>
+> Original parked text follows, unedited (T4/T2 discipline):
+>
 > Suggestions from the post-Tier0 lib review on strengthening pure gateway
 > Domain Value Object semantics in `shs-renderer-lib`. Not scheduled — recorded so the
 > Runs 1–5 plan above can absorb them at the right moment. `renderpath` (P1)

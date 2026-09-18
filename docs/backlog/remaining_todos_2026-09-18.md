@@ -19,9 +19,58 @@
 - Library migration stabilized (KDBA Runs A–C closed, `05bb646`).
 - Rasterizer hot-path track closed & archived (R1–R5); governance review
   closed & archived (G1–G3); `rhi/drivers/vulkan/` forwarders retired (`8b6484b`).
-- Only unblocked, ready-to-start work: **Bucket A** below.
+- **Correction (2026-09-18, owner ruling — FINAL): the previous snapshot line
+  ("only unblocked work = Bucket A") was wrong.** The owner ruled that the DVO
+  architecture — domain-context-separated Domain Value Objects, monadic (Kleisli)
+  gateway composition, contract guardrails — is final and binding. The library-side
+  programs are *closed* (domain-separation migration archived; namespace cutover
+  0 open; contract guardrails C0–C3 done with only C4.3 toolchain-blocked;
+  enforcement W-A…W-E 0 open; KDBA A–C, G1–G4 closed), and the genuine library
+  remainder is **A0** below. Bucket A's demo track is *not* the only startable work;
+  it was believed to be because
+  [`domain_pod_engine_rollout_roadmap.md`](../roadmap/domain_pod_engine_rollout_roadmap.md)
+  was stale (its P0.5 tree record contradicted the live tree, its P3 boxes 1–3 were
+  done-unticketed, and its parked backlog was superseded). That file now carries a
+  reconciliation banner.
 
 ## Bucket A — Unblocked, ready to start
+
+### A0. Library DVO-architecture remainder (verified 2026-09-18 — owner: [`domain_pod_engine_rollout_roadmap.md`](../roadmap/domain_pod_engine_rollout_roadmap.md) reconciliation banner)
+
+- [ ] **P3 box 4 — monolith → thin DVO composition.** `demo_forward_classic_renderpath.cpp`
+      is 9,800 lines against a <1.5k DoD; its extracted pieces already exist and are
+      CTest-gated (`demo_input_actions.hpp`, `demo_renderpath_bridge.hpp`,
+      `demo_frame_planner.hpp`), so the work is wiring + deleting inline copies.
+      The largest remaining structural win, and it is the proof-by-consumer for the
+      whole DVO spine. Library-adjacent, not library-internal.
+- [ ] **P3 box 6 — open `PassId` / light-registry extensibility** (Constitution I §7).
+      Consumer-owned passes and light volumes without a core edit: builtin range +
+      open registered range (or stable contract keys), same treatment for
+      `RenderPathLightVolumeProvider` and the technique/light preset enums.
+      *Pure library API work; fully unblocked; smallest high-leverage item here.*
+- [ ] **P5 box 1 — role/suffix completion.** Today each DVO zone carries a single
+      `.contract.hpp` (`render` carries two) and only 5 gateways exist (`renderpath`,
+      `render/frame`, `input`, `logic`, `app/session_orchestrator`); there are **0**
+      `.plan.hpp` / `.edge.hpp` splits (`renderpath` holds 40 headers against 1
+      contract header). Extends the existing `check_contract_placement.sh` gate's
+      coverage (225 headers today).
+- [ ] **P5 box 4 — retire `frame_graph.hpp` / `pluggable_pipeline.hpp`.** Genuinely
+      open but **PATH_COMPILED-gated** (P6): `frame_graph.hpp` (218 lines) has one
+      internal consumer; `pluggable_pipeline.hpp` (1,050 lines) still has 3
+      (monolith, `hello_rendering_paths`, `core_tests`). Its facade role is already
+      thin — `PluggablePipeline::execute` delegates to
+      `PipelineRuntimeExecutor` + `PipelineExecutionPlanner` inside the same file.
+- [ ] **P3 box 7 — migrate or retire the `hello_*_vulkan` probes.**
+- [ ] **P4 — demo-internal Core 4 debt** (tetris/snake vocabularies; regenerate
+      `docs/pods/EVENT_FLOW.md`).
+- [ ] **Enforcement actually runs.** The repo has **no CI at all** (no
+      `.github/workflows`), so the 71 CTest gates + boundary/include-graph/purity
+      gates are opt-in — they run only when someone remembers. VOP-first roadmap
+      item 5 ("wire CTest gates into CI so regressions fail automatically") is
+      therefore genuinely open. Platform choice is an owner decision.
+- Host-blocked, not startable: **P6** replay/rollback (PATH_COMPILED-driven executor
+  rebuilds) and **C4.3** (needs `__cpp_contracts` + `<contracts>`; GCC 13.3.0 lacks
+  both — owner baseline ruling outstanding).
 
 ### A1. GPU execution path (owner: [`kdba_conformance_backlog.md`](kdba_conformance_backlog.md) §"GPU execution path — selected next work")
 
