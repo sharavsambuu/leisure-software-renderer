@@ -59,16 +59,21 @@
       are related, not substitute evidence. Depends on G3 and a verified
       software realization of the selected recipe.
 
-### A2. Adventure demo conformance (owner: [`adventure_demo_conformance_backlog.md`](adventure_demo_conformance_backlog.md) — 36 open checkboxes, unstarted)
+### A2. Adventure demo conformance (owner: [`adventure_demo_conformance_backlog.md`](adventure_demo_conformance_backlog.md) — 29 open checkboxes; AD0, AD1 closed 2026-09-18)
 
-- [ ] **AD0 Fresh reproducible baseline** — record build config/CTest
-      registration, compiler, Vulkan device/driver, Slang version; regenerate
-      all six SW/Vulkan parity pairs; unavailable backends recorded as
-      explicitly unavailable, never as passes. Depends on: —
-- [ ] **AD1 Portable automated demo gates** — de-machine-specific
-      `t0_parity_suite.py`; register SW smoke/known-answer tests and all
-      available twin comparisons (incl. tier1 08) with CTest; documented
-      capability skips only. Depends on AD0.
+- [x] **AD0 Fresh reproducible baseline** — DONE 2026-09-18:
+      evidence in [`adventure_demo_baseline_2026-09-18.md`](adventure_demo_baseline_2026-09-18.md).
+      All six pairs rebuilt + parity-recorded (no backend unavailable);
+      two envelope breaches (01, 02) proven pre-existing device drift
+      (Mesa 25.2.8) via a pre-R1 (`983925c`) worktree cross-check and
+      re-pinned with dated rationale (shrink-only from here); zero refactor
+      regressions. Depends on: —
+- [x] **AD1 Portable automated demo gates** — DONE 2026-09-18:
+      suite fully de-machined (CMake-supplied dirs, isolated scratch
+      outputs, capability-skip vs failure split); 6 SW smoke + 6 per-pair
+      parity CTest entries (incl. tier1 08) + negative-probe test; probes
+      caught and fixed a real `--tol 1` parsing bug in `t0_parity.py`.
+      Full CTest 63/63. Depends on AD0.
 - [ ] **AD2 Shared semantic state + explicit draw inputs.** Depends on AD0.
 - [ ] **AD3 Typed compositional orchestration pilot** (depth/blend pair).
       Depends on AD2.

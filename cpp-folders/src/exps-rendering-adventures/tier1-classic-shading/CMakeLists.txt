@@ -63,4 +63,24 @@ foreach(_entry IN LISTS T1_DEMOS)
         target_compile_definitions(t1_${_name}_vk PRIVATE
             SHS_ADVENTURES_SHADER_DIR="${_spv_dir}")
     endif()
+
+    # ---- AD1: portable automated gates (CTest registration) ----
+    # SW smoke registered independently of Vulkan; the 08 twin parity test
+    # (a kdba/AD1 acceptance requirement) runs the de-machined suite with
+    # CMake-supplied build dirs and an isolated scratch output dir.
+    set(SHS_ADVENTURES_OUT_DIR ${CMAKE_BINARY_DIR}/adventure_out)
+    file(MAKE_DIRECTORY ${SHS_ADVENTURES_OUT_DIR})
+
+    add_test(NAME t1_${_name}_sw_smoke
+        COMMAND t1_${_name}_sw ${SHS_ADVENTURES_OUT_DIR}/t1_08_normal_mapping_sw.png)
+
+    if(SHS_ADVENTURES_HAS_SLANG AND Vulkan_FOUND AND Python3_Interpreter_FOUND)
+        add_test(NAME t1_08_normal_mapping_parity
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/../tier0-rasterization-foundations/tools/t0_parity_suite.py
+                    --build-dir ${CMAKE_BINARY_DIR}/src/exps-rendering-adventures/tier0-rasterization-foundations
+                    --tier1-build-dir ${CMAKE_CURRENT_BINARY_DIR}
+                    --only 08_normal_mapping
+                    --scratch-dir ${SHS_ADVENTURES_OUT_DIR}/parity/t1_08_normal_mapping)
+    endif()
 endforeach()

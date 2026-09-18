@@ -20,6 +20,9 @@ project(ExpsRenderingAdventures)
 
 find_package(glm CONFIG REQUIRED)
 find_package(Vulkan QUIET)
+# Python3 drives the demo parity gates (t0_parity_suite / negative probes);
+# tests register only when an interpreter exists.
+find_package(Python3 QUIET COMPONENTS Interpreter)
 
 # Slang P0: locate slangc (SDK ships it under $VULKAN_SDK/bin; the pinned
 # standalone install lives in ~/slang per docs/dev/build_and_setup.md).

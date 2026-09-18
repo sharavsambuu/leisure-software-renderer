@@ -36,17 +36,18 @@ endif()
 # Demos: dir:name pairs
 # ---------------------------------------------------------------------------
 set(T0_DEMOS
-    "01_barycentric_interpolation:tri_barycentric"
-    "02_perspective_ortho_projection:projection"
-    "03_depth_test_alpha_blend:depth_blend"
-    "04_texture_sampling_scissor:texture_sampling"
-    "05_stencil_operations:stencil"
+    "01_barycentric_interpolation:tri_barycentric:01_barycentric"
+    "02_perspective_ortho_projection:projection:02_projection"
+    "03_depth_test_alpha_blend:depth_blend:03_depth_blend"
+    "04_texture_sampling_scissor:texture_sampling:04_texture_sampling"
+    "05_stencil_operations:stencil:05_stencil"
 )
 
 foreach(_entry IN LISTS T0_DEMOS)
     string(REPLACE ":" ";" _pair "${_entry}")
     list(GET _pair 0 _dir)
     list(GET _pair 1 _name)
+    list(GET _pair 2 _short)
 
     # ---- software variant (always built) ----
     add_executable(t0_${_name}_sw ${_dir}/${_name}_sw.cpp)
@@ -83,4 +84,37 @@ foreach(_entry IN LISTS T0_DEMOS)
         target_compile_definitions(t0_${_name}_vk PRIVATE
             SHS_ADVENTURES_SHADER_DIR="${_spv_dir}")
     endif()
+
+    # ---- AD1: portable automated gates (CTest registration) ----
+    #   * SW smoke: headless render into an isolated output dir, exit 0.
+    #     Registered independently of Vulkan/slang so GPU-free CI still
+    #     exercises demo coverage.
+    #   * Parity twin: one t0_parity_suite run per pair (build dirs supplied
+    #     by CMake — no checkout-specific paths), registered only when the
+    #     Vulkan twin exists. A missing twin is a documented capability skip
+    #     inside the suite; render/upload/PNG/compare failures remain
+    #     failures.
+    set(SHS_ADVENTURES_OUT_DIR ${CMAKE_BINARY_DIR}/adventure_out)
+    file(MAKE_DIRECTORY ${SHS_ADVENTURES_OUT_DIR})
+
+    add_test(NAME t0_${_name}_sw_smoke
+        COMMAND t0_${_name}_sw ${SHS_ADVENTURES_OUT_DIR}/t0_${_short}_sw.png)
+
+    if(SHS_ADVENTURES_HAS_SLANG AND Vulkan_FOUND AND Python3_Interpreter_FOUND)
+        add_test(NAME t0_${_short}_parity
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/t0_parity_suite.py
+                    --build-dir ${CMAKE_CURRENT_BINARY_DIR}
+                    --tier1-build-dir ${CMAKE_BINARY_DIR}/src/exps-rendering-adventures/tier1-classic-shading
+                    --only ${_short}
+                    --scratch-dir ${SHS_ADVENTURES_OUT_DIR}/parity/t0_${_short})
+    endif()
 endforeach()
+
+# ---- AD1: negative probes — the gate tooling must fail reliably (GPU-free) ----
+if(Python3_Interpreter_FOUND)
+    add_test(NAME t0_gate_negative_probes
+        COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/t0_gate_negative_probes.py)
+endif()
+

@@ -31,18 +31,18 @@ All implementation tasks are open. Finding numbers refer to the adventure-demo a
 
 ## AD0 — Establish the baseline
 
-- [ ] Discover current build configuration and registered CTest tests; record commands, compiler, Vulkan device/driver, and Slang version where available.
-- [ ] Rebuild six SW demos and available Vulkan twins; regenerate outputs and record parity for all six pairs. Record unavailable backends explicitly, not as passes.
-- [ ] Separate existing defects from refactor regressions. Inspect enclosing CMake/CI wiring before claiming that the suite is entirely manual.
+- [x] Discover current build configuration and registered CTest tests; record commands, compiler, Vulkan device/driver, and Slang version where available. (2026-09-18, `adventure_demo_baseline_2026-09-18.md`)
+- [x] Rebuild six SW demos and available Vulkan twins; regenerate outputs and record parity for all six pairs. Record unavailable backends explicitly, not as passes. (2026-09-18: all six twins available and exercised; fresh parity table in baseline note)
+- [x] Separate existing defects from refactor regressions. Inspect enclosing CMake/CI wiring before claiming that the suite is entirely manual. (2026-09-18: two envelope breaches proven pre-existing device drift via 983925c pre-R1 worktree cross-check; demos were unregistered — wiring inspected, registration now lands via AD1)
 
 **Acceptance:** reproducible commands and fresh results attached to close-out notes. Library test counts are not substituted for demo coverage.
 
 ## AD1 — Portable automated gates
 
-- [ ] Replace machine-specific paths in `t0_parity_suite.py` with explicit arguments supplied by CMake; use isolated output directories and retain subprocess diagnostics.
-- [ ] Register SW smoke/known-answer tests independently of Vulkan. Register all available twin comparisons with CTest, including tier1 08.
-- [ ] Distinguish missing optional capability from failure: documented capability skips only; shader, upload, render, PNG, and comparison failures remain failures on an enabled backend.
-- [ ] Test parity-tool argument handling (including documented `--tol 1` and `--tol=1` forms), malformed comparator output, subprocess failures, and envelope breaches.
+- [x] Replace machine-specific paths in `t0_parity_suite.py` with explicit arguments supplied by CMake; use isolated output directories and retain subprocess diagnostics. (2026-09-18: --build-dir/--tier1-build-dir/--scratch-dir/--only; no baked-in paths; diagnostics retained)
+- [x] Register SW smoke/known-answer tests independently of Vulkan. Register all available twin comparisons with CTest, including tier1 08. (2026-09-18: 6 SW smoke tests always registered; 6 per-pair parity tests when slang+Vulkan, incl. t1 08; full CTest 63/63)
+- [x] Distinguish missing optional capability from failure: documented capability skips only; shader, upload, render, PNG, and comparison failures remain failures on an enabled backend. (2026-09-18: suite SKIP = missing *_vk binary; binary/tool/PNG failures are FAILs)
+- [x] Test parity-tool argument handling (including documented `--tol 1` and `--tol=1` forms), malformed comparator output, subprocess failures, and envelope breaches. (2026-09-18: t0_gate_negative_probes.py + CTest t0_gate_negative_probes; probe found and fixed a real `--tol 1` parsing bug in t0_parity.py, plus malformed-output and subprocess-crash hardening in the suite)
 
 **Acceptance:** GPU-free and Vulkan-enabled configurations report accurate pass/skip/fail results without checkout-specific paths. Negative probes fail reliably; envelopes are not loosened to pass a refactor.
 

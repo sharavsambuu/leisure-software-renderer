@@ -76,12 +76,27 @@ def read_png(path):
 
 
 def main():
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    diffmap = "--diffmap" in sys.argv
+    argv_ = sys.argv[1:]
+    diffmap = "--diffmap" in argv_
     tol = 1
-    for a in sys.argv[1:]:
-        if a.startswith("--tol"):
-            tol = int(a.split("=")[1] if "=" in a else sys.argv[sys.argv.index(a) + 1])
+    args = []
+    i = 0
+    # Both documented forms must work: "--tol 1" and "--tol=1".
+    while i < len(argv_):
+        a = argv_[i]
+        if a == "--tol" and i + 1 < len(argv_):
+            tol = int(argv_[i + 1])
+            i += 2
+            continue
+        if a.startswith("--tol="):
+            tol = int(a.split("=", 1)[1])
+            i += 1
+            continue
+        if a == "--diffmap":
+            i += 1
+            continue
+        args.append(a)
+        i += 1
     if len(args) != 2:
         print(__doc__)
         return 3
