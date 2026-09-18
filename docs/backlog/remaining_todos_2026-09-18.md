@@ -59,7 +59,7 @@
       are related, not substitute evidence. Depends on G3 and a verified
       software realization of the selected recipe.
 
-### A2. Adventure demo conformance (owner: [`adventure_demo_conformance_backlog.md`](adventure_demo_conformance_backlog.md) — 29 open checkboxes; AD0, AD1 closed 2026-09-18)
+### A2. Adventure demo conformance (owner: [`adventure_demo_conformance_backlog.md`](adventure_demo_conformance_backlog.md) — 28 open checkboxes; AD0, AD1, AD4 closed 2026-09-18)
 
 - [x] **AD0 Fresh reproducible baseline** — DONE 2026-09-18:
       evidence in [`adventure_demo_baseline_2026-09-18.md`](adventure_demo_baseline_2026-09-18.md).
@@ -77,8 +77,15 @@
 - [ ] **AD2 Shared semantic state + explicit draw inputs.** Depends on AD0.
 - [ ] **AD3 Typed compositional orchestration pilot** (depth/blend pair).
       Depends on AD2.
-- [ ] **AD4 Independent known-answer tests** (GPU-free CI, justified
-      tolerances). Depends on AD0; register through AD1.
+- [x] **AD4 Independent known-answer tests** — DONE 2026-09-18: evidence in
+      [`adventure_demo_ad4_evidence_2026-09-18.md`](adventure_demo_ad4_evidence_2026-09-18.md).
+      Always-active checks that fail the process; demos 01/04/08 verified
+      against analytic oracles over the real SW demo PNGs, 02/03/05 driven
+      in-process with direct depth/stencil STORAGE inspection; every tolerance
+      justified in the note. Validation found and fixed five oracle defects
+      (28 mismatches → 0); prove-fail covers both oracle styles. Full CTest
+      67/67 + `check_kdba_boundaries.sh` + `check_include_graph.py` green.
+      Depends on AD0 (registered through AD1).
 - [ ] **AD5 Single-source shared scene inputs.** Depends on AD0.
 - [ ] **AD6 Execution-format adapters** (vertex/push-constant packing isolated
       at the Vulkan boundary). Depends on AD2.

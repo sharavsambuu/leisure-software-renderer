@@ -111,6 +111,25 @@ foreach(_entry IN LISTS T0_DEMOS)
     endif()
 endforeach()
 
+# ---- AD4: independent known-answer checks (GPU-free, always active) ----
+#   Demos 02/03/05 run in-process through the shared SwRaster kernels so the
+#   depth/stencil STORAGE can be inspected directly; demos 01/04 run the real
+#   demo binaries and are checked against analytic oracles derived here
+#   (independent barycentric solve / checkerboard + sampler model). No parity
+#   agreement is accepted as evidence. The prove-fail entry corrupts one
+#   expectation and requires the comparator to catch it, so a correlated
+#   SW/VK mistake cannot pass through this tool silently.
+add_executable(t0_known_answer_checks
+    tools/t0_known_answer_checks.cpp
+    common/adventures_stb_load.cpp)
+target_link_libraries(t0_known_answer_checks PRIVATE t0_adventures_common)
+target_compile_definitions(t0_known_answer_checks PRIVATE
+    SHS_KA_BIN_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+add_dependencies(t0_known_answer_checks t0_tri_barycentric_sw t0_texture_sampling_sw)
+add_test(NAME t0_known_answer_checks COMMAND t0_known_answer_checks)
+add_test(NAME t0_known_answer_prove_fail
+    COMMAND t0_known_answer_checks --prove-wrong-expected)
+
 # ---- AD1: negative probes — the gate tooling must fail reliably (GPU-free) ----
 if(Python3_Interpreter_FOUND)
     add_test(NAME t0_gate_negative_probes

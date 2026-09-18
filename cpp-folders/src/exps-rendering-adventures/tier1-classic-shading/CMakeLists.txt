@@ -84,3 +84,20 @@ foreach(_entry IN LISTS T1_DEMOS)
                     --scratch-dir ${SHS_ADVENTURES_OUT_DIR}/parity/t1_08_normal_mapping)
     endif()
 endforeach()
+
+# ---- AD4: independent known-answer checks for demo 08 (GPU-free) ----
+#   Runs the real t1_normal_mapping_sw binary and verifies flat/mapped shading
+#   samples against analytic oracles derived here (hand-computed uv, freshly
+#   regenerated bump texels, decode round-trip, tangent frame). No parity
+#   agreement is accepted as evidence; prove-fail corrupts one expectation
+#   and requires the comparator to catch it.
+add_executable(t1_08_known_answer_checks
+    08_normal_mapping/normal_mapping_ka.cpp
+    ../tier0-rasterization-foundations/common/adventures_stb_load.cpp)
+target_link_libraries(t1_08_known_answer_checks PRIVATE t1_adventures_common)
+target_compile_definitions(t1_08_known_answer_checks PRIVATE
+    SHS_KA_BIN_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+add_dependencies(t1_08_known_answer_checks t1_normal_mapping_sw)
+add_test(NAME t1_08_known_answer_checks COMMAND t1_08_known_answer_checks)
+add_test(NAME t1_08_known_answer_prove_fail
+    COMMAND t1_08_known_answer_checks --prove-wrong-expected)

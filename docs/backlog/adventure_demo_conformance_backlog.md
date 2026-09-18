@@ -66,16 +66,30 @@ All implementation tasks are open. Finding numbers refer to the adventure-demo a
 
 ## AD4 — Independent known-answer tests
 
-- [ ] Add always-active checks that fail the test process (not `assert` alone, which may disappear in release builds). Return diagnostics to the test/host edge rather than printing inside pure kernels.
-- [ ] Demo 01: check interior barycentric color against analytically derived weights at the sampled pixel center, with an explicit quantization tolerance.
-- [ ] Demo 02: check selected transformed coordinates and depth outcomes independently of twin image agreement.
-- [ ] Demo 03: check opaque overlap and alpha composition; inspect depth storage to prove transparent draws do not write depth.
-- [ ] Demo 04: check known nearest/bilinear samples, repeat wrapping, and unchanged pixels outside the scissor.
-- [ ] Demo 05: check stencil storage and equal/inverted-mask behavior at interior/exterior sample points.
-- [ ] Demo 08: check decoded normals, tangent-frame behavior for the supported input, and analytical flat/mapped shading samples. Do not assume one half is always brighter.
-- [ ] Prove checks fail with deliberately wrong expected values or temporary mutations; a correlated SW/Vulkan mistake must not pass solely through parity.
+- [x] Add always-active checks that fail the test process (not `assert` alone, which may disappear in release builds). Return diagnostics to the test/host edge rather than printing inside pure kernels.
+- [x] Demo 01: check interior barycentric color against analytically derived weights at the sampled pixel center, with an explicit quantization tolerance.
+- [x] Demo 02: check selected transformed coordinates and depth outcomes independently of twin image agreement.
+- [x] Demo 03: check opaque overlap and alpha composition; inspect depth storage to prove transparent draws do not write depth.
+- [x] Demo 04: check known nearest/bilinear samples, repeat wrapping, and unchanged pixels outside the scissor.
+- [x] Demo 05: check stencil storage and equal/inverted-mask behavior at interior/exterior sample points.
+- [x] Demo 08: check decoded normals, tangent-frame behavior for the supported input, and analytical flat/mapped shading samples. Do not assume one half is always brighter.
+- [x] Prove checks fail with deliberately wrong expected values or temporary mutations; a correlated SW/Vulkan mistake must not pass solely through parity.
 
 **Acceptance:** every lesson has independent numerical assertions with justified tolerances; tests run in GPU-free CI. Document input restrictions separately from guarantees of a general rasterizer.
+
+**CLOSED 2026-09-18.** Evidence and input restrictions:
+[`adventure_demo_ad4_evidence_2026-09-18.md`](adventure_demo_ad4_evidence_2026-09-18.md).
+Artifacts: `tier0-.../tools/t0_known_answer_checks.cpp` (+ shared
+`common/adventures_stb_load.cpp` PNG reader) and
+`tier1-classic-shading/08_normal_mapping/normal_mapping_ka.cpp`; CTest entries
+`t0_known_answer_checks`, `t0_known_answer_prove_fail`,
+`t1_08_known_answer_checks`, `t1_08_known_answer_prove_fail`. Demos 01/04/08 are
+checked against analytic oracles over the real software demo PNGs; 02/03/05 run
+in-process through the shared tier0 `SwRaster` kernels so depth/stencil
+**storage** is inspected directly. Validation found and fixed five oracle
+defects (28 mismatches → 0); prove-fail now corrupts both oracle styles and
+requires detection. Full `build/` CTest 67/67, `check_kdba_boundaries.sh` and
+`check_include_graph.py` green. No parity agreement is accepted as evidence.
 
 ## AD5 — Single-source shared inputs
 
@@ -112,4 +126,7 @@ All implementation tasks are open. Finding numbers refer to the adventure-demo a
 3. AD5 + AD6: consolidate inputs and contain backend representations.
 4. AD7: roll out, validate, and record closure.
 
-Each delivery should be independently reviewable. Preserve tolerance envelopes unless a separately investigated rendering correction justifies a change. Current status: backlog authored only; no demo refactors or new tests have been implemented by this document.
+Each delivery should be independently reviewable. Preserve tolerance envelopes unless a separately investigated rendering correction justifies a change. Current status (2026-09-18): AD0, AD1, and AD4 are **closed** with recorded
+evidence (`adventure_demo_baseline_2026-09-18.md`,
+`adventure_demo_ad4_evidence_2026-09-18.md` and the CTest gates); AD2, AD3, AD5,
+AD6, and AD7 remain unimplemented.
