@@ -103,15 +103,6 @@ namespace shs
                 }
             }
 
-            ShaderProgram prog = make_pbr_mr_program();
-            if (in.fp->shading_model == ShadingModel::BlinnPhong)
-            {
-                prog = make_blinn_phong_program();
-            }
-            if (in.fp->debug_view != DebugViewMode::Final)
-            {
-                prog = make_debug_view_shader_program(in.fp->debug_view);
-            }
             RasterizerTarget tgt{};
             tgt.hdr = hdr;
             tgt.depth_motion = (motion && motion->w == hdr->w && motion->h == hdr->h) ? motion : nullptr;
@@ -129,6 +120,13 @@ namespace shs
             std::unordered_map<uint64_t, glm::mat4> next_prev_model_by_object{};
             next_prev_model_by_object.reserve(in.scene->items.size() * 2 + 1);
 
+            // R1 (renderer-lib review 2026-09-18): the per-item loop is a
+            // generic lambda so each branch dispatches a CONCRETE (non-erased)
+            // program type into rasterize_mesh — the per-pixel fragment
+            // invocation becomes a direct, inlinable call. std::function stays
+            // only at host seams.
+            auto raster_items = [&](const auto& program)
+            {
             for (size_t item_index = 0; item_index < in.scene->items.size(); ++item_index)
             {
                 const auto& item = in.scene->items[item_index];
@@ -209,10 +207,27 @@ namespace shs
                 set_uniform_vec4(u, 3, glm::vec4(u.camera_pos, 1.0f));
                 set_uniform_vec4(u, 4, glm::vec4(u.metallic, u.roughness, u.ao, 0.0f));
 
-                const RasterizerStats rs = rasterize_mesh(*mesh, prog, u, tgt, rast_cfg);
+                const RasterizerStats rs = rasterize_mesh(*mesh, program, u, tgt, rast_cfg);
                 ctx.debug.tri_input += rs.tri_input;
                 ctx.debug.tri_after_clip += rs.tri_after_clip;
                 ctx.debug.tri_raster += rs.tri_raster;
+            }
+            };
+
+            // R1 dispatch: one concrete program type per branch (debug_view
+            // wins, then Blinn-Phong, then PBR metallic-roughness — the same
+            // precedence the erased variant had).
+            if (in.fp->debug_view != DebugViewMode::Final)
+            {
+                raster_items(make_debug_view_shader_program(in.fp->debug_view));
+            }
+            else if (in.fp->shading_model == ShadingModel::BlinnPhong)
+            {
+                raster_items(make_blinn_phong_program());
+            }
+            else
+            {
+                raster_items(make_pbr_mr_program());
             }
 
             ctx.history.prev_model_by_object.swap(next_prev_model_by_object);

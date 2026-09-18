@@ -356,24 +356,25 @@ namespace shs
             return true;
         }
 
-        inline ShaderProgram make_depth_prepass_program()
+        // R1 (renderer-lib review 2026-09-18): concrete ShaderProgramFn —
+        // depth prepass rasterization inlines the per-pixel fragment call.
+        inline auto make_depth_prepass_program()
         {
-            ShaderProgram p{};
-            p.vs = [](const ShaderVertex& vin, const ShaderUniforms& u) -> VertexOut {
+            const auto vs_fn = [](const ShaderVertex& vin, const ShaderUniforms& u) -> VertexOut {
                 VertexOut out{};
                 const glm::vec4 wp4 = u.model * glm::vec4(vin.position, 1.0f);
                 out.world_pos = glm::vec3(wp4);
                 out.clip = u.viewproj * wp4;
                 return out;
             };
-            p.fs = [](const FragmentIn& fin, const ShaderUniforms& u) -> FragmentOut {
+            const auto fs_fn = [](const FragmentIn& fin, const ShaderUniforms& u) -> FragmentOut {
                 (void)fin;
                 (void)u;
                 FragmentOut out{};
                 out.color = ColorF{0.0f, 0.0f, 0.0f, 1.0f};
                 return out;
             };
-            return p;
+            return ShaderProgramFn{vs_fn, fs_fn};
         }
     }
 
@@ -516,7 +517,7 @@ namespace shs
 
             hdr->clear(ColorF{0.0f, 0.0f, 0.0f, 1.0f});
 
-            const ShaderProgram depth_prog = detail::make_depth_prepass_program();
+            const auto depth_prog = detail::make_depth_prepass_program();
             RasterizerTarget target{};
             target.hdr = hdr;
             target.depth_motion = motion;

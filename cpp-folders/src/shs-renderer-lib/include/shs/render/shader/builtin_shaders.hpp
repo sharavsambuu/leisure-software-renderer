@@ -105,13 +105,16 @@ namespace shs
         return o;
     }
 
-    inline ShaderProgram make_blinn_phong_program()
+    // R1 (renderer-lib review 2026-09-18): builtin programs are concrete
+    // ShaderProgramFn values (no std::function type erasure) so the software
+    // rasterizer can inline the per-pixel fragment call. Shader bodies are
+    // unchanged.
+    inline auto make_blinn_phong_program()
     {
-        ShaderProgram p{};
-        p.vs = [](const ShaderVertex& vin, const ShaderUniforms& u) -> VertexOut {
+        const auto vs_fn = [](const ShaderVertex& vin, const ShaderUniforms& u) -> VertexOut {
             return make_default_vertex_out(vin, u);
         };
-        p.fs = [](const FragmentIn& fin, const ShaderUniforms& u) -> FragmentOut {
+        const auto fs_fn = [](const FragmentIn& fin, const ShaderUniforms& u) -> FragmentOut {
             FragmentOut o{};
             const glm::vec3 albedo_tex = sample_texture2d_bilinear_repeat_linear(u.base_color_tex, fin.uv);
             const glm::vec3 albedo = glm::max(u.base_color * albedo_tex, glm::vec3(0.0f));
@@ -151,16 +154,15 @@ namespace shs
             o.color = ColorF{c.r, c.g, c.b, 1.0f};
             return o;
         };
-        return p;
+        return ShaderProgramFn{vs_fn, fs_fn};
     }
 
-    inline ShaderProgram make_pbr_mr_program()
+    inline auto make_pbr_mr_program()
     {
-        ShaderProgram p{};
-        p.vs = [](const ShaderVertex& vin, const ShaderUniforms& u) -> VertexOut {
+        const auto vs_fn = [](const ShaderVertex& vin, const ShaderUniforms& u) -> VertexOut {
             return make_default_vertex_out(vin, u);
         };
-        p.fs = [](const FragmentIn& fin, const ShaderUniforms& u) -> FragmentOut {
+        const auto fs_fn = [](const FragmentIn& fin, const ShaderUniforms& u) -> FragmentOut {
             FragmentOut o{};
             const glm::vec3 albedo_tex = sample_texture2d_bilinear_repeat_linear(u.base_color_tex, fin.uv);
             const glm::vec3 N = glm::normalize(fin.normal_ws);
@@ -213,19 +215,22 @@ namespace shs
             o.color = ColorF{c.r, c.g, c.b, 1.0f};
             return o;
         };
-        return p;
+        return ShaderProgramFn{vs_fn, fs_fn};
     }
 
-    inline ShaderProgram make_lit_shader_program()
+    inline auto make_lit_shader_program()
     {
         return make_pbr_mr_program();
     }
 
-    inline ShaderProgram make_debug_view_shader_program(DebugViewMode mode)
+    inline auto make_debug_view_shader_program(DebugViewMode mode)
     {
-        ShaderProgram p = make_lit_shader_program();
-
-        p.fs = [mode](const FragmentIn& fin, const ShaderUniforms& u) -> FragmentOut {
+        // Same vertex stage as the lit program; the fragment stage is
+        // debug-mode specific (kept as a value-capturing concrete lambda).
+        const auto vs_fn = [](const ShaderVertex& vin, const ShaderUniforms& u) -> VertexOut {
+            return make_default_vertex_out(vin, u);
+        };
+        const auto fs_fn = [mode](const FragmentIn& fin, const ShaderUniforms& u) -> FragmentOut {
             FragmentOut o{};
             if (mode == DebugViewMode::Albedo)
             {
@@ -244,7 +249,7 @@ namespace shs
             return o;
         };
 
-        return p;
+        return ShaderProgramFn{vs_fn, fs_fn};
     }
 
     } // inline namespace render

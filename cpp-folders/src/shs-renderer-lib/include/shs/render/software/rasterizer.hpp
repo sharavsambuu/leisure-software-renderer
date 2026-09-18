@@ -218,9 +218,15 @@ namespace shs
         return glm::vec3(u, v, w);
     }
 
+    // R1 (renderer-lib review 2026-09-18): rasterize_mesh is templated on the
+    // shader program type. Any program-like type exposing vs()/fs() callables
+    // and valid() is accepted; ShaderProgram (std::function) remains the
+    // host-seam compatibility path, while concrete ShaderProgramFn instances
+    // get fully inlined per-pixel fragment invocations.
+    template <typename ProgramT>
     inline RasterizerStats rasterize_mesh(
         const MeshData& mesh,
-        const ShaderProgram& program,
+        const ProgramT& program,
         const ShaderUniforms& uniforms,
         RasterizerTarget target,
         const RasterizerConfig& config = {}

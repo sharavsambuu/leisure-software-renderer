@@ -117,6 +117,40 @@ namespace shs::app
     // asset registry; the host resolves handles through it per frame only.
     class VerticalSliceHost
     {
+    private:
+        // The host's single deterministic program: view-proj * model vertex
+        // transform, flat base-color fragment. No time-varying math and no
+        // environment sampling — every pixel is replay-reproducible.
+        // R1 (renderer-lib review 2026-09-18): the host program is a concrete
+        // ShaderProgramFn (no std::function type erasure) so the software
+        // rasterizer inlines the per-pixel fragment call. Bodies unchanged.
+        // (Declared before run_frame: the concrete type must be deducible at
+        // the call site.)
+        static auto make_host_program()
+        {
+            const auto vs_fn = [](const ShaderVertex& v, const ShaderUniforms& u) -> VertexOut {
+                VertexOut out{};
+                const glm::vec4 world = u.model * glm::vec4(v.position, 1.0f);
+                out.clip = u.viewproj * world;
+                out.world_pos = glm::vec3(world);
+                out.normal_ws = v.normal;
+                out.uv = v.uv;
+                return out;
+            };
+            const auto fs_fn = [](const FragmentIn&, const ShaderUniforms& u) -> FragmentOut {
+                FragmentOut out{};
+                out.color = ColorF{u.base_color.r, u.base_color.g, u.base_color.b, 1.0f};
+                return out;
+            };
+            return ShaderProgramFn{vs_fn, fs_fn};
+        }
+
+        static const auto& host_program()
+        {
+            static const auto program = make_host_program();
+            return program;
+        }
+
     public:
         VerticalSliceHost(VerticalSliceConfig config, ResourceRegistry& registry)
             : config_(config), registry_(registry)
@@ -255,34 +289,9 @@ namespace shs::app
         }
 
     private:
-        // The host's single deterministic program: view-proj * model vertex
-        // transform, flat base-color fragment. No time-varying math and no
-        // environment sampling — every pixel is replay-reproducible.
-        static ShaderProgram make_host_program()
-        {
-            ShaderProgram program{};
-            program.vs = [](const ShaderVertex& v, const ShaderUniforms& u) -> VertexOut {
-                VertexOut out{};
-                const glm::vec4 world = u.model * glm::vec4(v.position, 1.0f);
-                out.clip = u.viewproj * world;
-                out.world_pos = glm::vec3(world);
-                out.normal_ws = v.normal;
-                out.uv = v.uv;
-                return out;
-            };
-            program.fs = [](const FragmentIn&, const ShaderUniforms& u) -> FragmentOut {
-                FragmentOut out{};
-                out.color = ColorF{u.base_color.r, u.base_color.g, u.base_color.b, 1.0f};
-                return out;
-            };
-            return program;
-        }
-
-        static const ShaderProgram& host_program()
-        {
-            static const ShaderProgram program = make_host_program();
-            return program;
-        }
+        // R1 (renderer-lib review 2026-09-18): make_host_program/host_program
+        // moved above run_frame so the concrete (auto-deduced) program type is
+        // deducible at its call site.
 
         static glm::mat4 item_transform(const Transform& tr)
         {
