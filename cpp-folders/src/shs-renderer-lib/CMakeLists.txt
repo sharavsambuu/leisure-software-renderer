@@ -1428,6 +1428,37 @@ if(SHS_RENDERER_BUILD_TESTS)
             WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
             SKIP_RETURN_CODE 77)
 
+        # G4 library SW/Vulkan equivalence: the SAME minimal scene, the SAME
+        # consumer code and the SAME command stream, driven through the generic
+        # IRenderBackend/IOffscreenExecution surface for BOTH backends — each
+        # obtained from create_render_backend(). Known-answer checks run
+        # independently per backend against the authored scene; only then are the
+        # two readbacks compared, under documented tolerances (1/255 per channel
+        # where both cover, plus a boundary-coverage budget). The software half is
+        # always asserted (a CPU rasterizer needs no device); only the Vulkan half
+        # may report itself unavailable, and then the process exits 77 after the
+        # software half has passed — never a silent pass.
+        add_executable(shs_renderer_sw_vk_equivalence_tests tests/sw_vk_equivalence_tests.cpp)
+        target_link_libraries(shs_renderer_sw_vk_equivalence_tests PRIVATE
+            shs::renderer-values Vulkan::Vulkan)
+        target_compile_features(shs_renderer_sw_vk_equivalence_tests PRIVATE cxx_std_23)
+        if(MSVC)
+            target_compile_options(shs_renderer_sw_vk_equivalence_tests PRIVATE /W4)
+        else()
+            target_compile_options(shs_renderer_sw_vk_equivalence_tests PRIVATE -Wall -Wextra -Wpedantic)
+        endif()
+        if(SHS_OFFSCREEN_SLANGC)
+            add_dependencies(shs_renderer_sw_vk_equivalence_tests shs_renderer_offscreen_shaders)
+            target_compile_definitions(shs_renderer_sw_vk_equivalence_tests PRIVATE
+                SHS_OFFSCREEN_SHADER_DIR="${_offscreen_spv}")
+        endif()
+        target_compile_definitions(shs_renderer_sw_vk_equivalence_tests PRIVATE SHS_HAS_VULKAN=1)
+        add_test(NAME shs_renderer_sw_vk_equivalence_tests
+            COMMAND shs_renderer_sw_vk_equivalence_tests)
+        set_tests_properties(shs_renderer_sw_vk_equivalence_tests PROPERTIES
+            WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+            SKIP_RETURN_CODE 77)
+
     else()
         message(STATUS "Vulkan headers not found — skipping shs_renderer_vk_driver_tests")
     endif()

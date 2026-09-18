@@ -11,6 +11,7 @@
 
 
 #include "shs/rhi/core/backend.hpp"
+#include "shs/rhi/software/sw_offscreen.hpp"
 
 namespace shs
 {
@@ -40,6 +41,18 @@ namespace shs
         }
         void begin_frame(Context& ctx, const RenderBackendFrameInfo& frame) override { (void)ctx; (void)frame; }
         void end_frame(Context& ctx, const RenderBackendFrameInfo& frame) override { (void)ctx; (void)frame; }
+
+        // The CPU rasterizer needs no device to open and is always available, so
+        // this backend realizes the generic offscreen contract instead of
+        // declining it: it is the software side of the SW/Vulkan equivalence
+        // gate. Failures inside it are reported as 0 / false, never approximated.
+        [[nodiscard]] IOffscreenExecution* offscreen_execution() override
+        {
+            return &offscreen_execution_;
+        }
+
+    private:
+        SoftwareOffscreenExecution offscreen_execution_{};
     };
 
     } // inline namespace rhi

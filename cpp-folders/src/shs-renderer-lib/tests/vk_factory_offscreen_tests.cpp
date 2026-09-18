@@ -36,9 +36,11 @@ static std::vector<uint32_t> read_spirv(const char* path)
 // Known-answer independence: the expected pixels are derived from the authored
 // scene, not from a parity run. offscreen_pipeline.slang holds the triangle at
 // NDC (-0.5,-0.5) (0.5,-0.5) (0.0,0.5) and fs_main() returns the constant
-// float4(1.0, 0.25, 0.0, 1.0). On a 32x32 target that is the pixel triangle
-// (8,24) (24,24) (16,8) — so (16,12) is covered with RGBA8 (255,64,0,255) and
-// (16,28), outside the base edge, keeps the pass clear value (0,0,0,0).
+// float4(1.0, 0.25, 0.0, 1.0). On a 32x32 target the viewport maps NDC
+// (-0.5,-0.5) (0.5,-0.5) (0.0,0.5) to the pixel triangle (8,8) (24,8) (16,24) —
+// base edge on row 8, apex on row 24 — so (16,12) is covered with RGBA8
+// (255,64,0,255) and (16,28), below the apex, keeps the pass clear value
+// (0,0,0,0).
 //
 // An unavailable device, pipeline or generic surface is reported as SKIP (77),
 // never as a pass.

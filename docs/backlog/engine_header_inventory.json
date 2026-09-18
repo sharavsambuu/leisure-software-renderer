@@ -3,7 +3,7 @@
   "scope": "cpp-folders/src/shs-renderer-lib/include",
   "coverage": "all .h/.hpp public headers; literal includes in all conditional branches",
   "approval": "proposed paths are inventory only; reviewed migrations live in engine_header_migration_manifest.json",
-  "header_count": 225,
+  "header_count": 226,
   "headers": [
     {
       "current": "shs/app/backend/backend_factory.hpp",
@@ -42,7 +42,8 @@
         "vector"
       ],
       "tracked_consumers": [
-        "cpp-folders/src/shs-renderer-lib/tests/namespace_cutover_tests.cpp"
+        "cpp-folders/src/shs-renderer-lib/tests/namespace_cutover_tests.cpp",
+        "cpp-folders/src/shs-renderer-lib/tests/vk_factory_offscreen_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -132,7 +133,8 @@
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/planning/render_path_interfaces.hpp",
         "cpp-folders/src/shs-renderer-lib/tests/core_tests.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/namespace_cutover_tests.cpp",
-        "cpp-folders/src/shs-renderer-lib/tests/vk_driver_tests.cpp"
+        "cpp-folders/src/shs-renderer-lib/tests/vk_driver_tests.cpp",
+        "cpp-folders/src/shs-renderer-lib/tests/vk_factory_offscreen_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -5581,6 +5583,7 @@
       ],
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/render_pass.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/rhi/core/offscreen_execution.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/rhi/core/rhi_stack.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/rhi/vulkan/runtime/sync/vk_runtime.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/rhi/vulkan/value/vk_commands.hpp",
@@ -5676,7 +5679,8 @@
       ],
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/include/shs/rhi/core/rhi_stack.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/rhi/vulkan/value/vk_backend.hpp"
+        "cpp-folders/src/shs-renderer-lib/include/shs/rhi/vulkan/value/vk_backend.hpp",
+        "cpp-folders/src/shs-renderer-lib/tests/vk_factory_offscreen_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -5762,16 +5766,21 @@
       ],
       "visibility": "public-include-tree",
       "direct_dependencies": [
+        "cstddef",
         "cstdint",
+        "cstring",
         "shs/rhi/resource/resource_desc.hpp"
       ],
       "internal_dependencies": [
         "shs/rhi/resource/resource_desc.hpp"
       ],
       "external_dependencies": [
-        "cstdint"
+        "cstddef",
+        "cstdint",
+        "cstring"
       ],
       "tracked_consumers": [
+        "cpp-folders/src/shs-renderer-lib/include/shs/rhi/core/offscreen_execution.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/rhi/core/rhi_stack.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/rhi/vulkan/value/vk_device.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/rhi/vulkan/value/vk_pipelines.hpp"
@@ -5796,6 +5805,7 @@
         "cstdint"
       ],
       "tracked_consumers": [
+        "cpp-folders/src/shs-renderer-lib/include/shs/rhi/core/offscreen_execution.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/rhi/core/rhi_stack.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/rhi/pipeline/pipeline_desc.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/rhi/vulkan/value/vk_device.hpp",
@@ -5814,15 +5824,57 @@
       ],
       "visibility": "public-include-tree",
       "direct_dependencies": [
-        "shs/rhi/core/backend.hpp"
+        "shs/rhi/core/backend.hpp",
+        "shs/rhi/software/sw_offscreen.hpp"
       ],
       "internal_dependencies": [
-        "shs/rhi/core/backend.hpp"
+        "shs/rhi/core/backend.hpp",
+        "shs/rhi/software/sw_offscreen.hpp"
       ],
       "external_dependencies": [],
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/include/shs/app/backend/backend_factory.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/rhi/software/sw_stack.hpp"
+      ],
+      "build_target": "review-values-vs-aggregate"
+    },
+    {
+      "current": "shs/rhi/software/sw_offscreen.hpp",
+      "proposed_canonical": "shs/rhi/software/sw_offscreen.hpp",
+      "review_status": "already-named-review-dependencies",
+      "proposed_owner": "rhi",
+      "namespace_declarations": [
+        "rhi",
+        "shs",
+        "sw_offscreen_recipe"
+      ],
+      "visibility": "public-include-tree",
+      "direct_dependencies": [
+        "cstdint",
+        "glm/glm.hpp",
+        "shs/render/shader/program.hpp",
+        "shs/render/software/rasterizer.hpp",
+        "shs/render/targets/rt_types.hpp",
+        "shs/resources/mesh.hpp",
+        "shs/rhi/core/offscreen_execution.hpp",
+        "span",
+        "string_view"
+      ],
+      "internal_dependencies": [
+        "shs/render/shader/program.hpp",
+        "shs/render/software/rasterizer.hpp",
+        "shs/render/targets/rt_types.hpp",
+        "shs/resources/mesh.hpp",
+        "shs/rhi/core/offscreen_execution.hpp"
+      ],
+      "external_dependencies": [
+        "cstdint",
+        "glm/glm.hpp",
+        "span",
+        "string_view"
+      ],
+      "tracked_consumers": [
+        "cpp-folders/src/shs-renderer-lib/include/shs/rhi/software/sw_backend.hpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -6510,8 +6562,6 @@
       ],
       "visibility": "public-include-tree",
       "direct_dependencies": [
-        "cstring",
-        "limits",
         "shs/rhi/vulkan/value/vk_offscreen.hpp",
         "shs/rhi/vulkan/value/vk_pipelines.hpp"
       ],
@@ -6519,10 +6569,7 @@
         "shs/rhi/vulkan/value/vk_offscreen.hpp",
         "shs/rhi/vulkan/value/vk_pipelines.hpp"
       ],
-      "external_dependencies": [
-        "cstring",
-        "limits"
-      ],
+      "external_dependencies": [],
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/include/shs/rhi/vulkan/value/vk_backend.hpp"
       ],
@@ -7427,6 +7474,7 @@
       "platform",
       "render",
       "renderpath",
+      "resources",
       "task"
     ],
     "scene": [

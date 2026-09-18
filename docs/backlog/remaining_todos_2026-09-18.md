@@ -56,12 +56,33 @@
       or device is unavailable). Full CTest 68/68; boundary + include-graph gates
       green; header inventory regenerated. Evidence:
       [`kdba_g3_factory_facing_evidence_2026-09-18.md`](kdba_g3_factory_facing_evidence_2026-09-18.md).
-      Async retirement unclaimed. Next in this track: K-G4.
-- [ ] **K-G4 Library SW/Vulkan equivalence** — same minimal scene/policy
+      Async retirement unclaimed. Next in this track: K-G4 (closed 2026-09-18 —
+      see the K-G4 entry below).
+- [x] **K-G4 Library SW/Vulkan equivalence** — same minimal scene/policy
       through actual library execution paths; documented per-output tolerances;
       independent known-answer checks; portable CTest gates. Adventure AD1/AD4
       are related, not substitute evidence. Depends on G3 and a verified
       software realization of the selected recipe.
+      CLOSED 2026-09-18: the software side now realizes the generic contract
+      instead of declining it (`SoftwareOffscreenExecution` — no device to open,
+      descriptor-derived stable ids, entry-name-bound CPU realization), and both
+      realizations share one vendor-free descriptor gate so acceptance cannot
+      drift. New portable gate `shs_renderer_sw_vk_equivalence_tests` drives ONE
+      consumer function (factory → `app::Context` → generic `IRenderBackend` →
+      generic `IOffscreenExecution`) against both backends with the same command
+      stream, checks each readback against the authored scene independently, then
+      compares them under two documented tolerances (≤ 1/255 per channel where
+      both cover; coverage budget 16 at 32×32, GPU may only add coverage).
+      Measured `cpu_covered=113 gpu_covered=128 mismatches=15 (both=0 gpu_only=15
+      cpu_only=0)`. The software half is always asserted; only the Vulkan half may
+      skip (77, equivalence explicitly not claimed). Full CTest 69/69; boundary +
+      include-graph + self-containment + package-consumer gates green; inventory
+      regenerated (225 → 226). Evidence:
+      [`kdba_g4_sw_vk_equivalence_evidence_2026-09-18.md`](kdba_g4_sw_vk_equivalence_evidence_2026-09-18.md).
+      Not claimed: CPU realization bound to the authored recipe by entry name;
+      software accepted set is a strict subset of Vulkan's; coverage tolerance
+      calibrated for this fixture; gate not compiled in a GPU-free build.
+      **The library G-track (G1–G4) is now complete.**
 
 ### A2. Adventure demo conformance (owner: [`adventure_demo_conformance_backlog.md`](adventure_demo_conformance_backlog.md) — 28 open checkboxes; AD0, AD1, AD4 closed 2026-09-18)
 
@@ -163,15 +184,14 @@ meshlet pipeline, or LOD framework is authorized by listing them.
 
 ## Suggested sequencing
 
-1. **K-G4** — the smallest unblocked library step; K-G3 closed 2026-09-18, so the
-   G-track is now down to G4 (library SW/Vulkan equivalence with documented
-   per-output tolerances).
-2. **Adventure demo track (A2)** — AD2 + AD3 first (prove the shape on the
+1. **Adventure demo track (A2)** — AD2 + AD3 first (prove the shape on the
    depth/blend pair), then AD5 + AD6, then the AD7 roll-out and close-out. This
-   track is unblocked now that AD0/AD1/AD4 are closed and gives implementation
-   feedback at demo granularity.
-3. **S5 headless prep** — banks host-blocked P6.2 work early, if desired.
-4. C4.3 waits on the owner baseline ruling; P6.1/P6.3 wait on a windowed host;
+   is now the only unblocked implementation track: the library G-track closed
+   2026-09-18 (G4 was its last item) and AD0/AD1/AD4 are already closed. It also
+   gives consumer-contract feedback at demo granularity, which the library track
+   no longer does.
+2. **S5 headless prep** — banks host-blocked P6.2 work early, if desired.
+3. C4.3 waits on the owner baseline ruling; P6.1/P6.3 wait on a windowed host;
    Bucket E stays demand/measure-gated.
 
 ## Related demowork

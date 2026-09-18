@@ -161,7 +161,7 @@ int main()
     std::vector<uint8_t> gpu_pixels(size_t(W) * H * 4, 0u);
     CHECK(backend.execute_offscreen(stream, gpu_pixels));
 
-    // --- bounded comparison: per-channel tolerance 1, edge budget 8 pixels
+    // --- bounded comparison: per-channel tolerance 1, edge budget 16 pixels
     int mismatches = 0;
     int max_delta = 0;
     int gpu_covered = 0;

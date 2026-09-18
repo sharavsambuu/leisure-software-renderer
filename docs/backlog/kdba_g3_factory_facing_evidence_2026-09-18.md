@@ -114,12 +114,19 @@ and the reason string names the declining backend.
 2. `execute_offscreen` collapses failure detail to `bool`. The rich
    `VulkanExecutionFailure` remains owned by the concrete API.
 3. **Asynchronous retirement is still unclaimed.** Execution is synchronous.
-4. `SoftwareRenderBackend` returns `nullptr` — the software rasterizer keeps its
-   own path; giving software a generic offscreen surface is future work and would
-   require updating this gate's expectation deliberately.
+4. **RESOLVED by G4 (2026-09-18).** This limitation said `SoftwareRenderBackend`
+   returns `nullptr` and that giving software a generic offscreen surface was
+   deliberate future work that would require updating this gate's expectation.
+   That deliberate follow-up is exactly what G4 did: `SoftwareRenderBackend` now
+   realizes the contract through `SoftwareOffscreenExecution`
+   (`shs/rhi/software/sw_offscreen.hpp`), and the GPU-free path was re-verified
+   without `SHS_HAS_VULKAN`. See
+   [`kdba_g4_sw_vk_equivalence_evidence_2026-09-18.md`](kdba_g4_sw_vk_equivalence_evidence_2026-09-18.md).
 5. The windowed runtime backend returns `nullptr`; windowed/surface opening is
    explicitly outside this contract.
 6. **This is G3 scope only.** It does not satisfy **G4** (library SW/Vulkan
    equivalence with documented per-output tolerances), and it is not
-   demo-consumer evidence for AD4.
+   demo-consumer evidence for AD4. G4 was closed separately on 2026-09-18 — see
+   [`kdba_g4_sw_vk_equivalence_evidence_2026-09-18.md`](kdba_g4_sw_vk_equivalence_evidence_2026-09-18.md);
+   this note stays G3's own record.
 

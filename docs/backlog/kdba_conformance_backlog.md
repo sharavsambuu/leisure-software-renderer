@@ -208,7 +208,7 @@ resource lifetimes remain at the execution edge.
   CTest 68/68; boundary and include-graph gates green; header inventory
   regenerated. Evidence:
   [`kdba_g3_factory_facing_evidence_2026-09-18.md`](kdba_g3_factory_facing_evidence_2026-09-18.md).
-  Asynchronous retirement remains unclaimed; G4 remains open.
+  Asynchronous retirement remains unclaimed.
   — PARTIAL 2026-09-17: existing offscreen integration test now submits real
   commands, waits on a fence, transitions the RGBA8 attachment to transfer source,
   copies to host-visible staging memory with a host-read barrier, and verifies
@@ -234,7 +234,9 @@ resource lifetimes remain at the execution edge.
   coverage for this synchronous slice, not all G2/G3 acceptance. Images remain
   registry-owned until shutdown; reset retires attachment/pipeline/transfer owners.
   Still open: vertex/index upload and consumed-geometry proof, injected Vulkan
-  allocation/submission failures, broader preparation failure cleanup, and G4.
+  allocation/submission failures, broader preparation failure cleanup, and G4 —
+  each subsequently closed (see the later PARTIAL entries and the G4 CLOSED
+  entry above).
   The concrete Vulkan backend API is tested; generic factory-interface execution
   and asynchronous retirement are not claimed.
   — PARTIAL 2026-09-17 (upload + injection slice): explicit `RHIVertexLayout`
@@ -267,9 +269,13 @@ resource lifetimes remain at the execution edge.
   extent (15 differences on the 32×32 fixture; per-pixel alpha-transition check,
   distance-to-triangle bound, and a cap on total differing pixels). Independent
   known-answer checks (software interior `(1,0.25,0,1)`, background transparent,
-  raster stats) are asserted alongside the comparison. This is recipe-level
+  raster stats) are asserted alongside the comparison. This was recipe-level
   evidence for the fixed offscreen ABI, not full G4: single triangle, no
-  depth/motion paths, no portable CTest gate beyond the existing target.
+  depth/motion paths, no portable CTest gate beyond the existing target. The G4
+  CLOSED entry above supersedes it — the same CPU rasterizer is now reached
+  through the generic library execution path, with the comparison wired as a
+  portable gate whose tolerances are documented and whose 15-pixel boundary band
+  this run independently reconfirms.
   — PARTIAL 2026-09-18 (staging→device-local upload): `upload_buffer` now accepts
   `RHIMemoryClass::GPUOnly` buffers carrying TransferDst usage: a transient
   host-visible staging buffer is created and bound, a one-time command buffer
@@ -283,11 +289,38 @@ resource lifetimes remain at the execution edge.
   triangle. `vulkan_buffer_upload_sync` lives in `vk_readback.hpp` (the
   synchronous-transfer owner). Factory-facing execution was the last open G3 item;
   closed 2026-09-18 — see the G3 CLOSED entry above.
-- [ ] **G4 Library SW/Vulkan equivalence** — run the same minimal scene/policy
+- [x] **G4 Library SW/Vulkan equivalence** — run the same minimal scene/policy
   through actual library execution paths with documented per-output tolerances
   and independent known-answer checks. Wire portable CTest gates and retain
   backend diagnostics. Adventure AD1/AD4 are related, not substitute evidence.
   Depends on G3 and a verified software realization of the selected recipe.
+  **CLOSED 2026-09-18.** The software side now *realizes* the generic contract
+  instead of declining it (`SoftwareOffscreenExecution`: no device to open,
+  descriptor-derived stable ids, entry-name-bound CPU realization) and both
+  realizations share one vendor-free descriptor gate
+  (`rhi_graphics_pipeline_desc_supported`) so acceptance cannot drift between
+  them. The new portable gate `shs_renderer_sw_vk_equivalence_tests` runs ONE
+  consumer function — `create_render_backend()` → `app::Context` → generic
+  `IRenderBackend` → generic `IOffscreenExecution` — against both backends with
+  the same command stream, checks each readback against the **authored** scene
+  independently (interior `(255,64,0,255)`, clear `(0,0,0,0)`), and only then
+  compares them under two documented tolerances (≤ 1/255 per channel where both
+  cover; coverage budget 16 at 32×32, GPU may only add coverage). Measured:
+  `cpu_covered=113 gpu_covered=128 mismatches=15 (both=0 gpu_only=15 cpu_only=0)`
+  — the same 15-pixel boundary band the 2026-09-17 parity work found
+  independently, now attributable to the `(W-1)/(H-1)`-vs-`w/h` screen-mapping
+  convention gap. The software half is always asserted; only the Vulkan half may
+  skip (77, with the equivalence claim explicitly *not* made). Two stale gate
+  comments were corrected (an `edge budget 8` comment against a 16 assertion; a
+  transposed known-answer pixel triangle). Full CTest 69/69; boundary,
+  include-graph, self-containment and package-consumer gates green; header
+  inventory regenerated (225 → 226). Evidence:
+  [`kdba_g4_sw_vk_equivalence_evidence_2026-09-18.md`](kdba_g4_sw_vk_equivalence_evidence_2026-09-18.md).
+  Not claimed: the CPU realization is bound to the authored recipe by entry name
+  (not general SPIR-V portability); the software accepted set is a strict subset
+  of Vulkan's (no generic buffer surface yet, so no bindings/indexed/instanced
+  draws); the coverage tolerance is calibrated for this fixture; and the gate is
+  not compiled in a GPU-free build.
 
 ### Follow-on features — existing ownership preserved
 
@@ -314,7 +347,8 @@ typed composition, known-answer tests, execution adapters, and portable gates.
 Status (2026-09-18): **AD0, AD1, AD4 closed** with recorded evidence; AD2, AD3,
 AD5, AD6, AD7 open. This is separate consumer work, not a reopening of Run C or
 completion of the library P6/S1–S6 integration and scalability tasks, and demo
-evidence never substitutes for the G4 library gate.
+evidence never substitutes for the G4 library gate (itself closed 2026-09-18 —
+see the G4 CLOSED entry above).
 
 ## Naming migration (2026-09-17) — vocabulary harmonization, no behavior change
 

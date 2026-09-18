@@ -11,6 +11,8 @@
 
 
 #include <cstdint>
+#include <cstddef>
+#include <cstring>
 #include "shs/rhi/resource/resource_desc.hpp"
 
 namespace shs
@@ -84,6 +86,42 @@ namespace shs
         RHIRenderTargetLayoutDesc rt{};
         RHIVertexLayout vertex_layout = RHIVertexLayout::Procedural;
     };
+
+    // Vendor-free descriptor gate for the fixed offscreen ABI: triangle list,
+    // no vertex attributes, one RGBA8 color output, no depth or blending.
+    // Every backend's offscreen realization shares this gate so acceptance and
+    // rejection cannot drift between realizations (a GPU pipeline and a named CPU
+    // realization must agree on which descriptors are in contract). It checks the
+    // descriptor envelope and the SPIR-V module header only — it is NOT a SPIR-V
+    // validator and NOT a reflection pass. Each backend additionally binds the
+    // module to its own execution mechanism.
+    [[nodiscard]] inline bool rhi_shader_module_supported(
+        const RHIShaderModuleDesc& d, RHIShaderStage stage)
+    {
+        if (d.stage != stage || !d.bytecode || d.bytecode_size < 20 || d.bytecode_size % 4 ||
+            reinterpret_cast<uintptr_t>(d.bytecode) % alignof(uint32_t) || !d.entry || !*d.entry)
+            return false;
+        uint32_t header[5]{};
+        std::memcpy(header, d.bytecode, sizeof(header));
+        // Vulkan 1.1 core supports SPIR-V through 1.3 (no new extensions).
+        return header[0] == 0x07230203 && header[1] >= 0x00010000 &&
+            header[1] <= 0x00010300 && header[3] != 0 && header[4] == 0;
+    }
+
+    [[nodiscard]] inline bool rhi_graphics_pipeline_desc_supported(
+        const RHIGraphicsPipelineDesc& d)
+    {
+        return rhi_shader_module_supported(d.vs, RHIShaderStage::Vertex) &&
+            rhi_shader_module_supported(d.fs, RHIShaderStage::Fragment) &&
+            d.rt.color_format == RHIFormat::RGBA8_UNorm && !d.rt.has_depth &&
+            !d.depth.enable_test && !d.depth.enable_write && !d.blend.enable &&
+            (d.vertex_layout == RHIVertexLayout::Procedural ||
+             d.vertex_layout == RHIVertexLayout::Position2F) &&
+            !d.raster.depth_clamp &&
+            (d.raster.cull == RHICullMode::None || d.raster.cull == RHICullMode::Back ||
+             d.raster.cull == RHICullMode::Front) &&
+            (d.raster.front_face == RHIFrontFace::CCW || d.raster.front_face == RHIFrontFace::CW);
+    }
 
     struct RHIComputePipelineDesc
     {

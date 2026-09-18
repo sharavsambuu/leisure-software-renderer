@@ -1,8 +1,6 @@
 #pragma once
 
 /* SHS RENDERER SAN — Explicit G2 graphics realization; no lazy creation. */
-#include <cstring>
-#include <limits>
 #include "shs/rhi/vulkan/value/vk_offscreen.hpp"
 #include "shs/rhi/vulkan/value/vk_pipelines.hpp"
 
@@ -26,17 +24,12 @@ namespace shs
         VulkanOffscreenPipeline(const VulkanOffscreenPipeline&) = delete;
         VulkanOffscreenPipeline& operator=(const VulkanOffscreenPipeline&) = delete;
 
+        // Descriptor envelope + module header: shared with every other offscreen
+        // realization (rhi_graphics_pipeline_desc_supported) so acceptance cannot
+        // drift between the GPU and CPU paths.
         [[nodiscard]] static bool supports(const RHIGraphicsPipelineDesc& d)
         {
-            return shader_supported(d.vs, RHIShaderStage::Vertex) &&
-                shader_supported(d.fs, RHIShaderStage::Fragment) &&
-                d.rt.color_format == RHIFormat::RGBA8_UNorm && !d.rt.has_depth &&
-                !d.depth.enable_test && !d.depth.enable_write && !d.blend.enable &&
-                (d.vertex_layout == RHIVertexLayout::Procedural || d.vertex_layout == RHIVertexLayout::Position2F) &&
-                !d.raster.depth_clamp &&
-                (d.raster.cull == RHICullMode::None || d.raster.cull == RHICullMode::Back ||
-                 d.raster.cull == RHICullMode::Front) &&
-                (d.raster.front_face == RHIFrontFace::CCW || d.raster.front_face == RHIFrontFace::CW);
+            return rhi_graphics_pipeline_desc_supported(d);
         }
 
         [[nodiscard]] bool initialize(uint64_t id, const RHIGraphicsPipelineDesc& d,
@@ -139,17 +132,6 @@ namespace shs
         [[nodiscard]] VkPipelineLayout layout() const { return layout_; }
 
     private:
-        [[nodiscard]] static bool shader_supported(const RHIShaderModuleDesc& d, RHIShaderStage stage)
-        {
-            if (d.stage != stage || !d.bytecode || d.bytecode_size < 20 || d.bytecode_size % 4 ||
-                d.bytecode_size > std::numeric_limits<size_t>::max() ||
-                reinterpret_cast<uintptr_t>(d.bytecode) % alignof(uint32_t) || !d.entry || !*d.entry) return false;
-            uint32_t header[5]{};
-            std::memcpy(header, d.bytecode, sizeof(header));
-            // Vulkan 1.1 core supports SPIR-V through 1.3 (no new extensions).
-            return header[0] == 0x07230203 && header[1] >= 0x00010000 &&
-                header[1] <= 0x00010300 && header[3] != 0 && header[4] == 0;
-        }
         VkDevice device_ = VK_NULL_HANDLE;
         VkPipeline pipeline_ = VK_NULL_HANDLE;
         VkPipelineLayout layout_ = VK_NULL_HANDLE;
