@@ -308,6 +308,7 @@
         "span"
       ],
       "tracked_consumers": [
+        "cpp-folders/src/shs-renderer-lib/tests/frame_allocator_interception_tests.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/vertical_slice_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
@@ -966,7 +967,8 @@
         "cpp-folders/src/shs-renderer-lib/include/shs/geometry/adapters/jolt/jolt_shapes.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/geometry/scene_shape.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/pass_adapters.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/scene/scene_elements.hpp"
+        "cpp-folders/src/shs-renderer-lib/include/shs/scene/scene_elements.hpp",
+        "cpp-folders/src/shs-renderer-lib/tests/math_law_golden_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -7146,6 +7148,7 @@
         "cpp-folders/src/shs-renderer-lib/include/shs/app/vertical_slice_host.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/scene/scene.contract.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/scene/scene_identity.hpp",
+        "cpp-folders/src/shs-renderer-lib/tests/frame_allocator_interception_tests.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/scene_identity_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
