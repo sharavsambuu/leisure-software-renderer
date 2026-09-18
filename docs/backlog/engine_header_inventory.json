@@ -43,6 +43,7 @@
       ],
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/tests/namespace_cutover_tests.cpp",
+        "cpp-folders/src/shs-renderer-lib/tests/sw_vk_equivalence_tests.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/vk_factory_offscreen_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
@@ -133,6 +134,7 @@
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/planning/render_path_interfaces.hpp",
         "cpp-folders/src/shs-renderer-lib/tests/core_tests.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/namespace_cutover_tests.cpp",
+        "cpp-folders/src/shs-renderer-lib/tests/sw_vk_equivalence_tests.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/vk_driver_tests.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/vk_factory_offscreen_tests.cpp"
       ],
@@ -3152,7 +3154,8 @@
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/include/shs/render/shader/builtin_shaders.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/render/software/rasterizer.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/pass_adapters.hpp"
+        "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/pass_adapters.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/rhi/software/sw_offscreen.hpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -3309,6 +3312,7 @@
         "cpp-folders/src/shs-renderer-lib/include/shs/app/vertical_slice_host.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/pass_adapters.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/passes/pass_pbr_forward.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/rhi/software/sw_offscreen.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/rhi/software/sw_stack.hpp",
         "cpp-folders/src/shs-renderer-lib/tests/rasterizer_coverage_golden_tests.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/rasterizer_tile_parity_tests.cpp",
@@ -3527,6 +3531,7 @@
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/passes/pass_context.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/skybox_renderer.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/resources/texture.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/rhi/software/sw_offscreen.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/rhi/software/sw_stack.hpp"
       ],
       "build_target": "review-values-vs-aggregate"
@@ -5397,6 +5402,7 @@
         "cpp-folders/src/shs-renderer-lib/include/shs/resources/adapters/mesh_loader_assimp.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/resources/resources.contract.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/resources/storage/resource_registry.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/rhi/software/sw_offscreen.hpp",
         "cpp-folders/src/shs-renderer-lib/tests/scene_identity_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
@@ -5679,7 +5685,9 @@
       ],
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/include/shs/rhi/core/rhi_stack.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/rhi/software/sw_offscreen.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/rhi/vulkan/value/vk_backend.hpp",
+        "cpp-folders/src/shs-renderer-lib/tests/sw_vk_equivalence_tests.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/vk_factory_offscreen_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
