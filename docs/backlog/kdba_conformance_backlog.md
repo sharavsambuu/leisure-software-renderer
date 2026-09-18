@@ -191,6 +191,15 @@ resource lifetimes remain at the execution edge.
   buffer upload, synchronization, submission and image readback. Check known
   pixels independently of parity; exercise failure and resource cleanup paths.
   Record unavailable Vulkan capability as a skip, never a pass. Depends on G2.
+  — REMAINING ONLY (2026-09-18, tightened): **factory-facing execution** — drive
+  the same minimal scene through the generic RHI factory interface rather than
+  the concrete `VulkanRenderBackend` API, and pin it with a portable CTest gate
+  (known pixels independent of parity; unavailable backends skip, never pass).
+  Everything else this bullet originally named is landed with real-device
+  evidence and is NOT re-listed as open: submission/readback, shutdown
+  cache-invalidation, vertex/index upload, failure injection, and
+  triangle-parity. Asynchronous retirement and a backend-owned execution API
+  remain unclaimed.
   — PARTIAL 2026-09-17: existing offscreen integration test now submits real
   commands, waits on a fence, transitions the RGBA8 attachment to transfer source,
   copies to host-visible staging memory with a host-read barrier, and verifies
@@ -292,8 +301,11 @@ resource lifetimes remain at the execution edge.
 The [Adventure Demo Domain Boundary & Composition Backlog](adventure_demo_conformance_backlog.md)
 tracks AD0–AD7 for the six active adventure-demo pairs: shared semantic ownership,
 typed composition, known-answer tests, execution adapters, and portable gates.
-Implementation is not started. This is separate consumer work, not a reopening of
-Run C or completion of the library P6/S1–S6 integration and scalability tasks.
+
+Status (2026-09-18): **AD0, AD1, AD4 closed** with recorded evidence; AD2, AD3,
+AD5, AD6, AD7 open. This is separate consumer work, not a reopening of Run C or
+completion of the library P6/S1–S6 integration and scalability tasks, and demo
+evidence never substitutes for the G4 library gate.
 
 ## Naming migration (2026-09-17) — vocabulary harmonization, no behavior change
 

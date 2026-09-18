@@ -47,12 +47,13 @@
       on failure (incl. injected Vulkan faults), validation-clean lavapipe runs,
       SW/Vulkan triangle parity; see the kdba G2 DONE entry. Follow-on work
       belongs to G3 (upload tail — landed, factory-facing execution) and G4.
-- [ ] **K-G3 remaining: factory-facing execution** — staging→device-local copy
-      upload landed 2026-09-18 (GPUOnly TransferDst staging copy + barrier, real-device
-      pixel parity; see kdba G3 PARTIAL note). Remaining G3 slices are partial-complete
-      (submission/readback,
-      shutdown cache-invalidation, upload + failure-injection slices, triangle
-      parity vs the software rasterizer). Depends on G2.
+- [ ] **K-G3 remaining: factory-facing execution** — one deliverable left
+      (tightened 2026-09-18): drive the minimal scene through the generic RHI
+      factory interface instead of the concrete `VulkanRenderBackend` API, with
+      a portable CTest gate. Submission/readback, shutdown cache-invalidation,
+      vertex/index upload, failure injection and triangle parity are all
+      **landed with real-device evidence** (incl. staging→device-local upload,
+      2026-09-18) and are not open. Async retirement unclaimed. Depends on G2.
 - [ ] **K-G4 Library SW/Vulkan equivalence** — same minimal scene/policy
       through actual library execution paths; documented per-output tolerances;
       independent known-answer checks; portable CTest gates. Adventure AD1/AD4
@@ -148,12 +149,26 @@ Each item carries its explicit trigger; none authorizes speculative work.
 - [ ] **S6 Production saga proof (Rule 12)** — Trigger: first multi-domain
       transaction.
 
+## Bucket E — Demand/measure-gated (optimization register)
+
+Owner: [`optimization_backlog.md`](optimization_backlog.md). Not mirrored
+checkbox-by-checkbox here: the owner doc carries its own checkboxes and its own
+tick rule (a named measurement must show the change pays for itself before any
+item closes). 18 boxes / **16 distinct tasks** (QW3≡#1, QW5≡#4), all gated on
+consumer demand and measured evidence — no speculative scheduler, render graph,
+meshlet pipeline, or LOD framework is authorized by listing them.
+
 ## Suggested sequencing
 
-1. K-G1 tail → K-G2 (smallest unblocked step, same area as the R-series
-   close-out); AD0 + AD1/AD4 in parallel (independent track).
-2. S5 headless prep to bank host-blocked P6.2 work early, if desired.
-3. C4.3 waits on the owner baseline ruling; P6.1/P6.3 wait on a windowed host.
+1. **K-G3 remaining (factory-facing execution) → K-G4** — the smallest
+   unblocked library step; everything else in G3 is already landed.
+2. **Adventure demo track (A2)** — AD2 + AD3 first (prove the shape on the
+   depth/blend pair), then AD5 + AD6, then the AD7 roll-out and close-out. This
+   track is unblocked now that AD0/AD1/AD4 are closed and gives implementation
+   feedback at demo granularity.
+3. **S5 headless prep** — banks host-blocked P6.2 work early, if desired.
+4. C4.3 waits on the owner baseline ruling; P6.1/P6.3 wait on a windowed host;
+   Bucket E stays demand/measure-gated.
 
 ## Related demowork
 

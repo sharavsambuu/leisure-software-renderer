@@ -1,6 +1,10 @@
 # Adventure Demo Domain Boundary & Composition Backlog
 
-> Status: active, implementation not started (2026-09-17).
+> Status: **active (2026-09-18)** — AD0, AD1, AD4 **closed** with recorded
+> evidence ([`adventure_demo_baseline_2026-09-18.md`](adventure_demo_baseline_2026-09-18.md),
+> [`adventure_demo_ad4_evidence_2026-09-18.md`](adventure_demo_ad4_evidence_2026-09-18.md),
+> plus the CTest gates). AD2, AD3, AD5, AD6, AD7 open; the shared-semantics and
+> composition refactors have not started.
 > Scope: six SW/Vulkan pairs under `cpp-folders/src/exps-rendering-adventures/` (tier0 01–05 and tier1 08), common helpers, and parity tooling. Parked experiment trees are excluded.
 > Authority: [Constitution II](../spec/value_oriented_programming.md) and the [governing clarification](../spec/dod_ecs_architecture.md). This backlog schedules work; it does not add laws or reopen the completed library migration.
 > Related: [library KDBA backlog](kdba_conformance_backlog.md).
