@@ -154,9 +154,13 @@ whatever parts they want, whenever they want:
 1. **Additive, not closed** — passes, techniques, materials, lights, light
    volumes, and compute effects are added *through* extension points
    (registries, contracts, recipes), never by editing the core. Builtin enums
-   (`PassId`, technique/light presets) must eventually expose open registered
-   ranges so consumer-owned abstractions need no core change (tracked in
-   `docs/arch/render_path_architecture.md` §4).
+   (`PassId`, technique/light presets) expose open registered ranges so
+   consumer-owned abstractions need no core change: **`PassId` does as of
+   2026-09-18** (`PassIdRegistry` — a content-addressed open range, so a
+   consumer pass is first-class with zero core edits; see
+   `docs/arch/render_path_architecture.md` §4 req 1 and
+   `docs/backlog/open_pass_id_registry_evidence_2026-09-18.md`). Technique/light
+   presets and the light-volume registry remain tracked in that §4 (req 2).
 2. **Backend choice is never a fork** — `SHS_RENDER_BACKEND` selects software /
    OpenGL / Vulkan at runtime; a build without GPU support degrades gracefully
    to software (backend factory fallback + hybrid auxiliary backends), never

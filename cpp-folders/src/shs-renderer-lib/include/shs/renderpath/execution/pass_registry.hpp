@@ -20,6 +20,7 @@
 
 #include "shs/renderpath/planning/pass_id.hpp"
 #include "shs/renderpath/planning/pass_contract.hpp"
+#include "shs/renderpath/execution/pass_id_registry.hpp"
 #include "shs/renderpath/execution/render_pass.hpp"
 
 namespace shs
@@ -59,10 +60,33 @@ namespace shs
             return true;
         }
 
+        // Typed overload: a builtin id, or an open id this registry minted
+        // (`intern_pass_id`). An unresolvable id is rejected outright — the key
+        // is never guessed, so a mistyped consumer id cannot alias a core pass.
         bool register_factory(PassId id, Factory factory)
         {
-            if (!pass_id_is_standard(id)) return false;
-            return register_factory(pass_id_name(id), std::move(factory));
+            const std::string key = typed_key(id);
+            if (key.empty()) return false;
+            return register_factory(key, std::move(factory));
+        }
+
+        // Verified typed registration: the id must resolve to exactly this name
+        // here. A foreign or colliding id therefore cannot bind a consumer pass
+        // to the wrong factory — the pairing (id, name) is what is registered,
+        // and the name is what execution keys on.
+        bool register_factory(PassId id, std::string_view expected_name, Factory factory)
+        {
+            const std::optional<std::string_view> name = pass_ids_.try_name(id);
+            if (!name.has_value() || *name != expected_name) return false;
+            return register_factory(std::string(*name), std::move(factory));
+        }
+
+        // Verified typed query, same rule as above.
+        bool has(PassId id, std::string_view expected_name) const
+        {
+            const std::optional<std::string_view> name = pass_ids_.try_name(id);
+            if (!name.has_value() || *name != expected_name) return false;
+            return has(std::string(*name));
         }
 
         bool has(const std::string& id) const
@@ -72,8 +96,9 @@ namespace shs
 
         bool has(PassId id) const
         {
-            if (!pass_id_is_standard(id)) return false;
-            return has(pass_id_string(id));
+            const std::string key = typed_key(id);
+            if (key.empty()) return false;
+            return has(key);
         }
 
         std::unique_ptr<IRenderPass> create(const std::string& id) const
@@ -85,8 +110,9 @@ namespace shs
 
         std::unique_ptr<IRenderPass> create(PassId id) const
         {
-            if (!pass_id_is_standard(id)) return nullptr;
-            return create(pass_id_string(id));
+            const std::string key = typed_key(id);
+            if (key.empty()) return nullptr;
+            return create(key);
         }
 
         std::vector<std::string> ids() const
@@ -119,8 +145,9 @@ namespace shs
             uint32_t backend_mask = backend_mask_all(),
             bool backend_mask_known = true)
         {
-            if (!pass_id_is_standard(id)) return false;
-            return register_descriptor(pass_id_string(id), contract, backend_mask, backend_mask_known);
+            const std::string key = typed_key(id);
+            if (key.empty()) return false;
+            return register_descriptor(key, contract, backend_mask, backend_mask_known);
         }
 
         bool try_get_descriptor(std::string_view id, PassFactoryDescriptor& out) const
@@ -133,8 +160,9 @@ namespace shs
 
         bool try_get_descriptor(PassId id, PassFactoryDescriptor& out) const
         {
-            if (!pass_id_is_standard(id)) return false;
-            return try_get_descriptor(pass_id_string(id), out);
+            const std::string key = typed_key(id);
+            if (key.empty()) return false;
+            return try_get_descriptor(key, out);
         }
 
         bool try_get_contract_hint(std::string_view id, TechniquePassContract& out) const
@@ -148,8 +176,9 @@ namespace shs
 
         bool try_get_contract_hint(PassId id, TechniquePassContract& out) const
         {
-            if (!pass_id_is_standard(id)) return false;
-            return try_get_contract_hint(pass_id_string(id), out);
+            const std::string key = typed_key(id);
+            if (key.empty()) return false;
+            return try_get_contract_hint(key, out);
         }
 
         std::optional<bool> supports_backend_hint(std::string_view id, RenderBackendType backend) const
@@ -162,8 +191,9 @@ namespace shs
 
         std::optional<bool> supports_backend_hint(PassId id, RenderBackendType backend) const
         {
-            if (!pass_id_is_standard(id)) return std::nullopt;
-            return supports_backend_hint(pass_id_string(id), backend);
+            const std::string key = typed_key(id);
+            if (key.empty()) return std::nullopt;
+            return supports_backend_hint(key, backend);
         }
 
         std::optional<bool> supports_technique_mode_hint(std::string_view id, TechniqueMode mode) const
@@ -175,11 +205,43 @@ namespace shs
 
         std::optional<bool> supports_technique_mode_hint(PassId id, TechniqueMode mode) const
         {
-            if (!pass_id_is_standard(id)) return std::nullopt;
-            return supports_technique_mode_hint(pass_id_string(id), mode);
+            const std::string key = typed_key(id);
+            if (key.empty()) return std::nullopt;
+            return supports_technique_mode_hint(key, mode);
+        }
+
+        // --- open registered range (Constitution I §7 — No User Lock-In) -----
+        // Explicit, caller-owned: no ambient global, so a plan and its replay
+        // stay deterministic. Builtin names always resolve to their builtin id,
+        // so a consumer can never shadow a core pass.
+
+        PassIdRegistry& pass_ids() noexcept { return pass_ids_; }
+        const PassIdRegistry& pass_ids() const noexcept { return pass_ids_; }
+
+        // Mint (or resolve) a consumer-owned pass id from its registered name.
+        std::optional<PassId> intern_pass_id(std::string_view name)
+        {
+            return pass_ids_.intern(name);
+        }
+
+        // Registered name of a typed id (builtin table or minted open id).
+        std::optional<std::string_view> pass_id_registered_name(PassId id) const
+        {
+            return pass_ids_.try_name(id);
         }
 
     private:
+        // Factory/descriptor key of a typed id: its builtin name, or the name
+        // minted for it here. Empty means "not resolvable in this registry" —
+        // every typed overload treats that as a hard miss, and no key is ever
+        // guessed from an id that has no name.
+        std::string typed_key(PassId id) const
+        {
+            const std::optional<std::string_view> name = pass_ids_.try_name(id);
+            return name.has_value() ? std::string(*name) : std::string{};
+        }
+
+        PassIdRegistry pass_ids_{};
         std::unordered_map<std::string, Factory> factories_{};
         std::unordered_map<std::string, PassFactoryDescriptor> descriptors_{};
     };

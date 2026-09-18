@@ -109,6 +109,19 @@ namespace shs
         return out;
     }
 
+    // Consumer-owned (open-id) pass entry: the name is the registration key, so
+    // it must be the exact name interned through `PassIdRegistry`
+    // (`PassFactoryRegistry::intern_pass_id`). Builtin passes may use this
+    // overload too; the name must then be the builtin spelling.
+    inline RenderPathPassEntry make_render_path_pass_entry(std::string id, PassId pass_id, bool required)
+    {
+        RenderPathPassEntry out{};
+        out.id = std::move(id);
+        out.pass_id = pass_id;
+        out.required = required;
+        return out;
+    }
+
     struct RenderPathRecipe
     {
         std::string name{};

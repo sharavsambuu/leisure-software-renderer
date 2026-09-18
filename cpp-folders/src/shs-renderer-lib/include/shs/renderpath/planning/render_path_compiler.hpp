@@ -11,6 +11,7 @@
 
 #include <expected>
 #include <string>
+#include <string_view>
 #include <optional>
 #include <unordered_set>
 #include <vector>
@@ -170,8 +171,26 @@ namespace shs
 
             const auto resolve_entry_pass_id = [](const RenderPathPassEntry& entry) -> PassId
             {
-                if (pass_id_is_standard(entry.pass_id)) return entry.pass_id;
+                // A meaningful typed id wins: builtin, or a consumer-minted open
+                // id. Otherwise fall back to the textual builtin spelling.
+                if (pass_id_in_valid_range(entry.pass_id)) return entry.pass_id;
                 return parse_pass_id(entry.id);
+            };
+
+            // The plan's canonical key for an entry: the builtin spelling, the
+            // name the registry minted for an open id, or the entry's own
+            // textual key (string-keyed consumer pass).
+            const auto resolve_canonical_pass_id =
+                [pass_registry](const RenderPathPassEntry& entry, PassId entry_pass_id) -> std::string
+            {
+                if (pass_id_is_builtin(entry_pass_id)) return pass_id_string(entry_pass_id);
+                if (pass_registry != nullptr)
+                {
+                    const std::optional<std::string_view> registered =
+                        pass_registry->pass_id_registered_name(entry_pass_id);
+                    if (registered.has_value()) return std::string(*registered);
+                }
+                return entry.id;
             };
 
             if (rules_.require_occlusion_support_for_occlusion_culling)
@@ -190,7 +209,7 @@ namespace shs
 
             auto recipe_has_pass = [&recipe, &resolve_entry_pass_id](PassId pass_id) -> bool
             {
-                if (!pass_id_is_standard(pass_id)) return false;
+                if (!pass_id_in_valid_range(pass_id)) return false;
                 for (const auto& entry : recipe.pass_chain)
                 {
                     if (resolve_entry_pass_id(entry) == pass_id) return true;
@@ -217,7 +236,14 @@ namespace shs
             {
                 if (entry.id.empty())
                 {
-                    if (!pass_id_is_standard(entry.pass_id))
+                    // A builtin id carries its own spelling; an open id is fine
+                    // *if* this registry minted a name for it. Anything else has
+                    // no key at all and cannot be planned.
+                    const bool named_without_text =
+                        pass_id_is_builtin(entry.pass_id) ||
+                        (pass_registry != nullptr &&
+                         pass_registry->pass_id_registered_name(entry.pass_id).has_value());
+                    if (!named_without_text)
                     {
                         if (entry.required) push_error("Pass entry has empty id and is marked required.", RenderPathCompileRejection::CompileInvalid);
                         else push_warning("Skipping optional pass entry with empty id.");
@@ -226,10 +252,10 @@ namespace shs
                 }
 
                 const PassId entry_pass_id = resolve_entry_pass_id(entry);
-                if (pass_id_is_standard(entry.pass_id) && !entry.id.empty())
+                if (pass_id_is_builtin(entry.pass_id) && !entry.id.empty())
                 {
                     const PassId parsed_from_text = parse_pass_id(entry.id);
-                    if (pass_id_is_standard(parsed_from_text) && parsed_from_text != entry.pass_id)
+                    if (pass_id_is_builtin(parsed_from_text) && parsed_from_text != entry.pass_id)
                     {
                         push_warning(
                             "Pass entry textual id '" + entry.id +
@@ -237,8 +263,21 @@ namespace shs
                             "'. Typed id is used.");
                     }
                 }
-                const std::string canonical_id =
-                    pass_id_is_standard(entry_pass_id) ? pass_id_string(entry_pass_id) : entry.id;
+                else if (pass_id_is_open(entry.pass_id) && !entry.id.empty() && pass_registry != nullptr)
+                {
+                    // Open ids have no static spelling: their check is exact-name
+                    // against what this registry minted.
+                    const std::optional<std::string_view> registered =
+                        pass_registry->pass_id_registered_name(entry.pass_id);
+                    if (registered.has_value() && *registered != entry.id)
+                    {
+                        push_warning(
+                            "Pass entry textual id '" + entry.id +
+                            "' does not match registered name '" + std::string(*registered) +
+                            "' of its typed id. The registered name is used.");
+                    }
+                }
+                const std::string canonical_id = resolve_canonical_pass_id(entry, entry_pass_id);
 
                 const auto insert_result = seen_pass_ids.insert(canonical_id);
                 if (!insert_result.second)
@@ -255,10 +294,10 @@ namespace shs
                     continue;
                 }
 
-                const bool has_registered_pass =
-                    pass_id_is_standard(entry_pass_id)
-                        ? pass_registry->has(entry_pass_id)
-                        : pass_registry->has(canonical_id);
+                // canonical_id IS the registry key for every resolvable entry:
+                // the builtin spelling, the minted open-id name, or the entry's
+                // textual key. Typed and textual lookups therefore converge here.
+                const bool has_registered_pass = pass_registry->has(canonical_id);
                 if (!has_registered_pass)
                 {
                     const std::string msg = "Pass id '" + canonical_id + "' is not registered in PassFactoryRegistry.";
@@ -268,9 +307,7 @@ namespace shs
                 }
 
                 const std::optional<bool> backend_ok_hint =
-                    pass_id_is_standard(entry_pass_id)
-                        ? pass_registry->supports_backend_hint(entry_pass_id, recipe.backend)
-                        : pass_registry->supports_backend_hint(canonical_id, recipe.backend);
+                    pass_registry->supports_backend_hint(canonical_id, recipe.backend);
                 if (backend_ok_hint.has_value() && !backend_ok_hint.value())
                 {
                     const std::string msg =
@@ -282,9 +319,7 @@ namespace shs
                 }
 
                 const std::optional<bool> mode_ok_hint =
-                    pass_id_is_standard(entry_pass_id)
-                        ? pass_registry->supports_technique_mode_hint(entry_pass_id, recipe.technique_mode)
-                        : pass_registry->supports_technique_mode_hint(canonical_id, recipe.technique_mode);
+                    pass_registry->supports_technique_mode_hint(canonical_id, recipe.technique_mode);
                 if (mode_ok_hint.has_value() && !mode_ok_hint.value())
                 {
                     const std::string msg =

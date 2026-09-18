@@ -349,12 +349,23 @@ Goal: `demo_forward_classic_renderpath.cpp` (9,373 lines) → thin pod compositi
       `find_package(VulkanMemoryAllocator ... REQUIRED)` optional/QUIET and gate
       all Vulkan sources/targets behind `SHS_HAS_VULKAN` so configure+build
       succeeds on machines with no GPU and no Vulkan SDK.
-- [ ] Open pass-ID / light-registry extensibility (Constitution I §7) — `PassId`
-      gains a builtin range + open registered range (or stable-string-hash
-      contract keys) so demo/consumer-owned passes need no core edit; apply the
-      same open-registry treatment to `RenderPathLightVolumeProvider` and
-      technique/light preset enums as consumers require custom abstractions.
-      (Formal contract: `render_path_architecture.md` §4.)
+- [x] **Open pass IDs (first half of this box) — DONE 2026-09-18.** `PassId` keeps
+      its builtin vocabulary and gains a content-addressed open registered range
+      (`shs/renderpath/planning/pass_id.hpp` range law +
+      `shs/renderpath/execution/pass_id_registry.hpp`), so demo/consumer-owned
+      passes are first-class with zero core edits: verified plan participation,
+      typed plan queries, factory/descriptor registration under a verified
+      `(id, name)` pair, loud collision refusal, and no cross-registry aliasing.
+      Gate `shs_renderer_pass_id_open_tests` (12 GPU-free checks); full CTest
+      **72/72**; evidence +
+      [`open_pass_id_registry_evidence_2026-09-18.md`](../backlog/open_pass_id_registry_evidence_2026-09-18.md).
+      Independently corroborated: the 2026-09-18 Antigravity library review
+      flagged exactly this closed-enum finding.
+- [ ] **Open light / technique registries (second half of this box)** — apply the
+      same open-registry treatment to `RenderPathLightVolumeProvider` and the
+      technique/light preset enums as consumers require custom abstractions
+      (`PassIdRegistry` is the shape to reuse; rule of two). Formal contract:
+      `render_path_architecture.md` §4 req 2.
 - [ ] Migrate or retire `hello_*_vulkan.cpp` probes.
 
 **DoD**: demo under ~1.5k lines; all 5 path presets × techniques hot-swappable at

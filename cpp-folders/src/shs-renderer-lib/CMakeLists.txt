@@ -632,6 +632,23 @@ if(SHS_RENDERER_BUILD_TESTS)
         target_compile_options(shs_renderer_renderpath_tests PRIVATE -Wall -Wextra -Wpedantic)
     endif()
 
+    # Constitution I §7 — No User Lock-In (arch/render_path_architecture.md §4
+    # graduation req 1): open pass-id registry. Consumer/demo-owned passes get
+    # typed ids from an open registered range with zero core edits, while every
+    # builtin plan path must keep its exact previous behavior (parity guards
+    # inside). Header-only: links shs::renderer-values only, GPU-free.
+    add_executable(shs_renderer_pass_id_open_tests
+        tests/pass_id_open_registry_tests.cpp
+    )
+    target_link_libraries(shs_renderer_pass_id_open_tests PRIVATE shs::renderer-values)
+    target_compile_features(shs_renderer_pass_id_open_tests PRIVATE cxx_std_23)
+    if(MSVC)
+        target_compile_options(shs_renderer_pass_id_open_tests PRIVATE /W4)
+    else()
+        target_compile_options(shs_renderer_pass_id_open_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+    add_test(NAME shs_renderer_pass_id_open_tests COMMAND shs_renderer_pass_id_open_tests)
+
     add_custom_target(shs_renderer_boundary_check
         COMMAND "${CMAKE_COMMAND}" -E env "PYTHON=${Python3_EXECUTABLE}"
             "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_kdba_boundaries.sh"

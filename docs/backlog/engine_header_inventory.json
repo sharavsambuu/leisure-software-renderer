@@ -3,7 +3,7 @@
   "scope": "cpp-folders/src/shs-renderer-lib/include",
   "coverage": "all .h/.hpp public headers; literal includes in all conditional branches",
   "approval": "proposed paths are inventory only; reviewed migrations live in engine_header_migration_manifest.json",
-  "header_count": 226,
+  "header_count": 227,
   "headers": [
     {
       "current": "shs/app/backend/backend_factory.hpp",
@@ -3648,6 +3648,42 @@
       "build_target": "review-values-vs-aggregate"
     },
     {
+      "current": "shs/renderpath/execution/pass_id_registry.hpp",
+      "proposed_canonical": "shs/renderpath/execution/pass_id_registry.hpp",
+      "review_status": "already-named-review-dependencies",
+      "proposed_owner": "renderpath",
+      "namespace_declarations": [
+        "renderpath",
+        "shs"
+      ],
+      "visibility": "public-include-tree",
+      "direct_dependencies": [
+        "cstddef",
+        "optional",
+        "shs/renderpath/planning/pass_id.hpp",
+        "string",
+        "string_view",
+        "utility",
+        "vector"
+      ],
+      "internal_dependencies": [
+        "shs/renderpath/planning/pass_id.hpp"
+      ],
+      "external_dependencies": [
+        "cstddef",
+        "optional",
+        "string",
+        "string_view",
+        "utility",
+        "vector"
+      ],
+      "tracked_consumers": [
+        "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/pass_registry.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/render_path_runtime_layout.hpp"
+      ],
+      "build_target": "review-values-vs-aggregate"
+    },
+    {
       "current": "shs/renderpath/execution/pass_registry.hpp",
       "proposed_canonical": "shs/renderpath/execution/pass_registry.hpp",
       "review_status": "already-named-review-dependencies",
@@ -3661,6 +3697,7 @@
         "functional",
         "memory",
         "optional",
+        "shs/renderpath/execution/pass_id_registry.hpp",
         "shs/renderpath/execution/render_pass.hpp",
         "shs/renderpath/planning/pass_contract.hpp",
         "shs/renderpath/planning/pass_id.hpp",
@@ -3670,6 +3707,7 @@
         "vector"
       ],
       "internal_dependencies": [
+        "shs/renderpath/execution/pass_id_registry.hpp",
         "shs/renderpath/execution/render_pass.hpp",
         "shs/renderpath/planning/pass_contract.hpp",
         "shs/renderpath/planning/pass_id.hpp"
@@ -4234,12 +4272,15 @@
       "direct_dependencies": [
         "algorithm",
         "cstdint",
+        "optional",
+        "shs/renderpath/execution/pass_id_registry.hpp",
         "shs/renderpath/planning/render_path_compiler.hpp",
         "shs/renderpath/planning/render_path_recipe.hpp",
         "shs/renderpath/planning/render_path_resource_plan.hpp",
         "string_view"
       ],
       "internal_dependencies": [
+        "shs/renderpath/execution/pass_id_registry.hpp",
         "shs/renderpath/planning/render_path_compiler.hpp",
         "shs/renderpath/planning/render_path_recipe.hpp",
         "shs/renderpath/planning/render_path_resource_plan.hpp"
@@ -4247,6 +4288,7 @@
       "external_dependencies": [
         "algorithm",
         "cstdint",
+        "optional",
         "string_view"
       ],
       "tracked_consumers": [],
@@ -4641,6 +4683,7 @@
         "shs/renderpath/planning/render_path_recipe.hpp",
         "shs/renderpath/planning/technique_profile.hpp",
         "string",
+        "string_view",
         "unordered_set",
         "vector"
       ],
@@ -4656,6 +4699,7 @@
         "expected",
         "optional",
         "string",
+        "string_view",
         "unordered_set",
         "vector"
       ],

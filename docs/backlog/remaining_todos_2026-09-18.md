@@ -43,11 +43,20 @@
       `demo_frame_planner.hpp`), so the work is wiring + deleting inline copies.
       The largest remaining structural win, and it is the proof-by-consumer for the
       whole DVO spine. Library-adjacent, not library-internal.
-- [ ] **P3 box 6 — open `PassId` / light-registry extensibility** (Constitution I §7).
-      Consumer-owned passes and light volumes without a core edit: builtin range +
-      open registered range (or stable contract keys), same treatment for
-      `RenderPathLightVolumeProvider` and the technique/light preset enums.
-      *Pure library API work; fully unblocked; smallest high-leverage item here.*
+- [x] **P3 box 6, first half — open pass IDs** (Constitution I §7). **CLOSED
+      2026-09-18:** `PassId` range law (`planning/pass_id.hpp`) + content-addressed
+      `PassIdRegistry` (`execution/pass_id_registry.hpp`); a consumer pass is
+      first-class with zero core edits — verified plan participation, typed plan
+      queries, factory/descriptor registration under a verified `(id, name)`
+      pair, loud collision refusal, no cross-registry aliasing. Gate
+      `shs_renderer_pass_id_open_tests` (12 GPU-free checks); full CTest **72/72**
+      (was 71); evidence
+      [`open_pass_id_registry_evidence_2026-09-18.md`](open_pass_id_registry_evidence_2026-09-18.md).
+      Independently corroborated by the 2026-09-18 Antigravity library review.
+- [ ] **P3 box 6, second half — open light/technique registries.**
+      `RenderPathLightVolumeProvider` + the technique/light preset enums get the
+      same treatment (rule of two: reuse `PassIdRegistry`'s shape). Unblocked,
+      pure library API work.
 - [ ] **P5 box 1 — role/suffix completion.** Today each DVO zone carries a single
       `.contract.hpp` (`render` carries two) and only 5 gateways exist (`renderpath`,
       `render/frame`, `input`, `logic`, `app/session_orchestrator`); there are **0**

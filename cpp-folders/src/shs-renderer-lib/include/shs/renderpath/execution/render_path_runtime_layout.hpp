@@ -11,11 +11,13 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <optional>
 #include <string_view>
 
 #include "shs/renderpath/planning/render_path_compiler.hpp"
 #include "shs/renderpath/planning/render_path_recipe.hpp"
 #include "shs/renderpath/planning/render_path_resource_plan.hpp"
+#include "shs/renderpath/execution/pass_id_registry.hpp"
 
 namespace shs
 {
@@ -60,13 +62,36 @@ namespace shs
         return false;
     }
 
+    // Typed query: true when the plan carries this id. Works for builtin ids and
+    // for consumer-minted open ids — a plan built from typed entries carries the
+    // typed id itself, so no name is needed here.
     inline bool render_path_plan_has_pass(const RenderPathExecutionPlan& plan, PassId pass_id)
     {
-        if (!pass_id_is_standard(pass_id)) return false;
+        if (!pass_id_in_valid_range(pass_id)) return false;
         for (const auto& pass : plan.pass_chain)
         {
             if (pass.pass_id == pass_id) return true;
-            if (parse_pass_id(pass.id) == pass_id) return true;
+            if (pass_id_is_builtin(pass_id) && parse_pass_id(pass.id) == pass_id) return true;
+        }
+        return false;
+    }
+
+    // Typed query with name resolution (Constitution I §7): additionally matches
+    // a plan entry whose textual key equals the name this registry minted for the
+    // open id — the case where the plan was authored string-keyed before the
+    // typed id was known.
+    inline bool render_path_plan_has_pass(
+        const RenderPathExecutionPlan& plan,
+        PassId pass_id,
+        const PassIdRegistry& pass_ids)
+    {
+        if (render_path_plan_has_pass(plan, pass_id)) return true;
+        if (!pass_id_is_open(pass_id)) return false;
+        const std::optional<std::string_view> name = pass_ids.try_name(pass_id);
+        if (!name.has_value()) return false;
+        for (const auto& pass : plan.pass_chain)
+        {
+            if (pass.id == *name) return true;
         }
         return false;
     }

@@ -52,9 +52,35 @@ Edit `shs/pipeline/render_path_presets.hpp`:
 3.  Define the default pass chain in `make_builtin_render_path_recipe(...)`.
 
 ### Adding a New Pass
+
+**Core pass** (ships in the library):
 1.  **Register ID**: Add a value to `PassId` in `shs/pipeline/pass_id.hpp`.
 2.  **Define Contract**: Add its input/output semantic requirements in `pass_contract_registry.hpp`.
 3.  **Implement Handler**: Register a dispatch handler in the backend (e.g., `vk_render_path_pass_context.hpp` or `shs_renderer_lib.cpp`).
+
+**Consumer / demo-owned pass** (no core edit — Constitution I §7, graduation
+requirement 1, shipped 2026-09-18):
+
+1.  **Mint the id**: `PassFactoryRegistry::intern_pass_id("demo_fog_pass")` →
+    `std::optional<PassId>` in the open registered range. Builtin names resolve
+    to their builtin id (a core pass can never be shadowed), an already-minted
+    name is idempotent, and a name-hash collision is refused loudly (no
+    overwrite) — `nullopt` means "pick another name".
+2.  **Register factory + descriptor** under that same name:
+    `register_factory(id, "demo_fog_pass", factory)` and
+    `register_descriptor(id, contract, backend_mask)`. The descriptor hints are
+    what make the pass planner-visible (VOP-first rule: no hints, no planner
+    participation), and they are exactly what builtins register.
+3.  **Reference it from a recipe**: `make_render_path_pass_entry("demo_fog_pass",
+    id, /*required=*/true)`, then compile through the same Recipe → Compiler →
+    Plan pipeline as a builtin. Execution keys on the registered *name*, so
+    replay logs, barrier tables and saved recipes stay stable.
+4.  **Verify**: `render_path_plan_has_pass(plan, id)` — with the registry
+    overload when the plan was authored string-keyed — answers for a consumer
+    pass exactly as it does for a builtin.
+
+No core edit, no enum change, no planner fork; the proof is the
+`shs_renderer_pass_id_open_tests` gate.
 
 ### Demo-Authored Techniques (Technology-Demo Story)
 The core ships small, complete renderer cores (e.g., the builtin Blinn-Phong /
@@ -92,15 +118,34 @@ Already first-class in the value vocabulary:
 - **Culling / light volumes** — culling strategies are recipe data; light-grid
   and cluster structures are canonical semantics, not hardcoded pass internals.
 
-Graduation requirements (tracked, not yet built):
-1. **Open pass IDs** — `PassId` is a closed 16-value enum; consumer/demo-owned
-   passes need a builtin range + open registered range (or stable-string-hash
-   contract keys). Blocking for the demo-authoring story above.
+Graduation requirements (tracked; req 1 has since shipped):
+
+1. **Open pass IDs** — ✅ **DONE 2026-09-18.** `PassId` keeps its builtin
+   vocabulary and gains an open registered range: the range law lives in
+   `shs/renderpath/planning/pass_id.hpp` (builtin 1–1023, open 1024–65534,
+   65535 reserved, plus `pass_id_is_builtin` / `pass_id_is_open` /
+   `pass_id_in_valid_range`; the legacy `pass_id_is_standard` stays
+   behavior-identical for every value the enum can hold) and the registry in
+   `shs/renderpath/execution/pass_id_registry.hpp`. A demo registers a pass
+   *name*, gets a typed id that is a stable function of that name
+   (content-addressed, so it is identical across registries, translation units
+   and processes — and registration order can never leak into a plan),
+   registers its factory/descriptor through the same API builtins use, and
+   references it from a recipe: **zero core edits**. Builtin names always
+   resolve to their builtin id, so a consumer can never shadow a core pass;
+   collisions are refused loudly, and the verified `(id, name)` registration
+   path makes a foreign or colliding id a hard miss rather than a wrong pass.
+   Evidence + gates: `docs/backlog/open_pass_id_registry_evidence_2026-09-18.md`
+   (`shs_renderer_pass_id_open_tests`, 12 GPU-free checks; full CTest 72/72).
+   Residual, stated: the open range is 16-bit because `PassId` is — 64,511
+   consumer slots, one pass per name-hash slot. Widening the id type is a
+   separate, gated decision if a consumer ever needs past that.
 2. **Open light/light-volume registries** — `RenderPathLightVolumeProvider` and
    the builtin light structs in `shader/types.hpp` are closed enums today;
    custom light abstractions (area/IES/volumetric/custom game lights) require
    the same open-registry treatment, with light *types* additive on top of the
-   shared lighting math library.
+   shared lighting math library. *Not started; `PassIdRegistry` is the shape to
+   reuse (rule of two).*
 3. **Material graph compiler** — complex material authoring follows the
    material-system roadmap (lib → assembler → node graph → multi-target
    emission: GLSL/Slang/C++), not core enumeration.
