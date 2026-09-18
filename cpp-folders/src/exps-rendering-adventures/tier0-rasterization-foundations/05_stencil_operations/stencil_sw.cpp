@@ -31,31 +31,29 @@ int main(int argc, char* argv[])
     // pass A: triangle writes stencil ref 1 (and its own color)
     // (depth disabled to mirror the *_vk twin's pipeline state — the quad in
     // pass B sits at the same z and must not be depth-rejected)
-    SwState write_state{};
-    write_state.depth_test    = false;
-    write_state.depth_write   = false;
-    write_state.stencil_write = true;
-    write_state.stencil_ref   = 1;
-    raster.state = write_state;
-    draw_triangles(raster, scene_stencil_triangle());
+    PassPolicy write_policy{};
+    write_policy.depth_test  = false;
+    write_policy.depth_write = false;
+    write_policy.stencil     = StencilMode::WriteRef;
+    write_policy.stencil_ref = 1;
+    draw_triangles(raster, write_policy, scene_stencil_triangle());
 
     // pass B left: quad masked to the triangle silhouette (EQUAL)
-    SwState test_state{};
-    test_state.depth_test   = false;
-    test_state.depth_write  = false;
-    test_state.stencil_test = true;
-    test_state.stencil_ref  = 1;
-    raster.state = test_state;
+    PassPolicy test_policy{};
+    test_policy.depth_test  = false;
+    test_policy.depth_write = false;
+    test_policy.stencil     = StencilMode::TestEqual;
+    test_policy.stencil_ref = 1;
     std::vector<T0Vertex> quad = scene_stencil_quad();
     for (auto& v : quad) { v.pos[0] = v.pos[0] * 0.5f - 0.5f; } // squeeze into left half
-    draw_triangles(raster, quad);
+    draw_triangles(raster, test_policy, quad);
 
-    // pass B right: inverted mask (NOT_EQUAL)
-    test_state.stencil_invert = true;
-    raster.state = test_state;
+    // pass B right: inverted mask (NOT_EQUAL) — a second policy value, stated
+    // for this draw, rather than mutating a shared state object and re-drawing
+    test_policy.stencil = StencilMode::TestNotEqual;
     quad = scene_stencil_quad();
     for (auto& v : quad) { v.pos[0] = v.pos[0] * 0.5f + 0.5f; } // squeeze into right half
-    draw_triangles(raster, quad);
+    draw_triangles(raster, test_policy, quad);
 
     if (!frame.save_png(out_path))
     {

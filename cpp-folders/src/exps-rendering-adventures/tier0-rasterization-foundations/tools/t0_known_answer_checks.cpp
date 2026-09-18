@@ -239,10 +239,8 @@ namespace
                 const glm::vec4 clip = vps[half] * glm::vec4(glm::vec3(v.pos[0], v.pos[1], v.pos[2]), 1.0f);
                 v.pos[0] = clip.x / clip.w; v.pos[1] = clip.y / clip.w; v.pos[2] = clip.z / clip.w;
             }
-            SwState st{};
-            st.depth_test = true; // back faces lose the depth test (no culling, as in the demo)
-            raster.state = st;
-            draw_triangles(raster, baked);
+            const PassPolicy policy{}; // depth test on (default); no culling, as in the demo
+            draw_triangles(raster, policy, baked);
         }
     }
 
@@ -467,18 +465,12 @@ namespace
     void render_03(Frame& frame, SwRaster& raster) // mirrors depth_blend_sw.cpp
     {
         const std::vector<T0Vertex> scene = scene_depth_blend();
-        SwState opaque{};
-        opaque.depth_test  = true;
-        opaque.depth_write = true;
-        opaque.blend       = false;
-        raster.state = opaque;
-        draw_triangles(raster, {scene.begin(), scene.begin() + 6});
-        SwState translucent{};
-        translucent.depth_test  = true;
+        const PassPolicy opaque{}; // depth test + write, no blend
+        draw_triangles(raster, opaque, {scene.begin(), scene.begin() + 6});
+        PassPolicy translucent{};
         translucent.depth_write = false;
         translucent.blend       = true;
-        raster.state = translucent;
-        draw_triangles(raster, {scene.begin() + 6, scene.end()});
+        draw_triangles(raster, translucent, {scene.begin() + 6, scene.end()});
     }
 
     void check_03(Ka& k)
@@ -539,29 +531,26 @@ namespace
     // ---------------------------------------------------------------------------
     void render_05(Frame& frame, SwRaster& raster) // mirrors stencil_sw.cpp
     {
-        SwState write_state{};
-        write_state.depth_test    = false;
-        write_state.depth_write   = false;
-        write_state.stencil_write = true;
-        write_state.stencil_ref   = 1;
-        raster.state = write_state;
-        draw_triangles(raster, scene_stencil_triangle());
+        PassPolicy write_policy{};
+        write_policy.depth_test  = false;
+        write_policy.depth_write = false;
+        write_policy.stencil     = StencilMode::WriteRef;
+        write_policy.stencil_ref = 1;
+        draw_triangles(raster, write_policy, scene_stencil_triangle());
 
-        SwState test_state{};
-        test_state.depth_test   = false;
-        test_state.depth_write  = false;
-        test_state.stencil_test = true;
-        test_state.stencil_ref  = 1;
-        raster.state = test_state;
+        PassPolicy test_policy{};
+        test_policy.depth_test  = false;
+        test_policy.depth_write = false;
+        test_policy.stencil     = StencilMode::TestEqual;
+        test_policy.stencil_ref = 1;
         std::vector<T0Vertex> quad = scene_stencil_quad();
         for (auto& v : quad) { v.pos[0] = v.pos[0] * 0.5f - 0.5f; } // left half
-        draw_triangles(raster, quad);
+        draw_triangles(raster, test_policy, quad);
 
-        test_state.stencil_invert = true;
-        raster.state = test_state;
+        test_policy.stencil = StencilMode::TestNotEqual;
         quad = scene_stencil_quad();
         for (auto& v : quad) { v.pos[0] = v.pos[0] * 0.5f + 0.5f; } // right half
-        draw_triangles(raster, quad);
+        draw_triangles(raster, test_policy, quad);
     }
 
     void check_05(Ka& k)

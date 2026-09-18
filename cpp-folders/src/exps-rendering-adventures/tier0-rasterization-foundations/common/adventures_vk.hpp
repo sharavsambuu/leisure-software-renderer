@@ -9,6 +9,14 @@
     vertex buffer, push-constant MVP, optional combined-image-sampler
     descriptor (demo 04), pixel readback -> PNG.
 
+    Fixed-function state comes from the shared execution-neutral PassPolicy
+    (AD2), the same type the *_sw rasterizer consumes — this harness owns the
+    adapter that maps it onto VkPipeline depth-stencil/blend state and onto the
+    dynamic scissor. add_pipeline() bakes the pipeline-level fields
+    (depth test/write, blend, stencil mode + ref); render() applies the
+    dynamic-state field (scissor) for the pass. Shader paths, the vertex layout
+    and the texture binding are execution concerns, not policy.
+
     Conventions (pins from docs/roadmap/slang_utilization_plan.md):
       * NEGATIVE viewport height — NDC +Y renders at the top, matching the
         software twins' y-flip.
@@ -23,21 +31,18 @@
 
 #include <vulkan/vulkan.h>
 
+#include "adventures_pass_policy.hpp"
+
 namespace adventures
 {
+    // Pipeline-level description: shader module paths, whether the pass reads a
+    // combined image sampler, and the shared fixed-function policy.
     struct VkPipelineSetup
     {
-        const char* vs_spv_path  = nullptr; // SPIR-V from slangc
-        const char* fs_spv_path  = nullptr;
-        bool        blend        = false;   // SRC_ALPHA / ONE_MINUS_SRC_ALPHA
-        bool        depth_test   = true;
-        bool        depth_write  = true;
-        bool        textured     = false;   // bind combined image sampler (set 0)
-        // stencil (applied to front & back faces)
-        bool        stencil_test   = false;
-        bool        stencil_write  = false;
-        bool        stencil_invert = false; // NOT_EQUAL instead of EQUAL
-        uint8_t     stencil_ref    = 1;
+        const char* vs_spv_path = nullptr; // SPIR-V from slangc
+        const char* fs_spv_path = nullptr;
+        bool        textured    = false;   // bind combined image sampler (set 0)
+        PassPolicy  policy{};              // shared semantics (see AD2 header)
     };
 
     struct VkDraw
@@ -64,7 +69,11 @@ namespace adventures
         // Creates one descriptor set (set 0, binding 0 = combined image sampler)
         // with the requested filtering; returns set index or -1.
         int upload_texture_rgba(const uint8_t* rgba, uint32_t w, uint32_t h, bool bilinear);
-        bool render(const std::vector<VkDraw>& draws, const VkRect2D* scissor_override = nullptr);
+        // Renders the pass and applies the policy's (dynamic-state) scissor.
+        // One scissor covers the whole call: Vulkan's scissor is dynamic state,
+        // so unlike the software rasterizer this harness cannot vary it per
+        // draw. Default policy = full target, no scissor.
+        bool render(const std::vector<VkDraw>& draws, const PassPolicy& policy = {});
         bool save_png(const char* path) const;
 
         // RGBA8 readback of the last render() (windowed presentation front-end);

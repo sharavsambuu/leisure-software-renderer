@@ -1,13 +1,16 @@
 #pragma once
 
 /*
-    tier0 common (software side) — mini rasterizer state shared by the *_sw
-    demos (demo 01 hand-rolls its own loop, since implementing barycentric
-    coverage IS that demo's lesson).
+    tier0 common (software side) — mini rasterizer shared by the *_sw demos
+    (demo 01 hand-rolls its own loop, since implementing barycentric coverage
+    IS that demo's lesson).
 
-    Mirrors the fixed-function state the *_vk twins configure through
-    VkPipeline state: depth test/write, straight-alpha blending, stencil
-    write/test, scissor.
+    Fixed-function behavior comes from the shared execution-neutral PassPolicy
+    (AD2) and is passed explicitly to every draw. The class holds only storage
+    the executor owns — the z-buffer and the stencil plane — plus the target
+    frame. There is deliberately no "current state" member: a draw can no longer
+    inherit the previous draw's depth/blend/stencil/scissor by forgetting to
+    restate it.
 */
 
 #include <algorithm>
@@ -15,41 +18,22 @@
 #include <vector>
 
 #include "adventures_frame.hpp"
+#include "adventures_pass_policy.hpp"
 #include "t0_scenes.hpp"
 
 namespace adventures
 {
-    struct SwState
-    {
-        bool    depth_test    = true;  // compare fragment z (0..1) against z-buffer
-        bool    depth_write   = true;
-        bool    blend         = false; // straight-alpha source-over
-        bool    stencil_write = false; // set stencil = stencil_ref on covered pixels
-        bool    stencil_test  = false; // keep only pixels passing the stencil test
-        bool    stencil_invert = false;
-        int     scissor[4]    = { -1, -1, -1, -1 }; // x0, y0, x1(exclusive), y1(exclusive)
-        uint8_t stencil_ref   = 1;
-    };
-
     class SwRaster
     {
     public:
         Frame& frame;
-        std::vector<float> depth{};
+        std::vector<float>   depth{};
         std::vector<uint8_t> stencil{};
-        SwState state{};
 
         explicit SwRaster(Frame& f) : frame(f)
         {
             depth.assign(size_t(f.width) * size_t(f.height), 1.0f);
             stencil.assign(size_t(f.width) * size_t(f.height), 0u);
-        }
-
-        bool scissor_allows(int x, int y) const
-        {
-            if (state.scissor[0] < 0) return true;
-            return x >= state.scissor[0] && x < state.scissor[2] &&
-                   y >= state.scissor[1] && y < state.scissor[3];
         }
     };
 
@@ -82,7 +66,11 @@ namespace adventures
         return e.y == 0.0f && e.x < 0.0f;         // horizontal pointing left => top edge
     }
 
-    inline void draw_triangle(SwRaster& r, const T0Vertex& v0, const T0Vertex& v1, const T0Vertex& v2)
+    // Draw one triangle under `policy`. The policy is an argument, not ambient
+    // state, so two draws in the same frame can differ and the second one starts
+    // from the policy defaults rather than from whatever the first one left.
+    inline void draw_triangle(SwRaster& r, const PassPolicy& policy,
+                              const T0Vertex& v0, const T0Vertex& v1, const T0Vertex& v2)
     {
         const int       w  = r.frame.width;
         const int       h  = r.frame.height;
@@ -115,8 +103,7 @@ namespace adventures
         const int min_y = std::max(0, int(std::min({ a.y, b.y, c.y })));
         const int max_y = std::min(h - 1, int(std::max({ a.y, b.y, c.y })));
 
-        const SwState st  = r.state;
-        const bool    tl0 = is_top_left(a, b);
+        const bool tl0 = is_top_left(a, b);
         const bool    tl1 = is_top_left(b, c);
         const bool    tl2 = is_top_left(c, a);
 
@@ -132,7 +119,7 @@ namespace adventures
                 const bool inside = (e0 > 0.0f || (e0 == 0.0f && tl0)) &&
                                     (e1 > 0.0f || (e1 == 0.0f && tl1)) &&
                                     (e2 > 0.0f || (e2 == 0.0f && tl2));
-                if (!inside || !r.scissor_allows(x, y)) continue;
+                if (!inside || !scissor_allows(policy, x, y)) continue;
 
                 // barycentric weights = normalized sub-edge areas
                 const float inv_area = 1.0f / area;
@@ -143,12 +130,12 @@ namespace adventures
                 const float  depth = w0 * p0.z + w1 * p1.z + w2 * p2.z;
                 const size_t idx   = size_t(y) * size_t(w) + size_t(x);
 
-                if (st.depth_test && depth >= r.depth[idx]) continue;
-                if (st.stencil_test)
+                if (policy.depth_test && depth >= r.depth[idx]) continue;
+                if (stencil_tests(policy.stencil))
                 {
-                    const bool match = st.stencil_invert
-                                           ? (r.stencil[idx] != st.stencil_ref)
-                                           : (r.stencil[idx] == st.stencil_ref);
+                    const bool match = stencil_inverts(policy.stencil)
+                                           ? (r.stencil[idx] != policy.stencil_ref)
+                                           : (r.stencil[idx] == policy.stencil_ref);
                     if (!match) continue;
                 }
 
@@ -159,7 +146,7 @@ namespace adventures
                 float cb = w0 * a_v->col[2] + w1 * b_v->col[2] + w2 * c_v->col[2];
                 float ca = w0 * a_v->col[3] + w1 * b_v->col[3] + w2 * c_v->col[3];
 
-                if (st.blend)
+                if (policy.blend)
                 {
                     float dr, dg, db, da;
                     r.frame.get(x, y, dr, dg, db, da);
@@ -173,8 +160,8 @@ namespace adventures
                     ca = out_a;
                 }
 
-                if (st.depth_write) r.depth[idx] = depth;
-                if (st.stencil_write) r.stencil[idx] = st.stencil_ref;
+                if (policy.depth_write) r.depth[idx] = depth;
+                if (stencil_writes(policy.stencil)) r.stencil[idx] = policy.stencil_ref;
 
                 r.frame.put(x, y,
                             uint8_t(cr * 255.0f + 0.5f),
@@ -185,11 +172,11 @@ namespace adventures
         }
     }
 
-    inline void draw_triangles(SwRaster& r, const std::vector<T0Vertex>& verts)
+    inline void draw_triangles(SwRaster& r, const PassPolicy& policy, const std::vector<T0Vertex>& verts)
     {
         for (size_t i = 0; i + 2 < verts.size(); i += 3)
         {
-            draw_triangle(r, verts[i], verts[i + 1], verts[i + 2]);
+            draw_triangle(r, policy, verts[i], verts[i + 1], verts[i + 2]);
         }
     }
 }

@@ -41,17 +41,16 @@ int main(int argc, char* argv[])
     VkPipelineSetup write_setup{};
     write_setup.vs_spv_path = vs_path.c_str();
     write_setup.fs_spv_path = fs_path.c_str();
-    write_setup.depth_test  = false;
-    write_setup.stencil_write = true; // ALWAYS + REPLACE ref 1
+    write_setup.policy.depth_test = false;
+    write_setup.policy.stencil    = StencilMode::WriteRef; // ALWAYS + REPLACE ref 1
     const int write_pipe = vk.add_pipeline(write_setup);
 
     VkPipelineSetup test_setup = write_setup;
-    test_setup.stencil_write = false;
-    test_setup.stencil_test  = true; // EQUAL ref 1
+    test_setup.policy.stencil = StencilMode::TestEqual; // EQUAL ref 1
     const int equal_pipe = vk.add_pipeline(test_setup);
 
     VkPipelineSetup invert_setup = test_setup;
-    invert_setup.stencil_invert = true; // NOT_EQUAL ref 1
+    invert_setup.policy.stencil = StencilMode::TestNotEqual; // NOT_EQUAL ref 1
     const int invert_pipe = vk.add_pipeline(invert_setup);
     if (write_pipe < 0 || equal_pipe < 0 || invert_pipe < 0) return 2;
 

@@ -1,10 +1,11 @@
 # Adventure Demo Domain Boundary & Composition Backlog
 
-> Status: **active (2026-09-18)** — AD0, AD1, AD4 **closed** with recorded
-> evidence ([`adventure_demo_baseline_2026-09-18.md`](adventure_demo_baseline_2026-09-18.md),
+> Status: **active (2026-09-18)** — AD0, AD1, AD2, AD3, AD4 **closed** with
+> recorded evidence ([`adventure_demo_baseline_2026-09-18.md`](adventure_demo_baseline_2026-09-18.md),
+> [`adventure_demo_ad2_ad3_evidence_2026-09-18.md`](adventure_demo_ad2_ad3_evidence_2026-09-18.md),
 > [`adventure_demo_ad4_evidence_2026-09-18.md`](adventure_demo_ad4_evidence_2026-09-18.md),
-> plus the CTest gates). AD2, AD3, AD5, AD6, AD7 open; the shared-semantics and
-> composition refactors have not started.
+> plus the CTest gates). AD5, AD6, AD7 open (13 checkboxes); AD7 is the roll-out
+> that applies AD3's shape to the remaining five pairs.
 > Scope: six SW/Vulkan pairs under `cpp-folders/src/exps-rendering-adventures/` (tier0 01–05 and tier1 08), common helpers, and parity tooling. Parked experiment trees are excluded.
 > Authority: [Constitution II](../spec/value_oriented_programming.md) and the [governing clarification](../spec/dod_ecs_architecture.md). This backlog schedules work; it does not add laws or reopen the completed library migration.
 > Related: [library KDBA backlog](kdba_conformance_backlog.md).
@@ -52,21 +53,37 @@ All implementation tasks are open. Finding numbers refer to the adventure-demo a
 
 ## AD2 — Shared semantics, explicit draw inputs
 
-- [ ] Define the smallest execution-neutral fixed-function policy needed by current demos (depth, blend, stencil, scissor). Keep shader paths and Vulkan handles out; document defaults and capability differences.
-- [ ] Map this policy into SW and Vulkan adapters rather than maintaining unrelated `SwState`/`VkPipelineSetup` semantic copies.
-- [ ] Pass policy explicitly per SW draw; remove prerequisite `raster.state = ...` sequencing. Keep depth/stencil/framebuffer mutation inside the executor.
-- [ ] Test opaque/translucent order, stencil write/equal/invert, and scissor bounds. Resolve projection's unused local `SwState` without relying silently on defaults.
+- [x] Define the smallest execution-neutral fixed-function policy needed by current demos (depth, blend, stencil, scissor). Keep shader paths and Vulkan handles out; document defaults and capability differences. (2026-09-18: `common/adventures_pass_policy.hpp` — `PassPolicy` + closed `StencilMode` + `ScissorRect`; defaults and the four capability differences documented in the header)
+- [x] Map this policy into SW and Vulkan adapters rather than maintaining unrelated `SwState`/`VkPipelineSetup` semantic copies. (2026-09-18: `SwState` deleted; `SwRaster` holds only storage; `VkPipelineSetup` embeds `PassPolicy`, `stencil_state(StencilMode, ref)` and `clamp_scissor` are the Vulkan adapters; `render(draws, policy)` applies the dynamic scissor)
+- [x] Pass policy explicitly per SW draw; remove prerequisite `raster.state = ...` sequencing. Keep depth/stencil/framebuffer mutation inside the executor. (2026-09-18: `draw_triangles(raster, policy, verts)`; no state member remains to leak; demos 01–05 twins, tier1 08 `*_vk` and the AD4 tool migrated)
+- [x] Test opaque/translucent order, stencil write/equal/invert, and scissor bounds. Resolve projection's unused local `SwState` without relying silently on defaults. (2026-09-18: `t0_policy_tests`, 45 checks, GPU-free — order + analytic source-over, the four stencil modes against the stencil plane, scissor bounds/empty band/clamp, and the policy-isolation property; demo 02's dead local `SwState` replaced by an explicit stated policy)
 
 **Acceptance:** both twins consume the same intended pass policy; previous draw configuration cannot leak into the next draw. Lesson kernels stay visible and baseline comparisons hold.
 
+**CLOSED 2026-09-18.** Evidence: [`adventure_demo_ad2_ad3_evidence_2026-09-18.md`](adventure_demo_ad2_ad3_evidence_2026-09-18.md).
+Gate `t0_policy_tests` (45 checks) plus the unchanged six-pair baseline table
+(every differ/within-1/max number identical to AD0) and full CTest 71/71. Three
+mutation probes (kernel depth test removed, plan `blend=false`, executor
+ignoring `pass.policy`) each failed their gate and were reverted. Stencil mode is
+now closed, which retires the silently-ignored "invert without test"
+combination. Lesson kernels untouched.
+
 ## AD3 — Typed composition pilot
 
-- [ ] Pilot demo 03: pure preparation/validation returns a backend-neutral plan; execution and PNG output stay at explicit edges.
-- [ ] Inventory real failures and introduce a closed error vocabulary with stage diagnostics. Adapt bool/index failures without inventing failures for infallible math.
-- [ ] Compose fallible stages using the project's C++23 `std::expected` conventions (`and_then`, `transform`, `transform_error`, or `or_else` as appropriate). Map errors to CLI diagnostics/exit codes once at the host boundary.
-- [ ] Test success and failure at each stage: later stages do not execute after failure, original errors survive, and acquired resources are released. Short-circuiting does not imply rollback of external effects.
+- [x] Pilot demo 03: pure preparation/validation returns a backend-neutral plan; execution and PNG output stay at explicit edges. (2026-09-18: `03_depth_test_alpha_blend/depth_blend_plan.hpp` (pure: request → `expected<DepthBlendPlan, DepthBlendError>`, plan owns its vertices) + `depth_blend_edges.hpp` (software execution + PNG edge); both twins consume the one plan)
+- [x] Inventory real failures and introduce a closed error vocabulary with stage diagnostics. Adapt bool/index failures without inventing failures for infallible math. (2026-09-18: 14-member `DepthBlendError` + `DepthBlendStage`; six preparation, two software-execution, five Vulkan-execution values adapted from bools/indices, one output value; single `depth_blend_stage()` mapping, total message/name helpers)
+- [x] Compose fallible stages using the project's C++23 `std::expected` conventions (`and_then`, `transform`, `transform_error`, or `or_else` as appropriate). Map errors to CLI diagnostics/exit codes once at the host boundary. (2026-09-18: software twin chains `prepare_depth_blend(...).and_then(execute_software).and_then(write_png)` and attaches its diagnostic via `or_else`; Vulkan twin has one `fail()` used by every stage; exit codes 1/2/3 derive from the stage)
+- [x] Test success and failure at each stage: later stages do not execute after failure, original errors survive, and acquired resources are released. Short-circuiting does not imply rollback of external effects. (2026-09-18: `t0_composition_tests`, 91 checks, GPU-free — spy-counted short-circuit with zero later-stage runs, `or_else` keeps the original error, failed PNG write leaves the descriptor count unchanged, and execution refuses unvalidated hand-built plans)
 
 **Acceptance:** tests exercise a typed chain, not just renamed calls or a draw vector. No driver/file I/O enters pure preparation; no borrowed plan payload outlives its owner.
+
+**CLOSED 2026-09-18.** Evidence: [`adventure_demo_ad2_ad3_evidence_2026-09-18.md`](adventure_demo_ad2_ad3_evidence_2026-09-18.md).
+Gate `t0_composition_tests` (91 checks) plus the unchanged six-pair baseline
+table and full CTest 71/71. The pure zone is a separate header with no
+framebuffer/rasterizer/PNG/Vulkan include, the plan moves the geometry into
+itself, and a mutation probe (executor ignoring `pass.policy`) failed the gate,
+which is why the gate asserts on the *executed* result. Demo 03 is the pilot;
+the other five pairs convert under AD7.
 
 ## AD4 — Independent known-answer tests
 
@@ -130,7 +147,10 @@ requires detection. Full `build/` CTest 67/67, `check_kdba_boundaries.sh` and
 3. AD5 + AD6: consolidate inputs and contain backend representations.
 4. AD7: roll out, validate, and record closure.
 
-Each delivery should be independently reviewable. Preserve tolerance envelopes unless a separately investigated rendering correction justifies a change. Current status (2026-09-18): AD0, AD1, and AD4 are **closed** with recorded
-evidence (`adventure_demo_baseline_2026-09-18.md`,
-`adventure_demo_ad4_evidence_2026-09-18.md` and the CTest gates); AD2, AD3, AD5,
-AD6, and AD7 remain unimplemented.
+Each delivery should be independently reviewable. Preserve tolerance envelopes unless a separately investigated rendering correction justifies a change. Current status (2026-09-18): AD0, AD1, AD2, AD3, and AD4 are **closed** with
+recorded evidence (`adventure_demo_baseline_2026-09-18.md`,
+`adventure_demo_ad2_ad3_evidence_2026-09-18.md`,
+`adventure_demo_ad4_evidence_2026-09-18.md` and the CTest gates); AD5, AD6, and
+AD7 remain unimplemented. Next in this track: **AD5 + AD6** (single-source shared
+inputs, then the execution-format adapters), leaving AD7 to roll out AD3's
+preparation/execution/error shape to the remaining five pairs.

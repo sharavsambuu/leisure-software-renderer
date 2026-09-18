@@ -84,7 +84,7 @@
       calibrated for this fixture; gate not compiled in a GPU-free build.
       **The library G-track (G1–G4) is now complete.**
 
-### A2. Adventure demo conformance (owner: [`adventure_demo_conformance_backlog.md`](adventure_demo_conformance_backlog.md) — 28 open checkboxes; AD0, AD1, AD4 closed 2026-09-18)
+### A2. Adventure demo conformance (owner: [`adventure_demo_conformance_backlog.md`](adventure_demo_conformance_backlog.md) — 13 open checkboxes; AD0, AD1, AD2, AD3, AD4 closed 2026-09-18)
 
 - [x] **AD0 Fresh reproducible baseline** — DONE 2026-09-18:
       evidence in [`adventure_demo_baseline_2026-09-18.md`](adventure_demo_baseline_2026-09-18.md).
@@ -99,9 +99,33 @@
       parity CTest entries (incl. tier1 08) + negative-probe test; probes
       caught and fixed a real `--tol 1` parsing bug in `t0_parity.py`.
       Full CTest 63/63. Depends on AD0.
-- [ ] **AD2 Shared semantic state + explicit draw inputs.** Depends on AD0.
-- [ ] **AD3 Typed compositional orchestration pilot** (depth/blend pair).
-      Depends on AD2.
+- [x] **AD2 Shared semantic state + explicit draw inputs** — CLOSED 2026-09-18:
+      one execution-neutral `PassPolicy` (`common/adventures_pass_policy.hpp`)
+      replaces the parallel `SwState`/`VkPipelineSetup` copies; `SwState` is
+      deleted and the policy is a per-draw argument, so the prerequisite
+      `raster.state = ...` sequencing (and the leak it allowed) is gone; the
+      Vulkan harness bakes pipeline state from the same policy and derives its
+      dynamic scissor from it. Stencil mode is closed, retiring the
+      silently-ignored "invert without test" pair. Gate `t0_policy_tests` (45
+      checks, GPU-free, cannot skip) covers defaults, depth storage, order +
+      analytic source-over, all four stencil modes, scissor bounds/clamp, and
+      the policy-isolation property; three mutation probes failed their gate.
+      Six-pair baseline numbers identical to AD0 — no pixel moved. Depends on AD0.
+- [x] **AD3 Typed compositional orchestration pilot** (depth/blend pair) —
+      CLOSED 2026-09-18: demo 03 is now pure preparation
+      (`depth_blend_plan.hpp`: request → `expected<DepthBlendPlan,
+      DepthBlendError>`, plan owns its geometry) → explicit execution/PNG edges
+      (`depth_blend_edges.hpp`, plus the Vulkan twin's own executor) with one
+      host-boundary diagnostic mapping and stage-derived exit codes
+      (preparation 1 / execution 2 / output 3). Closed 14-member error
+      vocabulary; both twins consume the same plan. Gate
+      `t0_composition_tests` (91 checks, GPU-free) covers plan shape,
+      short-circuiting with the original error preserved, execution's refusal of
+      unvalidated plans, the output edge (descriptor count unchanged on failure),
+      plan ownership, vocabulary totality, and policy propagation into the
+      executed result. Evidence:
+      [`adventure_demo_ad2_ad3_evidence_2026-09-18.md`](adventure_demo_ad2_ad3_evidence_2026-09-18.md).
+      Full CTest 71/71. Depends on AD2.
 - [x] **AD4 Independent known-answer tests** — DONE 2026-09-18: evidence in
       [`adventure_demo_ad4_evidence_2026-09-18.md`](adventure_demo_ad4_evidence_2026-09-18.md).
       Always-active checks that fail the process; demos 01/04/08 verified
@@ -184,10 +208,11 @@ meshlet pipeline, or LOD framework is authorized by listing them.
 
 ## Suggested sequencing
 
-1. **Adventure demo track (A2)** — AD2 + AD3 first (prove the shape on the
-   depth/blend pair), then AD5 + AD6, then the AD7 roll-out and close-out. This
-   is now the only unblocked implementation track: the library G-track closed
-   2026-09-18 (G4 was its last item) and AD0/AD1/AD4 are already closed. It also
+1. **Adventure demo track (A2)** — AD5 + AD6 next (single-source shared inputs,
+   then execution-format adapters), then the AD7 roll-out and close-out of the
+   remaining five pairs onto AD3's preparation/execution/error shape. This is
+   now the only unblocked implementation track: the library G-track closed
+   2026-09-18 (G4 was its last item) and AD0/AD1/AD2/AD3/AD4 are closed. It also
    gives consumer-contract feedback at demo granularity, which the library track
    no longer does.
 2. **S5 headless prep** — banks host-blocked P6.2 work early, if desired.

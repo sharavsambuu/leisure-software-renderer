@@ -130,6 +130,24 @@ add_test(NAME t0_known_answer_checks COMMAND t0_known_answer_checks)
 add_test(NAME t0_known_answer_prove_fail
     COMMAND t0_known_answer_checks --prove-wrong-expected)
 
+# ---- AD2: pass-policy semantics gate (GPU-free, always active) --------------
+#   The shared PassPolicy is the single fixed-function vocabulary both twins
+#   consume; this gate drives it through the real software kernel and inspects
+#   the z-buffer and stencil plane directly. It needs no device, so it can never
+#   skip: a failure here is a hard failure.
+add_executable(t0_policy_tests tools/t0_policy_tests.cpp)
+target_link_libraries(t0_policy_tests PRIVATE t0_adventures_common)
+add_test(NAME t0_policy_tests COMMAND t0_policy_tests)
+
+# ---- AD3: typed composition pilot gate (GPU-free, always active) ------------
+#   Demo 03's pure preparation, software execution and PNG edge compose into one
+#   std::expected chain; this gate checks the plan's shape and policy, every
+#   rejection in the closed vocabulary, short-circuiting, execution's refusal of
+#   unvalidated plans, the output edge, and plan ownership of its vertices.
+add_executable(t0_composition_tests tools/t0_composition_tests.cpp)
+target_link_libraries(t0_composition_tests PRIVATE t0_adventures_common)
+add_test(NAME t0_composition_tests COMMAND t0_composition_tests)
+
 # ---- AD1: negative probes — the gate tooling must fail reliably (GPU-free) ----
 if(Python3_Interpreter_FOUND)
     add_test(NAME t0_gate_negative_probes

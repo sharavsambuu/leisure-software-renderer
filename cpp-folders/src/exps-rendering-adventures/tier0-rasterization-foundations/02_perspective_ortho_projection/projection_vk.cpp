@@ -40,7 +40,7 @@ int main(int argc, char* argv[])
     VkPipelineSetup setup{};
     setup.vs_spv_path  = vs_path.c_str();
     setup.fs_spv_path  = fs_path.c_str();
-    setup.depth_test   = true;
+    setup.policy.depth_test = true;
     const int pipeline = vk.add_pipeline(setup);
     if (pipeline < 0) return 2;
 

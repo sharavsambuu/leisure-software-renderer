@@ -21,17 +21,22 @@ namespace adventures
         constexpr VkFormat kColorFormat = VK_FORMAT_R8G8B8A8_UNORM;
         constexpr VkFormat kDepthFormat = VK_FORMAT_D24_UNORM_S8_UINT;
 
-        VkStencilOpState stencil_state(bool test, bool write, bool invert, uint8_t reference)
+        // Adapter: shared StencilMode -> VkStencilOpState. WriteRef is
+        // "compare ALWAYS + passOp REPLACE", the two test modes compare EQUAL /
+        // NOT_EQUAL against the reference and KEEP on failure, and Disabled
+        // never reaches here (stencilTestEnable is off).
+        VkStencilOpState stencil_state(StencilMode mode, uint8_t reference)
         {
             VkStencilOpState st{};
             st.compareMask = 0xff;
-            st.writeMask   = write ? 0xffu : 0x00u;
+            st.writeMask   = stencil_writes(mode) ? 0xffu : 0x00u;
             st.reference   = reference;
-            st.compareOp = !test ? VK_COMPARE_OP_ALWAYS
-                                 : (invert ? VK_COMPARE_OP_NOT_EQUAL : VK_COMPARE_OP_EQUAL);
+            st.compareOp   = stencil_inverts(mode) ? VK_COMPARE_OP_NOT_EQUAL
+                            : (mode == StencilMode::TestEqual ? VK_COMPARE_OP_EQUAL
+                                                             : VK_COMPARE_OP_ALWAYS);
             st.failOp      = VK_STENCIL_OP_KEEP;
             st.depthFailOp = VK_STENCIL_OP_KEEP;
-            st.passOp      = write ? VK_STENCIL_OP_REPLACE : VK_STENCIL_OP_KEEP;
+            st.passOp      = stencil_writes(mode) ? VK_STENCIL_OP_REPLACE : VK_STENCIL_OP_KEEP;
             return st;
         }
     }
@@ -370,17 +375,17 @@ namespace adventures
         ms.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 
         VkPipelineDepthStencilStateCreateInfo ds{ VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO };
-        ds.depthTestEnable   = setup.depth_test ? VK_TRUE : VK_FALSE;
-        ds.depthWriteEnable  = setup.depth_write ? VK_TRUE : VK_FALSE;
+        ds.depthTestEnable   = setup.policy.depth_test ? VK_TRUE : VK_FALSE;
+        ds.depthWriteEnable  = setup.policy.depth_write ? VK_TRUE : VK_FALSE;
         ds.depthCompareOp    = VK_COMPARE_OP_LESS;
-        ds.stencilTestEnable = (setup.stencil_test || setup.stencil_write) ? VK_TRUE : VK_FALSE;
-        ds.front             = stencil_state(setup.stencil_test, setup.stencil_write, setup.stencil_invert, setup.stencil_ref);
+        ds.stencilTestEnable = stencil_enabled(setup.policy.stencil) ? VK_TRUE : VK_FALSE;
+        ds.front             = stencil_state(setup.policy.stencil, setup.policy.stencil_ref);
         ds.back              = ds.front;
 
         VkPipelineColorBlendAttachmentState cb_att{};
         cb_att.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
                                 VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-        cb_att.blendEnable         = setup.blend ? VK_TRUE : VK_FALSE;
+        cb_att.blendEnable         = setup.policy.blend ? VK_TRUE : VK_FALSE;
         cb_att.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
         cb_att.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
         cb_att.colorBlendOp        = VK_BLEND_OP_ADD;
@@ -612,7 +617,7 @@ namespace adventures
         return int(texture_sets_.size()) - 1;
     }
 
-    bool OffscreenVulkan::render(const std::vector<VkDraw>& draws, const VkRect2D* scissor_override)
+    bool OffscreenVulkan::render(const std::vector<VkDraw>& draws, const PassPolicy& policy)
     {
         VkCommandBufferBeginInfo bi{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
         bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
@@ -632,8 +637,17 @@ namespace adventures
 
         // NEGATIVE viewport height pin: NDC +Y at the top (matches _sw y-flip)
         const VkViewport viewport{ 0.0f, float(height_), float(width_), -float(height_), 0.0f, 1.0f };
-        const VkRect2D scissor = scissor_override ? *scissor_override
-                                                  : VkRect2D{ { 0, 0 }, { width_, height_ } };
+        // Adapter: shared policy scissor -> the pass's dynamic VkRect2D. Clamped
+        // into the framebuffer (Vulkan requires it inside); an empty policy
+        // rectangle stays empty, which rasterizes nothing — exactly what the
+        // software twin's scissor_allows() does with it.
+        VkRect2D scissor{ { 0, 0 }, { width_, height_ } };
+        if (policy.scissor_enabled)
+        {
+            const ScissorRect s = clamp_scissor(policy.scissor, int(width_), int(height_));
+            scissor = VkRect2D{ { s.x0, s.y0 },
+                                { uint32_t(s.x1 - s.x0), uint32_t(s.y1 - s.y0) } };
+        }
         vkCmdSetViewport(cmd_, 0, 1, &viewport);
         vkCmdSetScissor(cmd_, 0, 1, &scissor);
 

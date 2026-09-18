@@ -84,7 +84,8 @@ namespace
     }
 
     // triangle with per-pixel uv interpolation + filtering + scissor
-    void draw_textured_triangle(SwRaster& r, const T0Vertex& v0, const T0Vertex& v1, const T0Vertex& v2,
+    void draw_textured_triangle(SwRaster& r, const PassPolicy& policy,
+                                const T0Vertex& v0, const T0Vertex& v1, const T0Vertex& v2,
                                 bool bilinear, const Tex2D& tex)
     {
         auto to_px = [&](const T0Vertex& v)
@@ -111,7 +112,7 @@ namespace
                 const float e0 = (p.x - a.x) * (b.y - a.y) - (p.y - a.y) * (b.x - a.x);
                 const float e1 = (p.x - b.x) * (c.y - b.y) - (p.y - b.y) * (c.x - b.x);
                 const float e2 = (p.x - c.x) * (a.y - c.y) - (p.y - c.y) * (a.x - c.x);
-                if (e0 < 0.0f || e1 < 0.0f || e2 < 0.0f || !r.scissor_allows(x, y)) continue;
+                if (e0 < 0.0f || e1 < 0.0f || e2 < 0.0f || !scissor_allows(policy, x, y)) continue;
 
                 // Barycentric weights. The e* edge functions above are defined as
                 // cross(p−v_i, v_j−v_i) = −E_ij, so the true barycentrics are
@@ -141,17 +142,20 @@ int main(int argc, char* argv[])
     const Tex2D tex = make_checker();
 
     const std::vector<T0Vertex> quads = scene_texture_quads(); // 6 left + 6 right verts
-    raster.state.scissor[0] = 0;
-    raster.state.scissor[1] = 300; // scissor band: rows 300..479 only
-    raster.state.scissor[2] = frame.width;
-    raster.state.scissor[3] = frame.height;
+
+    // AD2: the same policy object the *_vk twin hands to add_pipeline/render.
+    // Scissor band rows 300..479, x1/y1 exclusive — the *_vk twin derives its
+    // dynamic VkRect2D from this rectangle instead of spelling pixels twice.
+    PassPolicy policy{};
+    policy.scissor_enabled = true;
+    policy.scissor         = ScissorRect{ 0, 300, frame.width, frame.height };
 
     for (int half = 0; half < 2; ++half)
     {
         const bool bilinear = half == 1;
         for (int t = 0; t < 2; ++t)
         {
-            draw_textured_triangle(raster, quads[half * 6 + t * 3 + 0], quads[half * 6 + t * 3 + 1],
+            draw_textured_triangle(raster, policy, quads[half * 6 + t * 3 + 0], quads[half * 6 + t * 3 + 1],
                                    quads[half * 6 + t * 3 + 2], bilinear, tex);
         }
     }

@@ -68,10 +68,13 @@ int main(int argc, char* argv[])
         v.pos[2] = clip.z / clip.w;
     }
 
-    SwState st{};
-    st.depth_test = true; // back faces lose the depth test (no culling — on purpose)
-    draw_triangles(raster, left);
-    draw_triangles(raster, right);
+    // AD2: the pass policy is an explicit argument, and the old local SwState
+    // here was never applied — the demo silently relied on the rasterizer's
+    // default state. Stating the default makes that choice visible: depth test
+    // on, so back faces lose the depth test (no culling — on purpose).
+    const PassPolicy policy{};
+    draw_triangles(raster, policy, left);
+    draw_triangles(raster, policy, right);
 
     if (!frame.save_png(out_path))
     {

@@ -64,10 +64,17 @@ int main(int argc, char* argv[])
     const std::string vs_path = spv_dir + "/texture_sampling_vs.spv";
     const std::string fs_path = spv_dir + "/texture_sampling_fs.spv";
     VkPipelineSetup setup{};
-    setup.vs_spv_path  = vs_path.c_str();
-    setup.fs_spv_path  = fs_path.c_str();
-    setup.depth_test   = false;
-    setup.textured     = true;
+    setup.vs_spv_path = vs_path.c_str();
+    setup.fs_spv_path = fs_path.c_str();
+    setup.textured    = true;
+    // AD2: one policy carries the pipeline state AND the pass scissor the *_sw
+    // twin applies per draw; add_pipeline bakes the former, render derives the
+    // dynamic VkRect2D from the latter.
+    PassPolicy policy{};
+    policy.depth_test      = false;
+    policy.scissor_enabled = true;
+    policy.scissor         = ScissorRect{ 0, 300, 640, 480 }; // band rows 300..479, like _sw
+    setup.policy           = policy;
     const int pipeline = vk.add_pipeline(setup);
     if (pipeline < 0) return 2;
 
@@ -84,8 +91,7 @@ int main(int argc, char* argv[])
         { uint32_t(pipeline), 0, 6, &push, sizeof(push), set_nearest },
         { uint32_t(pipeline), 6, 6, &push, sizeof(push), set_linear  },
     };
-    const VkRect2D scissor{ { 0, 300 }, { 640, 180 } }; // band rows 300..479, like _sw
-    if (!vk.render({ draws[0], draws[1] }, &scissor)) return 2;
+    if (!vk.render({ draws[0], draws[1] }, policy)) return 2;
     if (!vk.save_png(out_path.c_str()))
     {
         std::fprintf(stderr, "failed to write %s\n", out_path.c_str());
