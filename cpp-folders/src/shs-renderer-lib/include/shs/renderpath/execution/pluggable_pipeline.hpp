@@ -400,10 +400,10 @@ namespace shs
                 for (const auto& res : node.io.resources)
                 {
                     if (res.key == 0) continue;
-                    if (node.pass && !pass_resource_domain_matches_backend(res.domain, node.pass->preferred_backend()))
+                    if (node.pass && !render_domain_matches_backend(res.domain, node.pass->preferred_backend()))
                     {
                         std::ostringstream oss;
-                        oss << "Resource domain '" << pass_resource_domain_name(res.domain) << "' may not match pass backend '"
+                        oss << "Resource domain '" << render_domain_name(res.domain) << "' may not match pass backend '"
                             << render_backend_type_name(node.pass->preferred_backend()) << "' in pass '" << node.pass_id << "'.";
                         report.warnings.push_back(oss.str());
                     }

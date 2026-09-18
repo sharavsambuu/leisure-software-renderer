@@ -34,6 +34,14 @@ namespace shs
         uint32_t backend_mask = 0u;
         bool has_contract = false;
         bool backend_mask_known = false;
+
+        // RP-1: does this pass declare an interop boundary? A plan that resolves
+        // two adjacent passes onto different substrates is legal only where one
+        // of them says so (the plan-visible half of the RP-2 hybrid rule — the
+        // shared-staging half is enforced where resources are materialized).
+        // Defaults false: an undeclared crossing stays a rejection, never an
+        // inferred permission.
+        bool declares_interop = false;
     };
 
     class PassFactoryRegistry
@@ -127,7 +135,8 @@ namespace shs
             const std::string& id,
             const TechniquePassContract& contract,
             uint32_t backend_mask = backend_mask_all(),
-            bool backend_mask_known = true)
+            bool backend_mask_known = true,
+            bool declares_interop = false)
         {
             if (id.empty()) return false;
             PassFactoryDescriptor d{};
@@ -135,6 +144,7 @@ namespace shs
             d.backend_mask = backend_mask;
             d.has_contract = true;
             d.backend_mask_known = backend_mask_known;
+            d.declares_interop = declares_interop;
             descriptors_[id] = std::move(d);
             return true;
         }
@@ -143,11 +153,12 @@ namespace shs
             PassId id,
             const TechniquePassContract& contract,
             uint32_t backend_mask = backend_mask_all(),
-            bool backend_mask_known = true)
+            bool backend_mask_known = true,
+            bool declares_interop = false)
         {
             const std::string key = typed_key(id);
             if (key.empty()) return false;
-            return register_descriptor(key, contract, backend_mask, backend_mask_known);
+            return register_descriptor(key, contract, backend_mask, backend_mask_known, declares_interop);
         }
 
         bool try_get_descriptor(std::string_view id, PassFactoryDescriptor& out) const
@@ -194,6 +205,42 @@ namespace shs
             const std::string key = typed_key(id);
             if (key.empty()) return std::nullopt;
             return supports_backend_hint(key, backend);
+        }
+
+        // RP-1 resolver input: which substrates this pass CAN be realized on.
+        // The mask is over `RenderBackendType` ordinals, which is the same
+        // encoding as `substrate_bit` over `Substrate` ordinals — the declared
+        // 1:1 identity, so no translation is performed here.
+        std::optional<uint32_t> realized_substrate_mask_hint(std::string_view id) const
+        {
+            PassFactoryDescriptor d{};
+            if (!try_get_descriptor(id, d)) return std::nullopt;
+            if (!d.backend_mask_known) return std::nullopt;
+            return d.backend_mask;
+        }
+
+        std::optional<uint32_t> realized_substrate_mask_hint(PassId id) const
+        {
+            const std::string key = typed_key(id);
+            if (key.empty()) return std::nullopt;
+            return realized_substrate_mask_hint(key);
+        }
+
+        // RP-1: whether this pass declares an interop boundary. Nullopt means
+        // the registry has no descriptor for it, which the resolver reads as
+        // "not declared" — never as permission.
+        std::optional<bool> declares_interop_hint(std::string_view id) const
+        {
+            PassFactoryDescriptor d{};
+            if (!try_get_descriptor(id, d)) return std::nullopt;
+            return d.declares_interop;
+        }
+
+        std::optional<bool> declares_interop_hint(PassId id) const
+        {
+            const std::string key = typed_key(id);
+            if (key.empty()) return std::nullopt;
+            return declares_interop_hint(key);
         }
 
         std::optional<bool> supports_technique_mode_hint(std::string_view id, TechniqueMode mode) const

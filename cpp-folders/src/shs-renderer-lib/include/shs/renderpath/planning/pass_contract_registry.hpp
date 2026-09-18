@@ -31,7 +31,7 @@ namespace shs
         {
             out.role = TechniquePassRole::Visibility;
             out.semantics = {
-                write_semantic(PassSemantic::ShadowMap, ContractDomain::GPU, "shadow")
+                write_semantic(PassSemantic::ShadowMap, render_domain_device(), "shadow")
             };
             return true;
         }
@@ -39,7 +39,7 @@ namespace shs
         {
             out.role = TechniquePassRole::Visibility;
             out.semantics = {
-                write_semantic(PassSemantic::Depth, ContractDomain::GPU, "depth")
+                write_semantic(PassSemantic::Depth, render_domain_device(), "depth")
             };
             return true;
         }
@@ -48,9 +48,9 @@ namespace shs
             out.role = TechniquePassRole::LightCulling;
             out.requires_depth_prepass = true;
             out.semantics = {
-                read_semantic(PassSemantic::Depth, ContractDomain::GPU, "depth"),
-                write_semantic(PassSemantic::LightGrid, ContractDomain::GPU, "light_grid"),
-                write_semantic(PassSemantic::LightIndexList, ContractDomain::GPU, "light_index_list")
+                read_semantic(PassSemantic::Depth, render_domain_device(), "depth"),
+                write_semantic(PassSemantic::LightGrid, render_domain_device(), "light_grid"),
+                write_semantic(PassSemantic::LightIndexList, render_domain_device(), "light_index_list")
             };
             return true;
         }
@@ -59,8 +59,8 @@ namespace shs
             out.role = TechniquePassRole::LightCulling;
             out.requires_depth_prepass = true;
             out.semantics = {
-                read_semantic(PassSemantic::Depth, ContractDomain::GPU, "depth"),
-                write_semantic(PassSemantic::LightClusters, ContractDomain::GPU, "clusters")
+                read_semantic(PassSemantic::Depth, render_domain_device(), "depth"),
+                write_semantic(PassSemantic::LightClusters, render_domain_device(), "clusters")
             };
             return true;
         }
@@ -69,10 +69,10 @@ namespace shs
             out.role = TechniquePassRole::LightCulling;
             out.requires_depth_prepass = true;
             out.semantics = {
-                read_semantic(PassSemantic::Depth, ContractDomain::GPU, "depth"),
-                read_semantic(PassSemantic::LightClusters, ContractDomain::GPU, "clusters"),
-                write_semantic(PassSemantic::LightGrid, ContractDomain::GPU, "light_grid"),
-                write_semantic(PassSemantic::LightIndexList, ContractDomain::GPU, "light_index_list")
+                read_semantic(PassSemantic::Depth, render_domain_device(), "depth"),
+                read_semantic(PassSemantic::LightClusters, render_domain_device(), "clusters"),
+                write_semantic(PassSemantic::LightGrid, render_domain_device(), "light_grid"),
+                write_semantic(PassSemantic::LightIndexList, render_domain_device(), "light_index_list")
             };
             return true;
         }
@@ -80,10 +80,10 @@ namespace shs
         {
             out.role = TechniquePassRole::GBuffer;
             out.semantics = {
-                write_semantic(PassSemantic::Depth, ContractDomain::GPU, "depth"),
-                write_semantic(PassSemantic::Albedo, ContractDomain::GPU, "albedo"),
-                write_semantic(PassSemantic::Normal, ContractDomain::GPU, "normal"),
-                write_semantic(PassSemantic::Material, ContractDomain::GPU, "material")
+                write_semantic(PassSemantic::Depth, render_domain_device(), "depth"),
+                write_semantic(PassSemantic::Albedo, render_domain_device(), "albedo"),
+                write_semantic(PassSemantic::Normal, render_domain_device(), "normal"),
+                write_semantic(PassSemantic::Material, render_domain_device(), "material")
             };
             return true;
         }
@@ -91,9 +91,9 @@ namespace shs
         {
             out.role = TechniquePassRole::PostProcess;
             out.semantics = {
-                read_semantic(PassSemantic::Depth, ContractDomain::GPU, "depth"),
-                read_semantic(PassSemantic::Normal, ContractDomain::GPU, "normal"),
-                write_semantic(PassSemantic::AmbientOcclusion, ContractDomain::GPU, "ao")
+                read_semantic(PassSemantic::Depth, render_domain_device(), "depth"),
+                read_semantic(PassSemantic::Normal, render_domain_device(), "normal"),
+                write_semantic(PassSemantic::AmbientOcclusion, render_domain_device(), "ao")
             };
             return true;
         }
@@ -101,13 +101,13 @@ namespace shs
         {
             out.role = TechniquePassRole::Lighting;
             out.semantics = {
-                read_semantic(PassSemantic::ShadowMap, ContractDomain::GPU, "shadow"),
-                read_semantic(PassSemantic::Albedo, ContractDomain::GPU, "albedo"),
-                read_semantic(PassSemantic::Normal, ContractDomain::GPU, "normal"),
-                read_semantic(PassSemantic::Material, ContractDomain::GPU, "material"),
-                read_semantic(PassSemantic::AmbientOcclusion, ContractDomain::GPU, "ao"),
-                write_semantic(PassSemantic::ColorHDR, ContractDomain::GPU, "hdr"),
-                write_semantic(PassSemantic::MotionVectors, ContractDomain::GPU, "motion")
+                read_semantic(PassSemantic::ShadowMap, render_domain_device(), "shadow"),
+                read_semantic(PassSemantic::Albedo, render_domain_device(), "albedo"),
+                read_semantic(PassSemantic::Normal, render_domain_device(), "normal"),
+                read_semantic(PassSemantic::Material, render_domain_device(), "material"),
+                read_semantic(PassSemantic::AmbientOcclusion, render_domain_device(), "ao"),
+                write_semantic(PassSemantic::ColorHDR, render_domain_device(), "hdr"),
+                write_semantic(PassSemantic::MotionVectors, render_domain_device(), "motion")
             };
             return true;
         }
@@ -116,16 +116,16 @@ namespace shs
             out.role = TechniquePassRole::Lighting;
             out.requires_light_culling = true;
             out.semantics = {
-                read_semantic(PassSemantic::ShadowMap, ContractDomain::GPU, "shadow"),
-                read_semantic(PassSemantic::Albedo, ContractDomain::GPU, "albedo"),
-                read_semantic(PassSemantic::Normal, ContractDomain::GPU, "normal"),
-                read_semantic(PassSemantic::Material, ContractDomain::GPU, "material"),
-                read_semantic(PassSemantic::AmbientOcclusion, ContractDomain::GPU, "ao"),
-                read_semantic(PassSemantic::Depth, ContractDomain::GPU, "depth"),
-                read_semantic(PassSemantic::LightGrid, ContractDomain::GPU, "light_grid"),
-                read_semantic(PassSemantic::LightIndexList, ContractDomain::GPU, "light_index_list"),
-                write_semantic(PassSemantic::ColorHDR, ContractDomain::GPU, "hdr"),
-                write_semantic(PassSemantic::MotionVectors, ContractDomain::GPU, "motion")
+                read_semantic(PassSemantic::ShadowMap, render_domain_device(), "shadow"),
+                read_semantic(PassSemantic::Albedo, render_domain_device(), "albedo"),
+                read_semantic(PassSemantic::Normal, render_domain_device(), "normal"),
+                read_semantic(PassSemantic::Material, render_domain_device(), "material"),
+                read_semantic(PassSemantic::AmbientOcclusion, render_domain_device(), "ao"),
+                read_semantic(PassSemantic::Depth, render_domain_device(), "depth"),
+                read_semantic(PassSemantic::LightGrid, render_domain_device(), "light_grid"),
+                read_semantic(PassSemantic::LightIndexList, render_domain_device(), "light_index_list"),
+                write_semantic(PassSemantic::ColorHDR, render_domain_device(), "hdr"),
+                write_semantic(PassSemantic::MotionVectors, render_domain_device(), "motion")
             };
             return true;
         }
@@ -133,9 +133,9 @@ namespace shs
         {
             out.role = TechniquePassRole::ForwardOpaque;
             out.semantics = {
-                read_semantic(PassSemantic::ShadowMap, ContractDomain::GPU, "shadow"),
-                write_semantic(PassSemantic::ColorHDR, ContractDomain::GPU, "hdr"),
-                write_semantic(PassSemantic::MotionVectors, ContractDomain::GPU, "motion")
+                read_semantic(PassSemantic::ShadowMap, render_domain_device(), "shadow"),
+                write_semantic(PassSemantic::ColorHDR, render_domain_device(), "hdr"),
+                write_semantic(PassSemantic::MotionVectors, render_domain_device(), "motion")
             };
             return true;
         }
@@ -144,12 +144,12 @@ namespace shs
             out.role = TechniquePassRole::ForwardOpaque;
             out.requires_light_culling = true;
             out.semantics = {
-                read_semantic(PassSemantic::ShadowMap, ContractDomain::GPU, "shadow"),
-                read_semantic(PassSemantic::Depth, ContractDomain::GPU, "depth"),
-                read_semantic(PassSemantic::LightGrid, ContractDomain::GPU, "light_grid"),
-                read_semantic(PassSemantic::LightIndexList, ContractDomain::GPU, "light_index_list"),
-                write_semantic(PassSemantic::ColorHDR, ContractDomain::GPU, "hdr"),
-                write_semantic(PassSemantic::MotionVectors, ContractDomain::GPU, "motion")
+                read_semantic(PassSemantic::ShadowMap, render_domain_device(), "shadow"),
+                read_semantic(PassSemantic::Depth, render_domain_device(), "depth"),
+                read_semantic(PassSemantic::LightGrid, render_domain_device(), "light_grid"),
+                read_semantic(PassSemantic::LightIndexList, render_domain_device(), "light_index_list"),
+                write_semantic(PassSemantic::ColorHDR, render_domain_device(), "hdr"),
+                write_semantic(PassSemantic::MotionVectors, render_domain_device(), "motion")
             };
             return true;
         }
@@ -158,12 +158,12 @@ namespace shs
             out.role = TechniquePassRole::ForwardOpaque;
             out.requires_light_culling = true;
             out.semantics = {
-                read_semantic(PassSemantic::ShadowMap, ContractDomain::GPU, "shadow"),
-                read_semantic(PassSemantic::Depth, ContractDomain::GPU, "depth"),
-                read_semantic(PassSemantic::LightGrid, ContractDomain::GPU, "light_grid"),
-                read_semantic(PassSemantic::LightIndexList, ContractDomain::GPU, "light_index_list"),
-                write_semantic(PassSemantic::ColorHDR, ContractDomain::GPU, "hdr"),
-                write_semantic(PassSemantic::MotionVectors, ContractDomain::GPU, "motion")
+                read_semantic(PassSemantic::ShadowMap, render_domain_device(), "shadow"),
+                read_semantic(PassSemantic::Depth, render_domain_device(), "depth"),
+                read_semantic(PassSemantic::LightGrid, render_domain_device(), "light_grid"),
+                read_semantic(PassSemantic::LightIndexList, render_domain_device(), "light_index_list"),
+                write_semantic(PassSemantic::ColorHDR, render_domain_device(), "hdr"),
+                write_semantic(PassSemantic::MotionVectors, render_domain_device(), "motion")
             };
             return true;
         }
@@ -171,8 +171,8 @@ namespace shs
         {
             out.role = TechniquePassRole::PostProcess;
             out.semantics = {
-                read_semantic(PassSemantic::ColorHDR, ContractDomain::GPU, "hdr"),
-                write_semantic(PassSemantic::ColorLDR, ContractDomain::GPU, "ldr")
+                read_semantic(PassSemantic::ColorHDR, render_domain_device(), "hdr"),
+                write_semantic(PassSemantic::ColorLDR, render_domain_device(), "ldr")
             };
             return true;
         }
@@ -180,8 +180,8 @@ namespace shs
         {
             out.role = TechniquePassRole::PostProcess;
             out.semantics = {
-                read_write_semantic(PassSemantic::ColorLDR, ContractDomain::GPU, "ldr"),
-                read_semantic(PassSemantic::MotionVectors, ContractDomain::GPU, "motion")
+                read_write_semantic(PassSemantic::ColorLDR, render_domain_device(), "ldr"),
+                read_semantic(PassSemantic::MotionVectors, render_domain_device(), "motion")
             };
             return true;
         }
@@ -189,8 +189,8 @@ namespace shs
         {
             out.role = TechniquePassRole::PostProcess;
             out.semantics = {
-                read_write_semantic(PassSemantic::ColorLDR, ContractDomain::GPU, "ldr"),
-                read_semantic(PassSemantic::Depth, ContractDomain::GPU, "depth")
+                read_write_semantic(PassSemantic::ColorLDR, render_domain_device(), "ldr"),
+                read_semantic(PassSemantic::Depth, render_domain_device(), "depth")
             };
             return true;
         }
@@ -198,9 +198,9 @@ namespace shs
         {
             out.role = TechniquePassRole::PostProcess;
             out.semantics = {
-                read_write_semantic(PassSemantic::ColorLDR, ContractDomain::GPU, "ldr"),
-                read_semantic(PassSemantic::HistoryColor, ContractDomain::GPU, "history_in"),
-                write_semantic(PassSemantic::HistoryColor, ContractDomain::GPU, "history_out")
+                read_write_semantic(PassSemantic::ColorLDR, render_domain_device(), "ldr"),
+                read_semantic(PassSemantic::HistoryColor, render_domain_device(), "history_in"),
+                write_semantic(PassSemantic::HistoryColor, render_domain_device(), "history_out")
             };
             return true;
         }

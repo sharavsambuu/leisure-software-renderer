@@ -5650,8 +5650,8 @@ private:
             ssao_forward_contract.supported_modes_mask = shs::render::technique_mode_bit(shs::TechniqueMode::Forward);
             ssao_forward_contract.requires_depth_prepass = true;
             ssao_forward_contract.semantics = {
-                shs::renderpath::read_semantic(shs::PassSemantic::Depth, shs::ContractDomain::Any, "depth"),
-                shs::renderpath::write_semantic(shs::PassSemantic::AmbientOcclusion, shs::ContractDomain::Any, "ao")
+                shs::renderpath::read_semantic(shs::PassSemantic::Depth, shs::render_domain_any(), "depth"),
+                shs::renderpath::write_semantic(shs::PassSemantic::AmbientOcclusion, shs::render_domain_any(), "ao")
             };
             registry.register_factory(kCustomPassSsaoForward, []() -> std::unique_ptr<shs::renderpath::IRenderPass> {
                 return nullptr;
@@ -5666,7 +5666,7 @@ private:
             fxaa_contract.role = shs::TechniquePassRole::PostProcess;
             fxaa_contract.supported_modes_mask = shs::render::technique_mode_bit(shs::TechniqueMode::Forward);
             fxaa_contract.semantics = {
-                shs::renderpath::read_write_semantic(shs::PassSemantic::ColorLDR, shs::ContractDomain::Any, "ldr")
+                shs::renderpath::read_write_semantic(shs::PassSemantic::ColorLDR, shs::render_domain_any(), "ldr")
             };
             registry.register_factory(kCustomPassFxaa, []() -> std::unique_ptr<shs::renderpath::IRenderPass> {
                 return nullptr;

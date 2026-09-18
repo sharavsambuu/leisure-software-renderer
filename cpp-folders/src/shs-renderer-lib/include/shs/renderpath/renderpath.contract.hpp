@@ -30,7 +30,14 @@ namespace shs::renderpath
     using shs::RenderPathCullingMode;
     using shs::RenderPathRenderingTechnique;
     using shs::make_render_path_pass_entry;
-    using shs::make_default_soft_shadow_culling_recipe;
+    using shs::make_soft_shadow_culling_recipe;
+    // RP-1 recipe-authoring vocabulary: the per-pass substrate INTENT
+    // (`RenderDomain` / `with_domain`) and the recipe-level policy that decides
+    // how it is resolved. Re-exported because they are inputs a consumer writes
+    // on a recipe, exactly like the fields above.
+    using shs::RenderDomain;
+    using shs::with_domain;
+    using shs::SubstratePolicy;
 
     // --- Capability vocabulary (what the current stack CAN do) ---
     using shs::RenderPathCapabilitySet;

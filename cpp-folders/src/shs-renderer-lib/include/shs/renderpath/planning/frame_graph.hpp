@@ -128,14 +128,26 @@ namespace shs
                                 add_edge(j, i);
                             }
 
-                            // Hybrid planning sanity checks.
-                            if ((i_write || j_write) && !pass_resource_domains_compatible(ri.domain, rj.domain))
+                            // Hybrid legality (RP-2; owner ruling 2026-09-18). Crossing
+                            // execution units on a shared resource is legal only where a
+                            // pass declares an interop boundary; the staging resource is
+                            // shared by construction here (both refs carry the same key).
+                            // Anything else is a REJECTION - the retired behaviour warned
+                            // and compiled on regardless.
+                            if ((i_write || j_write) && !render_domains_compatible(ri.domain, rj.domain))
                             {
-                                report_.warnings.push_back(
-                                    "Resource domain mismatch on '" + (ri.name.empty() ? std::string("unnamed") : ri.name)
-                                    + "' between passes '" + ni.pass_id + "' (" + pass_resource_domain_name(ri.domain)
-                                    + ") and '" + nj.pass_id + "' (" + pass_resource_domain_name(rj.domain) + ")."
-                                );
+                                const bool interop_pair =
+                                    (ni.pass && ni.pass->is_interop_pass()) || (nj.pass && nj.pass->is_interop_pass());
+                                if (!interop_pair)
+                                {
+                                    report_.valid = false;
+                                    report_.errors.push_back(
+                                        "Resource domain mismatch on '" + (ri.name.empty() ? std::string("unnamed") : ri.name)
+                                        + "' between passes '" + ni.pass_id + "' (" + render_domain_name(ri.domain)
+                                        + ") and '" + nj.pass_id + "' (" + render_domain_name(rj.domain)
+                                        + "): crossing execution units requires a declared interop boundary."
+                                    );
+                                }
                             }
 
                             if ((i_write || j_write) && bi != bj)

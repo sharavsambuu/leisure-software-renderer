@@ -16,6 +16,7 @@
 #include "shs/render/frame/technique_mode.hpp"
 #include "shs/render/frame/backend_type.hpp"
 #include "shs/renderpath/planning/pass_id.hpp"
+#include "shs/renderpath/planning/substrate_resolution.hpp"
 #include "shs/renderpath/execution/render_path_runtime_state.hpp"
 
 namespace shs
@@ -96,6 +97,12 @@ namespace shs
         PassId pass_id = PassId::Unknown;
         bool required = true;
 
+        // RP-1: the entry's *intent* — what this pass needs, stated by the
+        // author. It narrows which substrates the compiler may resolve this pass
+        // to; it no longer names one. `Unspecified` (the default) narrows
+        // nothing, so every pre-RP-1 recipe keeps its written chain verbatim.
+        RenderDomain domain = render_domain_unspecified();
+
         // Value semantics (pod test kit requires snapshot equality).
         bool operator==(const RenderPathPassEntry&) const = default;
     };
@@ -107,6 +114,15 @@ namespace shs
         out.pass_id = pass_id;
         out.required = required;
         return out;
+    }
+
+    // RP-1: the same entry, with an explicit intent. Non-mutating, so a recipe
+    // can be derived from another without aliasing it (plans and recipes are
+    // values).
+    inline RenderPathPassEntry with_domain(RenderPathPassEntry entry, RenderDomain domain)
+    {
+        entry.domain = domain;
+        return entry;
     }
 
     // Consumer-owned (open-id) pass entry: the name is the registration key, so
@@ -126,7 +142,19 @@ namespace shs
     {
         std::string name{};
 
+        // RP-1: the *declared* substrate — the `ExactMatch` target, and the
+        // fallback when the host's available-substrate set is unknown. It is no
+        // longer the plan's per-pass substrate: that is a resolution output
+        // (`RenderPathCompiledPass::substrate`), so ONE recipe can resolve to
+        // software, device, or a hybrid. Kept on the recipe because a consumer
+        // still needs a substrate to route to a context backend with.
         RenderBackendType backend = RenderBackendType::Software;
+
+        // How the compiler should choose among the substrates that could
+        // realize each pass. `ExactMatch` is the default and the historical
+        // behaviour: a recipe that states no policy resolves where it always
+        // did.
+        SubstratePolicy substrate_policy = SubstratePolicy::ExactMatch;
         RenderPathLightVolumeProvider light_volume_provider = RenderPathLightVolumeProvider::Default;
         RenderPathCullingMode view_culling = RenderPathCullingMode::Frustum;
         RenderPathCullingMode shadow_culling = RenderPathCullingMode::FrustumAndOptionalOcclusion;
@@ -170,10 +198,39 @@ namespace shs
         return RenderPathRenderingTechnique::ForwardPlus;
     }
 
-    inline RenderPathRecipe make_default_soft_shadow_culling_recipe(RenderBackendType backend)
+    // RP-1 (graduation req 4): ONE recipe, resolved two ways, and now the only
+    // soft-shadow-culling entry point. The
+    // `make_default_soft_shadow_culling_recipe(backend)` fork that used to sit
+    // here is REMOVED (2026-09-18). It authored two *different* recipes —
+    // different pass chains AND different technique modes — for one intent,
+    // which is precisely the authoring-time substrate choice req 4 removes; it
+    // was the last place in the tree where the substrate selected the *shape* of
+    // the path rather than the runtime of a pass. All four of its references
+    // migrated: the two `render_path_registry.hpp` callers now register this one
+    // recipe, `renderpath.contract.hpp` re-exports this name, and
+    // `hello_soft_shadow_culling_vk.cpp` declares its substrate and lets the
+    // policy resolve it.
+    //
+    // No pass carries a pinned `RenderDomain`: intent that is not a real
+    // requirement would pre-empt the policy. What each pass *can* realize comes
+    // from the registry, and the policy picks. `DepthPrepass` / `LightCulling` /
+    // `MotionBlur` stay `required == false`, so a host that cannot realize them
+    // resolves the rest instead of failing the whole plan.
+    //
+    // `policy` is the *resolution* input. `recipe.backend` is only the DECLARED
+    // substrate — the `ExactMatch` target, and the fallback when the host
+    // advertises no substrate set — so a caller that must not substitute passes
+    // `ExactMatch` and its declared backend; a caller on a Vulkan host that
+    // leaves `available_substrate_mask` empty gets Vulkan because the declared
+    // substrate is the admissible set.
+    inline RenderPathRecipe make_soft_shadow_culling_recipe(
+        SubstratePolicy policy = SubstratePolicy::DevicePreferred)
     {
         RenderPathRecipe recipe{};
-        recipe.backend = backend;
+        recipe.name = "soft_shadow_culling";
+        recipe.substrate_policy = policy;
+        recipe.render_technique = RenderPathRenderingTechnique::ForwardPlus;
+        recipe.technique_mode = TechniqueMode::ForwardPlus;
         recipe.light_volume_provider = RenderPathLightVolumeProvider::JoltShapeVolumes;
         recipe.view_culling = RenderPathCullingMode::FrustumAndOcclusion;
         recipe.shadow_culling = RenderPathCullingMode::FrustumAndOptionalOcclusion;
@@ -184,33 +241,14 @@ namespace shs
         recipe.runtime_defaults.enable_shadows = true;
         recipe.wants_shadows = true;
         recipe.strict_validation = true;
-
-        if (backend == RenderBackendType::Vulkan)
-        {
-            recipe.name = "soft_shadow_culling_vk_default";
-            recipe.render_technique = RenderPathRenderingTechnique::ForwardPlus;
-            recipe.technique_mode = TechniqueMode::ForwardPlus;
-            recipe.pass_chain = {
-                make_render_path_pass_entry(PassId::ShadowMap, true),
-                make_render_path_pass_entry(PassId::DepthPrepass, false),
-                make_render_path_pass_entry(PassId::LightCulling, false),
-                make_render_path_pass_entry(PassId::PBRForwardPlus, true),
-                make_render_path_pass_entry(PassId::Tonemap, true),
-                make_render_path_pass_entry(PassId::MotionBlur, false)
-            };
-        }
-        else
-        {
-            recipe.name = "soft_shadow_culling_sw_default";
-            recipe.render_technique = RenderPathRenderingTechnique::ForwardLit;
-            recipe.technique_mode = TechniqueMode::Forward;
-            recipe.pass_chain = {
-                make_render_path_pass_entry(PassId::ShadowMap, true),
-                make_render_path_pass_entry(PassId::PBRForward, true),
-                make_render_path_pass_entry(PassId::Tonemap, true),
-                make_render_path_pass_entry(PassId::MotionBlur, false)
-            };
-        }
+        recipe.pass_chain = {
+            make_render_path_pass_entry(PassId::ShadowMap, true),
+            make_render_path_pass_entry(PassId::DepthPrepass, false),
+            make_render_path_pass_entry(PassId::LightCulling, false),
+            make_render_path_pass_entry(PassId::PBRForwardPlus, true),
+            make_render_path_pass_entry(PassId::Tonemap, true),
+            make_render_path_pass_entry(PassId::MotionBlur, false)
+        };
         return recipe;
     }
 

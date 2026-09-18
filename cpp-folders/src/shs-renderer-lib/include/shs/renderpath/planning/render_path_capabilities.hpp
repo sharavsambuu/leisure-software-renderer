@@ -10,6 +10,7 @@
 
 
 #include "shs/app/context.hpp"
+#include "shs/renderpath/planning/substrate_resolution.hpp"
 
 namespace shs
 {
@@ -20,6 +21,14 @@ namespace shs
     {
         RenderBackendType backend = RenderBackendType::Software;
         bool has_backend = false;
+
+        // RP-1: which substrates this host can actually drive, as a
+        // `substrate_bit` mask. Empty is the honest default — "unknown", read as
+        // the single declared substrate, which is why every pre-RP-1 caller
+        // resolves exactly where it used to. Widening this (see
+        // `substrate_resolution.hpp`) is the explicit opt-in that lets one
+        // recipe resolve to a hybrid plan.
+        uint32_t available_substrate_mask = substrate_mask_none();
 
         bool supports_present = false;
         bool supports_offscreen = true;

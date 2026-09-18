@@ -128,59 +128,34 @@ namespace shs
         ReadWrite = 3
     };
 
-    enum class PassResourceDomain : uint8_t
-    {
-        Any = 0,
-        CPU = 1,
-        GPU = 2,
-        Software = 3,
-        OpenGL = 4,
-        Vulkan = 5
-    };
+    // `PassResourceDomain` is RETIRED (RP-2; owner ruling 2026-09-18). A
+    // resource now declares a `RenderDomain` - execution unit plus an optional
+    // substrate pin - defined in planning/pass_contract.hpp alongside the two
+    // axes. The duplicated six-value enum and its "CPU == Software" special
+    // case are gone with it.
 
-    inline const char* pass_resource_domain_name(PassResourceDomain d)
+    // RenderBackendType and Substrate are 1:1 and share ordinals, so the
+    // "backend realises exactly one substrate" mapping is an identity rather
+    // than a hand-maintained table.
+    inline constexpr Substrate substrate_of_backend(RenderBackendType backend)
     {
-        switch (d)
-        {
-            case PassResourceDomain::Any: return "any";
-            case PassResourceDomain::CPU: return "cpu";
-            case PassResourceDomain::GPU: return "gpu";
-            case PassResourceDomain::Software: return "software";
-            case PassResourceDomain::OpenGL: return "opengl";
-            case PassResourceDomain::Vulkan: return "vulkan";
-        }
-        return "unknown";
+        return static_cast<Substrate>(static_cast<uint8_t>(backend));
     }
 
-    inline bool pass_resource_domain_matches_backend(PassResourceDomain d, RenderBackendType backend)
+    inline constexpr RenderBackendType backend_of_substrate(Substrate s)
     {
-        switch (d)
-        {
-            case PassResourceDomain::Any: return true;
-            case PassResourceDomain::CPU: return backend == RenderBackendType::Software;
-            case PassResourceDomain::GPU: return backend == RenderBackendType::OpenGL || backend == RenderBackendType::Vulkan;
-            case PassResourceDomain::Software: return backend == RenderBackendType::Software;
-            case PassResourceDomain::OpenGL: return backend == RenderBackendType::OpenGL;
-            case PassResourceDomain::Vulkan: return backend == RenderBackendType::Vulkan;
-        }
-        return false;
+        return static_cast<RenderBackendType>(static_cast<uint8_t>(s));
     }
 
-    inline bool pass_resource_domains_compatible(PassResourceDomain a, PassResourceDomain b)
+    // Does a declared resource domain accept this concrete backend?
+    inline bool render_domain_matches_backend(const RenderDomain& d, RenderBackendType backend)
     {
-        if (a == PassResourceDomain::Any || b == PassResourceDomain::Any) return true;
-        if (a == b) return true;
-        if ((a == PassResourceDomain::GPU && (b == PassResourceDomain::OpenGL || b == PassResourceDomain::Vulkan))
-            || (b == PassResourceDomain::GPU && (a == PassResourceDomain::OpenGL || a == PassResourceDomain::Vulkan)))
-        {
-            return true;
-        }
-        if ((a == PassResourceDomain::CPU && b == PassResourceDomain::Software)
-            || (b == PassResourceDomain::CPU && a == PassResourceDomain::Software))
-        {
-            return true;
-        }
-        return false;
+        if (d.kind == RenderDomainKind::Unspecified) return true;
+        if (d.kind == RenderDomainKind::Any) return true;
+        const Substrate target = substrate_of_backend(backend);
+        if (d.unit != execution_unit_of(target)) return false;
+        if (!d.substrate_pinned) return true;
+        return d.substrate == target;
     }
 
     struct PassResourceRef
@@ -188,7 +163,7 @@ namespace shs
         uint64_t key = 0;
         PassResourceType type = PassResourceType::Unknown;
         PassResourceAccess access = PassResourceAccess::Read;
-        PassResourceDomain domain = PassResourceDomain::Any;
+        RenderDomain domain = render_domain_unspecified();
         std::string name{};
     };
 
@@ -215,7 +190,7 @@ namespace shs
         const RTHandle& rt,
         PassResourceType type,
         const char* name = nullptr,
-        PassResourceDomain domain = PassResourceDomain::Any
+        RenderDomain domain = render_domain_unspecified()
     )
     {
         PassResourceRef out{};
@@ -252,7 +227,7 @@ namespace shs
     inline PassResourceRef make_named_resource_ref(
         const std::string& name,
         PassResourceType type,
-        PassResourceDomain domain = PassResourceDomain::Any
+        RenderDomain domain = render_domain_unspecified()
     )
     {
         PassResourceRef out{};

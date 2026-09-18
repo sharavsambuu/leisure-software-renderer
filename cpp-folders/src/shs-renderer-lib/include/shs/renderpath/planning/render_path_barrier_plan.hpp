@@ -35,7 +35,7 @@ namespace shs
         std::string resource_id{};
         PassSemantic semantic = PassSemantic::Unknown;
         ContractAccess access = ContractAccess::Read;
-        ContractDomain domain = ContractDomain::Any;
+        RenderDomain domain = render_domain_unspecified();
         bool sampled = true;
         bool storage = false;
     };
@@ -66,8 +66,8 @@ namespace shs
         uint32_t to_pass_index = 0u;
         ContractAccess from_access = ContractAccess::Read;
         ContractAccess to_access = ContractAccess::Read;
-        ContractDomain from_domain = ContractDomain::Any;
-        ContractDomain to_domain = ContractDomain::Any;
+        RenderDomain from_domain = render_domain_unspecified();
+        RenderDomain to_domain = render_domain_unspecified();
         bool requires_memory_barrier = false;
         bool requires_layout_transition = false;
     };

@@ -394,14 +394,14 @@ namespace shs
             c.role = TechniquePassRole::Visibility;
             c.supported_modes_mask = technique_mode_mask_all();
             c.semantics = {
-                write_semantic(PassSemantic::ShadowMap, ContractDomain::Software, "shadow")
+                write_semantic(PassSemantic::ShadowMap, render_domain_host(), "shadow")
             };
             return c;
         }
         PassIODesc describe_io() const override
         {
             PassIODesc io{};
-            io.write(make_rt_resource_ref(static_cast<const RTHandle&>(rt_shadow_), PassResourceType::Shadow, "shadow", PassResourceDomain::Software));
+            io.write(make_rt_resource_ref(static_cast<const RTHandle&>(rt_shadow_), PassResourceType::Shadow, "shadow", render_domain_host()));
             return io;
         }
 
@@ -442,14 +442,14 @@ namespace shs
                 technique_mode_bit(TechniqueMode::TiledDeferred) |
                 technique_mode_bit(TechniqueMode::ClusteredForward);
             c.semantics = {
-                write_semantic(PassSemantic::Depth, ContractDomain::Software, "depth")
+                write_semantic(PassSemantic::Depth, render_domain_host(), "depth")
             };
             return c;
         }
         PassIODesc describe_io() const override
         {
             PassIODesc io{};
-            io.write(make_named_resource_ref("technique.depth_prepass", PassResourceType::Temp, PassResourceDomain::Software));
+            io.write(make_named_resource_ref("technique.depth_prepass", PassResourceType::Temp, render_domain_host()));
             return io;
         }
 
@@ -574,18 +574,18 @@ namespace shs
             c.requires_depth_prepass = true;
             c.prefer_async_compute = true;
             c.semantics = {
-                read_semantic(PassSemantic::Depth, ContractDomain::Software, "depth"),
-                write_semantic(PassSemantic::LightGrid, ContractDomain::Software, "light_grid"),
-                write_semantic(PassSemantic::LightIndexList, ContractDomain::Software, "light_index_list")
+                read_semantic(PassSemantic::Depth, render_domain_host(), "depth"),
+                write_semantic(PassSemantic::LightGrid, render_domain_host(), "light_grid"),
+                write_semantic(PassSemantic::LightIndexList, render_domain_host(), "light_index_list")
             };
             return c;
         }
         PassIODesc describe_io() const override
         {
             PassIODesc io{};
-            io.read(make_named_resource_ref("technique.depth_prepass", PassResourceType::Temp, PassResourceDomain::Software));
-            io.write(make_named_resource_ref("technique.light_grid", PassResourceType::Temp, PassResourceDomain::Software));
-            io.write(make_named_resource_ref("technique.light_index_list", PassResourceType::Temp, PassResourceDomain::Software));
+            io.read(make_named_resource_ref("technique.depth_prepass", PassResourceType::Temp, render_domain_host()));
+            io.write(make_named_resource_ref("technique.light_grid", PassResourceType::Temp, render_domain_host()));
+            io.write(make_named_resource_ref("technique.light_index_list", PassResourceType::Temp, render_domain_host()));
             return io;
         }
 
@@ -632,16 +632,16 @@ namespace shs
             c.requires_depth_prepass = true;
             c.prefer_async_compute = true;
             c.semantics = {
-                read_semantic(PassSemantic::Depth, ContractDomain::Software, "depth"),
-                write_semantic(PassSemantic::LightClusters, ContractDomain::Software, "clusters")
+                read_semantic(PassSemantic::Depth, render_domain_host(), "depth"),
+                write_semantic(PassSemantic::LightClusters, render_domain_host(), "clusters")
             };
             return c;
         }
         PassIODesc describe_io() const override
         {
             PassIODesc io{};
-            io.read(make_named_resource_ref("technique.depth_prepass", PassResourceType::Temp, PassResourceDomain::Software));
-            io.write(make_named_resource_ref("technique.cluster_grid", PassResourceType::Temp, PassResourceDomain::Software));
+            io.read(make_named_resource_ref("technique.depth_prepass", PassResourceType::Temp, render_domain_host()));
+            io.write(make_named_resource_ref("technique.cluster_grid", PassResourceType::Temp, render_domain_host()));
             return io;
         }
 
@@ -702,20 +702,20 @@ namespace shs
             c.requires_depth_prepass = true;
             c.prefer_async_compute = true;
             c.semantics = {
-                read_semantic(PassSemantic::Depth, ContractDomain::Software, "depth"),
-                read_semantic(PassSemantic::LightClusters, ContractDomain::Software, "clusters"),
-                write_semantic(PassSemantic::LightGrid, ContractDomain::Software, "light_grid"),
-                write_semantic(PassSemantic::LightIndexList, ContractDomain::Software, "light_index_list")
+                read_semantic(PassSemantic::Depth, render_domain_host(), "depth"),
+                read_semantic(PassSemantic::LightClusters, render_domain_host(), "clusters"),
+                write_semantic(PassSemantic::LightGrid, render_domain_host(), "light_grid"),
+                write_semantic(PassSemantic::LightIndexList, render_domain_host(), "light_index_list")
             };
             return c;
         }
         PassIODesc describe_io() const override
         {
             PassIODesc io{};
-            io.read(make_named_resource_ref("technique.depth_prepass", PassResourceType::Temp, PassResourceDomain::Software));
-            io.read(make_named_resource_ref("technique.cluster_grid", PassResourceType::Temp, PassResourceDomain::Software));
-            io.write(make_named_resource_ref("technique.light_grid", PassResourceType::Temp, PassResourceDomain::Software));
-            io.write(make_named_resource_ref("technique.light_index_list", PassResourceType::Temp, PassResourceDomain::Software));
+            io.read(make_named_resource_ref("technique.depth_prepass", PassResourceType::Temp, render_domain_host()));
+            io.read(make_named_resource_ref("technique.cluster_grid", PassResourceType::Temp, render_domain_host()));
+            io.write(make_named_resource_ref("technique.light_grid", PassResourceType::Temp, render_domain_host()));
+            io.write(make_named_resource_ref("technique.light_index_list", PassResourceType::Temp, render_domain_host()));
             return io;
         }
 
@@ -757,18 +757,18 @@ namespace shs
                 technique_mode_bit(TechniqueMode::Deferred) |
                 technique_mode_bit(TechniqueMode::TiledDeferred);
             c.semantics = {
-                write_semantic(PassSemantic::Albedo, ContractDomain::Software, "albedo"),
-                write_semantic(PassSemantic::Normal, ContractDomain::Software, "normal"),
-                write_semantic(PassSemantic::Material, ContractDomain::Software, "material")
+                write_semantic(PassSemantic::Albedo, render_domain_host(), "albedo"),
+                write_semantic(PassSemantic::Normal, render_domain_host(), "normal"),
+                write_semantic(PassSemantic::Material, render_domain_host(), "material")
             };
             return c;
         }
         PassIODesc describe_io() const override
         {
             PassIODesc io{};
-            io.write(make_named_resource_ref("technique.albedo", PassResourceType::Temp, PassResourceDomain::Software));
-            io.write(make_named_resource_ref("technique.normal", PassResourceType::Temp, PassResourceDomain::Software));
-            io.write(make_named_resource_ref("technique.material", PassResourceType::Temp, PassResourceDomain::Software));
+            io.write(make_named_resource_ref("technique.albedo", PassResourceType::Temp, render_domain_host()));
+            io.write(make_named_resource_ref("technique.normal", PassResourceType::Temp, render_domain_host()));
+            io.write(make_named_resource_ref("technique.material", PassResourceType::Temp, render_domain_host()));
             return io;
         }
 
@@ -794,18 +794,18 @@ namespace shs
                 technique_mode_bit(TechniqueMode::Deferred) |
                 technique_mode_bit(TechniqueMode::TiledDeferred);
             c.semantics = {
-                read_semantic(PassSemantic::Depth, ContractDomain::Software, "depth"),
-                read_semantic(PassSemantic::Normal, ContractDomain::Software, "normal"),
-                write_semantic(PassSemantic::AmbientOcclusion, ContractDomain::Software, "ao")
+                read_semantic(PassSemantic::Depth, render_domain_host(), "depth"),
+                read_semantic(PassSemantic::Normal, render_domain_host(), "normal"),
+                write_semantic(PassSemantic::AmbientOcclusion, render_domain_host(), "ao")
             };
             return c;
         }
         PassIODesc describe_io() const override
         {
             PassIODesc io{};
-            io.read(make_named_resource_ref("technique.depth_prepass", PassResourceType::Temp, PassResourceDomain::Software));
-            io.read(make_named_resource_ref("technique.normal", PassResourceType::Temp, PassResourceDomain::Software));
-            io.write(make_named_resource_ref("technique.ao", PassResourceType::Temp, PassResourceDomain::Software));
+            io.read(make_named_resource_ref("technique.depth_prepass", PassResourceType::Temp, render_domain_host()));
+            io.read(make_named_resource_ref("technique.normal", PassResourceType::Temp, render_domain_host()));
+            io.write(make_named_resource_ref("technique.ao", PassResourceType::Temp, render_domain_host()));
             return io;
         }
 
@@ -833,26 +833,26 @@ namespace shs
             c.role = TechniquePassRole::Lighting;
             c.supported_modes_mask = technique_mode_bit(TechniqueMode::Deferred);
             c.semantics = {
-                read_semantic(PassSemantic::ShadowMap, ContractDomain::Software, "shadow"),
-                read_semantic(PassSemantic::Albedo, ContractDomain::Software, "albedo"),
-                read_semantic(PassSemantic::Normal, ContractDomain::Software, "normal"),
-                read_semantic(PassSemantic::Material, ContractDomain::Software, "material"),
-                read_semantic(PassSemantic::AmbientOcclusion, ContractDomain::Software, "ao"),
-                write_semantic(PassSemantic::ColorHDR, ContractDomain::Software, "hdr"),
-                write_semantic(PassSemantic::MotionVectors, ContractDomain::Software, "motion")
+                read_semantic(PassSemantic::ShadowMap, render_domain_host(), "shadow"),
+                read_semantic(PassSemantic::Albedo, render_domain_host(), "albedo"),
+                read_semantic(PassSemantic::Normal, render_domain_host(), "normal"),
+                read_semantic(PassSemantic::Material, render_domain_host(), "material"),
+                read_semantic(PassSemantic::AmbientOcclusion, render_domain_host(), "ao"),
+                write_semantic(PassSemantic::ColorHDR, render_domain_host(), "hdr"),
+                write_semantic(PassSemantic::MotionVectors, render_domain_host(), "motion")
             };
             return c;
         }
         PassIODesc describe_io() const override
         {
             PassIODesc io{};
-            io.read(make_rt_resource_ref(rt_shadow_, PassResourceType::Shadow, "shadow", PassResourceDomain::Software));
-            io.read(make_named_resource_ref("technique.albedo", PassResourceType::Temp, PassResourceDomain::Software));
-            io.read(make_named_resource_ref("technique.normal", PassResourceType::Temp, PassResourceDomain::Software));
-            io.read(make_named_resource_ref("technique.material", PassResourceType::Temp, PassResourceDomain::Software));
-            io.read(make_named_resource_ref("technique.ao", PassResourceType::Temp, PassResourceDomain::Software));
-            io.write(make_rt_resource_ref(rt_hdr_, PassResourceType::ColorHDR, "hdr", PassResourceDomain::Software));
-            io.write(make_rt_resource_ref(static_cast<const RTHandle&>(rt_motion_), PassResourceType::Motion, "motion", PassResourceDomain::Software));
+            io.read(make_rt_resource_ref(rt_shadow_, PassResourceType::Shadow, "shadow", render_domain_host()));
+            io.read(make_named_resource_ref("technique.albedo", PassResourceType::Temp, render_domain_host()));
+            io.read(make_named_resource_ref("technique.normal", PassResourceType::Temp, render_domain_host()));
+            io.read(make_named_resource_ref("technique.material", PassResourceType::Temp, render_domain_host()));
+            io.read(make_named_resource_ref("technique.ao", PassResourceType::Temp, render_domain_host()));
+            io.write(make_rt_resource_ref(rt_hdr_, PassResourceType::ColorHDR, "hdr", render_domain_host()));
+            io.write(make_rt_resource_ref(static_cast<const RTHandle&>(rt_motion_), PassResourceType::Motion, "motion", render_domain_host()));
             return io;
         }
 
@@ -899,32 +899,32 @@ namespace shs
             c.requires_depth_prepass = true;
             c.requires_light_culling = true;
             c.semantics = {
-                read_semantic(PassSemantic::ShadowMap, ContractDomain::Software, "shadow"),
-                read_semantic(PassSemantic::Albedo, ContractDomain::Software, "albedo"),
-                read_semantic(PassSemantic::Normal, ContractDomain::Software, "normal"),
-                read_semantic(PassSemantic::Material, ContractDomain::Software, "material"),
-                read_semantic(PassSemantic::AmbientOcclusion, ContractDomain::Software, "ao"),
-                read_semantic(PassSemantic::Depth, ContractDomain::Software, "depth"),
-                read_semantic(PassSemantic::LightGrid, ContractDomain::Software, "light_grid"),
-                read_semantic(PassSemantic::LightIndexList, ContractDomain::Software, "light_index_list"),
-                write_semantic(PassSemantic::ColorHDR, ContractDomain::Software, "hdr"),
-                write_semantic(PassSemantic::MotionVectors, ContractDomain::Software, "motion")
+                read_semantic(PassSemantic::ShadowMap, render_domain_host(), "shadow"),
+                read_semantic(PassSemantic::Albedo, render_domain_host(), "albedo"),
+                read_semantic(PassSemantic::Normal, render_domain_host(), "normal"),
+                read_semantic(PassSemantic::Material, render_domain_host(), "material"),
+                read_semantic(PassSemantic::AmbientOcclusion, render_domain_host(), "ao"),
+                read_semantic(PassSemantic::Depth, render_domain_host(), "depth"),
+                read_semantic(PassSemantic::LightGrid, render_domain_host(), "light_grid"),
+                read_semantic(PassSemantic::LightIndexList, render_domain_host(), "light_index_list"),
+                write_semantic(PassSemantic::ColorHDR, render_domain_host(), "hdr"),
+                write_semantic(PassSemantic::MotionVectors, render_domain_host(), "motion")
             };
             return c;
         }
         PassIODesc describe_io() const override
         {
             PassIODesc io{};
-            io.read(make_rt_resource_ref(rt_shadow_, PassResourceType::Shadow, "shadow", PassResourceDomain::Software));
-            io.read(make_named_resource_ref("technique.albedo", PassResourceType::Temp, PassResourceDomain::Software));
-            io.read(make_named_resource_ref("technique.normal", PassResourceType::Temp, PassResourceDomain::Software));
-            io.read(make_named_resource_ref("technique.material", PassResourceType::Temp, PassResourceDomain::Software));
-            io.read(make_named_resource_ref("technique.ao", PassResourceType::Temp, PassResourceDomain::Software));
-            io.read(make_named_resource_ref("technique.depth_prepass", PassResourceType::Temp, PassResourceDomain::Software));
-            io.read(make_named_resource_ref("technique.light_grid", PassResourceType::Temp, PassResourceDomain::Software));
-            io.read(make_named_resource_ref("technique.light_index_list", PassResourceType::Temp, PassResourceDomain::Software));
-            io.write(make_rt_resource_ref(rt_hdr_, PassResourceType::ColorHDR, "hdr", PassResourceDomain::Software));
-            io.write(make_rt_resource_ref(static_cast<const RTHandle&>(rt_motion_), PassResourceType::Motion, "motion", PassResourceDomain::Software));
+            io.read(make_rt_resource_ref(rt_shadow_, PassResourceType::Shadow, "shadow", render_domain_host()));
+            io.read(make_named_resource_ref("technique.albedo", PassResourceType::Temp, render_domain_host()));
+            io.read(make_named_resource_ref("technique.normal", PassResourceType::Temp, render_domain_host()));
+            io.read(make_named_resource_ref("technique.material", PassResourceType::Temp, render_domain_host()));
+            io.read(make_named_resource_ref("technique.ao", PassResourceType::Temp, render_domain_host()));
+            io.read(make_named_resource_ref("technique.depth_prepass", PassResourceType::Temp, render_domain_host()));
+            io.read(make_named_resource_ref("technique.light_grid", PassResourceType::Temp, render_domain_host()));
+            io.read(make_named_resource_ref("technique.light_index_list", PassResourceType::Temp, render_domain_host()));
+            io.write(make_rt_resource_ref(rt_hdr_, PassResourceType::ColorHDR, "hdr", render_domain_host()));
+            io.write(make_rt_resource_ref(static_cast<const RTHandle&>(rt_motion_), PassResourceType::Motion, "motion", render_domain_host()));
             return io;
         }
 
@@ -976,24 +976,24 @@ namespace shs
             c.requires_depth_prepass = true;
             c.requires_light_culling = true;
             c.semantics = {
-                read_semantic(PassSemantic::ShadowMap, ContractDomain::Software, "shadow"),
-                read_semantic(PassSemantic::Depth, ContractDomain::Software, "depth"),
-                read_semantic(PassSemantic::LightGrid, ContractDomain::Software, "light_grid"),
-                read_semantic(PassSemantic::LightIndexList, ContractDomain::Software, "light_index_list"),
-                write_semantic(PassSemantic::ColorHDR, ContractDomain::Software, "hdr"),
-                write_semantic(PassSemantic::MotionVectors, ContractDomain::Software, "motion")
+                read_semantic(PassSemantic::ShadowMap, render_domain_host(), "shadow"),
+                read_semantic(PassSemantic::Depth, render_domain_host(), "depth"),
+                read_semantic(PassSemantic::LightGrid, render_domain_host(), "light_grid"),
+                read_semantic(PassSemantic::LightIndexList, render_domain_host(), "light_index_list"),
+                write_semantic(PassSemantic::ColorHDR, render_domain_host(), "hdr"),
+                write_semantic(PassSemantic::MotionVectors, render_domain_host(), "motion")
             };
             return c;
         }
         PassIODesc describe_io() const override
         {
             PassIODesc io{};
-            io.read(make_rt_resource_ref(rt_shadow_, PassResourceType::Shadow, "shadow", PassResourceDomain::Software));
-            io.read(make_named_resource_ref("technique.depth_prepass", PassResourceType::Temp, PassResourceDomain::Software));
-            io.read(make_named_resource_ref("technique.light_grid", PassResourceType::Temp, PassResourceDomain::Software));
-            io.read(make_named_resource_ref("technique.light_index_list", PassResourceType::Temp, PassResourceDomain::Software));
-            io.write(make_rt_resource_ref(rt_hdr_, PassResourceType::ColorHDR, "hdr", PassResourceDomain::Software));
-            io.write(make_rt_resource_ref(static_cast<const RTHandle&>(rt_motion_), PassResourceType::Motion, "motion", PassResourceDomain::Software));
+            io.read(make_rt_resource_ref(rt_shadow_, PassResourceType::Shadow, "shadow", render_domain_host()));
+            io.read(make_named_resource_ref("technique.depth_prepass", PassResourceType::Temp, render_domain_host()));
+            io.read(make_named_resource_ref("technique.light_grid", PassResourceType::Temp, render_domain_host()));
+            io.read(make_named_resource_ref("technique.light_index_list", PassResourceType::Temp, render_domain_host()));
+            io.write(make_rt_resource_ref(rt_hdr_, PassResourceType::ColorHDR, "hdr", render_domain_host()));
+            io.write(make_rt_resource_ref(static_cast<const RTHandle&>(rt_motion_), PassResourceType::Motion, "motion", render_domain_host()));
             return io;
         }
 
@@ -1046,18 +1046,18 @@ namespace shs
                 technique_mode_bit(TechniqueMode::ForwardPlus) |
                 technique_mode_bit(TechniqueMode::ClusteredForward);
             c.semantics = {
-                read_semantic(PassSemantic::ShadowMap, ContractDomain::Software, "shadow"),
-                write_semantic(PassSemantic::ColorHDR, ContractDomain::Software, "hdr"),
-                write_semantic(PassSemantic::MotionVectors, ContractDomain::Software, "motion")
+                read_semantic(PassSemantic::ShadowMap, render_domain_host(), "shadow"),
+                write_semantic(PassSemantic::ColorHDR, render_domain_host(), "hdr"),
+                write_semantic(PassSemantic::MotionVectors, render_domain_host(), "motion")
             };
             return c;
         }
         PassIODesc describe_io() const override
         {
             PassIODesc io{};
-            io.read(make_rt_resource_ref(rt_shadow_, PassResourceType::Shadow, "shadow", PassResourceDomain::Software));
-            io.write(make_rt_resource_ref(rt_hdr_, PassResourceType::ColorHDR, "hdr", PassResourceDomain::Software));
-            io.write(make_rt_resource_ref(static_cast<const RTHandle&>(rt_motion_), PassResourceType::Motion, "motion", PassResourceDomain::Software));
+            io.read(make_rt_resource_ref(rt_shadow_, PassResourceType::Shadow, "shadow", render_domain_host()));
+            io.write(make_rt_resource_ref(rt_hdr_, PassResourceType::ColorHDR, "hdr", render_domain_host()));
+            io.write(make_rt_resource_ref(static_cast<const RTHandle&>(rt_motion_), PassResourceType::Motion, "motion", render_domain_host()));
             return io;
         }
 
@@ -1104,24 +1104,24 @@ namespace shs
             c.requires_depth_prepass = true;
             c.requires_light_culling = true;
             c.semantics = {
-                read_semantic(PassSemantic::ShadowMap, ContractDomain::Software, "shadow"),
-                read_semantic(PassSemantic::Depth, ContractDomain::Software, "depth"),
-                read_semantic(PassSemantic::LightGrid, ContractDomain::Software, "light_grid"),
-                read_semantic(PassSemantic::LightIndexList, ContractDomain::Software, "light_index_list"),
-                write_semantic(PassSemantic::ColorHDR, ContractDomain::Software, "hdr"),
-                write_semantic(PassSemantic::MotionVectors, ContractDomain::Software, "motion")
+                read_semantic(PassSemantic::ShadowMap, render_domain_host(), "shadow"),
+                read_semantic(PassSemantic::Depth, render_domain_host(), "depth"),
+                read_semantic(PassSemantic::LightGrid, render_domain_host(), "light_grid"),
+                read_semantic(PassSemantic::LightIndexList, render_domain_host(), "light_index_list"),
+                write_semantic(PassSemantic::ColorHDR, render_domain_host(), "hdr"),
+                write_semantic(PassSemantic::MotionVectors, render_domain_host(), "motion")
             };
             return c;
         }
         PassIODesc describe_io() const override
         {
             PassIODesc io{};
-            io.read(make_rt_resource_ref(rt_shadow_, PassResourceType::Shadow, "shadow", PassResourceDomain::Software));
-            io.read(make_named_resource_ref("technique.depth_prepass", PassResourceType::Temp, PassResourceDomain::Software));
-            io.read(make_named_resource_ref("technique.light_grid", PassResourceType::Temp, PassResourceDomain::Software));
-            io.read(make_named_resource_ref("technique.light_index_list", PassResourceType::Temp, PassResourceDomain::Software));
-            io.write(make_rt_resource_ref(rt_hdr_, PassResourceType::ColorHDR, "hdr", PassResourceDomain::Software));
-            io.write(make_rt_resource_ref(static_cast<const RTHandle&>(rt_motion_), PassResourceType::Motion, "motion", PassResourceDomain::Software));
+            io.read(make_rt_resource_ref(rt_shadow_, PassResourceType::Shadow, "shadow", render_domain_host()));
+            io.read(make_named_resource_ref("technique.depth_prepass", PassResourceType::Temp, render_domain_host()));
+            io.read(make_named_resource_ref("technique.light_grid", PassResourceType::Temp, render_domain_host()));
+            io.read(make_named_resource_ref("technique.light_index_list", PassResourceType::Temp, render_domain_host()));
+            io.write(make_rt_resource_ref(rt_hdr_, PassResourceType::ColorHDR, "hdr", render_domain_host()));
+            io.write(make_rt_resource_ref(static_cast<const RTHandle&>(rt_motion_), PassResourceType::Motion, "motion", render_domain_host()));
             return io;
         }
 
@@ -1172,16 +1172,16 @@ namespace shs
             c.role = TechniquePassRole::Composite;
             c.supported_modes_mask = technique_mode_mask_all();
             c.semantics = {
-                read_semantic(PassSemantic::ColorHDR, ContractDomain::Software, "hdr"),
-                write_semantic(PassSemantic::ColorLDR, ContractDomain::Software, "ldr")
+                read_semantic(PassSemantic::ColorHDR, render_domain_host(), "hdr"),
+                write_semantic(PassSemantic::ColorLDR, render_domain_host(), "ldr")
             };
             return c;
         }
         PassIODesc describe_io() const override
         {
             PassIODesc io{};
-            io.read(make_rt_resource_ref(rt_hdr_, PassResourceType::ColorHDR, "hdr", PassResourceDomain::Software));
-            io.write(make_rt_resource_ref(rt_ldr_, PassResourceType::ColorLDR, "ldr", PassResourceDomain::Software));
+            io.read(make_rt_resource_ref(rt_hdr_, PassResourceType::ColorHDR, "hdr", render_domain_host()));
+            io.write(make_rt_resource_ref(rt_ldr_, PassResourceType::ColorLDR, "ldr", render_domain_host()));
             return io;
         }
 
@@ -1224,23 +1224,23 @@ namespace shs
             // Light shafts can run without a dedicated depth-prepass; it consumes
             // the motion/depth-like buffer produced by the forward pass.
             c.semantics = {
-                read_write_semantic(PassSemantic::ColorLDR, ContractDomain::Software, "ldr"),
-                read_semantic(PassSemantic::MotionVectors, ContractDomain::Software, "depth_like")
+                read_write_semantic(PassSemantic::ColorLDR, render_domain_host(), "ldr"),
+                read_semantic(PassSemantic::MotionVectors, render_domain_host(), "depth_like")
             };
             return c;
         }
         PassIODesc describe_io() const override
         {
             PassIODesc io{};
-            io.read_write(make_rt_resource_ref(rt_ldr_, PassResourceType::ColorLDR, "ldr", PassResourceDomain::Software));
-            io.read(make_rt_resource_ref(rt_depth_like_, PassResourceType::Motion, "motion", PassResourceDomain::Software));
+            io.read_write(make_rt_resource_ref(rt_ldr_, PassResourceType::ColorLDR, "ldr", render_domain_host()));
+            io.read(make_rt_resource_ref(rt_depth_like_, PassResourceType::Motion, "motion", render_domain_host()));
             if (rt_shafts_tmp_.valid())
             {
-                io.write(make_rt_resource_ref(rt_shafts_tmp_, PassResourceType::Temp, "shafts_tmp", PassResourceDomain::Software));
+                io.write(make_rt_resource_ref(rt_shafts_tmp_, PassResourceType::Temp, "shafts_tmp", render_domain_host()));
             }
             else
             {
-                io.write(make_named_resource_ref("light_shafts.auto_tmp", PassResourceType::Temp, PassResourceDomain::Software));
+                io.write(make_named_resource_ref("light_shafts.auto_tmp", PassResourceType::Temp, render_domain_host()));
             }
             return io;
         }
@@ -1316,23 +1316,23 @@ namespace shs
             c.role = TechniquePassRole::PostProcess;
             c.supported_modes_mask = technique_mode_mask_all();
             c.semantics = {
-                read_write_semantic(PassSemantic::ColorLDR, ContractDomain::Software, "ldr"),
-                read_semantic(PassSemantic::MotionVectors, ContractDomain::Software, "motion")
+                read_write_semantic(PassSemantic::ColorLDR, render_domain_host(), "ldr"),
+                read_semantic(PassSemantic::MotionVectors, render_domain_host(), "motion")
             };
             return c;
         }
         PassIODesc describe_io() const override
         {
             PassIODesc io{};
-            io.read_write(make_rt_resource_ref(rt_ldr_, PassResourceType::ColorLDR, "ldr", PassResourceDomain::Software));
-            io.read(make_rt_resource_ref(rt_motion_, PassResourceType::Motion, "motion", PassResourceDomain::Software));
+            io.read_write(make_rt_resource_ref(rt_ldr_, PassResourceType::ColorLDR, "ldr", render_domain_host()));
+            io.read(make_rt_resource_ref(rt_motion_, PassResourceType::Motion, "motion", render_domain_host()));
             if (rt_tmp_.valid())
             {
-                io.write(make_rt_resource_ref(rt_tmp_, PassResourceType::Temp, "motion_tmp", PassResourceDomain::Software));
+                io.write(make_rt_resource_ref(rt_tmp_, PassResourceType::Temp, "motion_tmp", render_domain_host()));
             }
             else
             {
-                io.write(make_named_resource_ref("motion_blur.auto_tmp", PassResourceType::Temp, PassResourceDomain::Software));
+                io.write(make_named_resource_ref("motion_blur.auto_tmp", PassResourceType::Temp, render_domain_host()));
             }
             return io;
         }
@@ -1403,16 +1403,16 @@ namespace shs
                 technique_mode_bit(TechniqueMode::Deferred) |
                 technique_mode_bit(TechniqueMode::TiledDeferred);
             c.semantics = {
-                read_write_semantic(PassSemantic::ColorLDR, ContractDomain::Software, "ldr"),
-                read_semantic(PassSemantic::Depth, ContractDomain::Software, "depth")
+                read_write_semantic(PassSemantic::ColorLDR, render_domain_host(), "ldr"),
+                read_semantic(PassSemantic::Depth, render_domain_host(), "depth")
             };
             return c;
         }
         PassIODesc describe_io() const override
         {
             PassIODesc io{};
-            io.read_write(make_named_resource_ref("technique.ldr", PassResourceType::ColorLDR, PassResourceDomain::Software));
-            io.read(make_named_resource_ref("technique.depth_prepass", PassResourceType::Temp, PassResourceDomain::Software));
+            io.read_write(make_named_resource_ref("technique.ldr", PassResourceType::ColorLDR, render_domain_host()));
+            io.read(make_named_resource_ref("technique.depth_prepass", PassResourceType::Temp, render_domain_host()));
             return io;
         }
 
@@ -1440,18 +1440,18 @@ namespace shs
             c.role = TechniquePassRole::PostProcess;
             c.supported_modes_mask = technique_mode_mask_all();
             c.semantics = {
-                read_write_semantic(PassSemantic::ColorLDR, ContractDomain::Software, "ldr"),
-                read_semantic(PassSemantic::HistoryColor, ContractDomain::Software, "history_in"),
-                write_semantic(PassSemantic::HistoryColor, ContractDomain::Software, "history_out")
+                read_write_semantic(PassSemantic::ColorLDR, render_domain_host(), "ldr"),
+                read_semantic(PassSemantic::HistoryColor, render_domain_host(), "history_in"),
+                write_semantic(PassSemantic::HistoryColor, render_domain_host(), "history_out")
             };
             return c;
         }
         PassIODesc describe_io() const override
         {
             PassIODesc io{};
-            io.read_write(make_rt_resource_ref(rt_ldr_, PassResourceType::ColorLDR, "ldr", PassResourceDomain::Software));
-            io.read(make_named_resource_ref("technique.history_color", PassResourceType::Temp, PassResourceDomain::Software));
-            io.write(make_named_resource_ref("technique.history_color", PassResourceType::Temp, PassResourceDomain::Software));
+            io.read_write(make_rt_resource_ref(rt_ldr_, PassResourceType::ColorLDR, "ldr", render_domain_host()));
+            io.read(make_named_resource_ref("technique.history_color", PassResourceType::Temp, render_domain_host()));
+            io.write(make_named_resource_ref("technique.history_color", PassResourceType::Temp, render_domain_host()));
             return io;
         }
 

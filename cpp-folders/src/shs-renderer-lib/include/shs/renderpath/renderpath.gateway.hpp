@@ -122,6 +122,8 @@ namespace shs::renderpath
             case RenderPathCompileRejection::MissingRequiredPass: return PathSwapRejectionReason::MissingRequiredPass;
             case RenderPathCompileRejection::DepthUnsupported:   return PathSwapRejectionReason::DepthUnsupported;
             case RenderPathCompileRejection::OcclusionUnsupported: return PathSwapRejectionReason::OcclusionUnsupported;
+            case RenderPathCompileRejection::SubstrateUnresolved: return PathSwapRejectionReason::SubstrateUnresolved;
+            case RenderPathCompileRejection::HybridBoundaryUndeclared: return PathSwapRejectionReason::HybridBoundaryUndeclared;
             case RenderPathCompileRejection::CompileInvalid:     return PathSwapRejectionReason::CompileInvalid;
         }
         return PathSwapRejectionReason::CompileInvalid;

@@ -615,7 +615,17 @@ private:
 
     void configure_render_path_defaults()
     {
-        render_path_recipe_ = make_default_soft_shadow_culling_recipe(RenderBackendType::Vulkan);
+        // RP-1: one recipe, resolved by policy instead of forked at authoring
+        // time. The removed `make_default_soft_shadow_culling_recipe(Vulkan)`
+        // authored a separate Forward+ chain for Vulkan; this states the intent
+        // and declares the substrate (this IS a Vulkan app), and the resolver
+        // lands every pass. `DevicePreferred` plus a declared Vulkan substrate
+        // resolves to Vulkan throughout here: this app advertises no substrate
+        // set, so admissible == {declared} == {Vulkan}. Pass chain, pass count
+        // and technique mode are byte-for-byte the fork's Vulkan branch, so the
+        // compiled plan is unchanged.
+        render_path_recipe_ = make_soft_shadow_culling_recipe(SubstratePolicy::DevicePreferred);
+        render_path_recipe_.backend = RenderBackendType::Vulkan;
         const RenderPathCompiler compiler{};
         render_path_plan_ = compiler.compile(render_path_recipe_, ctx_, nullptr);
 

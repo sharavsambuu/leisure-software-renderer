@@ -21,6 +21,7 @@
 #include "shs/renderpath/execution/pass_registry.hpp"
 #include "shs/renderpath/planning/render_path_capabilities.hpp"
 #include "shs/renderpath/planning/render_path_recipe.hpp"
+#include "shs/renderpath/planning/substrate_resolution.hpp"
 #include "shs/renderpath/planning/technique_profile.hpp"
 
 namespace shs
@@ -45,6 +46,13 @@ namespace shs
         PassId pass_id = PassId::Unknown;
         bool required = true;
 
+        // RP-1: the substrate this pass was RESOLVED onto (req 4 — a resolution
+        // output, not an authoring-time choice). `substrate_resolved == false`
+        // means the plan carries no resolution for it; the plan is invalid in
+        // that case, so this is never a silent default.
+        Substrate substrate = Substrate::SoftwareRaster;
+        bool substrate_resolved = false;
+
         // Value semantics (pod test kit requires snapshot equality).
         bool operator==(const RenderPathCompiledPass&) const = default;
     };
@@ -59,13 +67,27 @@ namespace shs
         BackendUnavailable = 2,
         MissingRequiredPass = 3,
         DepthUnsupported   = 4,
-        OcclusionUnsupported = 5
+        OcclusionUnsupported = 5,
+        // RP-1: no admissible substrate for a pass (nothing the host can drive
+        // both realizes the pass and satisfies its declared intent).
+        SubstrateUnresolved = 6,
+        // RP-1: two adjacent passes resolved onto different substrates without a
+        // declared interop boundary — the plan-visible half of the RP-2 hybrid
+        // rule.
+        HybridBoundaryUndeclared = 7
     };
 
     struct RenderPathExecutionPlan
     {
         std::string recipe_name{};
         RenderBackendType backend = RenderBackendType::Software;
+        // RP-1: the policy this plan was resolved under, echoed so the plan is
+        // self-describing and snapshot-comparable.
+        SubstratePolicy substrate_policy = SubstratePolicy::ExactMatch;
+        // RP-1: true once the resolved chain crosses substrates (or execution
+        // units) at a declared interop boundary. That is the "one recipe
+        // resolves to a hybrid" case, recorded as data.
+        bool hybrid = false;
         TechniqueMode technique_mode = TechniqueMode::Forward;
         RenderPathRenderingTechnique render_technique = RenderPathRenderingTechnique::ForwardLit;
         RenderPathRuntimeState runtime_state{};
@@ -118,6 +140,7 @@ namespace shs
             plan.backend = recipe.backend;
             plan.technique_mode = recipe.technique_mode;
             plan.render_technique = recipe.render_technique;
+            plan.substrate_policy = recipe.substrate_policy;
             // C2.2 (Rule 17, P1: value invariants live in the pure leaf): the
             // technique-mode transition table — a compiled plan's technique is
             // the table image of its mode. Only legal table rows compile; a
@@ -191,6 +214,96 @@ namespace shs
                     if (registered.has_value()) return std::string(*registered);
                 }
                 return entry.id;
+            };
+
+            // RP-1 (req 4): substrate is a RESOLUTION OUTPUT. Per pass:
+            //   intent        <- the entry's declared RenderDomain
+            //   realizability <- the pass registry's substrate mask
+            //   admissible    <- the capability snapshot's available substrates
+            //   choice        <- the recipe's policy
+            // An empty available mask means "single-substrate host / unknown",
+            // which resolves as the declared substrate only — so a recipe that
+            // neither widens the mask nor states a policy resolves exactly where
+            // it did before this change.
+            const Substrate declared_substrate = substrate_of_backend(recipe.backend);
+            // ADMISSIBLE set of this compile: what the host can drive, or — on a
+            // host that declares nothing — the single declared substrate. Every
+            // pre-RP-1 caller is in the second case, so every predicate below
+            // that used to be phrased "matches recipe.backend" is now phrased
+            // "intersects the admissible set" and answers identically.
+            const uint32_t admissible_mask = (caps.available_substrate_mask != substrate_mask_none())
+                ? caps.available_substrate_mask
+                : substrate_bit(declared_substrate);
+            bool has_previous = false;
+            Substrate previous_substrate = declared_substrate;
+            bool previous_declares_interop = false;
+
+            auto emit_pass = [&](const std::string& canonical_id,
+                                 PassId entry_pass_id,
+                                 const RenderPathPassEntry& entry,
+                                 const std::optional<uint32_t>& realized_hint) -> bool
+            {
+                SubstrateResolutionRequest request{};
+                request.intent = entry.domain;
+                request.available_mask = caps.available_substrate_mask;
+                request.declared = declared_substrate;
+                request.policy = recipe.substrate_policy;
+                request.has_predecessor = has_previous;
+                request.predecessor = previous_substrate;
+                if (realized_hint.has_value())
+                {
+                    request.realized_mask = realized_hint.value();
+                    request.realized_known = true;
+                }
+
+                const SubstrateResolution resolution = resolve_substrate(request);
+                if (!resolution.resolved)
+                {
+                    const std::string msg =
+                        "Pass id '" + canonical_id +
+                        "' has no admissible substrate: nothing this host can drive "
+                        "both realizes the pass and satisfies its declared intent ("
+                        + render_domain_name(entry.domain) + ").";
+                    if (entry.required) push_error(msg, RenderPathCompileRejection::SubstrateUnresolved);
+                    else push_warning(msg);
+                    return false;
+                }
+
+                const bool declares_interop = (pass_registry != nullptr)
+                    ? pass_registry->declares_interop_hint(canonical_id).value_or(false)
+                    : false;
+
+                // Hybrid legality (RP-2 ruling): crossing execution units —
+                // which always implies crossing substrates, since
+                // `execution_unit_of` is a function of the substrate — is legal
+                // only where one of the crossing passes declares an interop
+                // boundary. Otherwise this is a rejection, not the warning the
+                // retired behaviour emitted.
+                if (has_previous && substrates_cross(resolution.substrate, previous_substrate))
+                {
+                    if (previous_declares_interop || declares_interop)
+                    {
+                        plan.hybrid = true;
+                    }
+                    else
+                    {
+                        const std::string msg =
+                            "Pass id '" + canonical_id + "' resolves to '" +
+                            std::string(substrate_name(resolution.substrate)) +
+                            "' but the previous pass resolved to '" +
+                            std::string(substrate_name(previous_substrate)) +
+                            "': crossing substrates requires a declared interop boundary.";
+                        push_error(msg, RenderPathCompileRejection::HybridBoundaryUndeclared);
+                        return false;
+                    }
+                }
+
+                plan.pass_chain.push_back(RenderPathCompiledPass{
+                    canonical_id, entry_pass_id, entry.required, resolution.substrate, true});
+                has_previous = true;
+                previous_substrate = resolution.substrate;
+                previous_declares_interop = declares_interop;
+                return true;
             };
 
             if (rules_.require_occlusion_support_for_occlusion_culling)
@@ -290,7 +403,7 @@ namespace shs
 
                 if (!pass_registry)
                 {
-                    plan.pass_chain.push_back(RenderPathCompiledPass{canonical_id, entry_pass_id, entry.required});
+                    (void)emit_pass(canonical_id, entry_pass_id, entry, std::nullopt);
                     continue;
                 }
 
@@ -306,13 +419,17 @@ namespace shs
                     continue;
                 }
 
-                const std::optional<bool> backend_ok_hint =
-                    pass_registry->supports_backend_hint(canonical_id, recipe.backend);
+                const std::optional<uint32_t> realized_hint =
+                    pass_registry->realized_substrate_mask_hint(canonical_id);
+                const std::optional<bool> backend_ok_hint = realized_hint.has_value()
+                    ? std::optional<bool>((realized_hint.value() & admissible_mask) != 0u)
+                    : std::nullopt;
                 if (backend_ok_hint.has_value() && !backend_ok_hint.value())
                 {
                     const std::string msg =
-                        "Pass id '" + canonical_id + "' does not support backend '" +
-                        std::string(render_backend_type_name(recipe.backend)) + "'.";
+                        "Pass id '" + canonical_id + "' is not realizable on any substrate " +
+                        "this host can drive (admissible: " +
+                        render_backend_type_name(recipe.backend) + ").";
                     if (entry.required) push_error(msg, RenderPathCompileRejection::BackendUnavailable);
                     else push_warning(msg);
                     continue;
@@ -332,7 +449,7 @@ namespace shs
 
                 if (backend_ok_hint.has_value() && mode_ok_hint.has_value())
                 {
-                    plan.pass_chain.push_back(RenderPathCompiledPass{canonical_id, entry_pass_id, entry.required});
+                    (void)emit_pass(canonical_id, entry_pass_id, entry, realized_hint);
                     continue;
                 }
 

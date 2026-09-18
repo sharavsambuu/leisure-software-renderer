@@ -35,7 +35,9 @@ namespace shs::renderpath
         BackendUnavailable = 2,
         MissingRequiredPass = 3,
         DepthUnsupported = 4,
-        OcclusionUnsupported = 5
+        OcclusionUnsupported = 5,
+        SubstrateUnresolved = 6,
+        HybridBoundaryUndeclared = 7
     };
 
     // PATH_COMPILED: a recipe compiled valid and is now the active plan.

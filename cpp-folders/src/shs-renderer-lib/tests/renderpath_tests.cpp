@@ -1,3 +1,5 @@
+#include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <memory_resource>
 #include <string>
@@ -5,6 +7,8 @@
 #include <vector>
 
 #include "shs/core/testing/pod_test_kit.hpp"
+#include "shs/renderpath/execution/render_path_registry.hpp"
+#include "shs/renderpath/planning/frame_graph.hpp"
 #include "shs/renderpath/renderpath.gateway.hpp"
 
 // Pure value tests for the renderpath pod (roadmap P1 ctest gate:
@@ -461,6 +465,457 @@ namespace
             },
             initial, context);
     }
+    // --- RP-2: execution-unit × substrate axes + hybrid legality -------------
+    //
+    // Owner ruling 2026-09-18 made these two axes independent and made an
+    // undeclared cross-unit crossing a *rejection* rather than a warning. These
+    // gates pin both halves so the vocabulary cannot silently re-collapse.
+
+    // One unit carries several substrates; the axes must not be identified.
+    bool test_domain_axes_are_independent()
+    {
+        using shs::renderpath::ExecutionUnit;
+        using shs::RenderBackendType;
+        using shs::renderpath::Substrate;
+
+        if (shs::renderpath::execution_unit_of(Substrate::SoftwareRaster) != ExecutionUnit::Host) return false;
+        if (shs::renderpath::execution_unit_of(Substrate::OpenGL) != ExecutionUnit::Device) return false;
+        if (shs::renderpath::execution_unit_of(Substrate::Vulkan) != ExecutionUnit::Device) return false;
+
+        // RenderBackendType <-> Substrate is the declared 1:1 identity.
+        if (shs::renderpath::substrate_of_backend(RenderBackendType::Software) != Substrate::SoftwareRaster) return false;
+        if (shs::renderpath::substrate_of_backend(RenderBackendType::Vulkan) != Substrate::Vulkan) return false;
+        if (shs::renderpath::backend_of_substrate(Substrate::OpenGL) != RenderBackendType::OpenGL) return false;
+        return true;
+    }
+
+    // Compatibility falls out of the two axes instead of being special-cased.
+    bool test_domain_compatibility_relation()
+    {
+        using shs::renderpath::Substrate;
+        const auto device = shs::renderpath::render_domain_device();
+        const auto host = shs::renderpath::render_domain_host();
+        const auto any = shs::renderpath::render_domain_any();
+        const auto unspecified = shs::renderpath::render_domain_unspecified();
+        const auto gl = shs::renderpath::render_domain_substrate(Substrate::OpenGL);
+        const auto vk = shs::renderpath::render_domain_substrate(Substrate::Vulkan);
+
+        // Unpinned device resource accepts either device substrate...
+        if (!shs::renderpath::render_domains_compatible(device, gl)) return false;
+        if (!shs::renderpath::render_domains_compatible(device, vk)) return false;
+        // ...but two distinct device substrates are not interchangeable.
+        if (shs::renderpath::render_domains_compatible(gl, vk)) return false;
+        // Host and device never mix implicitly (this is the hybrid rejection).
+        if (shs::renderpath::render_domains_compatible(host, device)) return false;
+        if (shs::renderpath::render_domains_compatible(host, gl)) return false;
+        // "unspecified" (author said nothing) and "any" (author said wildcard)
+        // are separate names, both permissive.
+        if (!shs::renderpath::render_domains_compatible(unspecified, device)) return false;
+        if (!shs::renderpath::render_domains_compatible(any, host)) return false;
+        return true;
+    }
+
+    // Declared resource domain vs. the concrete backend a pass runs on.
+    bool test_domain_backend_matching()
+    {
+        using shs::RenderBackendType;
+        using shs::renderpath::Substrate;
+        if (!shs::renderpath::render_domain_matches_backend(
+                shs::renderpath::render_domain_host(), RenderBackendType::Software)) return false;
+        if (shs::renderpath::render_domain_matches_backend(
+                shs::renderpath::render_domain_host(), RenderBackendType::Vulkan)) return false;
+        if (!shs::renderpath::render_domain_matches_backend(
+                shs::renderpath::render_domain_device(), RenderBackendType::OpenGL)) return false;
+        if (shs::renderpath::render_domain_matches_backend(
+                shs::renderpath::render_domain_substrate(Substrate::OpenGL), RenderBackendType::Vulkan)) return false;
+        return true;
+    }
+    // Minimal pass: explicit I/O domain plus a switchable interop boundary.
+    struct DomainProbePass : shs::renderpath::IRenderPass
+    {
+        const char* label = "probe";
+        shs::renderpath::PassIODesc io{};
+        bool interop = false;
+
+        const char* id() const override { return label; }
+        bool is_interop_pass() const override { return interop; }
+        shs::renderpath::PassIODesc describe_io() const override { return io; }
+        shs::renderpath::PassExecutionResult execute_resolved(
+            shs::Context&, const shs::renderpath::PassExecutionRequest&) override
+        {
+            return shs::renderpath::PassExecutionResult::executed_no_outputs();
+        }
+    };
+
+    // Two passes write one shared resource from different execution units;
+    // `interop` decides whether that crossing is declared and therefore legal.
+    void hybrid_cross_unit_plan(bool interop, bool& out_valid, size_t& out_errors)
+    {
+        DomainProbePass host_pass{};
+        host_pass.label = "host_writer";
+        host_pass.interop = interop;
+        DomainProbePass device_pass{};
+        device_pass.label = "device_writer";
+        device_pass.interop = interop;
+
+        const uint64_t key =
+            shs::renderpath::pass_rt_resource_key(shs::renderpath::PassResourceType::ColorHDR, 7u);
+        shs::renderpath::PassResourceRef shared{};
+        shared.key = key;
+        shared.type = shs::renderpath::PassResourceType::ColorHDR;
+        shared.access = shs::renderpath::PassResourceAccess::Write;
+        shared.name = "shared_color";
+        shared.domain = shs::renderpath::render_domain_host();
+        host_pass.io.write(shared);
+
+        shared.domain = shs::renderpath::render_domain_device();
+        device_pass.io.write(shared);
+
+        shs::renderpath::FrameGraph graph{};
+        graph.add_node(shs::renderpath::FrameGraphNode{ &host_pass, host_pass.label, host_pass.io, 0 });
+        graph.add_node(shs::renderpath::FrameGraphNode{ &device_pass, device_pass.label, device_pass.io, 1 });
+        graph.compile();
+
+        out_valid = graph.report().valid;
+        out_errors = graph.report().errors.size();
+    }
+
+    // D2: hybrid is REJECTED without an interop boundary, accepted with one.
+    bool test_hybrid_interop_legality()
+    {
+        bool rejected_valid = true;
+        size_t rejected_errors = 0;
+        hybrid_cross_unit_plan(false, rejected_valid, rejected_errors);
+        if (rejected_valid) return false;       // must be a rejection...
+        if (rejected_errors == 0) return false; // ...and must say why
+
+        bool accepted_valid = false;
+        size_t accepted_errors = 1;
+        hybrid_cross_unit_plan(true, accepted_valid, accepted_errors);
+        if (!accepted_valid) return false;       // a declared boundary is legal
+        if (accepted_errors != 0) return false;
+        return true;
+    }
+    // --- RP-1 fixtures -------------------------------------------------------
+    // A registry that declares, per pass, which SUBSTRATES can realize it and
+    // whether it declares an interop boundary. These are exactly the two facts
+    // the resolver reads, so the test controls them directly instead of hoping
+    // the builtin table happens to exercise the case. (Worth knowing: the real
+    // `make_standard_pass_factory_registry` registers every standard pass
+    // software-only, which is the dual-realization gap recorded elsewhere —
+    // here we deliberately author a device realization.)
+    shs::renderpath::PassFactoryRegistry make_substrate_probe_registry(
+        bool shadow_map_interop = false,
+        bool forward_interop = false,
+        uint32_t shadow_map_mask = shs::renderpath::substrate_mask_all(),
+        uint32_t forward_mask = shs::renderpath::substrate_mask_all(),
+        uint32_t tonemap_mask = shs::renderpath::substrate_mask_all())
+    {
+        using shs::PassId;
+        using shs::renderpath::PassFactoryRegistry;
+        using shs::renderpath::TechniquePassContract;
+        using shs::render::technique_mode_mask_all;
+
+        PassFactoryRegistry reg{};
+        auto add = [&](PassId id, uint32_t mask, bool interop) {
+            reg.register_factory(id, []() -> std::unique_ptr<shs::renderpath::IRenderPass> {
+                return std::make_unique<DomainProbePass>();
+            });
+            TechniquePassContract contract{};
+            contract.supported_modes_mask = technique_mode_mask_all();
+            reg.register_descriptor(id, contract, mask, true, interop);
+        };
+        add(PassId::ShadowMap, shadow_map_mask, shadow_map_interop);
+        add(PassId::PBRForward, forward_mask, forward_interop);
+        add(PassId::Tonemap, tonemap_mask, false);
+        return reg;
+    }
+
+    // Every pass in `make_soft_shadow_culling_recipe`, each realizable on every
+    // substrate. Needed because that recipe's chain is longer than the three-pass
+    // probe above — `DepthPrepass`, `LightCulling`, `PBRForwardPlus` and
+    // `MotionBlur` are absent from it — and the registry gate below compiles the
+    // *default registry's* recipe rather than a test-authored stand-in, so the
+    // fixture has to cover exactly the passes that recipe names.
+    shs::renderpath::PassFactoryRegistry make_full_probe_registry()
+    {
+        using shs::PassId;
+        using shs::renderpath::PassFactoryRegistry;
+        using shs::renderpath::TechniquePassContract;
+        using shs::render::technique_mode_mask_all;
+
+        PassFactoryRegistry reg{};
+        auto add = [&](PassId id) {
+            reg.register_factory(id, []() -> std::unique_ptr<shs::renderpath::IRenderPass> {
+                return std::make_unique<DomainProbePass>();
+            });
+            TechniquePassContract contract{};
+            contract.supported_modes_mask = technique_mode_mask_all();
+            reg.register_descriptor(
+                id, contract, shs::renderpath::substrate_mask_all(), true, false);
+        };
+        add(PassId::ShadowMap);
+        add(PassId::DepthPrepass);
+        add(PassId::LightCulling);
+        add(PassId::PBRForwardPlus);
+        add(PassId::Tonemap);
+        add(PassId::MotionBlur);
+        return reg;
+    }
+
+    // Three required passes, no per-pass intent: the policy is the only thing
+    // choosing. `declared` stays Software throughout, so any pass that resolves
+    // elsewhere resolved there by substitution — which is the feature.
+    shs::renderpath::RenderPathRecipe make_substrate_probe_recipe(
+        shs::renderpath::SubstratePolicy policy)
+    {
+        using namespace shs;
+        using namespace shs::renderpath;
+        RenderPathRecipe recipe{};
+        recipe.name = "substrate_probe";
+        recipe.substrate_policy = policy;
+        recipe.backend = RenderBackendType::Software;
+        recipe.render_technique = RenderPathRenderingTechnique::ForwardLit;
+        recipe.technique_mode = TechniqueMode::Forward;
+        recipe.view_culling = RenderPathCullingMode::Frustum;
+        recipe.shadow_culling = RenderPathCullingMode::Frustum;
+        recipe.wants_shadows = false;
+        recipe.pass_chain = {
+            make_render_path_pass_entry(PassId::ShadowMap, true),
+            make_render_path_pass_entry(PassId::PBRForward, true),
+            make_render_path_pass_entry(PassId::Tonemap, true)
+        };
+        return recipe;
+    }
+
+    // A host that can drive every substrate: the explicit opt-in that makes a
+    // multi-substrate resolution possible at all.
+    shs::renderpath::RenderPathCapabilitySet make_multi_substrate_caps()
+    {
+        shs::renderpath::RenderPathCapabilitySet caps = make_sw_caps();
+        caps.available_substrate_mask = shs::renderpath::substrate_mask_all();
+        return caps;
+    }
+
+    bool all_passes_on(const shs::renderpath::RenderPathExecutionPlan& plan,
+                       shs::renderpath::Substrate substrate)
+    {
+        if (!plan.valid || plan.pass_chain.empty()) return false;
+        for (const auto& pass : plan.pass_chain)
+        {
+            if (!pass.substrate_resolved) return false;
+            if (pass.substrate != substrate) return false;
+        }
+        return true;
+    }
+
+    // --- RP-1 acceptance tests ----------------------------------------------
+
+    // RP-1 (req 4): ONE recipe, four policies, four resolutions — no recipe
+    // fork. Every pass here realizes every substrate, so the policy is the only
+    // variable and none of the assertions can pass by accident.
+    bool test_substrate_policy_resolution()
+    {
+        using namespace shs::renderpath;
+        const RenderPathCompiler compiler{};
+        const RenderPathCapabilitySet caps = make_multi_substrate_caps();
+        const PassFactoryRegistry registry = make_substrate_probe_registry();
+
+        const RenderPathExecutionPlan exact = compiler.compile(
+            make_substrate_probe_recipe(SubstratePolicy::ExactMatch), caps, &registry);
+        if (!all_passes_on(exact, Substrate::SoftwareRaster)) return false;
+
+        const RenderPathExecutionPlan device = compiler.compile(
+            make_substrate_probe_recipe(SubstratePolicy::DevicePreferred), caps, &registry);
+        if (!all_passes_on(device, Substrate::Vulkan)) return false;
+
+        const RenderPathExecutionPlan host = compiler.compile(
+            make_substrate_probe_recipe(SubstratePolicy::HostPreferred), caps, &registry);
+        if (!all_passes_on(host, Substrate::SoftwareRaster)) return false;
+
+        const RenderPathExecutionPlan cheapest = compiler.compile(
+            make_substrate_probe_recipe(SubstratePolicy::Cheapest), caps, &registry);
+        if (!all_passes_on(cheapest, Substrate::SoftwareRaster)) return false;
+
+        // The policy is echoed as plan data, and no chain crossed a boundary.
+        if (device.substrate_policy != SubstratePolicy::DevicePreferred) return false;
+        if (device.hybrid || exact.hybrid || host.hybrid || cheapest.hybrid) return false;
+
+        // The substitution is real: the declared substrate is Software
+        // throughout, and the device-preferring policy resolved off it anyway.
+        if (device.backend != shs::RenderBackendType::Software) return false;
+        return true;
+    }
+
+    // Declared per-pass intent BINDS the policy: a pass that says it must run on
+    // the device cannot be resolved onto the host rasterizer, even under
+    // HostPreferred. Intent narrows; policy only chooses inside the narrowing.
+    bool test_substrate_intent_binds_policy()
+    {
+        using namespace shs::renderpath;
+        const RenderPathCompiler compiler{};
+        const RenderPathCapabilitySet caps = make_multi_substrate_caps();
+        const PassFactoryRegistry registry = make_substrate_probe_registry();
+
+        RenderPathRecipe recipe = make_substrate_probe_recipe(SubstratePolicy::HostPreferred);
+        for (auto& entry : recipe.pass_chain)
+        {
+            entry = with_domain(entry, render_domain_device());
+        }
+
+        const RenderPathExecutionPlan plan = compiler.compile(recipe, caps, &registry);
+        // HostPreferred's first admissible choice is the host rasterizer; the
+        // intent removes it, so the ladder falls to the next device substrate.
+        if (!all_passes_on(plan, Substrate::OpenGL)) return false;
+        if (plan.hybrid) return false; // unanimous, so nothing crossed
+        return true;
+    }
+
+    // RP-2's hybrid rule, now reachable at PLAN time: two adjacent passes
+    // resolved onto different substrates is a rejection unless the crossing
+    // declares an interop boundary. Shared staging is the resource tier's half
+    // (enforced in `frame_graph.hpp`, same-key by construction); this pins the
+    // plan-visible half, which is the half the resolver controls.
+    bool test_substrate_hybrid_legality()
+    {
+        using namespace shs::renderpath;
+        const RenderPathCompiler compiler{};
+        const RenderPathCapabilitySet caps = make_multi_substrate_caps();
+
+        // ShadowMap is host-realizable only, the forward/tonemap passes
+        // device-realizable only: under DevicePreferred they cannot land on one
+        // substrate. No intent is declared — the crossing comes from
+        // realizability alone.
+        const uint32_t sw_only = substrate_bit(Substrate::SoftwareRaster);
+        const uint32_t device_only = substrate_mask_of(ExecutionUnit::Device);
+        const RenderPathRecipe recipe = make_substrate_probe_recipe(SubstratePolicy::DevicePreferred);
+
+        const PassFactoryRegistry undeclared =
+            make_substrate_probe_registry(false, false, sw_only, device_only, device_only);
+        const RenderPathExecutionPlan rejected = compiler.compile(recipe, caps, &undeclared);
+        if (rejected.valid) return false;
+        if (rejected.rejection != RenderPathCompileRejection::HybridBoundaryUndeclared) return false;
+        if (rejected.errors.empty()) return false; // must say why
+
+        // Identical resolution, with the crossing pass declaring the boundary.
+        const PassFactoryRegistry declared =
+            make_substrate_probe_registry(false, true, sw_only, device_only, device_only);
+        const RenderPathExecutionPlan accepted = compiler.compile(recipe, caps, &declared);
+        if (!accepted.valid) return false;
+        if (!accepted.hybrid) return false; // a hybrid, recorded as data
+        if (accepted.pass_chain.size() != 3) return false;
+        if (accepted.pass_chain[0].substrate != Substrate::SoftwareRaster) return false;
+        if (accepted.pass_chain[1].substrate != Substrate::Vulkan) return false;
+        if (accepted.pass_chain[2].substrate != Substrate::Vulkan) return false;
+        return true;
+    }
+
+    // The plan's snapshot-equality contract must keep holding across
+    // resolutions: a resolution is DATA (req 4's stated residual), never ambient
+    // state. Same inputs => equal plans; one changed input => unequal.
+    bool test_substrate_resolution_snapshot_contract()
+    {
+        using namespace shs::renderpath;
+        const RenderPathCompiler compiler{};
+        const RenderPathCapabilitySet caps = make_multi_substrate_caps();
+        const PassFactoryRegistry registry = make_substrate_probe_registry();
+
+        const RenderPathRecipe recipe = make_substrate_probe_recipe(SubstratePolicy::DevicePreferred);
+        const RenderPathExecutionPlan first = compiler.compile(recipe, caps, &registry);
+        const RenderPathExecutionPlan again = compiler.compile(recipe, caps, &registry);
+        if (!(first == again)) return false; // deterministic, no hidden state
+
+        // The only difference is the policy, and it is visible in the plan.
+        RenderPathRecipe rehosted = recipe;
+        rehosted.substrate_policy = SubstratePolicy::HostPreferred;
+        const RenderPathExecutionPlan host = compiler.compile(rehosted, caps, &registry);
+        if (host == first) return false;
+        if (host.substrate_policy == first.substrate_policy) return false;
+        if (!all_passes_on(host, Substrate::SoftwareRaster)) return false;
+
+        // A host that declares NO substrates resolves onto the declared one —
+        // the pre-RP-1 identity, unchanged, for the very recipe that substituted
+        // elsewhere above.
+        const RenderPathExecutionPlan single = compiler.compile(recipe, make_sw_caps(), &registry);
+        if (!all_passes_on(single, Substrate::SoftwareRaster)) return false;
+        if (single.hybrid) return false;
+        if (!(single == compiler.compile(recipe, make_sw_caps(), &registry))) return false;
+
+        // Unchanged path, and the historical reason: a pass no admissible
+        // substrate can realize is still `BackendUnavailable`.
+        const uint32_t device_only = substrate_mask_of(ExecutionUnit::Device);
+        const PassFactoryRegistry device_registry =
+            make_substrate_probe_registry(false, false, device_only, device_only, device_only);
+        const RenderPathExecutionPlan unavailable = compiler.compile(
+            make_substrate_probe_recipe(SubstratePolicy::ExactMatch), make_sw_caps(), &device_registry);
+        if (unavailable.valid) return false;
+        if (unavailable.rejection != RenderPathCompileRejection::BackendUnavailable) return false;
+
+        // Distinct from the above: realizability is fine, but the declared
+        // intent cannot be satisfied here — that is the new, narrower reason.
+        RenderPathRecipe conflicting = make_substrate_probe_recipe(SubstratePolicy::DevicePreferred);
+        conflicting.pass_chain[0] = with_domain(conflicting.pass_chain[0], render_domain_device());
+        const RenderPathExecutionPlan unsatisfiable = compiler.compile(conflicting, make_sw_caps(), &registry);
+        if (unsatisfiable.valid) return false;
+        if (unsatisfiable.rejection != RenderPathCompileRejection::SubstrateUnresolved) return false;
+        return true;
+    }
+
+    // RP-1 (req 4) at the PUBLIC seam: the registry now holds ONE default recipe,
+    // and that single recipe resolves to the device on a host that advertises
+    // devices and to the host rasterizer on one that offers only the host. Before
+    // RP-1 the same outcome required two authored recipes
+    // (`soft_shadow_culling_vk_default` / `soft_shadow_culling_sw_default`) with
+    // different pass chains AND different technique modes — i.e. the substrate
+    // chose the *shape* of the path. This is the remedy stated where a consumer
+    // can see it, which is why it asserts against the registry rather than a
+    // test-authored recipe.
+    bool test_registry_single_recipe_two_substrates()
+    {
+        using namespace shs::renderpath;
+
+        RenderPathRegistry recipes{};
+        recipes.register_default_recipes();
+
+        // One recipe, not one per substrate.
+        if (recipes.recipe_ids().size() != 1u) return false;
+        if (!recipes.has_recipe("soft_shadow_culling")) return false;
+        // The fork's two names are gone: a consumer that used to look either of
+        // them up now finds exactly one entry, and it is neither of them.
+        if (recipes.has_recipe("soft_shadow_culling_vk_default")) return false;
+        if (recipes.has_recipe("soft_shadow_culling_sw_default")) return false;
+
+        const RenderPathRecipe* recipe = recipes.find_recipe("soft_shadow_culling");
+        if (recipe == nullptr) return false;
+        if (recipe->substrate_policy != SubstratePolicy::DevicePreferred) return false;
+
+        const RenderPathCompiler compiler{};
+        const PassFactoryRegistry registry = make_full_probe_registry();
+
+        // Host A: advertises every substrate. Device-preferred lands on the
+        // device for every pass, and nothing crossed a boundary.
+        const RenderPathExecutionPlan on_device =
+            compiler.compile(*recipe, make_multi_substrate_caps(), &registry);
+        if (!all_passes_on(on_device, Substrate::Vulkan)) return false;
+        if (on_device.hybrid) return false;
+
+        // Host B: offers the host rasterizer only. The SAME recipe value lands on
+        // software — no clone, no second contract registry, no second plan shape.
+        RenderPathCapabilitySet host_only = make_sw_caps();
+        host_only.available_substrate_mask = substrate_bit(Substrate::SoftwareRaster);
+        const RenderPathExecutionPlan on_host = compiler.compile(*recipe, host_only, &registry);
+        if (!all_passes_on(on_host, Substrate::SoftwareRaster)) return false;
+        if (on_host.hybrid) return false;
+
+        // One authored recipe, two resolutions: same name, same pass count, same
+        // policy — the plans differ only in where the passes resolved, which is
+        // the feature and the reason the second recipe could be deleted.
+        if (on_device.recipe_name != on_host.recipe_name) return false;
+        if (on_device.pass_chain.size() != on_host.pass_chain.size()) return false;
+        if (on_device.substrate_policy != on_host.substrate_policy) return false;
+        if (on_device.pass_chain.size() != recipe->pass_chain.size()) return false;
+        return true;
+    }
 } // namespace
 
 int main()
@@ -483,6 +938,15 @@ int main()
     ok = check("plan_generation_semantics", test_plan_generation_semantics) && ok;
     ok = check("kit_replay_deterministic", test_kit_replay_deterministic) && ok;
     ok = check("kit_empty_log_stable", test_kit_empty_log_stable) && ok;
+    ok = check("domain_axes_are_independent", test_domain_axes_are_independent) && ok;
+    ok = check("domain_compatibility_relation", test_domain_compatibility_relation) && ok;
+    ok = check("domain_backend_matching", test_domain_backend_matching) && ok;
+    ok = check("hybrid_interop_legality", test_hybrid_interop_legality) && ok;
+    ok = check("substrate_policy_resolution", test_substrate_policy_resolution) && ok;
+    ok = check("substrate_intent_binds_policy", test_substrate_intent_binds_policy) && ok;
+    ok = check("substrate_hybrid_legality", test_substrate_hybrid_legality) && ok;
+    ok = check("substrate_resolution_snapshot_contract", test_substrate_resolution_snapshot_contract) && ok;
+    ok = check("registry_single_recipe_two_substrates", test_registry_single_recipe_two_substrates) && ok;
 
     if (!ok)
     {

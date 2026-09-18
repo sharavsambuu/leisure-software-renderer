@@ -3,7 +3,7 @@
   "scope": "cpp-folders/src/shs-renderer-lib/include",
   "coverage": "all .h/.hpp public headers; literal includes in all conditional branches",
   "approval": "proposed paths are inventory only; reviewed migrations live in engine_header_migration_manifest.json",
-  "header_count": 229,
+  "header_count": 230,
   "headers": [
     {
       "current": "shs/app/backend/backend_factory.hpp",
@@ -2915,6 +2915,7 @@
         "cstdint"
       ],
       "tracked_consumers": [
+        "cpp-folders/src/shs-renderer-lib/include/shs/render/shader/shader_identity.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/planning/render_path_presets.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/planning/render_path_recipe.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/rhi/core/backend.hpp",
@@ -3115,7 +3116,9 @@
         "shs/render/shader/shader_identity.hpp"
       ],
       "external_dependencies": [],
-      "tracked_consumers": [],
+      "tracked_consumers": [
+        "cpp-folders/src/shs-renderer-lib/tests/shader_identity_tests.cpp"
+      ],
       "build_target": "review-values-vs-aggregate"
     },
     {
@@ -3149,6 +3152,7 @@
         "glm/gtc/constants.hpp"
       ],
       "tracked_consumers": [
+        "cpp-folders/src/shs-renderer-lib/include/shs/render/shader/builtin_shader_manifest.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/passes/pass_pbr_forward.hpp"
       ],
       "build_target": "review-values-vs-aggregate"
@@ -3175,6 +3179,7 @@
       ],
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/include/shs/render/shader/builtin_shaders.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/render/shader/shader_identity.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/render/software/rasterizer.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/pass_adapters.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/rhi/software/sw_offscreen.hpp"
@@ -3212,6 +3217,7 @@
         "string_view"
       ],
       "tracked_consumers": [
+        "cpp-folders/src/shs-renderer-lib/include/shs/render/shader/builtin_shader_manifest.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/rhi/software/sw_offscreen.hpp"
       ],
       "build_target": "review-values-vs-aggregate"
@@ -4313,7 +4319,8 @@
       ],
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/render_path_executor.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/planning/render_path_presets.hpp"
+        "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/planning/render_path_presets.hpp",
+        "cpp-folders/src/shs-renderer-lib/tests/renderpath_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -4513,7 +4520,8 @@
         "vector"
       ],
       "tracked_consumers": [
-        "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/pluggable_pipeline.hpp"
+        "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/pluggable_pipeline.hpp",
+        "cpp-folders/src/shs-renderer-lib/tests/renderpath_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -4547,6 +4555,7 @@
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/planning/pass_contract_registry.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/planning/render_path_barrier_plan.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/planning/render_path_resource_plan.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/planning/substrate_resolution.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/rhi/vulkan/runtime/vk_render_path_barrier_mapping.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/rhi/vulkan/runtime/vk_render_path_temporal_resources.hpp"
       ],
@@ -4712,10 +4721,12 @@
       ],
       "visibility": "public-include-tree",
       "direct_dependencies": [
-        "shs/app/context.hpp"
+        "shs/app/context.hpp",
+        "shs/renderpath/planning/substrate_resolution.hpp"
       ],
       "internal_dependencies": [
-        "shs/app/context.hpp"
+        "shs/app/context.hpp",
+        "shs/renderpath/planning/substrate_resolution.hpp"
       ],
       "external_dependencies": [],
       "tracked_consumers": [
@@ -4742,6 +4753,7 @@
         "shs/renderpath/execution/pass_registry.hpp",
         "shs/renderpath/planning/render_path_capabilities.hpp",
         "shs/renderpath/planning/render_path_recipe.hpp",
+        "shs/renderpath/planning/substrate_resolution.hpp",
         "shs/renderpath/planning/technique_profile.hpp",
         "string",
         "string_view",
@@ -4754,6 +4766,7 @@
         "shs/renderpath/execution/pass_registry.hpp",
         "shs/renderpath/planning/render_path_capabilities.hpp",
         "shs/renderpath/planning/render_path_recipe.hpp",
+        "shs/renderpath/planning/substrate_resolution.hpp",
         "shs/renderpath/planning/technique_profile.hpp"
       ],
       "external_dependencies": [
@@ -4872,6 +4885,7 @@
         "shs/render/frame/technique_mode.hpp",
         "shs/renderpath/execution/render_path_runtime_state.hpp",
         "shs/renderpath/planning/pass_id.hpp",
+        "shs/renderpath/planning/substrate_resolution.hpp",
         "string",
         "vector"
       ],
@@ -4879,7 +4893,8 @@
         "shs/render/frame/backend_type.hpp",
         "shs/render/frame/technique_mode.hpp",
         "shs/renderpath/execution/render_path_runtime_state.hpp",
-        "shs/renderpath/planning/pass_id.hpp"
+        "shs/renderpath/planning/pass_id.hpp",
+        "shs/renderpath/planning/substrate_resolution.hpp"
       ],
       "external_dependencies": [
         "cstdint",
@@ -5000,6 +5015,33 @@
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/planning/render_composition_presets.hpp",
         "cpp-folders/src/shs-renderer-lib/tests/session_orchestration_tests.cpp"
+      ],
+      "build_target": "review-values-vs-aggregate"
+    },
+    {
+      "current": "shs/renderpath/planning/substrate_resolution.hpp",
+      "proposed_canonical": "shs/renderpath/planning/substrate_resolution.hpp",
+      "review_status": "already-named-review-dependencies",
+      "proposed_owner": "renderpath",
+      "namespace_declarations": [
+        "renderpath",
+        "shs"
+      ],
+      "visibility": "public-include-tree",
+      "direct_dependencies": [
+        "cstdint",
+        "shs/renderpath/planning/pass_contract.hpp"
+      ],
+      "internal_dependencies": [
+        "shs/renderpath/planning/pass_contract.hpp"
+      ],
+      "external_dependencies": [
+        "cstdint"
+      ],
+      "tracked_consumers": [
+        "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/planning/render_path_capabilities.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/planning/render_path_compiler.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/planning/render_path_recipe.hpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -5989,7 +6031,8 @@
         "string_view"
       ],
       "tracked_consumers": [
-        "cpp-folders/src/shs-renderer-lib/include/shs/rhi/software/sw_backend.hpp"
+        "cpp-folders/src/shs-renderer-lib/include/shs/rhi/software/sw_backend.hpp",
+        "cpp-folders/src/shs-renderer-lib/tests/shader_identity_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },

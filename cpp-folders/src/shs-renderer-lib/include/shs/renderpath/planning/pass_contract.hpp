@@ -61,15 +61,151 @@ namespace shs
         ReadWrite = 3
     };
 
-    enum class ContractDomain : uint8_t
+    // ---------------------------------------------------------------------
+    // Render-path target vocabulary (RP-2; owner ruling 2026-09-18).
+    //
+    // Two INDEPENDENT axes, deliberately not collapsed:
+    //   ExecutionUnit - where a pass executes (host CPU vs device).
+    //   Substrate     - which renderer realizes it.
+    //
+    // The retired ContractDomain / PassResourceDomain pair collapsed these
+    // ("host == software rasterizer", "device == {GL,Vulkan}") into one
+    // six-value enum duplicated across two headers. That made host-assisted
+    // *device* work inexpressible and kept three dead values (`CPU`,
+    // `OpenGL`, `Vulkan` - zero uses each) in circulation.
+    //
+    // Hybrid legality: mixing execution units in one chain is legal only where
+    // the crossing passes declare an interop boundary (`is_interop_pass()`)
+    // AND share a declared staging resource. The relation below is what makes
+    // an undeclared crossing a *rejection* rather than a warning.
+    // ---------------------------------------------------------------------
+    enum class ExecutionUnit : uint8_t
     {
-        Any = 0,
-        CPU = 1,
-        GPU = 2,
-        Software = 3,
-        OpenGL = 4,
-        Vulkan = 5
+        Host = 0,
+        Device = 1
     };
+
+    enum class Substrate : uint8_t
+    {
+        SoftwareRaster = 0,
+        OpenGL = 1,
+        Vulkan = 2
+    };
+
+    // The retired sentinel did double duty: "the author did not state a target"
+    // (default argument) and "matches any target" (compatibility check). Those
+    // two meanings are now named separately - neither inherits the other's.
+    enum class RenderDomainKind : uint8_t
+    {
+        Unspecified = 0,
+        Any = 1,
+        Pinned = 2
+    };
+
+    struct RenderDomain
+    {
+        RenderDomainKind kind = RenderDomainKind::Unspecified;
+        ExecutionUnit unit = ExecutionUnit::Host;
+        Substrate substrate = Substrate::SoftwareRaster;
+        bool substrate_pinned = false;
+
+        // Value semantics (pod test kit requires snapshot equality): a declared
+        // intent is data, and RP-1 made it a plan input, so it must compare by
+        // value like every other plan input.
+        bool operator==(const RenderDomain&) const = default;
+    };
+
+    inline constexpr ExecutionUnit execution_unit_of(Substrate s)
+    {
+        return (s == Substrate::SoftwareRaster) ? ExecutionUnit::Host : ExecutionUnit::Device;
+    }
+
+    inline constexpr RenderDomain render_domain_unspecified()
+    {
+        return RenderDomain{};
+    }
+
+    inline constexpr RenderDomain render_domain_any()
+    {
+        return RenderDomain{RenderDomainKind::Any, ExecutionUnit::Host, Substrate::SoftwareRaster, false};
+    }
+
+    inline constexpr RenderDomain render_domain_host()
+    {
+        return RenderDomain{RenderDomainKind::Pinned, ExecutionUnit::Host, Substrate::SoftwareRaster, true};
+    }
+
+    // Device execution with no substrate pin - "any device substrate". This is
+    // exactly what the retired `GPU` value meant.
+    inline constexpr RenderDomain render_domain_device()
+    {
+        return RenderDomain{RenderDomainKind::Pinned, ExecutionUnit::Device, Substrate::OpenGL, false};
+    }
+
+    inline constexpr RenderDomain render_domain_substrate(Substrate s)
+    {
+        return RenderDomain{RenderDomainKind::Pinned, execution_unit_of(s), s, true};
+    }
+
+    inline const char* execution_unit_name(ExecutionUnit u)
+    {
+        switch (u)
+        {
+            case ExecutionUnit::Host: return "host";
+            case ExecutionUnit::Device: return "device";
+        }
+        return "unknown";
+    }
+
+    inline const char* substrate_name(Substrate s)
+    {
+        switch (s)
+        {
+            case Substrate::SoftwareRaster: return "software_raster";
+            case Substrate::OpenGL: return "opengl";
+            case Substrate::Vulkan: return "vulkan";
+        }
+        return "unknown";
+    }
+
+    inline const char* render_domain_kind_name(RenderDomainKind k)
+    {
+        switch (k)
+        {
+            case RenderDomainKind::Unspecified: return "unspecified";
+            case RenderDomainKind::Any: return "any";
+            case RenderDomainKind::Pinned: return "pinned";
+        }
+        return "unknown";
+    }
+
+    inline std::string render_domain_name(const RenderDomain& d)
+    {
+        if (d.kind == RenderDomainKind::Unspecified) return "unspecified";
+        if (d.kind == RenderDomainKind::Any) return "any";
+        std::string out = execution_unit_name(d.unit);
+        if (d.substrate_pinned)
+        {
+            out += ':';
+            out += substrate_name(d.substrate);
+        }
+        return out;
+    }
+
+    // Resource-level compatibility across two declared domains.
+    //
+    // Note what falls out of the two axes rather than being special-cased: an
+    // unpinned device resource is compatible with a pinned GL/Vulkan one, while
+    // host vs device is FALSE - i.e. an undeclared cross-unit crossing is a
+    // rejection, which is the hybrid legality rule.
+    inline bool render_domains_compatible(const RenderDomain& a, const RenderDomain& b)
+    {
+        if (a.kind == RenderDomainKind::Unspecified || b.kind == RenderDomainKind::Unspecified) return true;
+        if (a.kind == RenderDomainKind::Any || b.kind == RenderDomainKind::Any) return true;
+        if (a.unit != b.unit) return false;
+        if (!a.substrate_pinned || !b.substrate_pinned) return true;
+        return a.substrate == b.substrate;
+    }
 
     enum class PassSemanticSpace : uint8_t
     {
@@ -346,7 +482,7 @@ namespace shs
     {
         PassSemantic semantic = PassSemantic::Unknown;
         ContractAccess access = ContractAccess::Read;
-        ContractDomain domain = ContractDomain::Any;
+        RenderDomain domain = render_domain_unspecified();
         PassSemanticSpace space = PassSemanticSpace::Auto;
         PassSemanticEncoding encoding = PassSemanticEncoding::Auto;
         PassSemanticLifetime lifetime = PassSemanticLifetime::Auto;
@@ -369,7 +505,7 @@ namespace shs
     inline PassSemanticRef make_semantic_ref(
         PassSemantic s,
         ContractAccess access,
-        ContractDomain d = ContractDomain::Any,
+        RenderDomain d = render_domain_unspecified(),
         const char* alias = nullptr,
         PassSemanticSpace space_override = PassSemanticSpace::Auto,
         PassSemanticEncoding encoding_override = PassSemanticEncoding::Auto,
@@ -398,17 +534,17 @@ namespace shs
         return out;
     }
 
-    inline PassSemanticRef read_semantic(PassSemantic s, ContractDomain d = ContractDomain::Any, const char* alias = nullptr)
+    inline PassSemanticRef read_semantic(PassSemantic s, RenderDomain d = render_domain_unspecified(), const char* alias = nullptr)
     {
         return make_semantic_ref(s, ContractAccess::Read, d, alias);
     }
 
-    inline PassSemanticRef write_semantic(PassSemantic s, ContractDomain d = ContractDomain::Any, const char* alias = nullptr)
+    inline PassSemanticRef write_semantic(PassSemantic s, RenderDomain d = render_domain_unspecified(), const char* alias = nullptr)
     {
         return make_semantic_ref(s, ContractAccess::Write, d, alias);
     }
 
-    inline PassSemanticRef read_write_semantic(PassSemantic s, ContractDomain d = ContractDomain::Any, const char* alias = nullptr)
+    inline PassSemanticRef read_write_semantic(PassSemantic s, RenderDomain d = render_domain_unspecified(), const char* alias = nullptr)
     {
         return make_semantic_ref(s, ContractAccess::ReadWrite, d, alias);
     }

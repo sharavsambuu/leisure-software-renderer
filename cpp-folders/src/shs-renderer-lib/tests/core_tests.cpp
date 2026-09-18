@@ -340,14 +340,14 @@ namespace
         shs::renderpath::TechniquePassContract depth_writer{};
         depth_writer.supported_modes_mask = shs::render::technique_mode_bit(shs::TechniqueMode::ForwardPlus);
         depth_writer.semantics = {
-            shs::renderpath::write_semantic(shs::PassSemantic::Depth, shs::ContractDomain::Software, "depth")
+            shs::renderpath::write_semantic(shs::PassSemantic::Depth, shs::render_domain_host(), "depth")
         };
 
         shs::renderpath::TechniquePassContract depth_reader{};
         depth_reader.supported_modes_mask = shs::render::technique_mode_bit(shs::TechniqueMode::ForwardPlus);
         depth_reader.requires_depth_prepass = true;
         depth_reader.semantics = {
-            shs::renderpath::read_semantic(shs::PassSemantic::Depth, shs::ContractDomain::Software, "depth")
+            shs::renderpath::read_semantic(shs::PassSemantic::Depth, shs::render_domain_host(), "depth")
         };
 
         shs::renderpath::PluggablePipeline pipeline{};

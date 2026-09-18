@@ -60,10 +60,16 @@ namespace shs
             recipes_.clear();
         }
 
+        // RP-1 (graduation req 4): ONE recipe, not one per substrate. This used
+        // to register two backend-forked recipes
+        // (`soft_shadow_culling_vk_default` / `soft_shadow_culling_sw_default`);
+        // the substrate a pass runs on is now a resolution OUTPUT, so a host that
+        // advertises its substrate set gets Vulkan, OpenGL or the host rasterizer
+        // out of this single registry entry. Registered under the unified name
+        // `soft_shadow_culling`; nothing looked the old two names up.
         void register_default_recipes()
         {
-            (void)register_recipe(make_default_soft_shadow_culling_recipe(RenderBackendType::Vulkan));
-            (void)register_recipe(make_default_soft_shadow_culling_recipe(RenderBackendType::Software));
+            (void)register_recipe(make_soft_shadow_culling_recipe(SubstratePolicy::DevicePreferred));
         }
 
     private:
