@@ -106,6 +106,9 @@ resource lifetimes remain at the execution edge.
   and Vulkan validation reports no errors on an available backend. Depends on G1.
   — PARTIAL 2026-09-17 (slice 1, `b2d7d79`): new
   `execution/rhi/drivers/vulkan/vk_offscreen.hpp` — explicit (non-lazy) owned
+  (Path staleness recorded 2026-09-18: that realization now lives at
+  `shs/rhi/vulkan/value/vk_offscreen.hpp`; the `execution/rhi/drivers/` spelling was
+  retired with the R5 forwarder sweep — commit `8b6484b`.)
   realization of a narrowly-supported attachment config: RGBA8_UNorm 2D, 1
   mip/layer, ColorAttachment usage, LOAD_OP_CLEAR (transparent black), STORE,
   no depth, single subpass with external serialization dependency;

@@ -1,5 +1,9 @@
 # Renderer-Lib Review (2026-09-18) — hot-path & follow-up todo list
 
+> (ARCHIVED to `docs/outdated/` on 2026-09-18 per the retention policy:
+> supersession by completion — R1–R5 resolved, gates landed as tests; retained
+> as provenance incl. the recorded R3 contention benchmark.)
+
 > Status: **closed (2026-09-18)** — R1–R5 resolved same day, see per-item DONE
 > notes. Source review:
 > [`docs/review/2026-09-18_antigravity_shs_renderer_lib_review.md`](../review/2026-09-18_antigravity_shs_renderer_lib_review.md)

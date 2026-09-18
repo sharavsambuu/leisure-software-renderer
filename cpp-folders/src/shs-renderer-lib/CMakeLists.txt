@@ -37,7 +37,7 @@ if(SHS_RENDERER_WITH_SDL3)
 endif()
 set(SHS_RENDERER_HAS_SDL2 OFF)
 if(SHS_RENDERER_WITH_SDL2)
-    # Dual-dispatch constraint (sdl3_cutover_runbook §7): a binary that
+    # Dual-dispatch constraint (docs/outdated/sdl3_cutover_runbook.md (archived 2026-09-18) §7): a binary that
     # references BOTH backends' factories (seam consumers such as the
     # adventure demos' --window front-end) must link at least one SDK as a
     # shared library — static SDL2 + static SDL3 collide on the dynapi
@@ -648,7 +648,7 @@ if(SHS_RENDERER_BUILD_TESTS)
     set_tests_properties(shs_renderer_boundary_check PROPERTIES
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
     )
-    # Backend seam symbol-hygiene gate (sdl3_cutover_runbook §7.5; governance
+    # Backend seam symbol-hygiene gate (docs/outdated/sdl3_cutover_runbook.md (archived 2026-09-18) §7.5; governance
     # todo G1.2): the SDL2 anchor object must carry zero undefined SDL_*/IMG_*
     # symbols — direct SDL2 calls in the dlopen-dispatch anchor TU are exactly
     # the flat-namespace hijack the dispatch exists to prevent. The SDL3

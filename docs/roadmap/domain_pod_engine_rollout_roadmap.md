@@ -236,6 +236,11 @@ streaming-store kernels land on real contiguous columns.
 
 ## Phase P2 — Vulkan Driver, Pod-First
 
+> Staleness note (2026-09-18, R5 commit `8b6484b`): the `rhi/drivers/vulkan/` facade tree
+> created by this phase was retired the same day — zero live includes of the old path;
+> `shs/rhi/vulkan/` value+runtime headers are the only spelling. Paths below are the
+> historical record of this phase, not current spellings.
+
 Goal: create the missing `rhi/drivers/vulkan/` against the existing value-desc
 vocabulary (`resource_desc`, `command_desc`, `pipeline_desc`, `sync_desc`).
 

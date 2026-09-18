@@ -1,5 +1,9 @@
 # SDL3 cutover runbook (windowing dependency, 2026-09)
 
+> (ARCHIVED to `docs/outdated/` on 2026-09-18 per the archive retention
+> policy: executed & verified track, zero open items — retained as provenance,
+> never re-opened.)
+
 > **Status: EXECUTED and VERIFIED — full build green, CTest 43/43, both
 > boundary gates green (2026-09-17).** Ruling context: SDL2→SDL3 now, no
 > dual support (R4) — same clean-cutover precedent as the forwarder-tree and

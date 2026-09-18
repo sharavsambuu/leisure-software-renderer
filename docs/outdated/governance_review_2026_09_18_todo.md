@@ -1,6 +1,9 @@
 # Governance Review (2026-09-18) — improvement todo list
 
-> Status: **active (2026-09-17 started; review dated 2026-09-18)**. Source review:
+> Status: **closed (2026-09-18); archived to `docs/outdated/` same day per the
+> retention policy** (G1–G3 all DONE/CLOSED — 0 open / 8 done, commit
+> `983925c`). Banner corrected from a stale "active" during the 2026-09-18
+> docs sweep. Source review:
 > [`docs/review/2026-09-18_antigravity_constitutions_and_laws_review.md`](../review/2026-09-18_antigravity_constitutions_and_laws_review.md)
 > (Constitutions I–III + annexes: tensions T1–T4, recommendations P1–P3, plus
 > agent additions A1–A2). Law precedence: Constitution II §2.2 (stricter rule

@@ -1,6 +1,10 @@
 # Namespace cutover mapping and deprecation schedule
 
-Step 7 of `docs/outdated/engine_domain_separation_migration.md` (archived 2026-09-17; all phases complete) moved the root `shs::` public the root `shs::` public
+> Status: **active (generated 2026-09-17; 0.2.0 deprecation schedule pending)**
+> — loud-header banner added during the 2026-09-18 docs sweep. Header prose
+> corruption (duplicated phrase) repaired same day; body untouched.
+
+Step 7 of `docs/outdated/engine_domain_separation_migration.md` (archived 2026-09-17; all phases complete) moved the root `shs::` public
 symbols into owner namespaces (slices: core, geometry, task, platform, input,
 scene, camera, gfx, lighting, sky, frame, render, resources, renderpath, rhi,
 app). Generated 2026-09-17 by `tools/namespace_spelling_mapping.py`.

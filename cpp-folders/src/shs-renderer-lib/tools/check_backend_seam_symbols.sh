@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Backend seam symbol-hygiene gate (sdl3_cutover_runbook §7.5; governance
+# Backend seam symbol-hygiene gate (docs/outdated/sdl3_cutover_runbook.md (archived 2026-09-18) §7.5; governance
 # todo G1.2, from the 2026-09-18 constitutions & laws review).
 #
 # Contract: the SDL2 windowing/texture anchor TU (src/platform_sdl2_anchor.cpp
@@ -67,7 +67,7 @@ failed=0
 for obj in "${sdl2_objects[@]}"; do
     undef="$(nm -u "${obj}" 2>/dev/null | awk '{print $NF}' | grep -E '^(SDL_|IMG_)' | sort -u || true)"
     if [[ -n "${undef}" ]]; then
-        echo "[backend-seam-symbols] FAIL: undefined SDL_*/IMG_* symbols in ${obj} — a direct SDK call sits in the dlopen-dispatch anchor TU (flat-namespace hijack hazard; sdl3_cutover_runbook §7.5)"
+        echo "[backend-seam-symbols] FAIL: undefined SDL_*/IMG_* symbols in ${obj} — a direct SDK call sits in the dlopen-dispatch anchor TU (flat-namespace hijack hazard; docs/outdated/sdl3_cutover_runbook.md (archived 2026-09-18) §7.5)"
         echo "${undef}" | sed 's/^/    /'
         failed=1
     else

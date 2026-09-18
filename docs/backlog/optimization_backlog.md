@@ -1,5 +1,13 @@
 # Optimization & Culling Backlog
 
+> Status: **active (2026-09-18)** — live strategic/implementation backlog for
+> `shs-renderer-lib` performance & quality work. Nature: schedule, not law —
+> items land per the law-budget norm (Constitution II §2.2(5): each named
+> gate met before ticking). Loud-header banner added during the 2026-09-18
+> docs sweep; the file previously shipped without a status banner. The
+> rasterizer-specific hot-path track (R1–R5) is closed and archived at
+> [`docs/outdated/rasterizer_hot_path_todo.md`](../outdated/rasterizer_hot_path_todo.md).
+
 This document tracks the active backlog of performance and quality improvements for `shs-renderer-lib`. It combines strategic roadmaps with granular implementation tasks.
 
 ---

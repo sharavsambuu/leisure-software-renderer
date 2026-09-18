@@ -71,7 +71,8 @@ vcpkg install vulkan-memory-allocator       # REQUIRED at configure time even fo
 > seam later. SDL2/SDL3 headers never share a translation unit (per-backend
 > anchor TUs; `SHS_HAS_SDL2` / `SHS_HAS_SDL3` feature defines). Options:
 > `SHS_RENDERER_WITH_SDL3` (default ON, REQUIRED) and `SHS_RENDERER_WITH_SDL2`
-> (default ON, best-effort). See `docs/backlog/sdl3_cutover_runbook.md` §7
+> (default ON, best-effort). See
+> `docs/outdated/sdl3_cutover_runbook.md` (archived 2026-09-18) §7
 > for the seam, the `vk_backend.hpp` interop change and the rename table.
 >
 > **Runtime dispatch (2026-09-17, later session):** the SDL2 backend resolves
