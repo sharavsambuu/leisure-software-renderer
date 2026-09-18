@@ -649,6 +649,25 @@ if(SHS_RENDERER_BUILD_TESTS)
     endif()
     add_test(NAME shs_renderer_pass_id_open_tests COMMAND shs_renderer_pass_id_open_tests)
 
+    # Shader identity gate (Slang plan P1.5): one ShaderId names one authored
+    # shader, each backend resolves its own realization (software program vs
+    # Vulkan module + entry points), and a backend with no realization refuses
+    # loudly instead of silently approximating. GPU-free; the authored-source
+    # check reads the .slang file that is actually compiled.
+    add_executable(shs_renderer_shader_identity_tests
+        tests/shader_identity_tests.cpp
+    )
+    target_link_libraries(shs_renderer_shader_identity_tests PRIVATE shs::renderer-values)
+    target_compile_features(shs_renderer_shader_identity_tests PRIVATE cxx_std_23)
+    if(MSVC)
+        target_compile_options(shs_renderer_shader_identity_tests PRIVATE /W4)
+    else()
+        target_compile_options(shs_renderer_shader_identity_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+    target_compile_definitions(shs_renderer_shader_identity_tests PRIVATE
+        SHS_SHADER_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/shaders")
+    add_test(NAME shs_renderer_shader_identity_tests COMMAND shs_renderer_shader_identity_tests)
+
     add_custom_target(shs_renderer_boundary_check
         COMMAND "${CMAKE_COMMAND}" -E env "PYTHON=${Python3_EXECUTABLE}"
             "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_kdba_boundaries.sh"

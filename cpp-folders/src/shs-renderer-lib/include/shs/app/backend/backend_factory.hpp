@@ -76,7 +76,7 @@ namespace shs
                 out.backend = std::make_unique<OpenGLRenderBackend>();
                 out.auxiliary_backends.push_back(std::make_unique<SoftwareRenderBackend>());
                 out.active = RenderBackendType::OpenGL;
-                out.note = "OpenGL backend selected. Software backend is registered as hybrid fallback for unported passes.";
+                out.note = "OpenGL backend selected. No OpenGL shader realization exists yet (zero registered identities realize OpenGL), so the software backend serves every pass; a shader-identity resolve for OpenGL reports BackendNotRealized rather than silently substituting the CPU program.";
                 return out;
             }
             case RenderBackendType::Vulkan:

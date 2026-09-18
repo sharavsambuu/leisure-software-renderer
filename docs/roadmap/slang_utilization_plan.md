@@ -121,6 +121,20 @@ discipline.
   `pass_pbr_forward`/`pass_tonemap` handlers — first proof that the *same
   recipe* executes on both substrates with shader identity as data.
 
+- **STATUS 2026-09-18 — manifest core landed (verified).** `ShaderId`,
+  `ShaderEntryPoints`, realization masks, `ShaderDesc`, `ShaderBinding`, the
+  closed `ShaderIdentityError` vocabulary and the caller-owned `ShaderManifest`
+  now exist in `include/shs/render/shader/shader_identity.hpp`, with the
+  value-tier builtin census in `builtin_shader_manifest.hpp`. The software
+  realization's entry-name law resolves through the manifest instead of two
+  string literals, and gate `shs_renderer_shader_identity_tests` (83 assertions,
+  GPU-free) verifies identity against the authored `.slang` source that is
+  actually compiled. Full CTest 73/73. Evidence:
+  [`docs/backlog/shader_identity_manifest_evidence_2026-09-18.md`](../backlog/shader_identity_manifest_evidence_2026-09-18.md).
+  Still open in this phase: the `minimal_forward` recipe, the `minimal_scene` /
+  `tonemap` Slang modules, and consumer-owned shader ids (rule-of-two over the
+  pass-id registry shape).
+
 ### P2 — Reflection → pod driver
 - `slangc` reflection JSON → `build/shaders/slang/<pass>.json`.
 - Generate/validate value descs for `vk_pipelines.hpp`/`vk_resources.hpp`:

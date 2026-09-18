@@ -19,6 +19,7 @@
 
 #include "shs/rhi/core/offscreen_execution.hpp"
 #include "shs/render/shader/program.hpp"
+#include "shs/render/shader/shader_identity.hpp"
 #include "shs/render/software/rasterizer.hpp"
 #include "shs/render/targets/rt_types.hpp"
 #include "shs/resources/mesh.hpp"
@@ -51,8 +52,11 @@ namespace shs
 
         // Entry names this build has a CPU realization for. A descriptor whose
         // modules name anything else is rejected by prepare_offscreen().
-        inline constexpr std::string_view vertex_entry = "vs_main";
-        inline constexpr std::string_view fragment_entry = "fs_main";
+        // Single-sourced from the shader identity vocabulary (Slang plan P1.5):
+        // the same constants the authored offscreen_pipeline.slang module's
+        // entry points are declared under, so the pair cannot drift apart.
+        inline constexpr std::string_view vertex_entry = shs::render::kShaderEntryVsMain;
+        inline constexpr std::string_view fragment_entry = shs::render::kShaderEntryFsMain;
 
         // Realizes vs_main()/vs_uploaded(): the fetched position already is clip
         // space (the authored z/w are 0/1).
@@ -81,6 +85,41 @@ namespace shs
         {
             return shs::render::ShaderProgramFn<decltype(triangle_vs()), decltype(flat_fs())>{
                 triangle_vs(), flat_fs()};
+        }
+
+        // The same program, type-erased for the identity layer only. The
+        // execution path keeps using flat_triangle_program() above, so the
+        // per-pixel call stays inlinable (R1) while identity, resolution and
+        // tests get one handle.
+        inline shs::render::ShaderProgram erased_flat_triangle_program()
+        {
+            return shs::render::make_erased_program(flat_triangle_program());
+        }
+
+        // One identity, two realizations: this CPU program, and the authored
+        // tests/shaders/offscreen_pipeline.slang module whose entry points are
+        // the very constants above. The module name is the same stem the CMake
+        // slangc step compiles.
+        inline shs::render::ShaderDesc offscreen_pipeline_shader_desc()
+        {
+            shs::render::ShaderDesc d{};
+            d.name = shs::render::shader_id_builtin_name(shs::render::ShaderId::OffscreenPipeline);
+            d.entries = shs::render::ShaderEntryPoints{vertex_entry, fragment_entry, {}};
+            d.module = "offscreen_pipeline";
+            d.realization_mask = static_cast<uint8_t>(
+                shs::render::kShaderRealizationSoftware | shs::render::kShaderRealizationVulkan);
+            d.cpp_impl = &erased_flat_triangle_program;
+            return d;
+        }
+
+        // Caller-owned and built on demand: no ambient registry decides what the
+        // CPU is able to execute.
+        inline shs::render::ShaderManifest offscreen_shader_manifest()
+        {
+            shs::render::ShaderManifest m{};
+            const shs::render::ShaderDesc d = offscreen_pipeline_shader_desc();
+            (void)m.register_shader(shs::render::ShaderId::OffscreenPipeline, d.name, d);
+            return m;
         }
         // Stable, descriptor-derived identity: identical descriptors must resolve
         // to the same id across reset and re-preparation, exactly as the GPU
@@ -198,12 +237,21 @@ namespace shs
             // The generic contract has no buffer-creation entry point, so only the
             // attribute-less Procedural layout is realizable on the CPU.
             if (pipeline.vertex_layout != RHIVertexLayout::Procedural) return 0;
-            // The CPU cannot execute arbitrary SPIR-V: the module is bound by
-            // entry name to a built-in realization, so an unknown name is a
-            // rejection, never a silent approximation.
-            if (std::string_view(pipeline.vs.entry) != sw_offscreen_recipe::vertex_entry ||
-                std::string_view(pipeline.fs.entry) != sw_offscreen_recipe::fragment_entry)
-                return 0;
+            // The CPU cannot execute arbitrary SPIR-V: the descriptor's entry
+            // points must resolve to a registered shader identity realized on
+            // this backend, so an unknown name is a rejection, never a silent
+            // approximation. The law lives in the shader identity layer (Slang
+            // plan P1.5) rather than in a pair of literals here.
+            if (!pipeline.vs.entry || !pipeline.fs.entry) return 0;
+            const auto shader_manifest = sw_offscreen_recipe::offscreen_shader_manifest();
+            const auto resolved = shader_manifest.resolve(
+                shs::render::ShaderId::OffscreenPipeline,
+                shs::render::RenderBackendType::Software,
+                shs::render::ShaderEntryPoints{
+                    std::string_view(pipeline.vs.entry),
+                    std::string_view(pipeline.fs.entry),
+                    {}});
+            if (!resolved) return 0;
 
             target_id_ = sw_offscreen_recipe::target_id_of(target);
             pipeline_id_ = sw_offscreen_recipe::pipeline_id_of(pipeline);

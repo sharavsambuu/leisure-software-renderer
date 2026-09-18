@@ -53,6 +53,27 @@
       (was 71); evidence
       [`open_pass_id_registry_evidence_2026-09-18.md`](open_pass_id_registry_evidence_2026-09-18.md).
       Independently corroborated by the 2026-09-18 Antigravity library review.
+- [x] **Slang-plan P1.5 — shader identity as data (manifest core).** **CLOSED
+      2026-09-18:** one `ShaderId` names one authored shader and each backend
+      resolves its own realization — software yields a `ShaderProgram`, Vulkan
+      yields module + entry points, and a backend with no realization reports
+      `BackendNotRealized` instead of falling back. `ShaderManifest` is
+      caller-owned/copyable/comparable (no ambient state), registration is
+      verified `(id, name)` pairing, and the software offscreen realization's
+      entry-name law now resolves through it (its duplicated literals are gone).
+      Gate `shs_renderer_shader_identity_tests` (83 assertions, GPU-free,
+      verified against the authored `offscreen_pipeline.slang`); full CTest
+      **73/73**; contract-placement coverage 226 → **228** headers; three
+      mutation probes failed the gate and were reverted byte-identically.
+      Evidence
+      [`shader_identity_manifest_evidence_2026-09-18.md`](shader_identity_manifest_evidence_2026-09-18.md).
+      Residuals stated there: no consumer/open shader ids yet; the Vulkan
+      binding is descriptive truth, not yet the loader's input (P2); the value
+      builtins are registered software-only on purpose, making the
+      dual-realization gap a census rather than invisible debt. The OpenGL
+      selection note in `backend_factory.hpp` was corrected in the same commit —
+      the identity layer now refuses OpenGL by data, where before selecting it
+      silently ran software.
 - [ ] **P3 box 6, second half — open light/technique registries.**
       `RenderPathLightVolumeProvider` + the technique/light preset enums get the
       same treatment (rule of two: reuse `PassIdRegistry`'s shape). Unblocked,
