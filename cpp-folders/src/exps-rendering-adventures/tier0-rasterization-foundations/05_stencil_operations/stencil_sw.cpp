@@ -13,6 +13,7 @@
 #include <glm/glm.hpp>
 
 #include "../common/adventures_frame.hpp"
+#include "../common/adventures_window.hpp"
 #include "../common/adventures_sw_raster.hpp"
 #include "../common/t0_scenes.hpp"
 
@@ -20,7 +21,8 @@ using namespace adventures;
 
 int main(int argc, char* argv[])
 {
-    const std::string out_path = argc > 1 ? argv[1] : "t0_05_stencil_sw.png";
+    const DemoArgs args = parse_demo_args(argc, argv, "t0_05_stencil_sw.png");
+    const std::string out_path = args.out_path;
 
     Frame frame(640, 480);
     frame.clear(12, 12, 16);
@@ -62,5 +64,9 @@ int main(int argc, char* argv[])
     }
     std::printf("wrote %s (%dx%d) — left: quad inside stencil mask, right: inverted mask\n",
                 out_path.c_str(), frame.width, frame.height);
+    if (args.windowed)
+    {
+        present_frame_windowed(frame, "t0 05 — stencil operations (software)", out_path, args.backend);
+    }
     return 0;
 }

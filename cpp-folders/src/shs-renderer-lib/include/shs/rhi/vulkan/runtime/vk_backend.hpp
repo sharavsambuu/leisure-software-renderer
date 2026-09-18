@@ -26,12 +26,9 @@
 
 #include "shs/rhi/core/backend.hpp"
 #include "shs/rhi/vulkan/runtime/vk_component_notes.hpp"
-
-struct SDL_Window;
+#include "shs/platform/platform_runtime.hpp"
 
 #ifdef SHS_HAS_VULKAN
-#include <SDL3/SDL.h>
-#include <SDL3/SDL_vulkan.h>
 #include <vulkan/vulkan.h>
 #include "shs/rhi/vulkan/runtime/vk_memory_utils.hpp"
 #endif
@@ -47,7 +44,10 @@ namespace shs
     public:
         struct InitDesc
         {
-            SDL_Window* window = nullptr;
+            // Platform-agnostic window interop (R4 platform-seam ruling):
+            // obtained from IPlatformRuntime::window_vulkan_interop(). The
+            // RHI never touches a windowing SDK directly.
+            platform::IVulkanWindowInterop* window_interop = nullptr;
             int width = 0;
             int height = 0;
             bool enable_validation = false;
@@ -133,8 +133,8 @@ namespace shs
         {
 #ifdef SHS_HAS_VULKAN
             shutdown();
-            if (!desc.window) return false;
-            window_ = desc.window;
+            if (!desc.window_interop) return false;
+            window_interop_ = desc.window_interop;
             enable_validation_ = desc.enable_validation;
             requested_width_ = desc.width;
             requested_height_ = desc.height;
@@ -889,10 +889,10 @@ namespace shs
         {
             if (init_attempted_) return initialized_;
             init_attempted_ = true;
-            if (!window_) return false;
+            if (!window_interop_) return false;
 
             if (!create_instance()) { std::fprintf(stderr, "[shs] Vulkan: create_instance failed\n"); shutdown(); return false; }
-            if (!SDL_Vulkan_CreateSurface(window_, instance_, nullptr, &surface_)) { std::fprintf(stderr, "[shs] Vulkan: create surface failed\n"); shutdown(); return false; }
+            if (!window_interop_->vulkan_create_surface((void*)instance_, (void**)&surface_)) { std::fprintf(stderr, "[shs] Vulkan: create surface failed\n"); shutdown(); return false; }
             if (!pick_physical_device()) { std::fprintf(stderr, "[shs] Vulkan: pick_physical_device failed\n"); shutdown(); return false; }
             if (!create_device_and_queues()) { std::fprintf(stderr, "[shs] Vulkan: create_device_and_queues failed\n"); shutdown(); return false; }
             if (!create_swapchain()) { std::fprintf(stderr, "[shs] Vulkan: create_swapchain failed\n"); shutdown(); return false; }
@@ -912,8 +912,10 @@ namespace shs
 
         bool create_instance()
         {
-            Uint32 ext_count = 0;
-            const char* const* window_exts = SDL_Vulkan_GetInstanceExtensions(&ext_count);
+        bool create_instance()
+        {
+            uint32_t ext_count = 0;
+            const char* const* window_exts = window_interop_->vulkan_instance_extensions(&ext_count);
             if (!window_exts || ext_count == 0) return false;
             std::vector<const char*> exts(window_exts, window_exts + ext_count);
 
@@ -1625,7 +1627,7 @@ namespace shs
             {
                 int dw = 0;
                 int dh = 0;
-                SDL_GetWindowSizeInPixels(window_, &dw, &dh);
+                window_interop_->drawable_size_pixels(&dw, &dh);
                 w = dw;
                 h = dh;
             }
@@ -2016,7 +2018,7 @@ namespace shs
             if (device_ == VK_NULL_HANDLE) return false;
             int w = 0;
             int h = 0;
-            SDL_GetWindowSizeInPixels(window_, &w, &h);
+            if (window_interop_) window_interop_->drawable_size_pixels(&w, &h);
             if (w <= 0 || h <= 0) return false;
             const VkResult idle_res = vkDeviceWaitIdle(device_);
             if (idle_res == VK_ERROR_DEVICE_LOST)
@@ -2109,7 +2111,7 @@ namespace shs
             compute_q_ = VK_NULL_HANDLE;
             requested_width_ = 0;
             requested_height_ = 0;
-            window_ = nullptr;
+            window_interop_ = nullptr;
             layers_.clear();
             initialized_ = false;
             init_attempted_ = false;
@@ -2158,7 +2160,7 @@ namespace shs
         bool capabilities_ready_ = false;
 #ifdef SHS_HAS_VULKAN
 
-        SDL_Window* window_ = nullptr;
+        platform::IVulkanWindowInterop* window_interop_ = nullptr;
         bool enable_validation_ = false;
         bool request_ray_bundle_ = false;
         bool resize_pending_ = false;

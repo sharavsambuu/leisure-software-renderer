@@ -4,7 +4,7 @@
 Structural rules over the real include graph (forwarders resolved):
 
   R1  no include cycles between canonical (non-forwarder) headers
-  R2  raw SDK includes (Jolt/SDL3/Assimp/Vulkan) only in integration-tier
+  R2  raw SDK includes (Jolt/SDL2/SDL3/Assimp/Vulkan) only in integration-tier
       headers (adapter dirs, rhi/, driver-adjacent vk_* execution headers
       and the pass-adapter aggregation pass_adapters.hpp,
       or files feature-guarded with SHS_HAS_<SDK>)
@@ -27,7 +27,7 @@ FORWARDER_MARKER = "Compatibility include"
 ADAPTER_PATH_RE = re.compile(r"(^|/)adapters/")
 
 SHS_INC_RE = re.compile(r'#include\s+"(shs/[^"]+)"')
-SDK_INC_RE = re.compile(r'#include\s+[<"](Jolt/|SDL3/|assimp/|vulkan/vulkan\.h|GL/)')
+SDK_INC_RE = re.compile(r'#include\s+[<"](Jolt/|SDL2/|SDL2_image/|SDL3/|SDL3_image/|assimp/|vulkan/vulkan\.h|GL/)')
 SDK_TOKEN_RE = re.compile(r"JPH::|SDL_[A-Z]|aiScene|AiMesh|Vk[A-Z]")
 GUARD_RE = re.compile(r"#\s*if\s+defined\(SHS_HAS_(JOLT|VULKAN|ASSIMP|SDL)\)")
 INTEGRATION_PREFIXES = ("rhi/", "platform/", "app/backend/")

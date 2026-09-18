@@ -3,7 +3,7 @@
   "scope": "cpp-folders/src/shs-renderer-lib/include",
   "coverage": "all .h/.hpp public headers; literal includes in all conditional branches",
   "approval": "proposed paths are inventory only; reviewed migrations live in engine_header_migration_manifest.json",
-  "header_count": 232,
+  "header_count": 237,
   "headers": [
     {
       "current": "shs/app/backend/backend_factory.hpp",
@@ -2743,6 +2743,90 @@
         "string"
       ],
       "tracked_consumers": [
+        "cpp-folders/src/shs-renderer-lib/include/shs/rhi/vulkan/runtime/vk_backend.hpp"
+      ],
+      "build_target": "review-values-vs-aggregate"
+    },
+    {
+      "current": "shs/platform/sdl/sdl2_runtime.hpp",
+      "proposed_canonical": "shs/platform/sdl/sdl2_runtime.hpp",
+      "review_status": "already-named-review-dependencies",
+      "proposed_owner": "platform",
+      "namespace_declarations": [
+        "platform",
+        "shs"
+      ],
+      "visibility": "public-include-tree",
+      "direct_dependencies": [
+        "SDL.h",
+        "SDL2/SDL.h",
+        "SDL2/SDL_image.h",
+        "SDL2/SDL_vulkan.h",
+        "SDL2_image/SDL_image.h",
+        "SDL_image.h",
+        "SDL_vulkan.h",
+        "cstdint",
+        "cstring",
+        "dlfcn.h",
+        "memory",
+        "shs/platform/platform_runtime.hpp",
+        "string",
+        "vector"
+      ],
+      "internal_dependencies": [
+        "shs/platform/platform_runtime.hpp"
+      ],
+      "external_dependencies": [
+        "SDL.h",
+        "SDL2/SDL.h",
+        "SDL2/SDL_image.h",
+        "SDL2/SDL_vulkan.h",
+        "SDL2_image/SDL_image.h",
+        "SDL_image.h",
+        "SDL_vulkan.h",
+        "cstdint",
+        "cstring",
+        "dlfcn.h",
+        "memory",
+        "string",
+        "vector"
+      ],
+      "tracked_consumers": [],
+      "build_target": "review-values-vs-aggregate"
+    },
+    {
+      "current": "shs/platform/sdl/sdl3_runtime.hpp",
+      "proposed_canonical": "shs/platform/sdl/sdl3_runtime.hpp",
+      "review_status": "already-named-review-dependencies",
+      "proposed_owner": "platform",
+      "namespace_declarations": [
+        "platform",
+        "shs"
+      ],
+      "visibility": "public-include-tree",
+      "direct_dependencies": [
+        "SDL3/SDL.h",
+        "SDL3/SDL_vulkan.h",
+        "SDL3_image/SDL_image.h",
+        "cstdint",
+        "cstring",
+        "memory",
+        "shs/platform/platform_runtime.hpp",
+        "string"
+      ],
+      "internal_dependencies": [
+        "shs/platform/platform_runtime.hpp"
+      ],
+      "external_dependencies": [
+        "SDL3/SDL.h",
+        "SDL3/SDL_vulkan.h",
+        "SDL3_image/SDL_image.h",
+        "cstdint",
+        "cstring",
+        "memory",
+        "string"
+      ],
+      "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/include/shs/platform/sdl/sdl_runtime.hpp"
       ],
       "build_target": "review-values-vs-aggregate"
@@ -2758,10 +2842,31 @@
       ],
       "visibility": "public-include-tree",
       "direct_dependencies": [
-        "SDL3/SDL.h",
-        "SDL3_image/SDL_image.h",
-        "cstdint",
-        "cstring",
+        "shs/platform/sdl/sdl3_runtime.hpp"
+      ],
+      "internal_dependencies": [
+        "shs/platform/sdl/sdl3_runtime.hpp"
+      ],
+      "external_dependencies": [],
+      "tracked_consumers": [
+        "cpp-folders/src/exps-gpu-renderer/exp-plumbing/hello_light_types_culling_sw.cpp",
+        "cpp-folders/src/exps-gpu-renderer/exp-plumbing/hello_occlusion_culling_sw.cpp",
+        "cpp-folders/src/exps-gpu-renderer/exp-plumbing/hello_soft_shadow_culling_sw.cpp"
+      ],
+      "build_target": "review-values-vs-aggregate"
+    },
+    {
+      "current": "shs/platform/window_backend.hpp",
+      "proposed_canonical": "shs/platform/window_backend.hpp",
+      "review_status": "already-named-review-dependencies",
+      "proposed_owner": "platform",
+      "namespace_declarations": [
+        "platform",
+        "shs"
+      ],
+      "visibility": "public-include-tree",
+      "direct_dependencies": [
+        "memory",
         "shs/platform/platform_runtime.hpp",
         "string"
       ],
@@ -2769,17 +2874,10 @@
         "shs/platform/platform_runtime.hpp"
       ],
       "external_dependencies": [
-        "SDL3/SDL.h",
-        "SDL3_image/SDL_image.h",
-        "cstdint",
-        "cstring",
+        "memory",
         "string"
       ],
-      "tracked_consumers": [
-        "cpp-folders/src/exps-gpu-renderer/exp-plumbing/hello_light_types_culling_sw.cpp",
-        "cpp-folders/src/exps-gpu-renderer/exp-plumbing/hello_occlusion_culling_sw.cpp",
-        "cpp-folders/src/exps-gpu-renderer/exp-plumbing/hello_soft_shadow_culling_sw.cpp"
-      ],
+      "tracked_consumers": [],
       "build_target": "review-values-vs-aggregate"
     },
     {
@@ -5058,6 +5156,31 @@
       "build_target": "review-values-vs-aggregate"
     },
     {
+      "current": "shs/resources/adapters/texture_loader.hpp",
+      "proposed_canonical": "shs/resources/adapters/texture_loader.hpp",
+      "review_status": "already-named-review-dependencies",
+      "proposed_owner": "resources",
+      "namespace_declarations": [
+        "resources",
+        "shs"
+      ],
+      "visibility": "public-include-tree",
+      "direct_dependencies": [
+        "shs/resources/storage/resource_registry.hpp",
+        "shs/resources/texture.hpp",
+        "string"
+      ],
+      "internal_dependencies": [
+        "shs/resources/storage/resource_registry.hpp",
+        "shs/resources/texture.hpp"
+      ],
+      "external_dependencies": [
+        "string"
+      ],
+      "tracked_consumers": [],
+      "build_target": "review-values-vs-aggregate"
+    },
+    {
       "current": "shs/resources/adapters/texture_loader_sdl.hpp",
       "proposed_canonical": "shs/resources/adapters/texture_loader_sdl.hpp",
       "review_status": "already-named-review-dependencies",
@@ -5087,6 +5210,43 @@
         "cpp-folders/src/shs-renderer-lib/include/shs/resources/adapters/asset_manager.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/resources/adapters/cubemap_loader_sdl.hpp"
       ],
+      "build_target": "review-values-vs-aggregate"
+    },
+    {
+      "current": "shs/resources/adapters/texture_loader_sdl2.hpp",
+      "proposed_canonical": "shs/resources/adapters/texture_loader_sdl2.hpp",
+      "review_status": "already-named-review-dependencies",
+      "proposed_owner": "resources",
+      "namespace_declarations": [
+        "resources",
+        "shs"
+      ],
+      "visibility": "public-include-tree",
+      "direct_dependencies": [
+        "SDL.h",
+        "SDL2/SDL.h",
+        "SDL2/SDL_image.h",
+        "SDL2_image/SDL_image.h",
+        "SDL_image.h",
+        "shs/platform/sdl/sdl2_runtime.hpp",
+        "shs/resources/storage/resource_registry.hpp",
+        "shs/resources/texture.hpp",
+        "string"
+      ],
+      "internal_dependencies": [
+        "shs/platform/sdl/sdl2_runtime.hpp",
+        "shs/resources/storage/resource_registry.hpp",
+        "shs/resources/texture.hpp"
+      ],
+      "external_dependencies": [
+        "SDL.h",
+        "SDL2/SDL.h",
+        "SDL2/SDL_image.h",
+        "SDL2_image/SDL_image.h",
+        "SDL_image.h",
+        "string"
+      ],
+      "tracked_consumers": [],
       "build_target": "review-values-vs-aggregate"
     },
     {
@@ -5934,8 +6094,6 @@
       ],
       "visibility": "public-include-tree",
       "direct_dependencies": [
-        "SDL3/SDL.h",
-        "SDL3/SDL_vulkan.h",
         "algorithm",
         "array",
         "cstdint",
@@ -5944,6 +6102,7 @@
         "cstring",
         "mutex",
         "optional",
+        "shs/platform/platform_runtime.hpp",
         "shs/rhi/core/backend.hpp",
         "shs/rhi/vulkan/runtime/vk_component_notes.hpp",
         "shs/rhi/vulkan/runtime/vk_memory_utils.hpp",
@@ -5954,13 +6113,12 @@
         "vulkan/vulkan.h"
       ],
       "internal_dependencies": [
+        "shs/platform/platform_runtime.hpp",
         "shs/rhi/core/backend.hpp",
         "shs/rhi/vulkan/runtime/vk_component_notes.hpp",
         "shs/rhi/vulkan/runtime/vk_memory_utils.hpp"
       ],
       "external_dependencies": [
-        "SDL3/SDL.h",
-        "SDL3/SDL_vulkan.h",
         "algorithm",
         "array",
         "cstdint",
@@ -7432,11 +7590,13 @@
     "resources": [
       "containers",
       "geometry",
+      "platform",
       "render",
       "sky"
     ],
     "rhi": [
       "containers",
+      "platform",
       "render",
       "renderpath",
       "task"

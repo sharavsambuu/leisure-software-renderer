@@ -67,6 +67,13 @@ namespace adventures
         bool render(const std::vector<VkDraw>& draws, const VkRect2D* scissor_override = nullptr);
         bool save_png(const char* path) const;
 
+        // RGBA8 readback of the last render() (windowed presentation front-end);
+        // empty before the first successful render.
+        const void* color_readback_data() const
+        {
+            return color_readback_.empty() ? nullptr : color_readback_.data();
+        }
+
         uint32_t width() const { return width_; }
         uint32_t height() const { return height_; }
 

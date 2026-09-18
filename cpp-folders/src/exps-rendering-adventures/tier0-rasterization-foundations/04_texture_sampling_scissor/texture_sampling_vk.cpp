@@ -13,6 +13,8 @@
 #include <glm/glm.hpp>
 
 #include "../common/adventures_vk.hpp"
+#include "../common/adventures_frame.hpp"
+#include "../common/adventures_window.hpp"
 #include "../common/t0_scenes.hpp"
 
 using namespace adventures;
@@ -48,7 +50,8 @@ namespace
 
 int main(int argc, char* argv[])
 {
-    const std::string out_path = argc > 1 ? argv[1] : "t0_04_texture_sampling_vk.png";
+    const DemoArgs args = parse_demo_args(argc, argv, "t0_04_texture_sampling_vk.png");
+    const std::string out_path = args.out_path;
     const std::string spv_dir  = SHS_ADVENTURES_SHADER_DIR;
 
     OffscreenVulkan vk;
@@ -90,5 +93,11 @@ int main(int argc, char* argv[])
     }
     std::printf("wrote %s (%ux%u) — left: NEAREST, right: LINEAR, scissor rows 300+ (Slang)\n",
                 out_path.c_str(), vk.width(), vk.height());
+    if (args.windowed && vk.color_readback_data() != nullptr)
+    {
+        Frame frame(int(vk.width()), int(vk.height()));
+        std::memcpy(frame.rgba.data(), vk.color_readback_data(), frame.rgba.size());
+        present_frame_windowed(frame, "t0 04 — texture sampling + scissor (Vulkan/Slang)", out_path, args.backend);
+    }
     return 0;
 }

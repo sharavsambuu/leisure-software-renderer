@@ -11,6 +11,7 @@
 #include <string>
 
 #include "../common/adventures_frame.hpp"
+#include "../common/adventures_window.hpp"
 #include "../common/t0_scenes.hpp"
 
 using namespace adventures;
@@ -74,7 +75,8 @@ static void rasterize_triangle_barycentric(Frame& frame, const T0Vertex& v0, con
 
 int main(int argc, char* argv[])
 {
-    const std::string out_path = argc > 1 ? argv[1] : "t0_01_barycentric_sw.png";
+    const DemoArgs args = parse_demo_args(argc, argv, "t0_01_barycentric_sw.png");
+    const std::string out_path = args.out_path;
 
     Frame frame(640, 480);
     frame.clear(12, 12, 16);  // must match the shared _vk harness clear (adventures_vk.cpp)
@@ -98,5 +100,9 @@ int main(int argc, char* argv[])
         return 1;
     }
     std::printf("wrote %s (%dx%d)\n", out_path.c_str(), frame.width, frame.height);
+    if (args.windowed)
+    {
+        present_frame_windowed(frame, "t0 01 — barycentric interpolation (software)", out_path, args.backend);
+    }
     return 0;
 }

@@ -16,6 +16,7 @@
 #include <glm/glm.hpp>
 
 #include "../common/adventures_frame.hpp"
+#include "../common/adventures_window.hpp"
 #include "../common/adventures_sw_raster.hpp"
 #include "../common/t1_scenes.hpp"
 
@@ -144,7 +145,8 @@ namespace
 
 int main(int argc, char* argv[])
 {
-    const std::string out_path = argc > 1 ? argv[1] : "t1_08_normal_mapping_sw.png";
+    const DemoArgs args = parse_demo_args(argc, argv, "t1_08_normal_mapping_sw.png");
+    const std::string out_path = args.out_path;
 
     Frame frame(640, 480);
     frame.clear(12, 12, 16); // shared clear convention (matches _vk harness)
@@ -163,5 +165,9 @@ int main(int argc, char* argv[])
         return 1;
     }
     std::printf("wrote %s (%dx%d) — left: flat, right: normal-mapped\n", out_path.c_str(), frame.width, frame.height);
+    if (args.windowed)
+    {
+        present_frame_windowed(frame, "t1 08 — normal mapping (software)", out_path, args.backend);
+    }
     return 0;
 }

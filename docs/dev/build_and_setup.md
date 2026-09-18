@@ -48,10 +48,13 @@ below. Vulkan SDK and Slang are per-platform.
 `find_package(... REQUIRED)` — missing any of these aborts CMake:
 
 ```bash
-vcpkg install "sdl3[vulkan]"                # window/input backend for every demo
-                                            # SDL3 cutover 2026-09: SDL2/SDL2_image retired, no dual support.
+vcpkg install "sdl3[vulkan]"                # window/input backend (preferred)
                                             # NOTE: `vulkan` is NOT a default sdl3 feature — the [vulkan]
                                             #       feature is REQUIRED for the windowed Vulkan edge.
+vcpkg install "sdl2"                        # OPTIONAL second windowing backend (platform-agnostic seam
+                                            # 2026-09-17): SDL2 AND SDL3 are both supported; SDL2 discovery
+                                            # is best-effort (missing SDL2 → honest SDL3-only build).
+                                            # `sdl2` ships SDL_vulkan.h unconditionally — no feature needed.
 vcpkg install "sdl3-image[png,jpeg]"   # image loading: REQUIRED for hello-render-target demos
                                             # (HelloShadowMapping, HelloWater, HelloIblSkybox*, ...)
                                             # NOTE: installs as SDL3_image::SDL3_image(-static) on x64-linux;
@@ -61,10 +64,27 @@ vcpkg install assimp                        # model loading (hello-3d-primitives
 vcpkg install vulkan-memory-allocator       # REQUIRED at configure time even for CPU-only work
 ```
 
-> **SDL3 cutover note (2026-09):** the library code, CMake and gates now speak
-> SDL3 only (`find_package(SDL3)`, `SDL3::SDL3`, `SHS_HAS_SDL3`). See
-> `docs/backlog/sdl3_cutover_runbook.md` for the full inventory and the
-> mechanical rename table.
+> **Platform-agnostic windowing seam (2026-09-17):** the SDL3-only stance was
+> superseded the same day — SDL2 and SDL3 are BOTH supported backends behind
+> `IPlatformRuntime` (`create_platform_runtime(WindowDesc, SurfaceDesc,
+> WindowBackend::Auto|Sdl3|Sdl2)`), with SFML/GLFW pluggable into the same
+> seam later. SDL2/SDL3 headers never share a translation unit (per-backend
+> anchor TUs; `SHS_HAS_SDL2` / `SHS_HAS_SDL3` feature defines). Options:
+> `SHS_RENDERER_WITH_SDL3` (default ON, REQUIRED) and `SHS_RENDERER_WITH_SDL2`
+> (default ON, best-effort). See `docs/backlog/sdl3_cutover_runbook.md` §7
+> for the seam, the `vk_backend.hpp` interop change and the rename table.
+>
+> **Runtime dispatch (2026-09-17, later session):** the SDL2 backend resolves
+> its SDL2/SDL2_image calls through `dlopen("libSDL2-2.0.so.0")` at runtime
+> (`shs/platform/sdl/sdl2_runtime.hpp`, `shs_sdl2_api()`), not through static
+> symbol binding — the flat ELF namespace lets a co-linked static SDL3 hijack
+> same-name `SDL_*` symbols otherwise (runbook §7.5). Consequence: a binary
+> using `WindowBackend::Sdl2` needs a shared `libSDL2-2.0.so.0` present at
+> RUNTIME (system package or vcpkg bin dir on PATH/LD path); dlopen failure
+> degrades honestly to the "windowed mode unavailable" note. Demos front this
+> with `adventures_window.hpp`: `--window` opts in to live presentation,
+> `--backend=auto|sdl2|sdl3` pins a runtime (auto = SDL3-preferred, unknown
+> value → stderr warning + auto fallback); default remains headless PNG-out.
 
 Optional / feature-gated:
 

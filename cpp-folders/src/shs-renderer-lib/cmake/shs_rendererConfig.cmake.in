@@ -28,12 +28,36 @@ if(@SHS_RENDERER_PKG_WITH_SDL3@)
         endif()
     endif()
 endif()
+if(@SHS_RENDERER_PKG_WITH_SDL2@)
+    # SDL2 backend was linked into this package build (SDL2-only discovery
+    # via pkg-config without a CMake config is a documented limitation —
+    # consumers need SDL2 targets on their own in that case).
+    find_dependency(SDL2 CONFIG)
+    find_dependency(SDL2_image CONFIG)
+endif()
 if(@SHS_RENDERER_PKG_WITH_ASSIMP@)
     find_dependency(assimp CONFIG)
 endif()
 if(@SHS_RENDERER_PKG_WITH_VULKAN@)
     find_dependency(Vulkan)
 endif()
+
+# CMake >= 3.29 SDL version-conflict detection: this package intentionally
+# links SDL2 AND SDL3 (platform-agnostic windowing seam; per-TU SDK isolation
+# via backend anchor TUs). The freshly re-imported SDL targets re-arm the
+# INTERFACE_SDL_VERSION guard, so clear it here exactly like the in-tree
+# build does — otherwise any consumer target fails to generate.
+foreach(_shs_sdl_prop_tgt SDL3::SDL3 SDL3::SDL3-static SDL2::SDL2 SDL2::SDL2-static)
+    if(TARGET ${_shs_sdl_prop_tgt})
+        get_target_property(_shs_sdl_real ${_shs_sdl_prop_tgt} ALIASED_TARGET)
+        if(_shs_sdl_real)
+            set_target_properties(${_shs_sdl_real} PROPERTIES INTERFACE_SDL_VERSION "")
+        else()
+            set_target_properties(${_shs_sdl_prop_tgt} PROPERTIES INTERFACE_SDL_VERSION "")
+        endif()
+        unset(_shs_sdl_real)
+    endif()
+endforeach()
 
 # Binary-compatibility limitations (documented, migration step 5):
 # - Jolt, xsimd and VulkanMemoryAllocator are FetchContent-owned in-tree and

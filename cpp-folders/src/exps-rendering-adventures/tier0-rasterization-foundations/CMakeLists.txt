@@ -22,11 +22,14 @@ target_include_directories(t0_adventures_common PUBLIC
 target_link_libraries(t0_adventures_common PUBLIC glm::glm)
 target_compile_definitions(t0_adventures_common PUBLIC GLM_FORCE_DEPTH_ZERO_TO_ONE=1)
 target_compile_features(t0_adventures_common PUBLIC cxx_std_23)
+# Platform seam (window_backend.hpp) for the optional --window front-end of
+# every demo: header-only when the demo stays headless; the factory dispatch
+# pulls the compiled anchors at link time. Anchors are honest nullptr stubs
+# when a windowing SDK was not found, so GPU-free/SDL-free CI stays green.
+target_link_libraries(t0_adventures_common PUBLIC shs::renderer)
 
 if(Vulkan_FOUND)
     target_sources(t0_adventures_common PRIVATE common/adventures_vk.cpp)
-    # vk_shader_utils.hpp + SHS_HAS_VULKAN + Vulkan::Vulkan come via the lib
-    target_link_libraries(t0_adventures_common PUBLIC shs::renderer)
 endif()
 
 # ---------------------------------------------------------------------------

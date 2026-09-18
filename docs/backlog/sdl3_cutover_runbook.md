@@ -5,6 +5,12 @@
 > dual support (R4) — same clean-cutover precedent as the forwarder-tree and
 > namespace retirements. SDL3 has been stable (3.2+) since 2025-01; the vcpkg
 > port (`sdl3` 3.4.0, community `sdl3-image`) is mature.
+>
+> **SUPERSEDED 2026-09-17 (same day, owner ruling): the SDL3-only stance is
+> reversed — see §6.** The windowing seam is now **platform-agnostic**: SDL2
+> AND SDL3 are both supported backends behind `IPlatformRuntime`
+> (`window_backend.hpp`), with SFML/GLFW pluggable later. Everything in
+> §1–§5 below remains the accurate record of the SDL3 cutover itself.
 
 ## 1. Scope: complete site inventory (enumerated 2026-09-17)
 
@@ -117,3 +123,135 @@ regenerated for the renamed includes.
   parked monolith; the P3 pod decomposition should move surface creation
   behind `IPlatformRuntime` — same seam as `external_engine_seams.md`).
 - hello-3d-demos SDL2_mixer → SDL3_mixer is parked with the trees.
+
+## 7. Addendum — platform-agnostic seam, SDL2 + SDL3 dual support (2026-09-17)
+
+**Owner ruling (supersedes the §0 "no dual support" R4 ruling, same day):**
+the windowing dependency becomes a **platform-agnostic seam with SDL2 and
+SDL3 both supported**; SFML/GLFW plug into the same seam later. The SDL3
+cutover work itself (§1–§5) is untouched — this addendum re-adds SDL2 as a
+second backend and, in doing so, executes the deferred vk_backend seam fix
+(the old §6 follow-up bullet is now DONE).
+
+### 7.1 The seam
+
+| Piece | File | Role |
+|---|---|---|
+| Vulkan window interop | `shs/platform/platform_runtime.hpp` | `IVulkanWindowInterop` (instance extensions, surface creation, drawable pixel size) + `IPlatformRuntime::window_vulkan_interop()` (defaulted `nullptr`) — **`vk_backend.hpp` includes zero windowing SDKs now** |
+| Backend selection | `shs/platform/window_backend.hpp` (new) | `WindowBackend {Auto, Sdl3, Sdl2}`, `WindowBackendCreateResult` (runtime + actual backend + honest `note`), `create_platform_runtime()` — zero SDK includes, runtime dispatch |
+| SDL3 adapter | `shs/platform/sdl/sdl3_runtime.hpp` (canonical; `sdl_runtime.hpp` is now a compat forwarder aliasing `SdlRuntime = Sdl3Runtime`) | `Sdl3Runtime` + `Sdl3VulkanInterop` |
+| SDL2 adapter | `shs/platform/sdl/sdl2_runtime.hpp` (new) | `Sdl2Runtime` + `Sdl2VulkanInterop`, SDL2 call shapes (§2 table, right-to-left) |
+| Texture dispatch | `shs/resources/adapters/texture_loader.hpp` (new) | `load_texture2d_image(path, flip_y, ImageSource)` / `import_texture_image(...)` — Auto tries SDL3_image then SDL2_image; SDL-specific entry points (`load_texture2d_sdl_image` / `_sdl2_image`) stay valid |
+| Anchor TUs | `src/platform_sdl3_anchor.cpp` / `src/platform_sdl2_anchor.cpp` | compiled unconditionally; each TU includes exactly one SDL SDK under `SHS_HAS_SDL3=1` / `SHS_HAS_SDL2=1` |
+
+**Iron rule: SDL2 and SDL3 headers must never share a translation unit.**
+That is why dispatch is extern-factory based (anchors), not header-level
+`#if` over both SDKs. `window_backend.hpp` and `texture_loader.hpp` carry no
+SDK includes at all.
+
+### 7.2 `vk_backend.hpp` — surface creation moved behind the seam
+
+`InitDesc.window` (`SDL_Window*`) → `InitDesc.window_interop`
+(`platform::IVulkanWindowInterop*`, obtained from
+`runtime.window_vulkan_interop()`). All four SDL call sites
+(`SDL_Vulkan_CreateSurface`, `SDL_Vulkan_GetInstanceExtensions`,
+2× `SDL_GetWindowSizeInPixels`) now go through the interop. `<SDL3/SDL.h>`
+and `<SDL3/SDL_vulkan.h>` are gone from the RHI.
+
+**Break:** callers pass `desc.window_interop = runtime.window_vulkan_interop();`
+instead of `desc.window = win;`. Parked trees set the old field — fix at
+un-park time (mechanical, one line per demo).
+
+### 7.3 Build plumbing
+
+- `SHS_RENDERER_WITH_SDL3` (ON) — SDL3 REQUIRED when on (unchanged).
+- `SHS_RENDERER_WITH_SDL2` (ON, new) — best-effort QUIET: CMake config first,
+  pkg-config fallback; **missing SDL2 degrades honestly to an SDL3-only
+  build** (STATUS note, no FATAL). Define `SHS_HAS_SDL2=1` + link when found;
+  `SHS_SDL2_HAS_VULKAN` probed like the SDL3 one (parent-scope exported).
+- CMake ≥ 3.29 `INTERFACE_SDL_VERSION` conflict detection rejects a dual
+  SDL2+SDL3 link — cleared explicitly (in-tree CMakeLists + installed
+  `shs_rendererConfig.cmake.in`) because the dual link is intentional and
+  SDK-isolated per TU.
+- Package: `SHS_RENDERER_PKG_WITH_SDL2` re-discovered via
+  `find_dependency(SDL2 CONFIG)` + `find_dependency(SDL2_image CONFIG)`
+  (pkg-config-only discovery is a documented consumer-side limitation).
+
+### 7.4 Verification (2026-09-17)
+
+- Full build: zero errors, zero warnings, both `SHS_HAS_SDL2=1` and
+  `SHS_HAS_SDL3=1` active on this machine (SDL2 2.30 via vcpkg config,
+  SDL3 3.4.0).
+- **CTest 43/43** including `shs_renderer_header_self_containment_test`
+  (both new adapter headers compile standalone, no defines),
+  `shs_renderer_package_consumer_test` (dual-SDL installed package consumed
+  by a fresh consumer), header-inventory, include-graph and kdba gates
+  (both extended for `SDL2/` / `SDL2_image/` include paths).
+- CMake 3.29 generate-time conflict resolved by clearing
+  `INTERFACE_SDL_VERSION` on the imported SDL targets (in-tree + consumer
+  config) — documented, not a workaround of the isolation rule.
+- **Live dispatch smoke** (manual, /tmp): a consumer TU calling
+  `create_platform_runtime(..., WindowBackend::Sdl3)` +
+  `load_texture2d_image()` linked against `libshs_renderer.a` with both SDKs
+  present created a real SDL3 window/renderer/texture at runtime and the
+  honest-failure texture path returned empty — seam verified end-to-end.
+- **Known limitation (documented, honest):** SDL2 and SDL3 *static* archives
+  collide on dynamic-API symbols (`SDL_AddEventWatch`, ...) when both are
+  linked into ONE binary — inherent to both SDKs exporting identical C
+  symbols, not to this seam. Shared SDL2 (or shared SDL3) plus the other
+  static is fine, as is a single-SDK build. The dispatch dispatches at
+  runtime, so binaries that only ever create one backend's runtime are
+  unaffected as long as the unused SDK's anchor objects are not pulled
+  (archive member granularity handles this when only the created backend's
+  factory is referenced via Auto+success paths... a dual-static binary that
+  references BOTH factories must link at least one SDK shared).
+- Headless adventures PNG parity unchanged (windowing seam is not reachable
+  from the SDL-free path).
+
+### 7.5 Dual-link resolution — system-shared-first + dlopen dispatch (2026-09-17, later session)
+
+Resolution of the §7.4 "known limitation", plus the build-composition and
+packaging follow-through for the demo `--window` front-end:
+
+- **Link composition (system-shared-first):** with both SDKs discovered, the
+  demos link SHARED system `libSDL2-2.0.so` + shared `libSDL2_image` and
+  STATIC SDL3/SDL3_image (vcpkg). Build is clean: zero multiple-definition
+  collisions. The `INTERFACE_SDL_VERSION` conflict detection stays cleared.
+- **Export-interface rule (enforced by tests):** the `SDL2::SDL2` /
+  `SDL2_image` links on `shs_renderer` must be `$<BUILD_INTERFACE:>`-wrapped,
+  or the installed `shs_rendererTargets.cmake` references system paths and
+  breaks package consumers (observed at Targets line 61).
+  `package_consumer_test` + `header_inventory_check` guard this.
+- **Dual-link hijack (root cause found with gdb):** even with shared libSDL2
+  on the link line, the flat ELF namespace + link order made the STATIC
+  `libSDL3.a` satisfy the SDL2 backend's `SDL_*` references — the demo
+  executable's `SDL_Init` bound to SDL3's `SDL_dynapi_procs.h`, so SDL2's
+  5-arg `SDL_CreateWindow` call was decoded with SDL3's 3-arg ABI and window
+  creation failed (honest nullptr). Same-name C symbols cannot be bound to
+  two different libraries in one binary; no link order fixes both backends.
+- **Fix: dlopen dispatch (hijack shield).** `sdl2_runtime.hpp` now loads
+  `libSDL2-2.0.so.0` via `dlopen(RTLD_LOCAL)` and dispatches every SDL2 and
+  SDL2_image call through an `Sdl2Api` function-pointer table
+  (`shs_sdl2_api()`; SDL2_image is optional, IMG_* null-guarded). The SDL2
+  backend TU owns **zero** undefined `SDL_*`/`IMG_*` symbols — verify with
+  `nm -u .../platform_sdl2_anchor.cpp.o` (must list none). The texture
+  adapter `texture_loader_sdl2.hpp` routes through the same table. Linking
+  libSDL2 into the lib remains legal (keeps the soname resolvable); nothing
+  references it statically. Result: `--backend=sdl2` works in dual-linked
+  demo binaries. dlopen failure → honest "backend not available" contract
+  unchanged. Non-dlopen platforms (Windows) report honest unavailability.
+- **Wayland note:** SDL2 2.30 on this Wayland session selects the x11 video
+  driver by default and window creation succeeds — no `SDL_VIDEODRIVER` pin
+  required. A broken driver env (`SDL_VIDEODRIVER=nosuchdriver`) exercises
+  the honest-failure path: `windowed mode unavailable: ...` on stderr, demo
+  PNG already written, clean exit.
+- **Verification (2026-09-17, this session):** full build 0 errors / 0
+  warnings; anchor `nm -u` free of SDL/IMG refs; **CTest 43/43**; kdba
+  boundary + include-graph + header-inventory gates green. Live smokes:
+  headless PNG parity; `--window` auto → SDL3 live-present (exit 124 by
+  timeout design); `--window --backend=sdl2` → `requested SDL2 runtime
+  created` (exit 124); `_vk` twin auto → SDL3; in-process probe pushed F12 /
+  Esc / QUIT through the dlopen-dispatched `pump_input` →
+  `save_screenshot=1`, `quit=1` (F12→`<stem>_export_1.png` inside a live
+  demo window not machine-tested — no key injector on this box — but the
+  mapping is probe-verified and the export path is shared with SDL3).

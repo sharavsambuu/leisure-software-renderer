@@ -13,21 +13,93 @@
 project(SHSRenderer LANGUAGES CXX)
 
 # Adapter selection (migration step 5 — selectable dependency ownership):
-# SDL3/SDL3_image and Assimp are optional integration adapters. Defaults keep
-# the historical behavior (all ON); consumer configurations may disable them
-# to build the GPU-free, windowing-free core (the compiled TUs are anchors
-# only, so nothing in the library itself needs these SDKs). Vulkan stays
-# auto-discovered (QUIET); Jolt/xsimd stay auto-discovered target-conditional.
-# SDL3 cutover (2026-09): SDL2 retired wholesale — no dual support (same
-# clean-cutover precedent as the forwarder-tree/namespace retirements).
-# Option renamed from SHS_RENDERER_WITH_SDL2; define renamed SHS_HAS_SDL2→SHS_HAS_SDL3.
+# SDL3/SDL3_image, SDL2/SDL2_image and Assimp are optional integration
+# adapters. Defaults keep the historical behavior (all ON); consumer
+# configurations may disable them to build the GPU-free, windowing-free core
+# (the compiled TUs are anchors only, so nothing in the library itself needs
+# these SDKs). Vulkan stays auto-discovered (QUIET); Jolt/xsimd stay
+# auto-discovered target-conditional.
+# Platform-agnostic seam ruling (2026-09-17): the SDL3-only stance is
+# superseded — SDL2 and SDL3 are BOTH supported windowing backends behind
+# IPlatformRuntime + window_backend.hpp (SFML/GLFW plug into the same seam
+# later). SDL2/SDL3 headers must never share a TU: each backend owns its own
+# anchor TU (src/platform_sdl3_anchor.cpp / src/platform_sdl2_anchor.cpp).
+# SDL2 discovery is best-effort QUIET: missing SDL2 downgrades to an
+# SDL3-only build (honest status message); SDL3 stays FATAL when requested.
 option(SHS_RENDERER_WITH_SDL3 "Discover and link SDL3/SDL3_image (windowed runtime + texture adapters)" ON)
+option(SHS_RENDERER_WITH_SDL2 "Discover and link SDL2/SDL2_image (legacy windowed runtime + texture adapters)" ON)
 option(SHS_RENDERER_WITH_ASSIMP "Discover and link Assimp (mesh import adapters)" ON)
 
 find_package(glm CONFIG REQUIRED)
 if(SHS_RENDERER_WITH_SDL3)
     find_package(SDL3 CONFIG REQUIRED)
     find_package(SDL3_image CONFIG REQUIRED)
+endif()
+set(SHS_RENDERER_HAS_SDL2 OFF)
+if(SHS_RENDERER_WITH_SDL2)
+    # Dual-dispatch constraint (sdl3_cutover_runbook §7): a binary that
+    # references BOTH backends' factories (seam consumers such as the
+    # adventure demos' --window front-end) must link at least one SDK as a
+    # shared library — static SDL2 + static SDL3 collide on the dynapi
+    # symbols (SDL_Init, SDL_AddEventWatch, …). Probe the SYSTEM SHARED SDL2
+    # dev install first (find_library prefers .so over .a); fall back to
+    # pkg-config / CMake config, which under the vcpkg toolchain resolve to
+    # the static archives (then dual-factory binaries are the documented
+    # limitation, not a build error).
+    find_library(SHS_SYSTEM_SDL2_LIB NAMES SDL2-2.0 SDL2
+        HINTS "/usr/lib/${CMAKE_LIBRARY_ARCHITECTURE}" /usr/lib /usr/local/lib /usr/lib64
+        NO_DEFAULT_PATH)
+    find_path(SHS_SYSTEM_SDL2_INC SDL2/SDL.h
+        HINTS /usr/include /usr/local/include NO_DEFAULT_PATH)
+    if(SHS_SYSTEM_SDL2_LIB AND SHS_SYSTEM_SDL2_INC)
+        if(NOT TARGET SDL2::SDL2-system)
+            add_library(SDL2::SDL2-system SHARED IMPORTED GLOBAL)
+            set_target_properties(SDL2::SDL2-system PROPERTIES
+                IMPORTED_LOCATION "${SHS_SYSTEM_SDL2_LIB}"
+                INTERFACE_INCLUDE_DIRECTORIES "${SHS_SYSTEM_SDL2_INC}")
+        endif()
+        message(STATUS "SHS: system shared SDL2 found (${SHS_SYSTEM_SDL2_LIB}) — dual-dispatch friendly")
+    else()
+        find_package(PkgConfig QUIET)
+        if(PkgConfig_FOUND AND NOT TARGET PkgConfig::SDL2)
+            pkg_check_modules(SDL2 QUIET IMPORTED_TARGET sdl2)
+        endif()
+        if(NOT TARGET PkgConfig::SDL2)
+            find_package(SDL2 CONFIG QUIET)
+        endif()
+    endif()
+    if(TARGET SDL2::SDL2-system OR TARGET SDL2::SDL2 OR TARGET PkgConfig::SDL2)
+        find_package(SDL2_image CONFIG QUIET)
+        if(NOT TARGET SDL2_image::SDL2_image)
+            message(STATUS "SHS: SDL2_image CMake config did not provide SDL2_image::SDL2_image — falling back to system probe/pkg-config")
+            # System shared SDL2_image first (same dual-dispatch reasoning as
+            # the base SDL2 probe: the vcpkg pkg-config data under the
+            # toolchain resolves to the static debug archive, which drags
+            # static SDL2d into dual-dispatch binaries).
+            find_library(SHS_SYSTEM_SDL2_IMAGE_LIB NAMES SDL2_image-2.0 SDL2_image
+                HINTS "/usr/lib/${CMAKE_LIBRARY_ARCHITECTURE}" /usr/lib /usr/local/lib /usr/lib64
+                NO_DEFAULT_PATH)
+            find_path(SHS_SYSTEM_SDL2_IMAGE_INC SDL2/SDL_image.h
+                HINTS /usr/include /usr/local/include NO_DEFAULT_PATH)
+            if(SHS_SYSTEM_SDL2_IMAGE_LIB AND SHS_SYSTEM_SDL2_IMAGE_INC)
+                if(NOT TARGET SDL2_image::SDL2_image)
+                    add_library(SDL2_image::SDL2_image SHARED IMPORTED GLOBAL)
+                    set_target_properties(SDL2_image::SDL2_image PROPERTIES
+                        IMPORTED_LOCATION "${SHS_SYSTEM_SDL2_IMAGE_LIB}"
+                        INTERFACE_INCLUDE_DIRECTORIES "${SHS_SYSTEM_SDL2_IMAGE_INC}")
+                endif()
+                message(STATUS "SHS: system shared SDL2_image found (${SHS_SYSTEM_SDL2_IMAGE_LIB})")
+            else()
+                find_package(PkgConfig QUIET)
+                if(PkgConfig_FOUND AND NOT TARGET PkgConfig::SDL2_image)
+                    pkg_check_modules(SDL2_image QUIET IMPORTED_TARGET SDL2_image)
+                endif()
+            endif()
+        endif()
+        set(SHS_RENDERER_HAS_SDL2 ON)
+    else()
+        message(STATUS "SHS: SDL2 requested but not found — SDL2 windowing backend unavailable (SDL3-only build)")
+    endif()
 endif()
 if(SHS_RENDERER_WITH_ASSIMP)
     find_package(assimp CONFIG REQUIRED)
@@ -72,6 +144,8 @@ endif()
 
 add_library(shs_renderer ${_shs_renderer_lib_type}
     src/shs_renderer_lib.cpp
+    src/platform_sdl3_anchor.cpp
+    src/platform_sdl2_anchor.cpp
 )
 add_library(shs::renderer ALIAS shs_renderer)
 # Converged naming (2026-09): single library — primary target shs_renderer,
@@ -155,13 +229,31 @@ target_include_directories(shs_renderer PUBLIC
     $<INSTALL_INTERFACE:include>
 )
 
-# Link deps that demos will inherit automatically. SDL3/Assimp are optional
-# adapters (step 5): when disabled, the library builds and links with zero
-# windowing/asset-import SDKs; SHS_HAS_SDL3 / SHS_HAS_ASSIMP let headers
-# feature-guard adapter entry points (same shape as SHS_HAS_JOLT).
+# Link deps that demos will inherit automatically. SDL3/SDL2/Assimp are
+# optional adapters (step 5): when disabled, the library builds and links with
+# zero windowing/asset-import SDKs; SHS_HAS_SDL3 / SHS_HAS_SDL2 / SHS_HAS_ASSIMP
+# let headers and anchor TUs feature-guard adapter entry points (same shape as
+# SHS_HAS_JOLT).
 target_link_libraries(shs_renderer PUBLIC
     glm::glm
 )
+# CMake >= 3.29 SDL version-conflict detection (INTERFACE_SDL_VERSION) rejects
+# linking SDL2 and SDL3 into one target. Here the dual link is intentional
+# (platform-agnostic seam, R4 ruling): both SDKs stay fully isolated per TU
+# via the backend anchor TUs, so the guard is cleared for the SDL targets.
+foreach(_shs_sdl_prop_tgt SDL3::SDL3 SDL3::SDL3-static SDL2::SDL2 SDL2::SDL2-static)
+    if(TARGET ${_shs_sdl_prop_tgt})
+        # vcpkg SDL2 config exposes SDL2::SDL2 as an ALIAS of the real target;
+        # properties can only be set on the real one.
+        get_target_property(_shs_sdl_real ${_shs_sdl_prop_tgt} ALIASED_TARGET)
+        if(_shs_sdl_real)
+            set_target_properties(${_shs_sdl_real} PROPERTIES INTERFACE_SDL_VERSION "")
+        else()
+            set_target_properties(${_shs_sdl_prop_tgt} PROPERTIES INTERFACE_SDL_VERSION "")
+        endif()
+        unset(_shs_sdl_real)
+    endif()
+endforeach()
 if(SHS_RENDERER_WITH_SDL3)
     if(TARGET SDL3::SDL3)
         target_link_libraries(shs_renderer PUBLIC SDL3::SDL3)
@@ -174,6 +266,44 @@ if(SHS_RENDERER_WITH_SDL3)
         SDL3_image::Main
     )
     target_compile_definitions(shs_renderer PUBLIC SHS_HAS_SDL3=1)
+endif()
+set(SHS_SDL2_HAS_VULKAN OFF)
+if(SHS_RENDERER_HAS_SDL2)
+    set(_shs_sdl2_link "")
+    if(TARGET SDL2::SDL2-system)
+        set(_shs_sdl2_link SDL2::SDL2-system) # system shared — dual-dispatch friendly
+    elseif(TARGET SDL2::SDL2)
+        set(_shs_sdl2_link SDL2::SDL2)
+    elseif(TARGET PkgConfig::SDL2)
+        set(_shs_sdl2_link PkgConfig::SDL2)
+    endif()
+    if(_shs_sdl2_link)
+        # BUILD_INTERFACE only: the installed package keeps its minimal export
+        # interface (SDL2 stays a consumer-side find_dependency, as documented —
+        # pkg-config-only discovery was already a documented limitation).
+        target_link_libraries(shs_renderer PUBLIC $<BUILD_INTERFACE:${_shs_sdl2_link}>)
+    endif()
+    if(TARGET SDL2_image::SDL2_image)
+        # BUILD_INTERFACE only (same reason as the base SDL2 link above).
+        target_link_libraries(shs_renderer PUBLIC $<BUILD_INTERFACE:SDL2_image::SDL2_image>)
+    elseif(TARGET PkgConfig::SDL2_image)
+        target_link_libraries(shs_renderer PUBLIC $<BUILD_INTERFACE:PkgConfig::SDL2_image>)
+    endif()
+    target_compile_definitions(shs_renderer PUBLIC SHS_HAS_SDL2=1)
+    # SDL2 Vulkan capability probe (same shape as the SDL3 probe): SDL2 ships
+    # SDL_vulkan.h unconditionally in its include dirs.
+    get_target_property(_shs_sdl2_inc_dirs ${_shs_sdl2_link} INTERFACE_INCLUDE_DIRECTORIES)
+    foreach(_inc IN LISTS _shs_sdl2_inc_dirs)
+        if("${_inc}" MATCHES "^\\$<")
+            continue()
+        endif()
+        if(EXISTS "${_inc}/SDL2/SDL_vulkan.h" OR EXISTS "${_inc}/SDL_vulkan.h")
+            set(SHS_SDL2_HAS_VULKAN ON)
+            break()
+        endif()
+    endforeach()
+    unset(_shs_sdl2_link)
+    unset(_shs_sdl2_inc_dirs)
 endif()
 if(SHS_RENDERER_WITH_ASSIMP)
     target_link_libraries(shs_renderer PUBLIC assimp::assimp)
@@ -226,6 +356,7 @@ if(Vulkan_FOUND AND TARGET Vulkan::Vulkan)
 endif()
 set(SHS_RENDERER_HAS_VULKAN "${SHS_RENDERER_HAS_VULKAN}" PARENT_SCOPE)
 set(SHS_SDL3_HAS_VULKAN "${SHS_SDL3_HAS_VULKAN}" PARENT_SCOPE)
+set(SHS_SDL2_HAS_VULKAN "${SHS_SDL2_HAS_VULKAN}" PARENT_SCOPE)
 
 # Header-only value-layer target: include dirs + header-only deps ONLY.
 # Pure value code (pods, reducers, planners) must build and test against this
@@ -275,6 +406,7 @@ install(TARGETS shs_renderer shs_renderer_values
 )
 install(DIRECTORY include/shs DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
 set(SHS_RENDERER_PKG_WITH_SDL3 "${SHS_RENDERER_WITH_SDL3}")
+set(SHS_RENDERER_PKG_WITH_SDL2 "${SHS_RENDERER_HAS_SDL2}")
 set(SHS_RENDERER_PKG_WITH_ASSIMP "${SHS_RENDERER_WITH_ASSIMP}")
 set(SHS_RENDERER_PKG_WITH_VULKAN "${SHS_RENDERER_HAS_VULKAN}")
 set(SHS_RENDERER_CONFIG_OUT
@@ -334,7 +466,9 @@ if(SHS_RENDERER_BUILD_TESTS)
     # header compiles standalone with only the exported dependency include
     # dirs, no SHS_HAS_* defines and no build-tree/stb include dirs.
     set(_shs_selfcont_targets
-        glm::glm SDL3::SDL3 SDL3_image::SDL3_image assimp::assimp
+        glm::glm SDL3::SDL3 SDL3_image::SDL3_image SDL2::SDL2 SDL2_image::SDL2_image
+        SDL2::SDL2-system SDL2_image::SDL2_image-system
+        PkgConfig::SDL2 PkgConfig::SDL2_image assimp::assimp
         Vulkan::Vulkan GPUOpen::VulkanMemoryAllocator Jolt xsimd xsimd::xsimd)
     set(_shs_selfcont_inc "")
     foreach(_shs_t IN LISTS _shs_selfcont_targets)

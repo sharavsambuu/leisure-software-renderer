@@ -28,6 +28,7 @@ namespace shs
         bool toggle_follow_camera = false;
         bool toggle_motion_blur = false;
         bool toggle_fxaa = false;
+        bool save_screenshot = false; // F12: one-shot "export the current image" edge
         bool step_pass_isolation_prev = false;
         bool step_pass_isolation_next = false;
 

@@ -5,8 +5,10 @@
 # active in the default build. Each tier folder is self-contained; every demo
 # ships as a *_sw + *_vk pair (GLM C++ software rasterizer vs Vulkan + Slang),
 # sharing vertex data from the tier's common scenes header for parity
-# comparison. Both variants are headless: they render offscreen and write a
-# PNG, so they validate in GPU-free CI and side-by-side on a workstation.
+# comparison. Both variants default to headless (render offscreen, write a
+# PNG) so they validate in GPU-free CI; with --window they present the
+# rendered frame through the platform seam (SDL3-preferred auto dispatch) and
+# export PNGs from the window loop via F12 (common/adventures_window.hpp).
 #
 # Slang modules (.slang) are compiled to SPIR-V by slangc when found
 # (bootstraps P0 of docs/roadmap/slang_utilization_plan.md); *_vk targets are
