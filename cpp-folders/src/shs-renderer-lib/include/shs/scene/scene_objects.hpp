@@ -45,9 +45,14 @@ namespace shs
     class SceneObjectSet
     {
     public:
-        std::vector<RenderItem> to_render_items() const
+        // Copy-free projection: fills a caller-owned vector, REUSING its
+        // capacity across frames (steady-state frames therefore perform zero
+        // heap allocations — pinned by
+        // shs_renderer_frame_allocator_interception_tests). The returned-by-
+        // value overload below remains for value-semantics callers.
+        void to_render_items(std::vector<RenderItem>& out) const
         {
-            std::vector<RenderItem> out{};
+            out.clear();
             out.reserve(objects_.size());
             for (const auto& o : objects_)
             {
@@ -57,6 +62,12 @@ namespace shs
                 ri.casts_shadow = o.casts_shadow;
                 out.push_back(ri);
             }
+        }
+
+        std::vector<RenderItem> to_render_items() const
+        {
+            std::vector<RenderItem> out{};
+            to_render_items(out);
             return out;
         }
 

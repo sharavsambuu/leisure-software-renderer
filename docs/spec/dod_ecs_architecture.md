@@ -96,6 +96,19 @@ struct EntityHandle {
 
 ## 6. Wait-Free Concurrency Guarantee
 
+> **Governing clarification (2026-09-18, governance review Tension 4):** the
+> wait-free guarantee in this section is scoped to the **defined hot paths** —
+> the simulation/recording loops and the raster inner paths this section
+> governs. It is a design target for those paths, **not an absolute property of
+> every line of library code**. The current `ThreadPoolJobSystem`
+> (`shs/task/thread_pool_job_system.hpp`) is a mutex/condvar implementation and
+> is named here as a **tracked, benchmark-gated exception**: its contention
+> characteristics must be measured as worker core counts scale (evolution track
+> toward MPMC lock-free queues / work-stealing deques —
+> `multithreaded_coding_best_practices.md` §5). New systems code must still
+> follow the rules below; infrastructure that must block (job submission,
+> teardown drains, `wait_idle`) is sanctioned at the execution edge.
+
 Systems must be designed for **lock-free, wait-free parallel execution**:
 * **No Mutexes/Atomics**: Systems must not use `std::mutex` or `std::atomic` during simulation updates.
 * **Exclusive Output**: A parallel job must be guaranteed exclusive write access to its slice of the output span.

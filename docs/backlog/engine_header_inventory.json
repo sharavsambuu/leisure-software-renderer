@@ -2743,6 +2743,9 @@
         "string"
       ],
       "tracked_consumers": [
+        "cpp-folders/src/shs-renderer-lib/include/shs/platform/sdl/sdl2_runtime.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/platform/sdl/sdl3_runtime.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/platform/window_backend.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/rhi/vulkan/runtime/vk_backend.hpp"
       ],
       "build_target": "review-values-vs-aggregate"
@@ -2791,7 +2794,10 @@
         "string",
         "vector"
       ],
-      "tracked_consumers": [],
+      "tracked_consumers": [
+        "cpp-folders/src/shs-renderer-lib/include/shs/resources/adapters/texture_loader_sdl2.hpp",
+        "cpp-folders/src/shs-renderer-lib/src/platform_sdl2_anchor.cpp"
+      ],
       "build_target": "review-values-vs-aggregate"
     },
     {
@@ -2827,7 +2833,8 @@
         "string"
       ],
       "tracked_consumers": [
-        "cpp-folders/src/shs-renderer-lib/include/shs/platform/sdl/sdl_runtime.hpp"
+        "cpp-folders/src/shs-renderer-lib/include/shs/platform/sdl/sdl_runtime.hpp",
+        "cpp-folders/src/shs-renderer-lib/src/platform_sdl3_anchor.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -2877,7 +2884,11 @@
         "memory",
         "string"
       ],
-      "tracked_consumers": [],
+      "tracked_consumers": [
+        "cpp-folders/src/exps-rendering-adventures/tier0-rasterization-foundations/common/adventures_window.hpp",
+        "cpp-folders/src/shs-renderer-lib/src/platform_sdl2_anchor.cpp",
+        "cpp-folders/src/shs-renderer-lib/src/platform_sdl3_anchor.cpp"
+      ],
       "build_target": "review-values-vs-aggregate"
     },
     {
@@ -3275,8 +3286,7 @@
         "glm/glm.hpp",
         "shs/render/shader/program.hpp",
         "shs/resources/mesh.hpp",
-        "shs/task/parallel_for.hpp",
-        "vector"
+        "shs/task/parallel_for.hpp"
       ],
       "internal_dependencies": [
         "shs/render/shader/program.hpp",
@@ -3287,8 +3297,7 @@
         "algorithm",
         "array",
         "cmath",
-        "glm/glm.hpp",
-        "vector"
+        "glm/glm.hpp"
       ],
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/include/shs/app/vertical_slice_host.hpp",
@@ -5177,7 +5186,10 @@
       "external_dependencies": [
         "string"
       ],
-      "tracked_consumers": [],
+      "tracked_consumers": [
+        "cpp-folders/src/shs-renderer-lib/src/platform_sdl2_anchor.cpp",
+        "cpp-folders/src/shs-renderer-lib/src/platform_sdl3_anchor.cpp"
+      ],
       "build_target": "review-values-vs-aggregate"
     },
     {
@@ -5208,7 +5220,8 @@
       ],
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/include/shs/resources/adapters/asset_manager.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/resources/adapters/cubemap_loader_sdl.hpp"
+        "cpp-folders/src/shs-renderer-lib/include/shs/resources/adapters/cubemap_loader_sdl.hpp",
+        "cpp-folders/src/shs-renderer-lib/src/platform_sdl3_anchor.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -5246,7 +5259,9 @@
         "SDL_image.h",
         "string"
       ],
-      "tracked_consumers": [],
+      "tracked_consumers": [
+        "cpp-folders/src/shs-renderer-lib/src/platform_sdl2_anchor.cpp"
+      ],
       "build_target": "review-values-vs-aggregate"
     },
     {
@@ -5486,7 +5501,9 @@
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/passes/pass_shadow_map.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/resources/adapters/asset_manager.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/resources/adapters/resource_import.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/resources/adapters/texture_loader.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/resources/adapters/texture_loader_sdl.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/resources/adapters/texture_loader_sdl2.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/resources/loaders/primitive_import.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/resources/resources.contract.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/scene/scene_resource_view.hpp",
@@ -5521,11 +5538,15 @@
       ],
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/include/shs/render/shader/types.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/resources/adapters/texture_loader.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/resources/adapters/texture_loader_sdl.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/resources/adapters/texture_loader_sdl2.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/resources/material.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/resources/resources.contract.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/resources/storage/resource_registry.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/sky/cubemap_sky.hpp",
+        "cpp-folders/src/shs-renderer-lib/src/platform_sdl2_anchor.cpp",
+        "cpp-folders/src/shs-renderer-lib/src/platform_sdl3_anchor.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/scene_identity_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"

@@ -323,6 +323,14 @@ if [[ "${vacuity}" -eq 0 ]]; then
   echo "[kdba-boundary] OK: non-vacuity — ${#pod_dirs[@]} pods carry the Core 4 file law (${#retired_identity_gateways[@]} with retired identity gateways carry contract/command/event only, step 4.5)"
 fi
 
+# G2.1 (governance review 2026-09-18, P1 / Tension 1): Pure Domain Value
+# Library classification (Constitution II §6.1 amendment). Stateless value
+# leaves are exempt from the Core 4 scaffolding; the classification is
+# explicit and policed — stateful machinery in a pure library fails the gate.
+if ! bash "${script_dir}/check_pure_value_libraries.sh" "${lib_root}/include/shs"; then
+  failed=1
+fi
+
 # (2) Paradigm-token ban: the abandoned monolith-reducer vocabulary must not
 #     reappear in the pod layer (§6.6: <Pod>Command variant + *Intent tokens,
 #     <pod>_gateway entry point).

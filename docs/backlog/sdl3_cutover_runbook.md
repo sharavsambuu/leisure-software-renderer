@@ -255,3 +255,15 @@ packaging follow-through for the demo `--window` front-end:
   `save_screenshot=1`, `quit=1` (F12→`<stem>_export_1.png` inside a live
   demo window not machine-tested — no key injector on this box — but the
   mapping is probe-verified and the export path is shared with SDL3).
+- **Zero-undef contract is now machine-enforced (2026-09-18, governance todo
+  G1.2):** the manual `nm -u` check above is codified as
+  `tools/check_backend_seam_symbols.sh` — CTest
+  `shs_renderer_backend_seam_symbols_check` fails if any
+  `platform_sdl2_anchor*` object carries undefined `SDL_*`/`IMG_*` symbols
+  (the flat-namespace hijack class above). The SDL3 anchor is reported, not
+  policed (normal SDK linkage is legal there; the hazard is the SDL2 dlopen
+  seam only). A negative fixture
+  (`shs_renderer_backend_seam_symbols_negative_test`) proves the gate trips
+  on a stub TU that references `SDL_Init` and fails honestly when no anchor
+  object is found. House rule going forward: any new SDL2/IMG call must enter
+  through the `Sdl2Api` dispatch table — direct calls will turn the gate red.

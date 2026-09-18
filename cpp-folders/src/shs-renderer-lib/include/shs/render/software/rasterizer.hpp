@@ -13,7 +13,6 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <vector>
 
 #include <glm/glm.hpp>
 
@@ -111,13 +110,45 @@ namespace shs
             return v.clip.w - v.clip.z;
         }
 
-        template <typename PlaneDistFn>
-        inline std::vector<RasterVertex> clip_polygon_plane(const std::vector<RasterVertex>& in_poly, PlaneDistFn plane_dist_fn)
-        {
-            std::vector<RasterVertex> out{};
-            if (in_poly.empty()) return out;
+        // G1.1 (governance review 2026-09-18): fixed-capacity clip polygon.
+        // Sutherland-Hodgman clipping of one triangle against the 6 frustum
+        // half-spaces produces at most 3 + 6 = 9 vertices; 16 gives headroom.
+        // This removes ALL per-triangle heap allocations from the clip path
+        // (previously: one std::vector per plane pass, re-assigned 6x, plus
+        // the initial {rv0, rv1, rv2} vector) — enforced by
+        // shs_renderer_frame_allocator_interception_tests.
+        inline constexpr size_t kClipPolyMaxVertices = 16;
 
-            out.reserve(in_poly.size() + 2);
+        struct ClipPolygon
+        {
+            std::array<RasterVertex, kClipPolyMaxVertices> v{};
+            size_t n = 0;
+
+            size_t size() const { return n; }
+            bool empty() const { return n == 0; }
+            const RasterVertex& operator[](size_t i) const { return v[i]; }
+
+            void push(const RasterVertex& vertex)
+            {
+                if (n < kClipPolyMaxVertices)
+                {
+                    v[n] = vertex;
+                    ++n;
+                }
+            }
+
+            void reset()
+            {
+                n = 0;
+            }
+        };
+
+        template <typename PlaneDistFn>
+        inline void clip_polygon_plane(const ClipPolygon& in_poly, ClipPolygon& out_poly, PlaneDistFn plane_dist_fn)
+        {
+            out_poly.reset();
+            if (in_poly.empty()) return;
+
             for (size_t i = 0; i < in_poly.size(); ++i)
             {
                 const RasterVertex& cur = in_poly[i];
@@ -129,7 +160,7 @@ namespace shs
 
                 if (cur_in && nxt_in)
                 {
-                    out.push_back(nxt);
+                    out_poly.push(nxt);
                 }
                 else if (cur_in && !nxt_in)
                 {
@@ -137,7 +168,7 @@ namespace shs
                     if (std::abs(denom) > 1e-8f)
                     {
                         const float t = da / denom;
-                        out.push_back(lerp_rv(cur, nxt, t));
+                        out_poly.push(lerp_rv(cur, nxt, t));
                     }
                 }
                 else if (!cur_in && nxt_in)
@@ -146,23 +177,29 @@ namespace shs
                     if (std::abs(denom) > 1e-8f)
                     {
                         const float t = da / denom;
-                        out.push_back(lerp_rv(cur, nxt, t));
+                        out_poly.push(lerp_rv(cur, nxt, t));
                     }
-                    out.push_back(nxt);
+                    out_poly.push(nxt);
                 }
             }
-            return out;
         }
 
-        inline std::vector<RasterVertex> clip_polygon_frustum(const std::vector<RasterVertex>& in_poly)
+        // Clips the input triangle against all 6 frustum half-spaces using two
+        // stack-resident ping-pong buffers (6 passes => result in `poly`).
+        inline ClipPolygon clip_polygon_frustum(const RasterVertex& rv0, const RasterVertex& rv1, const RasterVertex& rv2)
         {
-            std::vector<RasterVertex> poly = in_poly;
-            poly = clip_polygon_plane(poly, plane_dist_left);
-            poly = clip_polygon_plane(poly, plane_dist_right);
-            poly = clip_polygon_plane(poly, plane_dist_bottom);
-            poly = clip_polygon_plane(poly, plane_dist_top);
-            poly = clip_polygon_plane(poly, plane_dist_near);
-            poly = clip_polygon_plane(poly, plane_dist_far);
+            ClipPolygon poly{};
+            poly.push(rv0);
+            poly.push(rv1);
+            poly.push(rv2);
+            ClipPolygon scratch{};
+
+            clip_polygon_plane(poly, scratch, plane_dist_left);
+            clip_polygon_plane(scratch, poly, plane_dist_right);
+            clip_polygon_plane(poly, scratch, plane_dist_bottom);
+            clip_polygon_plane(scratch, poly, plane_dist_top);
+            clip_polygon_plane(poly, scratch, plane_dist_near);
+            clip_polygon_plane(scratch, poly, plane_dist_far);
             return poly;
         }
     }
@@ -242,13 +279,14 @@ namespace shs
                     (c.z >= -c.w && c.z <= c.w);
             };
 
-            std::vector<detail::RasterVertex> poly = {
-                rv0, rv1, rv2
-            };
+            detail::ClipPolygon poly{};
+            poly.push(rv0);
+            poly.push(rv1);
+            poly.push(rv2);
             // Ихэнх кадарт харагдаж буй трианглууд clip volume дотор байдаг тул clip-ийг алгасна.
             if (!(fully_inside_clip(rv0) && fully_inside_clip(rv1) && fully_inside_clip(rv2)))
             {
-                poly = detail::clip_polygon_frustum(poly);
+                poly = detail::clip_polygon_frustum(rv0, rv1, rv2);
             }
             if (poly.size() < 3) continue;
 

@@ -41,6 +41,32 @@
     static_assert pins, contract rims — the architecture is designed so that
     mistakes are build errors, not 3 a.m. bugs.
 
+## 1.5 Terminology duality — "DVO in prose, pod on disk"
+
+One vocabulary split you must internalize before touching anything
+(`domain_value_object_law.md` Part 5, rules T1–T6):
+
+- **In prose (what you write):** say and write **"Domain Value Object" /
+  "DVO"** — in docs, code comments, commit messages, and gate strings.
+  Introducing the retired two-word term (spelled out in the law, Rule T1) in
+  new or edited live text is a review-blocking defect: the vocabulary must
+  grep to one term.
+- **On disk (what you touch):** **"pod" stays as the structural noun.** File
+  names (`<pod>.contract.hpp`, `pod_test_kit.hpp`), directories (`docs/pods/`,
+  `pod_scan_dirs`), gate-script globs, and the Core 4 suffix laws keep the old
+  word (Rule T5 + Part 6 of the law). **Never rename these paths** — Rule N5:
+  stable paths, loud headers. A symbol-level rename is a separate, gated
+  decision, never bundled with documentation edits.
+- **Archives:** frozen/history documents keep the retired term byte-identical
+  (`kdba_history/`, `docs/outdated/`, demo `docs/pods/` snapshots). Read them
+  by mentally substituting "Domain Value Object"; do not edit (Rule T2).
+- **In conversation:** the retired term is a recognized alias — when someone
+  says it (speech, commit messages, agent prompts), they always mean the DVO;
+  respond with the DVO concept and redirect to the current term (Rule T6).
+
+Quick decision: writing *about a concept* → **DVO**; writing or touching a
+*path, identifier, or gate glob* → **pod** (unchanged).
+
 ## 2. Anatomy of a bounded context folder
 
 Every feature pod follows the same four-file spine (see `logic/`,

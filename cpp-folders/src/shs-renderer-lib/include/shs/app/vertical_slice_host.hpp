@@ -168,9 +168,10 @@ namespace shs::app
             report.path = renderpath::renderpath_gateway(
                 path_, path_commands, compiler_, config_.caps, path_events);
 
-            // 5) Render projection: scene objects -> render items (copies;
-            //    vector-reference invalidation is contained by value semantics).
-            scene_.items = objects_.to_render_items();
+            // 5) Render projection: scene objects -> render items (copied into
+            //    the host-owned vector; its capacity persists across frames so
+            //    steady-state frames perform zero heap allocations).
+            objects_.to_render_items(scene_.items);
             report.items_projected = (uint32_t)scene_.items.size();
 
             // 6) Backend output: software raster of the projection through

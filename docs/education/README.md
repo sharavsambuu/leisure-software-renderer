@@ -8,7 +8,7 @@
 
 ## Live teaching
 
-- `dvo_bounded_context_tutorial.md` — **start here (new contributors)**: the full walkthrough — bounded-context folder anatomy, DVOs, contracts at the rims, why the style beats switch-case nesting, and the working coding checklist.
+- `dvo_bounded_context_tutorial.md` — **start here (new contributors)**: the full walkthrough — bounded-context folder anatomy, DVOs, contracts at the rims, why the style beats switch-case nesting, and the working coding checklist. §1.5 is the terminology duality note: "Domain Value Object" in prose, "pod" on disk (paths stay; Rule N5).
 - `kdba_kleisli_composition.md` — the primer.
 - `architectural_progression.md` — the personal history: eras, aha moments, and
   how each self-discovered concept later mapped onto C++ features and known

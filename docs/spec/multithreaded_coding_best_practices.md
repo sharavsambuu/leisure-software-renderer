@@ -32,3 +32,10 @@ Every frame must strictly separate mutation from recording, guaranteeing **100% 
  
  - **MPMC Queues**: The internal scheduling must transition to a Multi-Producer/Multi-Consumer (MPMC) lock-free atomic queue or a work-stealing deque.
  - **Zero Context Switch Overhead**: Worker threads must never block on OS locks; they should actively pull jobs or spin-yield, ensuring 100% thread utilization during the `Simulate + Cull` and `Record` phases.
+
+> Cross-link (2026-09-18, governance review Tension 4): this delta is formally
+> acknowledged by Constitution III §6's governing clarification — the wait-free
+> guarantee is scoped to the defined hot paths and `ThreadPoolJobSystem`'s
+> mutex/condvar implementation is a **tracked, benchmark-gated exception**
+> (contention must be measured as worker core counts scale), not a standing
+> violation. See `dod_ecs_architecture.md` §6.

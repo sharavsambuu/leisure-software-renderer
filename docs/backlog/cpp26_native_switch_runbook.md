@@ -7,6 +7,16 @@
 > supports them yet. On the current baseline (GCC 13.3.0) this runbook is
 > inert — execute nothing until the ruling lands.
 
+> **Adoption threshold (formalized 2026-09-18, governance todo G3.1):** the
+> C4.3 trigger is the first toolchain that satisfies either arm —
+> (a) **GCC ≥ 16**, or (b) **Clang ≥ 20**, in both cases verified by the
+> `__cpp_contracts` feature-test macro only (never a compiler-name check,
+> per C4.1), with the matching libstdc++/libc++ `<contracts>` present. When
+> the probe passes on the baseline compiler, the C4.2 standing tracking
+> records the fact and C4.3 is UNBLOCKED: execute this runbook's steps in
+> order (preconditions §2 → steps → acceptance gates → rollback window).
+> Until then the runbook stays inert.
+
 ## 1. Scope: complete site inventory (enumerated 2026-09-17)
 
 Fourteen `SHS_PRE`/`SHS_POST`/`SHS_CONTRACT_ASSERT` sites exist outside the

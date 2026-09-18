@@ -117,6 +117,7 @@ To keep one authority per provision:
    citations (this rule exists because one already did: a "Rule 3.2" reference in
    §7.1 was corrected to Rule 2).
 4. **KDBA commit rule (replaces the in-place reconciliation)**: Rule 1's "immutable inputs" governs *intent inputs and views* (`std::span<const Command>`); arrows never mutate persistent state in place — purity means deterministic, side-effect-free *decisions* with atomic boundary commit, not owned-buffer copying.
+5. **Law budget / gate-at-adoption norm (2026-09-18, governance review A2)**: every *newly adopted* rule must, at adoption time, name the mechanical gate (CTest entry, boundary/script check, or inventory rule) that enforces it — the rule's gate is part of the rule's text. A rule adopted without a named enforcement gate is born a **guideline**, not law, and stays one until its gate lands in the same change or a follow-up explicitly scheduled beside it. Restatements of existing gated law inherit the existing gate and need no new one. This is the "law budget": laws the project cannot mechanically check are a liability, not an asset.
 
 ### 2.3 The DVO Backbone — Everything Is a Domain Separation or a Domain Boundary (amendment, 2026-09-17)
 
@@ -237,6 +238,29 @@ To maintain modularity, cognitive clarity, and zero-leak encapsulation across co
 
 ### 6.1 Canonical Domain Value Object Structure
 Gameplay features are organized as self-contained vertical slices in `domains/<domain_name>/` using standardized file suffixes. Every Domain Value Object **must explicitly define the four core components** — **Types (contract), Command, Gateway, Event** — each in its own file. A pod never omits a core component: if a vocabulary is trivially small, it is still declared as an explicit closed type (e.g., `using FooCommand = std::variant<std::monostate>;`) so the pod's full state-transition surface remains greppable, auditable, and mechanically checkable.
+
+> **Module-class amendment (2026-09-18, governance review P1 / Tension 1):** the
+> repository recognizes exactly **two module classes** under this section:
+>
+> 1. **Stateful DVO Pods** — own applied state and the full Core 4 file law
+>    exactly as above (monostate scaffolding for trivial vocabularies
+>    included). The 11 enumerated Core 4 pods remain in this class.
+> 2. **Pure Domain Value Libraries** — stateless value leaves (math, generic
+>    containers, value utilities; today: `shs/core/`, `shs/containers/`,
+>    `shs/memory/`). Their contract is the plain types they expose plus the
+>    pure transform functions over those types; they are **exempt from the
+>    monostate command/event/gateway scaffolding** (an empty variant and an
+>    invented gateway over no state are ceremony, not law). A pure library
+>    that grows applied state MUST be reclassified as a Stateful DVO Pod
+>    (adopt the Core 4) through a §2.2 law amendment — never by silent
+>    accretion.
+>
+> The classification is mechanical: `tools/check_pure_value_libraries.sh`
+> (wired into `check_kdba_boundaries.sh`) polices that a classified pure
+> library (a) exists and is non-vacuous, and (b) carries no
+> `<lib>.command.hpp` / `<lib>.event.hpp` / `<lib>.gateway.hpp`; its
+> negative fixture (`shs_renderer_pure_value_library_negative_test`) proves
+> the gate trips on stateful machinery and on empty/missing classifications.
 
 Multi-domain workflows add a constrained fifth element — the orchestrator/saga
 recipe — required only where a workflow spans bounded contexts (Rule 11). The

@@ -505,6 +505,41 @@ if(SHS_RENDERER_BUILD_TESTS)
     # contract macro in a math leaf / non-seam header FAILs, legal homes PASS.
     add_test(NAME shs_renderer_contract_placement_negative_test
         COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_contract_placement_negative_test.sh")
+    # G2.1 (governance review 2026-09-18): Pure Domain Value Library
+    # classification gate negative fixture — stateful machinery in a
+    # stateless leaf fails; conforming leaf passes; empty/missing/vacuous
+    # classifications fail loudly.
+    add_test(NAME shs_renderer_pure_value_library_negative_test
+        COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_pure_value_libraries_negative_test.sh")
+
+    # G3.2 (governance review 2026-09-18): golden-value tests for the math
+    # laws — the screen/canvas discrete row law (Constitution I §2:
+    # row_canvas = (H-1) - row_screen, continuous form y_canvas = H - y_screen,
+    # and the rasterizer NDC mapping pinned beside them) and the Jolt bridge
+    # involution S·M·S with S = diag(1,1,-1,1) (Constitution I §3, roundtrips
+    # + homomorphism property). Named gates per the G2.3 law-budget norm.
+    if(TARGET Jolt)
+        add_executable(shs_renderer_math_law_golden_tests
+            tests/math_law_golden_tests.cpp
+        )
+        target_link_libraries(shs_renderer_math_law_golden_tests PRIVATE shs::renderer-values Jolt)
+        target_compile_definitions(shs_renderer_math_law_golden_tests PRIVATE SHS_HAS_JOLT=1)
+        target_compile_features(shs_renderer_math_law_golden_tests PRIVATE cxx_std_23)
+        if(MSVC)
+            target_compile_options(shs_renderer_math_law_golden_tests PRIVATE /W4)
+        else()
+            target_compile_options(shs_renderer_math_law_golden_tests PRIVATE -Wall -Wextra -Wpedantic)
+        endif()
+
+        add_test(
+            NAME shs_renderer_math_law_golden_tests
+            COMMAND shs_renderer_math_law_golden_tests
+        )
+        set_tests_properties(shs_renderer_math_law_golden_tests PROPERTIES
+            WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+        )
+    endif()
+
     # W-C gateway rails (P2 + P5 owner rulings): negative fixture — a throw /
     # bool-rim gateway FAILs, a dispatch without a static_assert tail FAILs,
     # a conformant gateway PASSES.
@@ -569,6 +604,27 @@ if(SHS_RENDERER_BUILD_TESTS)
     set_tests_properties(shs_renderer_boundary_check PROPERTIES
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
     )
+    # Backend seam symbol-hygiene gate (sdl3_cutover_runbook §7.5; governance
+    # todo G1.2): the SDL2 anchor object must carry zero undefined SDL_*/IMG_*
+    # symbols — direct SDL2 calls in the dlopen-dispatch anchor TU are exactly
+    # the flat-namespace hijack the dispatch exists to prevent. The SDL3
+    # anchor is reported, not policed (normal SDL3 linkage is legal). Runs on
+    # the built library's object files; assumes `ctest` executes after the
+    # library target is built (house discipline: full build before CTest).
+    set(_shs_seam_obj_dir "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/shs_renderer.dir/src")
+    add_test(NAME shs_renderer_backend_seam_symbols_check
+        COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_backend_seam_symbols.sh"
+            --scan-root "${_shs_seam_obj_dir}")
+    set_tests_properties(shs_renderer_backend_seam_symbols_check PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+
+    # Negative fixture: a TU referencing SDL_Init must trip the gate; missing
+    # anchor object must fail honestly (not silently pass).
+    add_test(NAME shs_renderer_backend_seam_symbols_negative_test
+        COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_backend_seam_symbols_negative_test.sh"
+            "${CMAKE_CXX_COMPILER}")
+
+
 
     add_test(
         NAME shs_renderer_tests
@@ -929,6 +985,30 @@ if(SHS_RENDERER_BUILD_TESTS)
         COMMAND shs_renderer_vertical_slice_tests
     )
     set_tests_properties(shs_renderer_vertical_slice_tests PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    )
+
+    # Governance review 2026-09-18 todo G1.1 (Tension 2 / P2): allocator-
+    # interception frame gate. Overrides global operator new/delete, arms
+    # around VerticalSliceHost::run_frame and fails when any heap allocation
+    # escapes the caller's designated frame arena; also self-checks that the
+    # interception counts a deliberate allocation. Links shs::renderer-values.
+    add_executable(shs_renderer_frame_allocator_interception_tests
+        tests/frame_allocator_interception_tests.cpp
+    )
+    target_link_libraries(shs_renderer_frame_allocator_interception_tests PRIVATE shs::renderer-values)
+    target_compile_features(shs_renderer_frame_allocator_interception_tests PRIVATE cxx_std_23)
+    if(MSVC)
+        target_compile_options(shs_renderer_frame_allocator_interception_tests PRIVATE /W4)
+    else()
+        target_compile_options(shs_renderer_frame_allocator_interception_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+
+    add_test(
+        NAME shs_renderer_frame_allocator_interception_tests
+        COMMAND shs_renderer_frame_allocator_interception_tests
+    )
+    set_tests_properties(shs_renderer_frame_allocator_interception_tests PROPERTIES
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     )
 
