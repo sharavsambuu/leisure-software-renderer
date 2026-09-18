@@ -16,12 +16,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # --- Dependencies (shared across all demos — defined in parent CMakeLists.txt) ---
-find_package(SDL2 CONFIG REQUIRED)
+find_package(SDL3 CONFIG REQUIRED)
 find_package(glm CONFIG REQUIRED)
 find_package(assimp CONFIG REQUIRED)
 
 include_directories(${ASSIMP_INCLUDE_DIR})
-include_directories(${SDL2_INCLUDE_DIRS} ${SDL2_IMAGE_INCLUDE_DIR})
+include_directories(${SDL3_INCLUDE_DIRS} ${SDL3_IMAGE_INCLUDE_DIR})
 include_directories(${CMAKE_BINARY_DIR})
 # Include the shared software renderer (shs_renderer.hpp)
 include_directories(${HelloSHSRenderer_SOURCE_DIR}/)
@@ -55,10 +55,10 @@ target_compile_options(HelloFPSDemo PRIVATE
 
 target_compile_definitions(HelloFPSDemo PRIVATE GLM_ENABLE_EXPERIMENTAL)
 
-# --- Link libraries (SDL2_image::Main is defined once globally in parent CMakeLists.txt) ---
+# --- Link libraries (SDL3_image::Main is defined once globally in parent CMakeLists.txt) ---
 target_link_libraries(HelloFPSDemo PRIVATE
-    SDL2::SDL2
-    SDL2_image::Main
+    SDL3::SDL3
+    SDL3_image::Main
     glm::glm
     assimp::assimp
 )

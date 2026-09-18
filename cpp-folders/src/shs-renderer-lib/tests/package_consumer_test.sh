@@ -18,6 +18,18 @@ BUILD_DIR="${1:?usage: package_consumer_test.sh <build-dir> <source-dir> [toolch
 SOURCE_DIR="${2:?usage: package_consumer_test.sh <build-dir> <source-dir> [toolchain] [cxx]}"
 TOOLCHAIN_FILE="${3:-}"
 CXX_BIN="${4:-${CMAKE_CXX_COMPILER:-}}"
+# Args 5+ are the parent build's CMAKE_PREFIX_PATH entries (one per path).
+shift 4 || true
+# Join with ';' (CMake list separator) — the args arrive space-separated.
+if [ "$#" -gt 0 ]; then
+    _shs_ifs_save="$IFS"
+    IFS=';'
+    EXTRA_PREFIX_PATH="${*}"
+    IFS="$_shs_ifs_save"
+    unset _shs_ifs_save
+else
+    EXTRA_PREFIX_PATH=""
+fi
 
 SCRATCH="$(mktemp -d /tmp/shs-pkg-consumer.XXXXXX)"
 trap 'rm -rf "$SCRATCH"' EXIT
@@ -78,6 +90,9 @@ int main()
 EOF
 
 CONSUMER_ARGS=(-DCMAKE_PREFIX_PATH="$PREFIX")
+if [ -n "$EXTRA_PREFIX_PATH" ]; then
+    CONSUMER_ARGS+=(-DCMAKE_PREFIX_PATH="$PREFIX;$EXTRA_PREFIX_PATH")
+fi
 if [ -n "$TOOLCHAIN_FILE" ]; then
     CONSUMER_ARGS+=("-DCMAKE_TOOLCHAIN_FILE=$TOOLCHAIN_FILE")
 fi

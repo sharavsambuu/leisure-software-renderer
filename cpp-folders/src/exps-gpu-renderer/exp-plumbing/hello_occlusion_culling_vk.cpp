@@ -13,7 +13,7 @@
 #include <string>
 #include <vector>
 
-#include <SDL2/SDL.h>
+#include <SDL3/SDL.h>
 #include <vulkan/vulkan.h>
 
 #include <glm/glm.hpp>

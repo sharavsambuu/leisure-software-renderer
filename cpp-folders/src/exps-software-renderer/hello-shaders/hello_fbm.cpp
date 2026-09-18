@@ -1,4 +1,4 @@
-#include <SDL2/SDL.h>
+#include <SDL3/SDL.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/noise.hpp> 
 #include <algorithm>
@@ -112,7 +112,7 @@ int main(int argc, char* argv[])
         }
 
 
-        // preparing to render on SDL2
+        // preparing to render on SDL3
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
 

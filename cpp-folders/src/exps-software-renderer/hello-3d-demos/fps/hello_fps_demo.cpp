@@ -13,7 +13,7 @@
 //   --autodrive-fire          inject ONE synthetic FireIntent at frame 30
 // ============================================================================
 
-#include <SDL2/SDL.h>
+#include <SDL3/SDL.h>
 
 #include <algorithm>
 #include <iostream>

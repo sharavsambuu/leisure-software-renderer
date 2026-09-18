@@ -48,14 +48,23 @@ below. Vulkan SDK and Slang are per-platform.
 `find_package(... REQUIRED)` — missing any of these aborts CMake:
 
 ```bash
-vcpkg install "sdl2[vulkan]"               # window/input backend for every demo
-vcpkg install "sdl2-image[libjpeg-turbo]"  # image loading: REQUIRED for hello-render-target demos
-                                           # (HelloShadowMapping, HelloWater, HelloIblSkybox*, ...)
-                                           # NOTE: installs as SDL2_image::SDL2_image-static on x64-linux
-vcpkg install glm                          # math library used everywhere
-vcpkg install assimp                       # model loading (hello-3d-primitives + hello-render-target)
-vcpkg install vulkan-memory-allocator      # REQUIRED at configure time even for CPU-only work
+vcpkg install "sdl3[vulkan]"                # window/input backend for every demo
+                                            # SDL3 cutover 2026-09: SDL2/SDL2_image retired, no dual support.
+                                            # NOTE: `vulkan` is NOT a default sdl3 feature — the [vulkan]
+                                            #       feature is REQUIRED for the windowed Vulkan edge.
+vcpkg install "sdl3-image[png,jpeg]"   # image loading: REQUIRED for hello-render-target demos
+                                            # (HelloShadowMapping, HelloWater, HelloIblSkybox*, ...)
+                                            # NOTE: installs as SDL3_image::SDL3_image(-static) on x64-linux;
+                                            #       the lib creates the SDL3_image::Main alias for consumers
+vcpkg install glm                           # math library used everywhere
+vcpkg install assimp                        # model loading (hello-3d-primitives + hello-render-target)
+vcpkg install vulkan-memory-allocator       # REQUIRED at configure time even for CPU-only work
 ```
+
+> **SDL3 cutover note (2026-09):** the library code, CMake and gates now speak
+> SDL3 only (`find_package(SDL3)`, `SDL3::SDL3`, `SHS_HAS_SDL3`). See
+> `docs/backlog/sdl3_cutover_runbook.md` for the full inventory and the
+> mechanical rename table.
 
 Optional / feature-gated:
 
@@ -135,6 +144,29 @@ source ~/vulkan/1.4.341.1/setup-env.sh
 export VCPKG_ROOT="/opt/vcpkg"
 ```
 
+**If `/opt/vcpkg` is not writable by your user** (typical for a system-wide
+install), you cannot install additional ports into it. Two options:
+
+1. `sudo`-install the ports into the shared root (affects all users), or
+2. keep a user-local vcpkg root for new ports and point CMake at both trees:
+
+```bash
+git clone --depth 1 https://github.com/microsoft/vcpkg.git "$HOME/vcpkg"
+"$HOME/vcpkg/bootstrap-vcpkg.sh"
+"$HOME/vcpkg/vcpkg" install "sdl3[vulkan]" "sdl3-image[png,jpeg]" --triplet x64-linux
+```
+
+Then configure with the main toolchain **plus** the user-local install dir on
+`CMAKE_PREFIX_PATH` (classic mode — this repo has no vcpkg.json manifest):
+
+```bash
+cmake .. -DCMAKE_TOOLCHAIN_FILE=/opt/vcpkg/scripts/buildsystems/vcpkg.cmake \
+         -DCMAKE_PREFIX_PATH="$HOME/vcpkg/installed/x64-linux"
+```
+
+Always pass `--triplet x64-linux` explicitly with the user-local root —
+triplet auto-detection has been observed to fail there.
+
 Then install the [vcpkg packages](#vcpkg-packages-required-at-configure-time) and
 [Slang](#slang-slangc--shader-compiler-toolchain) as above.
 
@@ -170,8 +202,8 @@ brew install vcpkg
 git clone https://github.com/microsoft/vcpkg.git "$HOME/vcpkg"
 export VCPKG_ROOT="$HOME/vcpkg"
 
-vcpkg install "sdl2[vulkan]:arm64-osx" --recurse
-vcpkg install "sdl2-image[libjpeg-turbo]:arm64-osx"
+vcpkg install "sdl3[vulkan]:arm64-osx" --recurse
+vcpkg install "sdl3-image[png,jpeg]:arm64-osx"
 vcpkg install "glm:arm64-osx"
 vcpkg install "assimp:arm64-osx"
 vcpkg install "joltphysics:arm64-osx"
@@ -204,10 +236,9 @@ make -j20
   (adjust to your install location).
 
 ```bat
-vcpkg install sdl2[vulkan] --recurse
-vcpkg install sdl2-image
-vcpkg install sdl2-image:x64-windows-static
-vcpkg install --recurse sdl2-image[libjpeg-turbo]
+vcpkg install "sdl3[vulkan]" --recurse
+vcpkg install "sdl3-image[png,jpeg]"
+vcpkg install --recurse sdl3-image[png,jpeg]
 vcpkg install libjpeg-turbo
 vcpkg install glm
 vcpkg install assimp

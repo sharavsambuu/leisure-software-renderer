@@ -3,7 +3,7 @@
     we submit jobs as contiguous pixel ranges (chunks), not 86,400 jobs per frame.
 */
 
-#include <SDL2/SDL.h>
+#include <SDL3/SDL.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/noise.hpp>
 

@@ -1,4 +1,4 @@
-#include <SDL2/SDL.h>
+#include <SDL3/SDL.h>
 #include <algorithm>
 #include <string>
 #include <iostream>
@@ -95,7 +95,7 @@ int main(int argc, char* argv[])
         }
 
 
-        // preparing to render on SDL2
+        // preparing to render on SDL3
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
 

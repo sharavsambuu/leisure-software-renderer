@@ -2758,8 +2758,8 @@
       ],
       "visibility": "public-include-tree",
       "direct_dependencies": [
-        "SDL2/SDL.h",
-        "SDL2/SDL_image.h",
+        "SDL3/SDL.h",
+        "SDL3_image/SDL_image.h",
         "cstdint",
         "cstring",
         "shs/platform/platform_runtime.hpp",
@@ -2769,8 +2769,8 @@
         "shs/platform/platform_runtime.hpp"
       ],
       "external_dependencies": [
-        "SDL2/SDL.h",
-        "SDL2/SDL_image.h",
+        "SDL3/SDL.h",
+        "SDL3_image/SDL_image.h",
         "cstdint",
         "cstring",
         "string"
@@ -5068,8 +5068,8 @@
       ],
       "visibility": "public-include-tree",
       "direct_dependencies": [
-        "SDL2/SDL.h",
-        "SDL2/SDL_image.h",
+        "SDL3/SDL.h",
+        "SDL3_image/SDL_image.h",
         "shs/resources/storage/resource_registry.hpp",
         "shs/resources/texture.hpp",
         "string"
@@ -5079,8 +5079,8 @@
         "shs/resources/texture.hpp"
       ],
       "external_dependencies": [
-        "SDL2/SDL.h",
-        "SDL2/SDL_image.h",
+        "SDL3/SDL.h",
+        "SDL3_image/SDL_image.h",
         "string"
       ],
       "tracked_consumers": [
@@ -5934,8 +5934,8 @@
       ],
       "visibility": "public-include-tree",
       "direct_dependencies": [
-        "SDL2/SDL.h",
-        "SDL2/SDL_vulkan.h",
+        "SDL3/SDL.h",
+        "SDL3/SDL_vulkan.h",
         "algorithm",
         "array",
         "cstdint",
@@ -5959,8 +5959,8 @@
         "shs/rhi/vulkan/runtime/vk_memory_utils.hpp"
       ],
       "external_dependencies": [
-        "SDL2/SDL.h",
-        "SDL2/SDL_vulkan.h",
+        "SDL3/SDL.h",
+        "SDL3/SDL_vulkan.h",
         "algorithm",
         "array",
         "cstdint",

@@ -19,13 +19,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # --- Dependencies (shared across all demos — defined in parent CMakeLists.txt) ---
-find_package(SDL2 CONFIG REQUIRED)
-find_package(SDL2_mixer CONFIG QUIET)   # optional: audio pod is standalone; only linked if available
+find_package(SDL3 CONFIG REQUIRED)
+find_package(SDL3_mixer CONFIG QUIET)   # optional: audio pod is standalone; only linked if available
 find_package(glm CONFIG REQUIRED)
 find_package(assimp CONFIG REQUIRED)
 
 include_directories(${ASSIMP_INCLUDE_DIR})
-include_directories(${SDL2_INCLUDE_DIRS})
+include_directories(${SDL3_INCLUDE_DIRS})
 include_directories(${CMAKE_BINARY_DIR})
 # Include the shared software renderer (shs_renderer.hpp) from hello-3d-primitives
 include_directories(${HelloSHSRenderer_SOURCE_DIR}/)
@@ -68,15 +68,15 @@ target_compile_options(Hello3DSnake PRIVATE
 target_compile_definitions(Hello3DSnake PRIVATE GLM_ENABLE_EXPERIMENTAL)
 
 # --- Link libraries ---
-# SDL2_mixer is optional: the audio pod (edges/audio/snake.audio.hpp) uses SDL_LoadWAV/SDL_SaveWAV/
+# SDL3_mixer is optional: the audio pod (edges/audio/snake.audio.hpp) uses SDL_LoadWAV/SDL_SaveWAV/
 # SDL_PlayAudioBuffer, but main does not include it. Only link if vcpkg provided the package so the
-# demo builds even when mixer is unavailable; add "SDL2_mixer::SDL2_mixer" to the list once installed.
-if (TARGET SDL2_mixer::SDL2_mixer)
-    target_link_libraries(Hello3DSnake PRIVATE SDL2_mixer::SDL2_mixer)   # audio edge SFX (optional)
+# demo builds even when mixer is unavailable; add "SDL3_mixer::SDL3_mixer" to the list once installed.
+if (TARGET SDL3_mixer::SDL3_mixer)
+    target_link_libraries(Hello3DSnake PRIVATE SDL3_mixer::SDL3_mixer)   # audio edge SFX (optional)
 endif()
 
 target_link_libraries(Hello3DSnake PRIVATE
-    SDL2::SDL2
+    SDL3::SDL3
     glm::glm
     assimp::assimp
 )

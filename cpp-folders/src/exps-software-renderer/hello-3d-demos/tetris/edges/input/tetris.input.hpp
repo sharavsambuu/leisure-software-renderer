@@ -16,7 +16,7 @@
 // Usage per frame:
 //   input_edge.begin_frame(dt);
 //   InputState in = input_edge.poll(arena);
-#include <SDL2/SDL.h>
+#include <SDL3/SDL.h>
 #include <algorithm>
 #include <memory_resource>
 

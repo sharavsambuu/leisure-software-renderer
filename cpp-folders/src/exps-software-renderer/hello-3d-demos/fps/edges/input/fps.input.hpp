@@ -7,7 +7,7 @@
 // This is the ONLY pod that knows about SDL input APIs.
 // ============================================================================
 
-#include <SDL2/SDL.h>
+#include <SDL3/SDL.h>
 
 #include <glm/glm.hpp>
 #include <memory_resource>

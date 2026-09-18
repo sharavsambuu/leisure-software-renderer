@@ -38,7 +38,7 @@
 // HUD/FX/fresh script sandbox/window title) — no stale GUI across levels.
 // ============================================================================
 
-#include <SDL2/SDL.h>
+#include <SDL3/SDL.h>
 
 #include <algorithm>
 #include <cstdint>

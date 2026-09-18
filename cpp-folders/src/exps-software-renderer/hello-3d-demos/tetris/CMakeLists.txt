@@ -18,7 +18,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # --- Dependencies (shared across all demos — defined in parent CMakeLists.txt) ---
-find_package(SDL2 CONFIG REQUIRED)
+find_package(SDL3 CONFIG REQUIRED)
 find_package(glm CONFIG REQUIRED)
 find_package(assimp CONFIG REQUIRED)
 
@@ -67,7 +67,7 @@ if (NOT LUA_FOUND)
 endif()
 
 include_directories(${ASSIMP_INCLUDE_DIR})
-include_directories(${SDL2_INCLUDE_DIRS})
+include_directories(${SDL3_INCLUDE_DIRS})
 include_directories(${CMAKE_BINARY_DIR})
 if(NOT DEFINED HelloSHSRenderer_SOURCE_DIR)
     get_filename_component(_TETRIS_SHS_RENDERER "${CMAKE_CURRENT_SOURCE_DIR}/../../../exps-other/hello-shs-renderer" ABSOLUTE)
@@ -140,7 +140,7 @@ target_compile_definitions(Hello3DTetris PRIVATE GLM_ENABLE_EXPERIMENTAL)
 
 # --- Link libraries ---
 target_link_libraries(Hello3DTetris PRIVATE
-    SDL2::SDL2
+    SDL3::SDL3
     glm::glm
     assimp::assimp
 )
@@ -182,7 +182,7 @@ set_property(TARGET Hello3DTetris PROPERTY INCLUDE_DIRECTORIES
     ${HelloSHSRenderer_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/../../../shs-software-renderer-lib/include
     ${ASSIMP_INCLUDE_DIR}
-    ${SDL2_INCLUDE_DIRS}
+    ${SDL3_INCLUDE_DIRS}
     ${CMAKE_BINARY_DIR}
     ${stb_SOURCE_DIR}
     ${LUA_INCLUDE_DIR}
@@ -213,7 +213,7 @@ add_test(NAME tetris_reducer_tests
          COMMAND $<TARGET_FILE:tetris_reducer_tests>)
 
 # --- P2: whole-frame + input harness tests -----------------------------------
-# Needs SDL2 (input edge includes SDL.h) and the shs renderer headers (hud
+# Needs SDL3 (input edge includes SDL.h) and the shs renderer headers (hud
 # floaters use shs::Color). Links nothing new beyond what the main target uses.
 add_executable(tetris_step_tests
     tests/step_tests.cpp
@@ -225,7 +225,7 @@ set_property(TARGET tetris_step_tests PROPERTY INCLUDE_DIRECTORIES
     ${CMAKE_CURRENT_SOURCE_DIR}/game/include
     ${HelloSHSRenderer_SOURCE_DIR}
     ${ASSIMP_INCLUDE_DIR}
-    ${SDL2_INCLUDE_DIRS}
+    ${SDL3_INCLUDE_DIRS}
     ${CMAKE_BINARY_DIR}
     ${stb_SOURCE_DIR}
     ${_TETRIS_VCPKG_INSTALLED_DIR}/include
@@ -237,7 +237,7 @@ if (WIN32)
     target_compile_definitions(tetris_step_tests PRIVATE SDL_MAIN_HANDLED)
 endif()
 target_compile_features(tetris_step_tests PRIVATE cxx_std_23)
-target_link_libraries(tetris_step_tests PRIVATE SDL2::SDL2 glm::glm)
+target_link_libraries(tetris_step_tests PRIVATE SDL3::SDL3 glm::glm)
 target_include_directories(tetris_step_tests PRIVATE ${_TETRIS_VCPKG_INSTALLED_DIR}/include)
 if (MSVC)
     target_compile_options(tetris_step_tests PRIVATE /W4)
@@ -287,7 +287,7 @@ set_property(TARGET tetris_goal_bridge_tests PROPERTY INCLUDE_DIRECTORIES
     ${HelloSHSRenderer_SOURCE_DIR}
     ${LUA_INCLUDE_DIR}
     ${ASSIMP_INCLUDE_DIR}
-    ${SDL2_INCLUDE_DIRS}
+    ${SDL3_INCLUDE_DIRS}
     ${CMAKE_BINARY_DIR}
     ${stb_SOURCE_DIR}
     ${_TETRIS_VCPKG_INSTALLED_DIR}/include
@@ -316,7 +316,7 @@ set_property(TARGET tetris_stage_tests PROPERTY INCLUDE_DIRECTORIES
     ${CMAKE_CURRENT_SOURCE_DIR}/game/include
     ${HelloSHSRenderer_SOURCE_DIR}
     ${ASSIMP_INCLUDE_DIR}
-    ${SDL2_INCLUDE_DIRS}
+    ${SDL3_INCLUDE_DIRS}
     ${CMAKE_BINARY_DIR}
     ${stb_SOURCE_DIR}
     ${_TETRIS_VCPKG_INSTALLED_DIR}/include

@@ -1,6 +1,6 @@
 #pragma once
 
-// snake audio edge — plays SFX for emitted events. Pure mapping; never touches game state. SDL2 audio API
+// snake audio edge — plays SFX for emitted events. Pure mapping; never touches game state. SDL3 audio API
 // lives here (the execution boundary). This pod is STANDALONE: it owns its own local event vocabulary so
 // it compiles and runs without depending on any other domain pod. Audio tones are synthesized procedurally
 // into small WAV files at first use via SDL_SaveWAV, so no external asset files are required.

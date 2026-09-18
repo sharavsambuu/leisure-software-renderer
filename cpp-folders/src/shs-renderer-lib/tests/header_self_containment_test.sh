@@ -4,7 +4,7 @@
 # Every public header must compile standalone with exactly the exported
 # package dependency set:
 #   - the package include dir (include/),
-#   - glm and any SDK include dirs present in this build (SDL2, assimp,
+#   - glm and any SDK include dirs present in this build (SDL3, assimp,
 #     Vulkan, Jolt, xsimd, VMA),
 # and with NO SHS_HAS_* feature defines and NO build-dir/stb include dirs.
 # A failure means a header leaks a build-tree/generated/stb dependency or

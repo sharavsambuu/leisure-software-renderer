@@ -30,8 +30,8 @@
 struct SDL_Window;
 
 #ifdef SHS_HAS_VULKAN
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_vulkan.h>
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_vulkan.h>
 #include <vulkan/vulkan.h>
 #include "shs/rhi/vulkan/runtime/vk_memory_utils.hpp"
 #endif
@@ -892,7 +892,7 @@ namespace shs
             if (!window_) return false;
 
             if (!create_instance()) { std::fprintf(stderr, "[shs] Vulkan: create_instance failed\n"); shutdown(); return false; }
-            if (!SDL_Vulkan_CreateSurface(window_, instance_, &surface_)) { std::fprintf(stderr, "[shs] Vulkan: create surface failed\n"); shutdown(); return false; }
+            if (!SDL_Vulkan_CreateSurface(window_, instance_, nullptr, &surface_)) { std::fprintf(stderr, "[shs] Vulkan: create surface failed\n"); shutdown(); return false; }
             if (!pick_physical_device()) { std::fprintf(stderr, "[shs] Vulkan: pick_physical_device failed\n"); shutdown(); return false; }
             if (!create_device_and_queues()) { std::fprintf(stderr, "[shs] Vulkan: create_device_and_queues failed\n"); shutdown(); return false; }
             if (!create_swapchain()) { std::fprintf(stderr, "[shs] Vulkan: create_swapchain failed\n"); shutdown(); return false; }
@@ -912,10 +912,10 @@ namespace shs
 
         bool create_instance()
         {
-            unsigned int ext_count = 0;
-            if (!SDL_Vulkan_GetInstanceExtensions(window_, &ext_count, nullptr)) return false;
-            std::vector<const char*> exts(ext_count);
-            if (!SDL_Vulkan_GetInstanceExtensions(window_, &ext_count, exts.data())) return false;
+            Uint32 ext_count = 0;
+            const char* const* window_exts = SDL_Vulkan_GetInstanceExtensions(&ext_count);
+            if (!window_exts || ext_count == 0) return false;
+            std::vector<const char*> exts(window_exts, window_exts + ext_count);
 
             auto add_instance_ext_if_supported = [&](const char* ext_name) {
                 if (!ext_name) return false;
@@ -1625,7 +1625,7 @@ namespace shs
             {
                 int dw = 0;
                 int dh = 0;
-                SDL_Vulkan_GetDrawableSize(window_, &dw, &dh);
+                SDL_GetWindowSizeInPixels(window_, &dw, &dh);
                 w = dw;
                 h = dh;
             }
@@ -2016,7 +2016,7 @@ namespace shs
             if (device_ == VK_NULL_HANDLE) return false;
             int w = 0;
             int h = 0;
-            SDL_Vulkan_GetDrawableSize(window_, &w, &h);
+            SDL_GetWindowSizeInPixels(window_, &w, &h);
             if (w <= 0 || h <= 0) return false;
             const VkResult idle_res = vkDeviceWaitIdle(device_);
             if (idle_res == VK_ERROR_DEVICE_LOST)

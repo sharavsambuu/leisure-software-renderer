@@ -13,38 +13,38 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # --- Shared dependencies (defined once in parent, exposed to all subdirs via add_subdirectory) ---
-find_package(SDL2 CONFIG REQUIRED)
-find_package(SDL2_image CONFIG QUIET)   # optional: no demo uses image loading; make it non-fatal
+find_package(SDL3 CONFIG REQUIRED)
+find_package(SDL3_image CONFIG QUIET)   # optional: no demo uses image loading; make it non-fatal
 find_package(glm CONFIG REQUIRED)
 find_package(assimp CONFIG REQUIRED)
 
-# SDL2_image ships either a shared import target (SDL2_image::SDL2_image) or, when built static
-# (vcpkg x64-linux default), a QUALIFIED "SDL2_image::SDL2_image-static" target. The demos link the
-# unified scoped alias SDL2_image::Main.
+# SDL3_image ships either a shared import target (SDL3_image::SDL3_image) or, when built static
+# (vcpkg x64-linux default), a QUALIFIED "SDL3_image::SDL3_image-static" target. The demos link the
+# unified scoped alias SDL3_image::Main.
 #
 # WARNING (validated 2026-08-22): this aggregator runs BEFORE hello-render-target in the root
 # add_subdirectory order, and non-global ALIAS targets created here ARE visible to later-processed
-# sibling directories. If we fall through to the no-op INTERFACE fallback below while SDL2_image IS
-# installed, the name SDL2_image::Main gets poisoned: hello-render-target's own
-# `if(NOT TARGET SDL2_image::Main)` guard then skips creating its real alias, and every target there
-# links WITHOUT libSDL2_image.a → undefined IMG_Init/IMG_Load/IMG_Quit at link time.
+# sibling directories. If we fall through to the no-op INTERFACE fallback below while SDL3_image IS
+# installed, the name SDL3_image::Main gets poisoned: hello-render-target's own
+# `if(NOT TARGET SDL3_image::Main)` guard then skips creating its real alias, and every target there
+# links WITHOUT libSDL3_image.a → undefined IMG_Init/IMG_Load/IMG_Quit at link time.
 # Hence: check ALL real target shapes first (qualified shared, qualified static, legacy unqualified)
 # and only use the empty fallback when the package is genuinely absent.
 # Guarded by NOT TARGET Main: shs-software-renderer-lib (added before us in the
 # root) already defines the real alias — never redefine it here.
-if(NOT TARGET SDL2_image::Main)
-    if(TARGET SDL2_image::SDL2_image)
-        add_library(SDL2_image::Main ALIAS SDL2_image::SDL2_image)
-    elseif(TARGET SDL2_image::SDL2_image-static)
+if(NOT TARGET SDL3_image::Main)
+    if(TARGET SDL3_image::SDL3_image)
+        add_library(SDL3_image::Main ALIAS SDL3_image::SDL3_image)
+    elseif(TARGET SDL3_image::SDL3_image-static)
         # vcpkg static triplet (x64-linux): this is the shape find_package actually provides.
-        add_library(SDL2_image::Main ALIAS SDL2_image::SDL2_image-static)
-    elseif(TARGET SDL2_image-static)
-        # Legacy unqualified static name (older SDL2_image config layouts).
-        add_library(SDL2_image::Main ALIAS SDL2_image-static)
+        add_library(SDL3_image::Main ALIAS SDL3_image::SDL3_image-static)
+    elseif(TARGET SDL3_image-static)
+        # Legacy unqualified static name (older SDL3_image config layouts).
+        add_library(SDL3_image::Main ALIAS SDL3_image-static)
     else()
-        message(STATUS "SDL2_image not found — treating as optional (no demo uses image loading).")
-        add_library(SDL2_image_Main INTERFACE)
-        add_library(SDL2_image::Main ALIAS SDL2_image_Main)
+        message(STATUS "SDL3_image not found — treating as optional (no demo uses image loading).")
+        add_library(SDL3_image_Main INTERFACE)
+        add_library(SDL3_image::Main ALIAS SDL3_image_Main)
     endif()
 endif()
 
@@ -52,7 +52,7 @@ endif()
 include_directories(${HelloSHSRenderer_SOURCE_DIR}/)
 
 include_directories(${ASSIMP_INCLUDE_DIR})
-include_directories(${SDL2_INCLUDE_DIRS} ${SDL2_IMAGE_INCLUDE_DIR})
+include_directories(${SDL3_INCLUDE_DIRS} ${SDL3_IMAGE_INCLUDE_DIR})
 include_directories(${CMAKE_BINARY_DIR})
 include_directories(${stb_SOURCE_DIR}/)
 

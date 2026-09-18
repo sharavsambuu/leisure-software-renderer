@@ -4,7 +4,7 @@
 Structural rules over the real include graph (forwarders resolved):
 
   R1  no include cycles between canonical (non-forwarder) headers
-  R2  raw SDK includes (Jolt/SDL2/Assimp/Vulkan) only in integration-tier
+  R2  raw SDK includes (Jolt/SDL3/Assimp/Vulkan) only in integration-tier
       headers (adapter dirs, rhi/, driver-adjacent vk_* execution headers
       and the pass-adapter aggregation pass_adapters.hpp,
       or files feature-guarded with SHS_HAS_<SDK>)
@@ -27,7 +27,7 @@ FORWARDER_MARKER = "Compatibility include"
 ADAPTER_PATH_RE = re.compile(r"(^|/)adapters/")
 
 SHS_INC_RE = re.compile(r'#include\s+"(shs/[^"]+)"')
-SDK_INC_RE = re.compile(r'#include\s+[<"](Jolt/|SDL2/|assimp/|vulkan/vulkan\.h|GL/)')
+SDK_INC_RE = re.compile(r'#include\s+[<"](Jolt/|SDL3/|assimp/|vulkan/vulkan\.h|GL/)')
 SDK_TOKEN_RE = re.compile(r"JPH::|SDL_[A-Z]|aiScene|AiMesh|Vk[A-Z]")
 GUARD_RE = re.compile(r"#\s*if\s+defined\(SHS_HAS_(JOLT|VULKAN|ASSIMP|SDL)\)")
 INTEGRATION_PREFIXES = ("rhi/", "platform/", "app/backend/")
@@ -195,7 +195,7 @@ def run_self_test():
 
         w("value.hpp", '#pragma once\n#include "shs/adapters/driver.hpp"\n')
         w("adapters/driver.hpp", '#pragma once\n#include <Jolt/Jolt.h>\n')
-        w("sdk_user.hpp", '#pragma once\n#include <SDL2/SDL.h>\n')
+        w("sdk_user.hpp", '#pragma once\n#include <SDL3/SDL.h>\n')
         w("cy_a.hpp", '#pragma once\n#include "shs/cy_b.hpp"\n')
         w("cy_b.hpp", '#pragma once\n#include "shs/cy_a.hpp"\n')
         w("clean.hpp", "#pragma once\n")

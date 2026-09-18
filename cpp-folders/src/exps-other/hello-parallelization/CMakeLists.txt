@@ -1,13 +1,13 @@
 project(HelloParallelization)
 
-find_package(SDL2 CONFIG REQUIRED)
-find_package(SDL2_image CONFIG REQUIRED)
+find_package(SDL3 CONFIG REQUIRED)
+find_package(SDL3_image CONFIG REQUIRED)
 find_package(glm CONFIG REQUIRED)
 find_package(assimp REQUIRED)
 #find_package(Boost REQUIRED COMPONENTS)
 
 include_directories(${ASSIMP_INCLUDE_DIR})
-include_directories(${SDL2_INCLUDE_DIRS} ${SDL2_IMAGE_INCLUDE_DIR})
+include_directories(${SDL3_INCLUDE_DIRS} ${SDL3_IMAGE_INCLUDE_DIR})
 include_directories(${CMAKE_BINARY_DIR})
 include_directories(${stb_SOURCE_DIR}/)
 include_directories(${HelloSHSRenderer_SOURCE_DIR}/)
@@ -33,20 +33,20 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
 
 add_executable(HelloNestedLoops hello_nested_loops.cpp)
-target_link_libraries(HelloNestedLoops Threads::Threads ${SDL2_LIBRARIES} glm::glm)
+target_link_libraries(HelloNestedLoops Threads::Threads ${SDL3_LIBRARIES} glm::glm)
 
 add_executable(HelloThreadShaderRaw hello_thread_shader_raw.cpp)
-target_link_libraries(HelloThreadShaderRaw Threads::Threads ${SDL2_LIBRARIES} glm::glm)
+target_link_libraries(HelloThreadShaderRaw Threads::Threads ${SDL3_LIBRARIES} glm::glm)
 
 add_executable(HelloThreadShaderJob hello_thread_shader_job.cpp)
-target_link_libraries(HelloThreadShaderJob Threads::Threads ${SDL2_LIBRARIES} glm::glm)
+target_link_libraries(HelloThreadShaderJob Threads::Threads ${SDL3_LIBRARIES} glm::glm)
 
 
 add_executable(HelloThreadShaderRawZoned hello_thread_shader_raw_zoned.cpp)
-target_link_libraries(HelloThreadShaderRawZoned Threads::Threads ${SDL2_LIBRARIES} glm::glm)
+target_link_libraries(HelloThreadShaderRawZoned Threads::Threads ${SDL3_LIBRARIES} glm::glm)
 
 add_executable(HelloThreadShaderJobZoned hello_thread_shader_job_zoned.cpp)
-target_link_libraries(HelloThreadShaderJobZoned Threads::Threads ${SDL2_LIBRARIES} glm::glm)
+target_link_libraries(HelloThreadShaderJobZoned Threads::Threads ${SDL3_LIBRARIES} glm::glm)
 
 
 add_executable(PrimitiveLoops primitive_loops.cpp)

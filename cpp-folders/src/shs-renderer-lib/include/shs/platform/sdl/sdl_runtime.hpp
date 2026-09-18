@@ -14,8 +14,8 @@
 #include <cstring>
 #include <string>
 
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_image.h>
+#include <SDL3/SDL.h>
+#include <SDL3_image/SDL_image.h>
 
 #include "shs/platform/platform_runtime.hpp"
 
@@ -29,23 +29,23 @@ namespace shs
     public:
         SdlRuntime(const WindowDesc& win, const SurfaceDesc& surface)
         {
-            if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0) return;
+            if (!SDL_Init(SDL_INIT_VIDEO)) return;
 
-            const int img_flags = IMG_INIT_PNG | IMG_INIT_JPG;
-            if ((IMG_Init(img_flags) & img_flags) == 0) return;
-
+            // SDL3_image removed IMG_Init/IMG_Quit — format support is
+            // compiled in and initialized on demand by IMG_Load.
             window_ = SDL_CreateWindow(
                 win.title.c_str(),
-                SDL_WINDOWPOS_CENTERED,
-                SDL_WINDOWPOS_CENTERED,
                 win.width,
                 win.height,
-                SDL_WINDOW_SHOWN
+                0 // SDL3: windows are shown by default; SDL_WINDOW_SHOWN retired
             );
             if (!window_) return;
 
-            renderer_ = SDL_CreateRenderer(window_, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+            // SDL3: renderer flags are gone from SDL_CreateRenderer (2-arg).
+            // Accelerated is the default; vsync is set post-creation.
+            renderer_ = SDL_CreateRenderer(window_, nullptr);
             if (!renderer_) return;
+            SDL_SetRenderVSync(renderer_, 1);
 
             texture_ = SDL_CreateTexture(
                 renderer_,
@@ -64,7 +64,6 @@ namespace shs
             if (texture_) SDL_DestroyTexture(texture_);
             if (renderer_) SDL_DestroyRenderer(renderer_);
             if (window_) SDL_DestroyWindow(window_);
-            IMG_Quit();
             SDL_Quit();
         }
 
@@ -77,49 +76,49 @@ namespace shs
             SDL_Event e;
             while (SDL_PollEvent(&e))
             {
-                if (e.type == SDL_QUIT) out.quit = true;
-                if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE) out.quit = true;
-                if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_l) out.toggle_light_shafts = true;
-                if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_b) out.toggle_bot = true;
-                if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_F1) out.cycle_debug_view = true;
-                if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_F2) out.cycle_cull_mode = true;
-                if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_F3) out.toggle_front_face = true;
-                if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_F4) out.toggle_shading_model = true;
-                if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_F5) out.toggle_sky_mode = true;
-                if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_F6) out.toggle_follow_camera = true;
-                if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_m) out.toggle_motion_blur = true;
+                if (e.type == SDL_EVENT_QUIT) out.quit = true;
+                if (e.type == SDL_EVENT_KEY_DOWN && e.key.key == SDLK_ESCAPE) out.quit = true;
+                if (e.type == SDL_EVENT_KEY_DOWN && e.key.key == SDLK_L) out.toggle_light_shafts = true;
+                if (e.type == SDL_EVENT_KEY_DOWN && e.key.key == SDLK_B) out.toggle_bot = true;
+                if (e.type == SDL_EVENT_KEY_DOWN && e.key.key == SDLK_F1) out.cycle_debug_view = true;
+                if (e.type == SDL_EVENT_KEY_DOWN && e.key.key == SDLK_F2) out.cycle_cull_mode = true;
+                if (e.type == SDL_EVENT_KEY_DOWN && e.key.key == SDLK_F3) out.toggle_front_face = true;
+                if (e.type == SDL_EVENT_KEY_DOWN && e.key.key == SDLK_F4) out.toggle_shading_model = true;
+                if (e.type == SDL_EVENT_KEY_DOWN && e.key.key == SDLK_F5) out.toggle_sky_mode = true;
+                if (e.type == SDL_EVENT_KEY_DOWN && e.key.key == SDLK_F6) out.toggle_follow_camera = true;
+                if (e.type == SDL_EVENT_KEY_DOWN && e.key.key == SDLK_M) out.toggle_motion_blur = true;
 
-                if (e.type == SDL_MOUSEMOTION)
+                if (e.type == SDL_EVENT_MOUSE_MOTION)
                 {
                     const bool capture_mouse =
                         right_mouse_held_ ||
                         left_mouse_held_ ||
-                        (SDL_GetRelativeMouseMode() == SDL_TRUE);
+                        (SDL_GetWindowRelativeMouseMode(window_));
                     if (capture_mouse && !ignore_next_mouse_dt_)
                     {
                         out.mouse_dx += (float)e.motion.xrel;
                         out.mouse_dy += (float)e.motion.yrel;
                     }
                 }
-                if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_RIGHT)
+                if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN && e.button.button == SDL_BUTTON_RIGHT)
                 {
                     right_mouse_held_ = true;
                 }
-                if (e.type == SDL_MOUSEBUTTONUP && e.button.button == SDL_BUTTON_RIGHT)
+                if (e.type == SDL_EVENT_MOUSE_BUTTON_UP && e.button.button == SDL_BUTTON_RIGHT)
                 {
                     right_mouse_held_ = false;
                     out.right_mouse_up = true;
                 }
-                if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT)
+                if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN && e.button.button == SDL_BUTTON_LEFT)
                 {
                     left_mouse_held_ = true;
                 }
-                if (e.type == SDL_MOUSEBUTTONUP && e.button.button == SDL_BUTTON_LEFT)
+                if (e.type == SDL_EVENT_MOUSE_BUTTON_UP && e.button.button == SDL_BUTTON_LEFT)
                 {
                     left_mouse_held_ = false;
                     out.left_mouse_up = true;
                 }
-                if (e.type == SDL_WINDOWEVENT && e.window.event == SDL_WINDOWEVENT_FOCUS_LOST)
+                if (e.type == SDL_EVENT_WINDOW_FOCUS_LOST)
                 {
                     right_mouse_held_ = false;
                     left_mouse_held_ = false;
@@ -127,8 +126,8 @@ namespace shs
             }
 
             uint32_t ms = SDL_GetMouseState(nullptr, nullptr);
-            const bool relative_mode = SDL_GetRelativeMouseMode() == SDL_TRUE;
-            if ((ms & SDL_BUTTON(SDL_BUTTON_RIGHT)) != 0)
+            const bool relative_mode = SDL_GetWindowRelativeMouseMode(window_);
+            if ((ms & SDL_BUTTON_MASK(SDL_BUTTON_RIGHT)) != 0)
             {
                 right_mouse_held_ = true;
             }
@@ -136,7 +135,7 @@ namespace shs
             {
                 right_mouse_held_ = false;
             }
-            if ((ms & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0)
+            if ((ms & SDL_BUTTON_MASK(SDL_BUTTON_LEFT)) != 0)
             {
                 left_mouse_held_ = true;
             }
@@ -147,7 +146,7 @@ namespace shs
             out.right_mouse_down = right_mouse_held_;
             out.left_mouse_down = left_mouse_held_;
 
-            const uint8_t* ks = SDL_GetKeyboardState(nullptr);
+            const bool* ks = SDL_GetKeyboardState(nullptr);
             out.forward = ks[SDL_SCANCODE_W] != 0;
             out.backward = ks[SDL_SCANCODE_S] != 0;
             out.left = ks[SDL_SCANCODE_A] != 0;
@@ -163,7 +162,7 @@ namespace shs
 
         void set_relative_mouse_mode(bool enabled) override
         {
-            SDL_SetRelativeMouseMode(enabled ? SDL_TRUE : SDL_FALSE);
+            SDL_SetWindowRelativeMouseMode(window_, enabled);
             if (enabled) ignore_next_mouse_dt_ = true;
         }
 
@@ -196,7 +195,7 @@ namespace shs
             if (!renderer_ || !texture_) return;
             SDL_SetRenderDrawColor(renderer_, 10, 10, 14, 255);
             SDL_RenderClear(renderer_);
-            SDL_RenderCopy(renderer_, texture_, nullptr, nullptr);
+            SDL_RenderTexture(renderer_, texture_, nullptr, nullptr);
             SDL_RenderPresent(renderer_);
         }
 

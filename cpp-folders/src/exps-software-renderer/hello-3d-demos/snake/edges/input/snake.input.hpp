@@ -1,7 +1,7 @@
 #pragma once
 
 // snake input edge — translates raw device events into command intents. Pure mapping; never touches
-// game state. SDL polling lives in the main entry (SDL2 API). This pod is STANDALONE: it owns its own
+// game state. SDL polling lives in the main entry (SDL3 API). This pod is STANDALONE: it owns its own
 // local InputState and compiles without depending on any other domain pod's internals. Coupling to a
 // matrix/game pod happens later via a shared command vocabulary, not now — here we adopt that shared
 // vocabulary directly so the edge output plugs straight into snake::matrix::reduce_snake().

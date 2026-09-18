@@ -1,7 +1,7 @@
 #pragma once
 // tetris/edges/audio/tetris.audio.hpp — SDL AUDIO BOUNDARY (tetris::audio)
 // Verbatim port of the original demo synth (12 voices, lock-free SPSC ring).
-#include <SDL2/SDL.h>
+#include <SDL3/SDL.h>
 #include <atomic>
 #include <cmath>
 #include <cstdint>

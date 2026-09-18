@@ -117,7 +117,7 @@ Create a new domain if and only if the system passes at least two of these tests
 
 1. **The 5-to-8 Sweet Spot**: Almost every complete commercial game can be cleanly partitioned into **5 to 8 domain pods**. If you have 25 pods, you are over-fragmenting; if you have 1 monolith, you are under-modularizing.
 2. **The "Airplane Test"**: If you delete a domain pod folder (e.g. delete `domains/quest/`), the rest of the game (e.g. `combat`, `matrix`, `locomotion`) should still compile and run cleanly, simply ignoring the missing events.
-3. **The Pure Center Contract**: Reducers must have **zero `#include <vulkan/...>` or `#include <SDL2/...>`** and zero standard heap allocations (`malloc`/`new`). Keep math pure in the center, and leave all side effects at the execution edges.
+3. **The Pure Center Contract**: Reducers must have **zero `#include <vulkan/...>` or `#include <SDL3/...>`** and zero standard heap allocations (`malloc`/`new`). Keep math pure in the center, and leave all side effects at the execution edges.
 
 ---
 

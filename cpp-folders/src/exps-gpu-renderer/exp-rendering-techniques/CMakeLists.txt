@@ -29,7 +29,7 @@ else()
 endif()
 target_compile_features(demo_forward_classic_renderpath PRIVATE cxx_std_23)
 
-if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL2_HAS_VULKAN)
+if(SHS_RENDERER_HAS_VULKAN AND GLSLANG_VALIDATOR AND SHS_SDL3_HAS_VULKAN)
     set(SHADER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/shaders")
     set(OUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/shaders")
     file(MAKE_DIRECTORY "${OUT_DIR}")

@@ -1,10 +1,10 @@
 #project(SHSRendererLib)
-#find_package(SDL2 CONFIG REQUIRED)
-#find_package(SDL2_image CONFIG REQUIRED)
+#find_package(SDL3 CONFIG REQUIRED)
+#find_package(SDL3_image CONFIG REQUIRED)
 #find_package(glm CONFIG REQUIRED)
 #find_package(assimp CONFIG REQUIRED)
 #include_directories(${ASSIMP_INCLUDE_DIR})
-#include_directories(${SDL2_INCLUDE_DIRS} ${SDL2_IMAGE_INCLUDE_DIR})
+#include_directories(${SDL3_INCLUDE_DIRS} ${SDL3_IMAGE_INCLUDE_DIR})
 #include_directories(${CMAKE_BINARY_DIR})
 #include_directories(${stb_SOURCE_DIR}/)
 #cmake_minimum_required(VERSION 3.20)
@@ -13,18 +13,21 @@
 project(SHSRenderer LANGUAGES CXX)
 
 # Adapter selection (migration step 5 — selectable dependency ownership):
-# SDL2/SDL2_image and Assimp are optional integration adapters. Defaults keep
+# SDL3/SDL3_image and Assimp are optional integration adapters. Defaults keep
 # the historical behavior (all ON); consumer configurations may disable them
 # to build the GPU-free, windowing-free core (the compiled TUs are anchors
 # only, so nothing in the library itself needs these SDKs). Vulkan stays
 # auto-discovered (QUIET); Jolt/xsimd stay auto-discovered target-conditional.
-option(SHS_RENDERER_WITH_SDL2 "Discover and link SDL2/SDL2_image (windowed runtime + texture adapters)" ON)
+# SDL3 cutover (2026-09): SDL2 retired wholesale — no dual support (same
+# clean-cutover precedent as the forwarder-tree/namespace retirements).
+# Option renamed from SHS_RENDERER_WITH_SDL2; define renamed SHS_HAS_SDL2→SHS_HAS_SDL3.
+option(SHS_RENDERER_WITH_SDL3 "Discover and link SDL3/SDL3_image (windowed runtime + texture adapters)" ON)
 option(SHS_RENDERER_WITH_ASSIMP "Discover and link Assimp (mesh import adapters)" ON)
 
 find_package(glm CONFIG REQUIRED)
-if(SHS_RENDERER_WITH_SDL2)
-    find_package(SDL2 CONFIG REQUIRED)
-    find_package(SDL2_image CONFIG REQUIRED)
+if(SHS_RENDERER_WITH_SDL3)
+    find_package(SDL3 CONFIG REQUIRED)
+    find_package(SDL3_image CONFIG REQUIRED)
 endif()
 if(SHS_RENDERER_WITH_ASSIMP)
     find_package(assimp CONFIG REQUIRED)
@@ -75,46 +78,63 @@ add_library(shs::renderer ALIAS shs_renderer)
 # alias shs::renderer. Software vs GPU is a driver-pod + capability-gate
 # selection (SHS_HAS_VULKAN), not a library split.
 
-set(SHS_SDL2_HAS_VULKAN OFF)
-set(_shs_sdl2_config "")
-if(TARGET SDL2::SDL2)
-    get_target_property(_shs_sdl2_inc_dirs SDL2::SDL2 INTERFACE_INCLUDE_DIRECTORIES)
-    foreach(_inc IN LISTS _shs_sdl2_inc_dirs)
+set(SHS_SDL3_HAS_VULKAN OFF)
+set(_shs_sdl3_target "")
+if(TARGET SDL3::SDL3)
+    set(_shs_sdl3_target SDL3::SDL3)
+elseif(TARGET SDL3::SDL3-static)
+    set(_shs_sdl3_target SDL3::SDL3-static)
+endif()
+set(_shs_sdl3_config "")
+if(_shs_sdl3_target)
+    get_target_property(_shs_sdl3_inc_dirs ${_shs_sdl3_target} INTERFACE_INCLUDE_DIRECTORIES)
+    foreach(_inc IN LISTS _shs_sdl3_inc_dirs)
         if("${_inc}" MATCHES "^\\$<")
             continue()
         endif()
-        if(EXISTS "${_inc}/SDL2/SDL_config.h")
-            set(_shs_sdl2_config "${_inc}/SDL2/SDL_config.h")
+        # SDL3 ships no SDL_config.h/SDL_build_config.h in its public headers
+        # (build config is private). SDL_vulkan.h, however, is installed
+        # unconditionally — its presence is the capability probe.
+        if(EXISTS "${_inc}/SDL3/SDL_vulkan.h")
+            set(_shs_sdl3_config "${_inc}/SDL3/SDL_vulkan.h")
             break()
         endif()
-        if(EXISTS "${_inc}/SDL_config.h")
-            set(_shs_sdl2_config "${_inc}/SDL_config.h")
+        if(EXISTS "${_inc}/SDL_vulkan.h")
+            set(_shs_sdl3_config "${_inc}/SDL_vulkan.h")
             break()
         endif()
     endforeach()
 endif()
-if(_shs_sdl2_config)
-    file(READ "${_shs_sdl2_config}" _shs_sdl2_config_text)
-    if(_shs_sdl2_config_text MATCHES "#define[ \t]+SDL_VIDEO_VULKAN[ \t]+1")
-        set(SHS_SDL2_HAS_VULKAN ON)
-    endif()
+if(_shs_sdl3_config)
+    set(SHS_SDL3_HAS_VULKAN ON)
 endif()
 
 # C++ standard for everyone who links this
 target_compile_features(shs_renderer PUBLIC cxx_std_23)
 
-# Packages (vcpkg config mode) — conditional per SHS_RENDERER_WITH_SDL2 /
+# Packages (vcpkg config mode) — conditional per SHS_RENDERER_WITH_SDL3 /
 # SHS_RENDERER_WITH_ASSIMP (see adapter-selection options at top).
-if(SHS_RENDERER_WITH_SDL2)
-    find_package(SDL2 CONFIG REQUIRED)
+if(SHS_RENDERER_WITH_SDL3)
+    find_package(SDL3 CONFIG REQUIRED)
 endif()
-if(NOT TARGET SDL2_image::Main)
-    if(TARGET SDL2_image::SDL2_image)
-        add_library(SDL2_image::Main ALIAS SDL2_image::SDL2_image)
-    elseif(TARGET SDL2_image::SDL2_image-static)
-        add_library(SDL2_image::Main ALIAS SDL2_image::SDL2_image-static)
-    elseif(TARGET SDL2_image-static)
-        add_library(SDL2_image::Main ALIAS SDL2_image-static)
+if(NOT TARGET SDL3_image::Main)
+    # SDL3_image's config may expose SDL3_image::SDL3_image as an ALIAS of the
+    # -static/-shared real target; CMake forbids alias-of-alias, so resolve to
+    # the real target name first.
+    set(_shs_sdl3_image_real "")
+    foreach(_shs_cand SDL3_image::SDL3_image SDL3_image::SDL3_image-static SDL3_image-static)
+        if(TARGET ${_shs_cand})
+            get_target_property(_shs_aliased ${_shs_cand} ALIASED_TARGET)
+            if(_shs_aliased)
+                set(_shs_sdl3_image_real "${_shs_aliased}")
+            else()
+                set(_shs_sdl3_image_real "${_shs_cand}")
+            endif()
+            break()
+        endif()
+    endforeach()
+    if(_shs_sdl3_image_real)
+        add_library(SDL3_image::Main ALIAS ${_shs_sdl3_image_real})
     endif()
 endif()
 find_package(glm CONFIG REQUIRED)
@@ -135,19 +155,25 @@ target_include_directories(shs_renderer PUBLIC
     $<INSTALL_INTERFACE:include>
 )
 
-# Link deps that demos will inherit automatically. SDL2/Assimp are optional
+# Link deps that demos will inherit automatically. SDL3/Assimp are optional
 # adapters (step 5): when disabled, the library builds and links with zero
-# windowing/asset-import SDKs; SHS_HAS_SDL2 / SHS_HAS_ASSIMP let headers
+# windowing/asset-import SDKs; SHS_HAS_SDL3 / SHS_HAS_ASSIMP let headers
 # feature-guard adapter entry points (same shape as SHS_HAS_JOLT).
 target_link_libraries(shs_renderer PUBLIC
     glm::glm
 )
-if(SHS_RENDERER_WITH_SDL2)
+if(SHS_RENDERER_WITH_SDL3)
+    if(TARGET SDL3::SDL3)
+        target_link_libraries(shs_renderer PUBLIC SDL3::SDL3)
+    elseif(TARGET SDL3::SDL3-static)
+        target_link_libraries(shs_renderer PUBLIC SDL3::SDL3-static)
+    else()
+        message(FATAL_ERROR "SHS_RENDERER_WITH_SDL3=ON but no SDL3::SDL3 target found")
+    endif()
     target_link_libraries(shs_renderer PUBLIC
-        SDL2::SDL2
-        SDL2_image::Main
+        SDL3_image::Main
     )
-    target_compile_definitions(shs_renderer PUBLIC SHS_HAS_SDL2=1)
+    target_compile_definitions(shs_renderer PUBLIC SHS_HAS_SDL3=1)
 endif()
 if(SHS_RENDERER_WITH_ASSIMP)
     target_link_libraries(shs_renderer PUBLIC assimp::assimp)
@@ -199,7 +225,7 @@ if(Vulkan_FOUND AND TARGET Vulkan::Vulkan)
     endif()
 endif()
 set(SHS_RENDERER_HAS_VULKAN "${SHS_RENDERER_HAS_VULKAN}" PARENT_SCOPE)
-set(SHS_SDL2_HAS_VULKAN "${SHS_SDL2_HAS_VULKAN}" PARENT_SCOPE)
+set(SHS_SDL3_HAS_VULKAN "${SHS_SDL3_HAS_VULKAN}" PARENT_SCOPE)
 
 # Header-only value-layer target: include dirs + header-only deps ONLY.
 # Pure value code (pods, reducers, planners) must build and test against this
@@ -233,7 +259,7 @@ endif()
 # - in-tree behavior unchanged: source-tree, build-tree, stb include dirs and
 #   FetchContent-owned Jolt/xsimd/VMA links are all $<BUILD_INTERFACE:...>,
 #   so nothing they carry enters the export;
-# - the exported interface is minimal: `include/` + glm, plus SDL2/Assimp/
+# - the exported interface is minimal: `include/` + glm, plus SDL3/Assimp/
 #   Vulkan only when THIS build enabled them (Config re-discovers exactly
 #   those); SHS_HAS_* feature guards travel with the binaries as
 #   INTERFACE_COMPILE_DEFINITIONS, so package flags always match the build;
@@ -248,7 +274,7 @@ install(TARGETS shs_renderer shs_renderer_values
     INCLUDES DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
 )
 install(DIRECTORY include/shs DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
-set(SHS_RENDERER_PKG_WITH_SDL2 "${SHS_RENDERER_WITH_SDL2}")
+set(SHS_RENDERER_PKG_WITH_SDL3 "${SHS_RENDERER_WITH_SDL3}")
 set(SHS_RENDERER_PKG_WITH_ASSIMP "${SHS_RENDERER_WITH_ASSIMP}")
 set(SHS_RENDERER_PKG_WITH_VULKAN "${SHS_RENDERER_HAS_VULKAN}")
 set(SHS_RENDERER_CONFIG_OUT
@@ -295,6 +321,11 @@ if(SHS_RENDERER_BUILD_TESTS)
     if(CMAKE_CXX_COMPILER)
         list(APPEND _shs_pkg_consumer_args "${CMAKE_CXX_COMPILER}")
     endif()
+    # Forward extra dependency roots (e.g. a user-local vcpkg holding SDL3)
+    # so the installed package's find_dependency(SDL3) can resolve.
+    if(CMAKE_PREFIX_PATH)
+        list(APPEND _shs_pkg_consumer_args "${CMAKE_PREFIX_PATH}")
+    endif()
     add_test(NAME shs_renderer_package_consumer_test
         COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/package_consumer_test.sh"
             ${_shs_pkg_consumer_args})
@@ -303,7 +334,7 @@ if(SHS_RENDERER_BUILD_TESTS)
     # header compiles standalone with only the exported dependency include
     # dirs, no SHS_HAS_* defines and no build-tree/stb include dirs.
     set(_shs_selfcont_targets
-        glm::glm SDL2::SDL2 SDL2_image::SDL2_image assimp::assimp
+        glm::glm SDL3::SDL3 SDL3_image::SDL3_image assimp::assimp
         Vulkan::Vulkan GPUOpen::VulkanMemoryAllocator Jolt xsimd xsimd::xsimd)
     set(_shs_selfcont_inc "")
     foreach(_shs_t IN LISTS _shs_selfcont_targets)

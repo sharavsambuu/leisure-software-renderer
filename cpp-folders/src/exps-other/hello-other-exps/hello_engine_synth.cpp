@@ -1,5 +1,5 @@
 /*
-  SDL2 AUDIO + VISUALIZER
+  SDL3 AUDIO + VISUALIZER
   SUPER CAR 6-TRANSITION SHIFT + ENGINE START + IDLE LOCK + W/S PLAY MANUAL
 
   - Програм эхлэхэд engine start дуу сонсгоод idle дээр тогтворжино.
@@ -12,7 +12,7 @@
     ESC  : Quit
 */
 
-#include <SDL2/SDL.h>
+#include <SDL3/SDL.h>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>

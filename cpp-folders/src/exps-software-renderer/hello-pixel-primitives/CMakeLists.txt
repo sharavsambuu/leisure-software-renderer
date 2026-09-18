@@ -1,20 +1,20 @@
 project(HelloPixel)
 
-find_package(SDL2 CONFIG REQUIRED)
-find_package(SDL2_image CONFIG REQUIRED)
+find_package(SDL3 CONFIG REQUIRED)
+find_package(SDL3_image CONFIG REQUIRED)
 find_package(glm CONFIG REQUIRED)
 find_package(assimp CONFIG REQUIRED)
 
-if(NOT TARGET SDL2_image::Main)
-    if(TARGET SDL2_image::SDL2_image)
-        add_library(SDL2_image::Main ALIAS SDL2_image::SDL2_image)
+if(NOT TARGET SDL3_image::Main)
+    if(TARGET SDL3_image::SDL3_image)
+        add_library(SDL3_image::Main ALIAS SDL3_image::SDL3_image)
     else()
-        add_library(SDL2_image::Main ALIAS SDL2_image::SDL2_image-static)
+        add_library(SDL3_image::Main ALIAS SDL3_image::SDL3_image-static)
     endif()
 endif()
 
 include_directories(${ASSIMP_INCLUDE_DIR})
-include_directories(${SDL2_INCLUDE_DIRS} ${SDL2_IMAGE_INCLUDE_DIR})
+include_directories(${SDL3_INCLUDE_DIRS} ${SDL3_IMAGE_INCLUDE_DIR})
 include_directories(${CMAKE_BINARY_DIR})
 
 include_directories(${stb_SOURCE_DIR}/)
@@ -39,20 +39,20 @@ file(COPY ../../assets/images/box_texture.png DESTINATION "${CMAKE_CURRENT_BINAR
 
 
 add_executable(HelloPixel hello_pixel.cpp)
-target_link_libraries(HelloPixel PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES})
+target_link_libraries(HelloPixel PRIVATE ${SDL3_IMAGE_LIBRARIES} ${SDL3_LIBRARIES})
 
 add_executable(HelloLine hello_line.cpp)
-target_link_libraries(HelloLine PRIVATE ${SDL2_IMAGE_LIBRARIES} ${SDL2_LIBRARIES})
+target_link_libraries(HelloLine PRIVATE ${SDL3_IMAGE_LIBRARIES} ${SDL3_LIBRARIES})
 
 add_executable(HelloTriangle hello_triangle.cpp)
-target_link_libraries(HelloTriangle Threads::Threads ${SDL2_LIBRARIES} glm::glm)
+target_link_libraries(HelloTriangle Threads::Threads ${SDL3_LIBRARIES} glm::glm)
 
 add_executable(HelloCirclePoly hello_circle_poly.cpp)
-target_link_libraries(HelloCirclePoly Threads::Threads ${SDL2_LIBRARIES} glm::glm)
+target_link_libraries(HelloCirclePoly Threads::Threads ${SDL3_LIBRARIES} glm::glm)
 
 add_executable(HelloWatch hello_watch.cpp)
-target_link_libraries(HelloWatch Threads::Threads ${SDL2_LIBRARIES} glm::glm)
+target_link_libraries(HelloWatch Threads::Threads ${SDL3_LIBRARIES} glm::glm)
 
 
 add_executable(HelloTexture hello_texture.cpp)
-target_link_libraries(HelloTexture PRIVATE Threads::Threads SDL2::SDL2 SDL2_image::Main)
+target_link_libraries(HelloTexture PRIVATE Threads::Threads SDL3::SDL3 SDL3_image::Main)

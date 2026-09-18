@@ -152,7 +152,7 @@ else
   echo "[kdba-boundary] OK: no unordered containers in gateway paths"
 fi
 
-pio_hits="$(grep -rnE 'SDL_[A-Z]|<SDL2/|fopen\(' \
+pio_hits="$(grep -rnE 'SDL_[A-Z]|<SDL3/|fopen\(' \
   "${pod_purity_dirs[@]}" 2>/dev/null || true)"
 if [[ -n "${pio_hits}" ]]; then
   echo "[kdba-boundary] FAIL: platform IO token in pod zones (edges only)"
