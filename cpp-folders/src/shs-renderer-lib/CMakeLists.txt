@@ -562,6 +562,28 @@ if(SHS_RENDERER_BUILD_TESTS)
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     )
 
+    # R3 (renderer-lib review 2026-09-18): tile-path parity gate — the R3
+    # tile rasterization path (one wait-free job per 32px-class tile) must be
+    # BYTE-IDENTICAL to the streaming path across worker counts and tile
+    # sizes, for color, depth, and motion buffers, with identical stats.
+    add_executable(shs_renderer_rasterizer_tile_parity_tests
+        tests/rasterizer_tile_parity_tests.cpp
+    )
+    target_link_libraries(shs_renderer_rasterizer_tile_parity_tests PRIVATE shs::renderer-values)
+    target_compile_features(shs_renderer_rasterizer_tile_parity_tests PRIVATE cxx_std_23)
+    if(MSVC)
+        target_compile_options(shs_renderer_rasterizer_tile_parity_tests PRIVATE /W4)
+    else()
+        target_compile_options(shs_renderer_rasterizer_tile_parity_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+    add_test(
+        NAME shs_renderer_rasterizer_tile_parity_tests
+        COMMAND shs_renderer_rasterizer_tile_parity_tests
+    )
+    set_tests_properties(shs_renderer_rasterizer_tile_parity_tests PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    )
+
     # W-C gateway rails (P2 + P5 owner rulings): negative fixture — a throw /
     # bool-rim gateway FAILs, a dispatch without a static_assert tail FAILs,
     # a conformant gateway PASSES.

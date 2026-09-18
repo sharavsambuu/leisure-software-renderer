@@ -3288,7 +3288,8 @@
         "glm/glm.hpp",
         "shs/render/shader/program.hpp",
         "shs/resources/mesh.hpp",
-        "shs/task/parallel_for.hpp"
+        "shs/task/parallel_for.hpp",
+        "vector"
       ],
       "internal_dependencies": [
         "shs/render/shader/program.hpp",
@@ -3299,13 +3300,15 @@
         "algorithm",
         "array",
         "cmath",
-        "glm/glm.hpp"
+        "glm/glm.hpp",
+        "vector"
       ],
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/include/shs/app/vertical_slice_host.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/pass_adapters.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/passes/pass_pbr_forward.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/rhi/software/sw_stack.hpp",
+        "cpp-folders/src/shs-renderer-lib/tests/rasterizer_coverage_golden_tests.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/sw_vk_parity_tests.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/vk_offscreen_pass_tests.cpp"
       ],

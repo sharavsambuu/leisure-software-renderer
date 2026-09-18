@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <vector>
 
 #include <glm/glm.hpp>
 
@@ -39,6 +40,9 @@ namespace shs
         IJobSystem* job_system = nullptr;
         int parallel_min_rows = 8;
         int parallel_min_pixels = 128 * 128;
+        // R3 (renderer-lib review 2026-09-18): coarse tile size for the
+        // job-system rasterization path (one wait-free job per tile).
+        int tile_size = 32;
     };
 
     struct RasterizerTarget
@@ -206,8 +210,8 @@ namespace shs
         // R2 (renderer-lib review 2026-09-18): a fully prepared screen-space
         // sub-triangle. All per-triangle work (perspective divisors,
         // edge-function setup, motion matrix, varying mask) happens ONCE;
-        // the per-pixel loop only does incremental edge-function stepping
-        // (two fadds) plus the shading work.
+        // the per-pixel loop only evaluates two edge functions at the pixel
+        // center (FMA-friendly, span-independent) plus the shading work.
         struct PreparedTri
         {
             RasterVertex rv[3];
@@ -278,16 +282,15 @@ namespace shs
             for (int y = y0; y <= y1; ++y)
             {
                 const float fy = (float)y + 0.5f; // pixel-center sample point
-                // Fresh evaluation at the row start bounds the incremental
-                // drift to one row of stepping.
-                float Ev = t.ev_x * ((float)x0 + 0.5f) + t.ev_y * fy + t.ev_c;
-                float Ew = t.ew_x * ((float)x0 + 0.5f) + t.ew_y * fy + t.ew_c;
                 for (int x = x0; x <= x1; ++x)
                 {
-                    const float v = Ev * inv_den;
-                    const float w = Ew * inv_den;
-                    Ev += t.ev_x;
-                    Ew += t.ew_x;
+                    // R2: edge functions evaluated DIRECTLY at the pixel
+                    // center (FMA-friendly). Span-independent by construction,
+                    // so any span of the same triangle produces bit-identical
+                    // coverage — the property the R3 tile path relies on.
+                    const float fx = (float)x + 0.5f;
+                    const float v = (t.ev_x * fx + t.ev_y * fy + t.ev_c) * inv_den;
+                    const float w = (t.ew_x * fx + t.ew_y * fy + t.ew_c) * inv_den;
                     const float u = 1.0f - v - w;
                     if (u < 0.0f || v < 0.0f || w < 0.0f) continue;
 
@@ -421,6 +424,27 @@ namespace shs
 
         const bool indexed = !mesh.indices.empty();
         const size_t tri_count = indexed ? (mesh.indices.size() / 3) : (mesh.positions.size() / 3);
+
+        // R3 (renderer-lib review 2026-09-18): tile binning on the
+        // job-system path. Sub-triangles are prepared once, binned into
+        // coarse screen tiles, and each tile is rasterized by ONE job into
+        // disjoint memory — no per-triangle barriers. Bin order preserves
+        // submission order, so per-pixel results (including depth ties) are
+        // identical to the streaming path. The no-job-system path stays
+        // allocation-free (frame zero-heap law).
+        const bool use_tiled = (config.job_system != nullptr);
+        std::vector<detail::PreparedTri> tiled_tris{};
+        std::vector<std::vector<uint32_t>> tile_bins{};
+        int tiles_x = 0;
+        int tiles_y = 0;
+        if (use_tiled)
+        {
+            const int tile = std::max(1, config.tile_size);
+            tiles_x = (W + tile - 1) / tile;
+            tiles_y = (H + tile - 1) / tile;
+            tile_bins.resize((size_t)tiles_x * (size_t)tiles_y);
+        }
+
         for (size_t ti = 0; ti < tri_count; ++ti)
         {
             stats.tri_input++;
@@ -523,11 +547,10 @@ namespace shs
                 tri.invw[1] = 1.0f / rv1.clip.w;
                 tri.invw[2] = 1.0f / rv2.clip.w;
                 tri.inv_den = 1.0f / signed_area2;
-                // R2 (renderer-lib review 2026-09-18): incremental edge
-                // functions - the same linear forms barycentric_2d evaluated
-                // per pixel, hoisted to the triangle; the per-pixel coverage
-                // test is now two fadds. Fresh per-row start evaluation
-                // bounds the stepping drift to one row.
+                // R2 (renderer-lib review 2026-09-18): edge-function setup -
+                // the same linear forms barycentric_2d evaluated per pixel,
+                // hoisted to the triangle; the per-pixel coverage test is now
+                // two direct (FMA-friendly, span-independent) evaluations.
                 tri.ev_x = e1.y;
                 tri.ev_y = -e1.x;
                 tri.ev_c = e1.x * s0.y - s0.x * e1.y;
@@ -559,22 +582,96 @@ namespace shs
                     detail::rasterize_prepared_span(program, uniforms, target, tri, minx, maxx, yb, ye - 1);
                 };
 
-                const int bbox_rows = maxy - miny + 1;
-                const int bbox_pixels = (maxx - minx + 1) * bbox_rows;
-                // Том bbox дээр л parallel замыг асааж scheduling overhead-оос зайлсхийж байна.
-                const bool use_parallel =
-                    config.job_system &&
-                    bbox_rows >= std::max(1, config.parallel_min_rows) &&
-                    bbox_pixels >= std::max(1, config.parallel_min_pixels);
-                if (use_parallel)
+                if (use_tiled)
                 {
-                    parallel_for_1d(config.job_system, miny, maxy + 1, std::max(1, config.parallel_min_rows), raster_rows);
+                    // R3: defer to the tile pass after the triangle loop.
+                    tiled_tris.push_back(tri);
                 }
                 else
                 {
-                    raster_rows(miny, maxy + 1);
+                    const int bbox_rows = maxy - miny + 1;
+                    const int bbox_pixels = (maxx - minx + 1) * bbox_rows;
+                    // Том bbox дээр л parallel замыг асааж scheduling overhead-оос зайлсхийж байна.
+                    const bool use_parallel =
+                        config.job_system &&
+                        bbox_rows >= std::max(1, config.parallel_min_rows) &&
+                        bbox_pixels >= std::max(1, config.parallel_min_pixels);
+                    if (use_parallel)
+                    {
+                        parallel_for_1d(config.job_system, miny, maxy + 1, std::max(1, config.parallel_min_rows), raster_rows);
+                    }
+                    else
+                    {
+                        raster_rows(miny, maxy + 1);
+                    }
                 }
             }
+        }
+
+        // R3: tile pass — bin every prepared sub-triangle into each overlapped
+        // tile, then one wait-free job per non-empty tile. Jobs write disjoint
+        // tile rectangles; the only synchronization is the single WaitGroup.
+        if (use_tiled)
+        {
+            const int tile = std::max(1, config.tile_size);
+            for (uint32_t sti = 0; sti < tiled_tris.size(); ++sti)
+            {
+                const detail::PreparedTri& t = tiled_tris[sti];
+                const int tx0 = std::max(0, t.minx / tile);
+                const int tx1 = std::min(tiles_x - 1, t.maxx / tile);
+                const int ty0 = std::max(0, t.miny / tile);
+                const int ty1 = std::min(tiles_y - 1, t.maxy / tile);
+                for (int bty = ty0; bty <= ty1; ++bty)
+                {
+                    for (int btx = tx0; btx <= tx1; ++btx)
+                    {
+                        tile_bins[(size_t)bty * (size_t)tiles_x + (size_t)btx].push_back(sti);
+                    }
+                }
+            }
+
+            auto raster_tile = [&](int tx, int ty, const std::vector<uint32_t>& bin)
+            {
+                const int x0 = tx * tile;
+                const int y0 = ty * tile;
+                const int x1 = std::min(W - 1, x0 + tile - 1);
+                const int y1 = std::min(H - 1, y0 + tile - 1);
+                for (uint32_t sti : bin)
+                {
+                    const detail::PreparedTri& t = tiled_tris[sti];
+                    const int cx0 = std::max(t.minx, x0);
+                    const int cx1 = std::min(t.maxx, x1);
+                    const int cy0 = std::max(t.miny, y0);
+                    const int cy1 = std::min(t.maxy, y1);
+                    if (cx0 > cx1 || cy0 > cy1) continue;
+                    detail::rasterize_prepared_span(program, uniforms, target, t, cx0, cx1, cy0, cy1);
+                }
+            };
+
+            // Degenerate job system (no workers): rasterize inline, same
+            // order, identical output.
+            const bool run_inline = (config.job_system->worker_count() == 0);
+            task::WaitGroup wg{};
+            for (int ty = 0; ty < tiles_y; ++ty)
+            {
+                for (int tx = 0; tx < tiles_x; ++tx)
+                {
+                    const std::vector<uint32_t>& bin = tile_bins[(size_t)ty * (size_t)tiles_x + (size_t)tx];
+                    if (bin.empty()) continue;
+                    if (run_inline)
+                    {
+                        raster_tile(tx, ty, bin);
+                        continue;
+                    }
+                    wg.add(1);
+                    config.job_system->enqueue([&raster_tile, &wg, tx, ty, &bin]()
+                    {
+                        raster_tile(tx, ty, bin);
+                        wg.done();
+                    });
+                }
+            }
+            wg.wait();
         }
         return stats;
     }
