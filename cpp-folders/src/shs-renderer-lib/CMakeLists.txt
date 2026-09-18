@@ -540,6 +540,28 @@ if(SHS_RENDERER_BUILD_TESTS)
         )
     endif()
 
+    # R2 (renderer-lib review 2026-09-18): golden pixel-coverage gate — one
+    # known screen triangle's exact covered pixels pinned against an
+    # independent double-precision analytic oracle plus literal golden
+    # values (count, positional checksum, per-row spans).
+    add_executable(shs_renderer_rasterizer_coverage_golden_tests
+        tests/rasterizer_coverage_golden_tests.cpp
+    )
+    target_link_libraries(shs_renderer_rasterizer_coverage_golden_tests PRIVATE shs::renderer-values)
+    target_compile_features(shs_renderer_rasterizer_coverage_golden_tests PRIVATE cxx_std_23)
+    if(MSVC)
+        target_compile_options(shs_renderer_rasterizer_coverage_golden_tests PRIVATE /W4)
+    else()
+        target_compile_options(shs_renderer_rasterizer_coverage_golden_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+    add_test(
+        NAME shs_renderer_rasterizer_coverage_golden_tests
+        COMMAND shs_renderer_rasterizer_coverage_golden_tests
+    )
+    set_tests_properties(shs_renderer_rasterizer_coverage_golden_tests PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    )
+
     # W-C gateway rails (P2 + P5 owner rulings): negative fixture — a throw /
     # bool-rim gateway FAILs, a dispatch without a static_assert tail FAILs,
     # a conformant gateway PASSES.

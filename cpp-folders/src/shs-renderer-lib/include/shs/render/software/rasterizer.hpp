@@ -202,6 +202,178 @@ namespace shs
             clip_polygon_plane(scratch, poly, plane_dist_far);
             return poly;
         }
+
+        // R2 (renderer-lib review 2026-09-18): a fully prepared screen-space
+        // sub-triangle. All per-triangle work (perspective divisors,
+        // edge-function setup, motion matrix, varying mask) happens ONCE;
+        // the per-pixel loop only does incremental edge-function stepping
+        // (two fadds) plus the shading work.
+        struct PreparedTri
+        {
+            RasterVertex rv[3];
+            glm::vec2 s[3]{};
+            int minx = 0;
+            int maxx = -1;
+            int miny = 0;
+            int maxy = -1;
+            float invw[3]{1.0f, 1.0f, 1.0f};
+            float inv_den = 0.0f; // 1 / signed_area2 (== barycentric denominator)
+            // Edge functions for the v/w barycentric coordinates:
+            //   E(x,y) = ex * x + ey * y + ec;  v = Ev * inv_den, w = Ew * inv_den,
+            //   u = 1 - v - w  (the exact linear forms barycentric_2d evaluates).
+            float ev_x = 0.0f, ev_y = 0.0f, ev_c = 0.0f;
+            float ew_x = 0.0f, ew_y = 0.0f, ew_c = 0.0f;
+            uint32_t varying_mask = 0;
+            bool write_motion = false;
+            glm::mat4 curr_to_prev_model{1.0f};
+        };
+
+        // The shared per-pixel inner loop. Both the streaming path and the
+        // R3 tile path rasterize through this single implementation so the
+        // two schedules cannot drift apart. (Body appended below.)
+        template <typename ProgramT>
+        inline void rasterize_prepared_span(
+            const ProgramT& program,
+            const ShaderUniforms& uniforms,
+            RasterizerTarget target,
+            const PreparedTri& t,
+            int x0, int x1, int y0, int y1)
+        {
+            if (x0 > x1 || y0 > y1) return;
+            const RasterVertex& rv0 = t.rv[0];
+            const RasterVertex& rv1 = t.rv[1];
+            const RasterVertex& rv2 = t.rv[2];
+            const float invw0 = t.invw[0];
+            const float invw1 = t.invw[1];
+            const float invw2 = t.invw[2];
+            const float inv_den = t.inv_den;
+            const bool write_motion = t.write_motion;
+            const uint32_t varying_mask = t.varying_mask;
+            const int W = target.hdr->w;
+            const int H = target.hdr->h;
+
+            const glm::vec3 wpw0 = rv0.world_pos * invw0;
+            const glm::vec3 wpw1 = rv1.world_pos * invw1;
+            const glm::vec3 wpw2 = rv2.world_pos * invw2;
+            const glm::vec3 npw0 = rv0.normal_ws * invw0;
+            const glm::vec3 npw1 = rv1.normal_ws * invw1;
+            const glm::vec3 npw2 = rv2.normal_ws * invw2;
+            const glm::vec2 uvw0 = rv0.uv * invw0;
+            const glm::vec2 uvw1 = rv1.uv * invw1;
+            const glm::vec2 uvw2 = rv2.uv * invw2;
+            std::array<glm::vec4, SHS_MAX_VARYINGS> varw0{};
+            std::array<glm::vec4, SHS_MAX_VARYINGS> varw1{};
+            std::array<glm::vec4, SHS_MAX_VARYINGS> varw2{};
+            for (uint32_t i = 0; i < SHS_MAX_VARYINGS; ++i)
+            {
+                if ((varying_mask & varying_bit(i)) == 0u) continue;
+                varw0[i] = rv0.varyings[i] * invw0;
+                varw1[i] = rv1.varyings[i] * invw1;
+                varw2[i] = rv2.varyings[i] * invw2;
+            }
+            const float zc0 = rv0.clip.z * invw0;
+            const float zc1 = rv1.clip.z * invw1;
+            const float zc2 = rv2.clip.z * invw2;
+            // R2-PER-PIXEL-LOOP
+            for (int y = y0; y <= y1; ++y)
+            {
+                const float fy = (float)y + 0.5f; // pixel-center sample point
+                // Fresh evaluation at the row start bounds the incremental
+                // drift to one row of stepping.
+                float Ev = t.ev_x * ((float)x0 + 0.5f) + t.ev_y * fy + t.ev_c;
+                float Ew = t.ew_x * ((float)x0 + 0.5f) + t.ew_y * fy + t.ew_c;
+                for (int x = x0; x <= x1; ++x)
+                {
+                    const float v = Ev * inv_den;
+                    const float w = Ew * inv_den;
+                    Ev += t.ev_x;
+                    Ew += t.ew_x;
+                    const float u = 1.0f - v - w;
+                    if (u < 0.0f || v < 0.0f || w < 0.0f) continue;
+
+                    // 1/w interpolation: perspective-correct varying/position/uv тооцоо.
+                    const float denom = u * invw0 + v * invw1 + w * invw2;
+                    if (denom <= 1e-10f) continue;
+                    const float inv_denom = 1.0f / denom;
+
+                    const float z_clip = u * zc0 + v * zc1 + w * zc2;
+                    const float z_ndc = z_clip * inv_denom;
+                    float z01 = glm::clamp(z_ndc * 0.5f + 0.5f, 0.0f, 1.0f);
+                    if (target.depth_motion)
+                    {
+                        // Perspective projection үед clip.w-аас view-space z сэргээж depth-ийг тогтвортой болгоно.
+                        const float view_z = 1.0f / denom;
+                        const float zn = target.depth_motion->zn;
+                        const float zf = target.depth_motion->zf;
+                        if (zf > zn + 1e-6f)
+                        {
+                            z01 = glm::clamp((view_z - zn) / (zf - zn), 0.0f, 1.0f);
+                        }
+                        float& zbuf = target.depth_motion->depth.at(x, y);
+                        if (z01 >= zbuf) continue;
+                        zbuf = z01;
+                    }
+
+                    FragmentIn fin{};
+                    fin.varying_mask = varying_mask;
+                    for (uint32_t i = 0; i < SHS_MAX_VARYINGS; ++i)
+                    {
+                        if ((varying_mask & varying_bit(i)) == 0u) continue;
+                        fin.varyings[i] = (u * varw0[i] + v * varw1[i] + w * varw2[i]) * inv_denom;
+                    }
+
+                    fin.world_pos = (u * wpw0 + v * wpw1 + w * wpw2) * inv_denom;
+                    fin.normal_ws = glm::normalize((u * npw0 + v * npw1 + w * npw2) * inv_denom);
+                    fin.uv = (u * uvw0 + v * uvw1 + w * uvw2) * inv_denom;
+                    // Shader өөрийн semantic varying гаргасан бол түүнд давуу эрх өгнө.
+                    if ((fin.varying_mask & varying_bit((uint32_t)VaryingSemantic::WorldPos)) != 0u)
+                    {
+                        fin.world_pos = glm::vec3(get_varying(fin, VaryingSemantic::WorldPos));
+                    }
+                    if ((fin.varying_mask & varying_bit((uint32_t)VaryingSemantic::NormalWS)) != 0u)
+                    {
+                        fin.normal_ws = glm::normalize(glm::vec3(get_varying(fin, VaryingSemantic::NormalWS)));
+                    }
+                    if ((fin.varying_mask & varying_bit((uint32_t)VaryingSemantic::UV0)) != 0u)
+                    {
+                        const glm::vec4 uv0 = get_varying(fin, VaryingSemantic::UV0);
+                        fin.uv = glm::vec2(uv0.x, uv0.y);
+                    }
+                    if (write_motion)
+                    {
+                        const glm::vec4 curr_world = glm::vec4(fin.world_pos, 1.0f);
+                        const glm::vec4 prev_world = t.curr_to_prev_model * curr_world;
+                        const glm::vec4 curr_clip = uniforms.viewproj * curr_world;
+                        const glm::vec4 prev_clip = uniforms.prev_viewproj * prev_world;
+                        if (std::abs(curr_clip.w) > 1e-8f && std::abs(prev_clip.w) > 1e-8f)
+                        {
+                            const glm::vec2 curr_ndc = glm::vec2(curr_clip) / curr_clip.w;
+                            const glm::vec2 prev_ndc = glm::vec2(prev_clip) / prev_clip.w;
+                            glm::vec2 vel = (curr_ndc - prev_ndc) * 0.5f * glm::vec2((float)W, (float)H);
+                            const float len = glm::length(vel);
+                            const float max_vel = 96.0f;
+                            if (len > max_vel && len > 1e-6f)
+                            {
+                                vel *= (max_vel / len);
+                            }
+                            target.depth_motion->motion.at(x, y) = Motion2f{vel.x, vel.y};
+                        }
+                        else
+                        {
+                            target.depth_motion->motion.at(x, y) = Motion2f{};
+                        }
+                    }
+                    fin.depth01 = z01;
+                    fin.px = x;
+                    fin.py = y;
+
+                    const FragmentOut fout = program.fs(fin, uniforms);
+                    if (fout.discard) continue;
+
+                    target.hdr->color.at(x, y) = fout.color;
+                }
+            }
+        }
     }
 
     inline glm::vec3 barycentric_2d(const glm::vec2& p, const glm::vec2& a, const glm::vec2& b, const glm::vec2& c)
@@ -336,136 +508,55 @@ namespace shs
                 if (minx > maxx || miny > maxy) continue;
                 stats.tri_raster++;
 
-                const float invw0 = 1.0f / rv0.clip.w;
-                const float invw1 = 1.0f / rv1.clip.w;
-                const float invw2 = 1.0f / rv2.clip.w;
-                const bool write_motion = (target.depth_motion != nullptr) && uniforms.enable_motion_vectors;
-                glm::mat4 curr_to_prev_model{1.0f};
-                if (write_motion)
+                detail::PreparedTri tri{};
+                tri.rv[0] = rv0;
+                tri.rv[1] = rv1;
+                tri.rv[2] = rv2;
+                tri.s[0] = s0;
+                tri.s[1] = s1;
+                tri.s[2] = s2;
+                tri.minx = minx;
+                tri.maxx = maxx;
+                tri.miny = miny;
+                tri.maxy = maxy;
+                tri.invw[0] = 1.0f / rv0.clip.w;
+                tri.invw[1] = 1.0f / rv1.clip.w;
+                tri.invw[2] = 1.0f / rv2.clip.w;
+                tri.inv_den = 1.0f / signed_area2;
+                // R2 (renderer-lib review 2026-09-18): incremental edge
+                // functions - the same linear forms barycentric_2d evaluated
+                // per pixel, hoisted to the triangle; the per-pixel coverage
+                // test is now two fadds. Fresh per-row start evaluation
+                // bounds the stepping drift to one row.
+                tri.ev_x = e1.y;
+                tri.ev_y = -e1.x;
+                tri.ev_c = e1.x * s0.y - s0.x * e1.y;
+                tri.ew_x = -e0.y;
+                tri.ew_y = e0.x;
+                tri.ew_c = s0.x * e0.y - e0.x * s0.y;
+                tri.varying_mask = rv0.varying_mask | rv1.varying_mask | rv2.varying_mask;
+                tri.write_motion = (target.depth_motion != nullptr) && uniforms.enable_motion_vectors;
+                if (tri.write_motion)
                 {
                     const float det_model = glm::determinant(uniforms.model);
                     if (std::abs(det_model) > 1e-10f)
                     {
-                        curr_to_prev_model = uniforms.prev_model * glm::inverse(uniforms.model);
+                        tri.curr_to_prev_model = uniforms.prev_model * glm::inverse(uniforms.model);
                     }
                     else
                     {
-                        curr_to_prev_model = glm::mat4(1.0f);
+                        tri.curr_to_prev_model = glm::mat4(1.0f);
                     }
-                }
-                const uint32_t varying_mask = rv0.varying_mask | rv1.varying_mask | rv2.varying_mask;
-                const glm::vec3 wpw0 = rv0.world_pos * invw0;
-                const glm::vec3 wpw1 = rv1.world_pos * invw1;
-                const glm::vec3 wpw2 = rv2.world_pos * invw2;
-                const glm::vec3 npw0 = rv0.normal_ws * invw0;
-                const glm::vec3 npw1 = rv1.normal_ws * invw1;
-                const glm::vec3 npw2 = rv2.normal_ws * invw2;
-                const glm::vec2 uvw0 = rv0.uv * invw0;
-                const glm::vec2 uvw1 = rv1.uv * invw1;
-                const glm::vec2 uvw2 = rv2.uv * invw2;
-                std::array<glm::vec4, SHS_MAX_VARYINGS> varw0{};
-                std::array<glm::vec4, SHS_MAX_VARYINGS> varw1{};
-                std::array<glm::vec4, SHS_MAX_VARYINGS> varw2{};
-                for (uint32_t i = 0; i < SHS_MAX_VARYINGS; ++i)
-                {
-                    if ((varying_mask & varying_bit(i)) == 0u) continue;
-                    varw0[i] = rv0.varyings[i] * invw0;
-                    varw1[i] = rv1.varyings[i] * invw1;
-                    varw2[i] = rv2.varyings[i] * invw2;
                 }
 
                 auto raster_rows = [&](int yb, int ye)
                 {
-                    for (int y = yb; y < ye; ++y)
-                    {
-                        for (int x = minx; x <= maxx; ++x)
-                        {
-                            const glm::vec2 p{(float)x + 0.5f, (float)y + 0.5f};
-                            const glm::vec3 bc = barycentric_2d(p, s0, s1, s2);
-                            if (bc.x < 0.0f || bc.y < 0.0f || bc.z < 0.0f) continue;
-
-                            // 1/w interpolation: perspective-correct varying/position/uv тооцоо.
-                            const float denom = bc.x * invw0 + bc.y * invw1 + bc.z * invw2;
-                            if (denom <= 1e-10f) continue;
-                            const float inv_denom = 1.0f / denom;
-
-                            const float z_clip = bc.x * (rv0.clip.z * invw0) + bc.y * (rv1.clip.z * invw1) + bc.z * (rv2.clip.z * invw2);
-                            const float z_ndc = z_clip * inv_denom;
-                            float z01 = glm::clamp(z_ndc * 0.5f + 0.5f, 0.0f, 1.0f);
-                            if (target.depth_motion)
-                            {
-                                // Perspective projection үед clip.w-аас view-space z сэргээж depth-ийг тогтвортой болгоно.
-                                const float view_z = 1.0f / denom;
-                                const float zn = target.depth_motion->zn;
-                                const float zf = target.depth_motion->zf;
-                                if (zf > zn + 1e-6f)
-                                {
-                                    z01 = glm::clamp((view_z - zn) / (zf - zn), 0.0f, 1.0f);
-                                }
-                                float& zbuf = target.depth_motion->depth.at(x, y);
-                                if (z01 >= zbuf) continue;
-                                zbuf = z01;
-                            }
-
-                            FragmentIn fin{};
-                            fin.varying_mask = varying_mask;
-                            for (uint32_t i = 0; i < SHS_MAX_VARYINGS; ++i)
-                            {
-                                if ((varying_mask & varying_bit(i)) == 0u) continue;
-                                fin.varyings[i] = (bc.x * varw0[i] + bc.y * varw1[i] + bc.z * varw2[i]) * inv_denom;
-                            }
-
-                            fin.world_pos = (bc.x * wpw0 + bc.y * wpw1 + bc.z * wpw2) * inv_denom;
-                            fin.normal_ws = glm::normalize((bc.x * npw0 + bc.y * npw1 + bc.z * npw2) * inv_denom);
-                            fin.uv = (bc.x * uvw0 + bc.y * uvw1 + bc.z * uvw2) * inv_denom;
-                            // Shader өөрийн semantic varying гаргасан бол түүнд давуу эрх өгнө.
-                            if ((fin.varying_mask & varying_bit((uint32_t)VaryingSemantic::WorldPos)) != 0u)
-                            {
-                                fin.world_pos = glm::vec3(get_varying(fin, VaryingSemantic::WorldPos));
-                            }
-                            if ((fin.varying_mask & varying_bit((uint32_t)VaryingSemantic::NormalWS)) != 0u)
-                            {
-                                fin.normal_ws = glm::normalize(glm::vec3(get_varying(fin, VaryingSemantic::NormalWS)));
-                            }
-                            if ((fin.varying_mask & varying_bit((uint32_t)VaryingSemantic::UV0)) != 0u)
-                            {
-                                const glm::vec4 uv0 = get_varying(fin, VaryingSemantic::UV0);
-                                fin.uv = glm::vec2(uv0.x, uv0.y);
-                            }
-                            if (write_motion)
-                            {
-                                const glm::vec4 curr_world = glm::vec4(fin.world_pos, 1.0f);
-                                const glm::vec4 prev_world = curr_to_prev_model * curr_world;
-                                const glm::vec4 curr_clip = uniforms.viewproj * curr_world;
-                                const glm::vec4 prev_clip = uniforms.prev_viewproj * prev_world;
-                                if (std::abs(curr_clip.w) > 1e-8f && std::abs(prev_clip.w) > 1e-8f)
-                                {
-                                    const glm::vec2 curr_ndc = glm::vec2(curr_clip) / curr_clip.w;
-                                    const glm::vec2 prev_ndc = glm::vec2(prev_clip) / prev_clip.w;
-                                    glm::vec2 vel = (curr_ndc - prev_ndc) * 0.5f * glm::vec2((float)W, (float)H);
-                                    const float len = glm::length(vel);
-                                    const float max_vel = 96.0f;
-                                    if (len > max_vel && len > 1e-6f)
-                                    {
-                                        vel *= (max_vel / len);
-                                    }
-                                    target.depth_motion->motion.at(x, y) = Motion2f{vel.x, vel.y};
-                                }
-                                else
-                                {
-                                    target.depth_motion->motion.at(x, y) = Motion2f{};
-                                }
-                            }
-                            fin.depth01 = z01;
-                            fin.px = x;
-                            fin.py = y;
-
-                            const FragmentOut fout = program.fs(fin, uniforms);
-                            if (fout.discard) continue;
-
-                            target.hdr->color.at(x, y) = fout.color;
-                        }
-                    }
+                    // barycentric_2d rejected EVERY pixel of a degenerate
+                    // (|den| < 1e-8) triangle; reject once here instead.
+                    // stats.tri_raster was already incremented above, matching
+                    // the old count-then-skip behavior.
+                    if (std::abs(signed_area2) < 1e-8f) return;
+                    detail::rasterize_prepared_span(program, uniforms, target, tri, minx, maxx, yb, ye - 1);
                 };
 
                 const int bbox_rows = maxy - miny + 1;
