@@ -11,6 +11,7 @@
 
 #include "shs/rhi/core/backend.hpp"
 #include "shs/rhi/core/capabilities.hpp"
+#include "shs/rhi/core/offscreen_execution.hpp"
 #include "shs/rhi/resource/resource_desc.hpp"
 #include "shs/rhi/pipeline/pipeline_desc.hpp"
 #include "shs/rhi/sync/sync_desc.hpp"

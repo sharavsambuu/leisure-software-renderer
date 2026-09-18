@@ -38,6 +38,12 @@ namespace shs
         int height = 0;
     };
 
+    // Forward declaration only: this contract header stays free of desc-tier
+    // includes. The full offscreen contract lives in
+    // shs/rhi/core/offscreen_execution.hpp — include that header before calling
+    // through the pointer returned by offscreen_execution().
+    class IOffscreenExecution;
+
     class IRenderBackend
     {
     public:
@@ -50,6 +56,12 @@ namespace shs
         virtual void on_resize(Context& ctx, int w, int h) { (void)ctx; (void)w; (void)h; }
         virtual void begin_frame(Context& ctx, const RenderBackendFrameInfo& frame) = 0;
         virtual void end_frame(Context& ctx, const RenderBackendFrameInfo& frame) = 0;
+
+        // Optional, backend-owned offscreen execution surface. The default is
+        // nullptr: a backend without a self-owned offscreen path declines.
+        // Null means "fall back" (or skip), never "passed"; the returned
+        // contract is defined in shs/rhi/core/offscreen_execution.hpp.
+        [[nodiscard]] virtual IOffscreenExecution* offscreen_execution() { return nullptr; }
     };
 
     } // inline namespace rhi

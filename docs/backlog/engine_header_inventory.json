@@ -3,7 +3,7 @@
   "scope": "cpp-folders/src/shs-renderer-lib/include",
   "coverage": "all .h/.hpp public headers; literal includes in all conditional branches",
   "approval": "proposed paths are inventory only; reviewed migrations live in engine_header_migration_manifest.json",
-  "header_count": 224,
+  "header_count": 225,
   "headers": [
     {
       "current": "shs/app/backend/backend_factory.hpp",
@@ -5649,6 +5649,38 @@
       "build_target": "review-values-vs-aggregate"
     },
     {
+      "current": "shs/rhi/core/offscreen_execution.hpp",
+      "proposed_canonical": "shs/rhi/core/offscreen_execution.hpp",
+      "review_status": "already-named-review-dependencies",
+      "proposed_owner": "rhi",
+      "namespace_declarations": [
+        "rhi",
+        "shs"
+      ],
+      "visibility": "public-include-tree",
+      "direct_dependencies": [
+        "cstdint",
+        "shs/rhi/command/command_desc.hpp",
+        "shs/rhi/pipeline/pipeline_desc.hpp",
+        "shs/rhi/resource/resource_desc.hpp",
+        "span"
+      ],
+      "internal_dependencies": [
+        "shs/rhi/command/command_desc.hpp",
+        "shs/rhi/pipeline/pipeline_desc.hpp",
+        "shs/rhi/resource/resource_desc.hpp"
+      ],
+      "external_dependencies": [
+        "cstdint",
+        "span"
+      ],
+      "tracked_consumers": [
+        "cpp-folders/src/shs-renderer-lib/include/shs/rhi/core/rhi_stack.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/rhi/vulkan/value/vk_backend.hpp"
+      ],
+      "build_target": "review-values-vs-aggregate"
+    },
+    {
       "current": "shs/rhi/core/rhi_stack.hpp",
       "proposed_canonical": "shs/rhi/core/rhi_stack.hpp",
       "review_status": "already-named-review-dependencies",
@@ -5659,6 +5691,7 @@
         "shs/rhi/command/command_desc.hpp",
         "shs/rhi/core/backend.hpp",
         "shs/rhi/core/capabilities.hpp",
+        "shs/rhi/core/offscreen_execution.hpp",
         "shs/rhi/pipeline/pipeline_desc.hpp",
         "shs/rhi/resource/resource_desc.hpp",
         "shs/rhi/sync/sync_desc.hpp",
@@ -5668,6 +5701,7 @@
         "shs/rhi/command/command_desc.hpp",
         "shs/rhi/core/backend.hpp",
         "shs/rhi/core/capabilities.hpp",
+        "shs/rhi/core/offscreen_execution.hpp",
         "shs/rhi/pipeline/pipeline_desc.hpp",
         "shs/rhi/resource/resource_desc.hpp",
         "shs/rhi/sync/sync_desc.hpp",
@@ -6320,6 +6354,7 @@
         "shs/containers/flat_map.hpp",
         "shs/rhi/core/backend.hpp",
         "shs/rhi/core/capabilities.hpp",
+        "shs/rhi/core/offscreen_execution.hpp",
         "shs/rhi/vulkan/value/vk_commands.hpp",
         "shs/rhi/vulkan/value/vk_device.hpp",
         "shs/rhi/vulkan/value/vk_offscreen.hpp",
@@ -6335,6 +6370,7 @@
         "shs/containers/flat_map.hpp",
         "shs/rhi/core/backend.hpp",
         "shs/rhi/core/capabilities.hpp",
+        "shs/rhi/core/offscreen_execution.hpp",
         "shs/rhi/vulkan/value/vk_commands.hpp",
         "shs/rhi/vulkan/value/vk_device.hpp",
         "shs/rhi/vulkan/value/vk_offscreen.hpp",

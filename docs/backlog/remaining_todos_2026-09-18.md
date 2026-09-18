@@ -47,13 +47,16 @@
       on failure (incl. injected Vulkan faults), validation-clean lavapipe runs,
       SW/Vulkan triangle parity; see the kdba G2 DONE entry. Follow-on work
       belongs to G3 (upload tail — landed, factory-facing execution) and G4.
-- [ ] **K-G3 remaining: factory-facing execution** — one deliverable left
-      (tightened 2026-09-18): drive the minimal scene through the generic RHI
-      factory interface instead of the concrete `VulkanRenderBackend` API, with
-      a portable CTest gate. Submission/readback, shutdown cache-invalidation,
-      vertex/index upload, failure injection and triangle parity are all
-      **landed with real-device evidence** (incl. staging→device-local upload,
-      2026-09-18) and are not open. Async retirement unclaimed. Depends on G2.
+- [x] **K-G3 remaining: factory-facing execution** — CLOSED 2026-09-18: the
+      minimal scene now runs from `create_render_backend()` + `app::Context`
+      through a new vendor-free `IOffscreenExecution` hook on `IRenderBackend`
+      (no `dynamic_cast`, no Vulkan type in the consumer), pinned by the portable
+      gate `shs_renderer_vk_factory_offscreen_tests` (known pixels derived from
+      the authored scene, rejection + reset/re-prepare, SKIP 77 when the surface
+      or device is unavailable). Full CTest 68/68; boundary + include-graph gates
+      green; header inventory regenerated. Evidence:
+      [`kdba_g3_factory_facing_evidence_2026-09-18.md`](kdba_g3_factory_facing_evidence_2026-09-18.md).
+      Async retirement unclaimed. Next in this track: K-G4.
 - [ ] **K-G4 Library SW/Vulkan equivalence** — same minimal scene/policy
       through actual library execution paths; documented per-output tolerances;
       independent known-answer checks; portable CTest gates. Adventure AD1/AD4
@@ -160,8 +163,9 @@ meshlet pipeline, or LOD framework is authorized by listing them.
 
 ## Suggested sequencing
 
-1. **K-G3 remaining (factory-facing execution) → K-G4** — the smallest
-   unblocked library step; everything else in G3 is already landed.
+1. **K-G4** — the smallest unblocked library step; K-G3 closed 2026-09-18, so the
+   G-track is now down to G4 (library SW/Vulkan equivalence with documented
+   per-output tolerances).
 2. **Adventure demo track (A2)** — AD2 + AD3 first (prove the shape on the
    depth/blend pair), then AD5 + AD6, then the AD7 roll-out and close-out. This
    track is unblocked now that AD0/AD1/AD4 are closed and gives implementation

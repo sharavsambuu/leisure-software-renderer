@@ -1402,6 +1402,32 @@ if(SHS_RENDERER_BUILD_TESTS)
             WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
             SKIP_RETURN_CODE 77)
 
+        # G3 factory-facing execution: the same minimal scene, but obtained from
+        # create_render_backend() and driven through the generic
+        # IRenderBackend/IOffscreenExecution surface — the test never names the
+        # concrete backend. Known pixels are asserted independently of parity; a
+        # missing device, pipeline or generic surface is a SKIP (77), never a pass.
+        add_executable(shs_renderer_vk_factory_offscreen_tests tests/vk_factory_offscreen_tests.cpp)
+        target_link_libraries(shs_renderer_vk_factory_offscreen_tests PRIVATE
+            shs::renderer-values Vulkan::Vulkan)
+        target_compile_features(shs_renderer_vk_factory_offscreen_tests PRIVATE cxx_std_23)
+        if(MSVC)
+            target_compile_options(shs_renderer_vk_factory_offscreen_tests PRIVATE /W4)
+        else()
+            target_compile_options(shs_renderer_vk_factory_offscreen_tests PRIVATE -Wall -Wextra -Wpedantic)
+        endif()
+        if(SHS_OFFSCREEN_SLANGC)
+            add_dependencies(shs_renderer_vk_factory_offscreen_tests shs_renderer_offscreen_shaders)
+            target_compile_definitions(shs_renderer_vk_factory_offscreen_tests PRIVATE
+                SHS_OFFSCREEN_SHADER_DIR="${_offscreen_spv}")
+        endif()
+        target_compile_definitions(shs_renderer_vk_factory_offscreen_tests PRIVATE SHS_HAS_VULKAN=1)
+        add_test(NAME shs_renderer_vk_factory_offscreen_tests
+            COMMAND shs_renderer_vk_factory_offscreen_tests)
+        set_tests_properties(shs_renderer_vk_factory_offscreen_tests PROPERTIES
+            WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+            SKIP_RETURN_CODE 77)
+
     else()
         message(STATUS "Vulkan headers not found — skipping shs_renderer_vk_driver_tests")
     endif()

@@ -186,20 +186,29 @@ resource lifetimes remain at the execution edge.
   binding state. The offscreen test records a deterministic procedural triangle;
   negative ordering/missing-binding streams fail preflight before recording.
   Full build and 18/18 CTest passed. Factory-facing attachment/pipeline lifecycle
-  integration remains open; no backend-owned execution API is claimed.
-- [ ] **G3 Upload, submit and readback proof** — complete the minimal scene's
+  integration remained open at G1 close and no backend-owned execution API was
+  claimed then; G3 closed both on 2026-09-18 (see the G3 entry below).
+- [x] **G3 Upload, submit and readback proof** — complete the minimal scene's
   buffer upload, synchronization, submission and image readback. Check known
   pixels independently of parity; exercise failure and resource cleanup paths.
   Record unavailable Vulkan capability as a skip, never a pass. Depends on G2.
-  — REMAINING ONLY (2026-09-18, tightened): **factory-facing execution** — drive
-  the same minimal scene through the generic RHI factory interface rather than
-  the concrete `VulkanRenderBackend` API, and pin it with a portable CTest gate
-  (known pixels independent of parity; unavailable backends skip, never pass).
-  Everything else this bullet originally named is landed with real-device
-  evidence and is NOT re-listed as open: submission/readback, shutdown
-  cache-invalidation, vertex/index upload, failure injection, and
-  triangle-parity. Asynchronous retirement and a backend-owned execution API
-  remain unclaimed.
+  — CLOSED 2026-09-18 (factory-facing execution, the last open slice). The gap
+  was real: consumers obtained the backend from `create_render_backend()` and then
+  `dynamic_cast`ed back to `VulkanRenderBackend` to open a device and submit.
+  `IRenderBackend` now exposes an optional, vendor-free `IOffscreenExecution*`
+  (`shs/rhi/core/offscreen_execution.hpp`; default `nullptr` = fall back or skip,
+  never a pass) implemented by the value-tier Vulkan backend through a
+  composition adapter, so the minimal scene runs from the factory plus
+  `app::Context` with no downcast and no Vulkan type in the consumer. Portable
+  gate `shs_renderer_vk_factory_offscreen_tests` asserts known pixels derived from
+  the authored scene (not parity), rejection, and reset/re-prepare, and reports an
+  unavailable surface or device as SKIP 77. Previously landed slices
+  (submission/readback, shutdown cache-invalidation, vertex/index upload incl.
+  staging→device-local, failure injection, triangle parity) are unchanged. Full
+  CTest 68/68; boundary and include-graph gates green; header inventory
+  regenerated. Evidence:
+  [`kdba_g3_factory_facing_evidence_2026-09-18.md`](kdba_g3_factory_facing_evidence_2026-09-18.md).
+  Asynchronous retirement remains unclaimed; G4 remains open.
   — PARTIAL 2026-09-17: existing offscreen integration test now submits real
   commands, waits on a fence, transitions the RGBA8 attachment to transfer source,
   copies to host-visible staging memory with a host-read barrier, and verifies
@@ -272,8 +281,8 @@ resource lifetimes remain at the execution edge.
   (lavapipe, validation enabled): a GPUOnly vertex/index pair renders the same
   known pixels as the CPU-visible fixture, and a re-upload moves the consumed
   triangle. `vulkan_buffer_upload_sync` lives in `vk_readback.hpp` (the
-  synchronous-transfer owner). Factory-facing execution remains the open G3
-  item.
+  synchronous-transfer owner). Factory-facing execution was the last open G3 item;
+  closed 2026-09-18 — see the G3 CLOSED entry above.
 - [ ] **G4 Library SW/Vulkan equivalence** — run the same minimal scene/policy
   through actual library execution paths with documented per-output tolerances
   and independent known-answer checks. Wire portable CTest gates and retain

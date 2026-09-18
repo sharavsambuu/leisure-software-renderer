@@ -24,6 +24,7 @@
 #include "shs/containers/flat_map.hpp"
 #include "shs/rhi/core/backend.hpp"
 #include "shs/rhi/core/capabilities.hpp"
+#include "shs/rhi/core/offscreen_execution.hpp"
 #include "shs/rhi/vulkan/value/vk_device.hpp"
 #include "shs/rhi/vulkan/value/vk_resources.hpp"
 #include "shs/rhi/vulkan/value/vk_pipelines.hpp"
@@ -236,6 +237,36 @@ namespace shs
         uint64_t bound_pipeline_ = 0;
     };
 
+    class VulkanRenderBackend;
+
+    // Factory-facing offscreen surface (G3). A vendor-free adapter over the
+    // concrete, diagnostic-rich VulkanRenderBackend API: IOffscreenExecution
+    // exposes only the portable prepare / target / execute / reset steps and
+    // collapses std::expected failures into false, so neither a Vk* type nor a
+    // VulkanExecutionFailure crosses the interface. Failure detail stays owned
+    // by the concrete class, which remains the source of diagnostics.
+    //
+    // Composition, not inheritance: prepare_offscreen()/execute_offscreen()
+    // already exist on VulkanRenderBackend with std::expected return types, and
+    // C++ cannot overload on return type, so the generic contract must live on a
+    // separate type. Declared here; defined after the backend below.
+    class VulkanOffscreenExecution final : public IOffscreenExecution
+    {
+    public:
+        explicit VulkanOffscreenExecution(VulkanRenderBackend& backend) : backend_(&backend) {}
+
+        [[nodiscard]] bool initialize_device() override;
+        [[nodiscard]] uint64_t prepare_offscreen(const RHIImageDesc& target,
+                                                const RHIGraphicsPipelineDesc& pipeline) override;
+        [[nodiscard]] uint64_t offscreen_target() const override;
+        [[nodiscard]] bool execute_offscreen(std::span<const RHICmd> commands,
+                                             std::span<uint8_t> pixels) override;
+        void reset_offscreen() override;
+
+    private:
+        VulkanRenderBackend* backend_ = nullptr;
+    };
+
     // ------------------------------------------------------------------
     // The backend (factory-facing; default-constructible per backend_factory).
     // ------------------------------------------------------------------
@@ -436,6 +467,13 @@ namespace shs
             frame_sync_.end_frame(frame.frame_index);
         }
 
+        // The value-tier Vulkan backend owns a self-owned offscreen path, so it
+        // exposes the generic contract; the windowed runtime backend does not.
+        [[nodiscard]] IOffscreenExecution* offscreen_execution() override
+        {
+            return &offscreen_execution_;
+        }
+
         [[nodiscard]] bool device_ready() const { return device_.device_available(); }
         [[nodiscard]] const VulkanDeviceInfo& device_info() const { return device_.info(); }
         [[nodiscard]] const VulkanResourceStats& resource_stats() const { return resources_.stats(); }
@@ -616,6 +654,7 @@ namespace shs
         VulkanOffscreenPass offscreen_;
         VulkanOffscreenPipeline graphics_;
         VulkanReadback readback_;
+        VulkanOffscreenExecution offscreen_execution_{*this};
         uint64_t offscreen_target_ = 0;
         RHIVertexLayout vertex_layout_ = RHIVertexLayout::Procedural;
         containers::FlatMap<uint64_t, RHIBufferDesc> buffer_descs_{std::pmr::get_default_resource()};
@@ -629,6 +668,37 @@ namespace shs
         VkCommandBuffer command_buffer_ = VK_NULL_HANDLE;
         uint32_t frame_sync_slots_ = 2;
     };
+
+    // Out-of-line adapter definitions: VulkanRenderBackend is complete here, so
+    // the generic contract can forward to the concrete, diagnostic-rich API.
+    inline bool VulkanOffscreenExecution::initialize_device()
+    {
+        // Default VulkanDeviceDesc: headless opening, no window/surface.
+        return backend_->initialize_device();
+    }
+
+    inline uint64_t VulkanOffscreenExecution::prepare_offscreen(
+        const RHIImageDesc& target, const RHIGraphicsPipelineDesc& pipeline)
+    {
+        const auto prepared = backend_->prepare_offscreen(target, pipeline);
+        return prepared ? *prepared : 0;
+    }
+
+    inline uint64_t VulkanOffscreenExecution::offscreen_target() const
+    {
+        return backend_->offscreen_target();
+    }
+
+    inline bool VulkanOffscreenExecution::execute_offscreen(
+        std::span<const RHICmd> commands, std::span<uint8_t> pixels)
+    {
+        return backend_->execute_offscreen(commands, pixels).has_value();
+    }
+
+    inline void VulkanOffscreenExecution::reset_offscreen()
+    {
+        backend_->reset_offscreen();
+    }
 
     } // inline namespace rhi
 }
