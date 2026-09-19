@@ -33,6 +33,7 @@ cleanup_*.py
 cleanup_*.sh
 cleanup_*.bat
 clean_*.sh
+
 clean_*.py
 clean_*.bat
 
@@ -72,3 +73,6 @@ cpp-folders/build_det/
 
 # Hermes agent session artifacts (plans, runs) — local only, never tracked
 .hermes/
+
+# Local-only third-party review notes (Antigravity, deepseek, etc.) — never tracked
+docs/review/
