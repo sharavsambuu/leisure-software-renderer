@@ -3,7 +3,7 @@
   "scope": "cpp-folders/src/shs-renderer-lib/include",
   "coverage": "all .h/.hpp public headers; literal includes in all conditional branches",
   "approval": "proposed paths are inventory only; reviewed migrations live in engine_header_migration_manifest.json",
-  "header_count": 233,
+  "header_count": 234,
   "headers": [
     {
       "current": "shs/app/backend/backend_factory.hpp",
@@ -798,7 +798,8 @@
       ],
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/include/shs/render/shader/shader_id_registry.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/pass_id_registry.hpp"
+        "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/pass_id_registry.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/planning/semantic_registry.hpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -4658,6 +4659,7 @@
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/planning/pass_contract_registry.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/planning/render_path_barrier_plan.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/planning/render_path_resource_plan.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/planning/semantic_registry.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/planning/substrate_resolution.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/rhi/vulkan/runtime/vk_render_path_barrier_mapping.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/rhi/vulkan/runtime/vk_render_path_temporal_resources.hpp"
@@ -5027,13 +5029,16 @@
       "direct_dependencies": [
         "algorithm",
         "cstdint",
+        "optional",
         "shs/renderpath/execution/pass_registry.hpp",
         "shs/renderpath/planning/pass_contract.hpp",
         "shs/renderpath/planning/pass_contract_registry.hpp",
         "shs/renderpath/planning/pass_id.hpp",
         "shs/renderpath/planning/render_path_compiler.hpp",
         "shs/renderpath/planning/render_path_recipe.hpp",
+        "shs/renderpath/planning/semantic_registry.hpp",
         "string",
+        "string_view",
         "unordered_map",
         "utility",
         "vector"
@@ -5044,12 +5049,15 @@
         "shs/renderpath/planning/pass_contract_registry.hpp",
         "shs/renderpath/planning/pass_id.hpp",
         "shs/renderpath/planning/render_path_compiler.hpp",
-        "shs/renderpath/planning/render_path_recipe.hpp"
+        "shs/renderpath/planning/render_path_recipe.hpp",
+        "shs/renderpath/planning/semantic_registry.hpp"
       ],
       "external_dependencies": [
         "algorithm",
         "cstdint",
+        "optional",
         "string",
+        "string_view",
         "unordered_map",
         "utility",
         "vector"
@@ -5058,7 +5066,8 @@
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/render_path_executor.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/render_path_runtime_layout.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/planning/render_path_barrier_plan.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/rhi/vulkan/runtime/vk_render_path_temporal_resources.hpp"
+        "cpp-folders/src/shs-renderer-lib/include/shs/rhi/vulkan/runtime/vk_render_path_temporal_resources.hpp",
+        "cpp-folders/src/shs-renderer-lib/tests/semantic_id_open_registry_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -5118,6 +5127,44 @@
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/planning/render_composition_presets.hpp",
         "cpp-folders/src/shs-renderer-lib/tests/session_orchestration_tests.cpp"
+      ],
+      "build_target": "review-values-vs-aggregate"
+    },
+    {
+      "current": "shs/renderpath/planning/semantic_registry.hpp",
+      "proposed_canonical": "shs/renderpath/planning/semantic_registry.hpp",
+      "review_status": "already-named-review-dependencies",
+      "proposed_owner": "renderpath",
+      "namespace_declarations": [
+        "renderpath",
+        "shs"
+      ],
+      "visibility": "public-include-tree",
+      "direct_dependencies": [
+        "cstddef",
+        "optional",
+        "shs/core/open_id_hash.hpp",
+        "shs/renderpath/planning/pass_contract.hpp",
+        "string",
+        "string_view",
+        "utility",
+        "vector"
+      ],
+      "internal_dependencies": [
+        "shs/core/open_id_hash.hpp",
+        "shs/renderpath/planning/pass_contract.hpp"
+      ],
+      "external_dependencies": [
+        "cstddef",
+        "optional",
+        "string",
+        "string_view",
+        "utility",
+        "vector"
+      ],
+      "tracked_consumers": [
+        "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/planning/render_path_resource_plan.hpp",
+        "cpp-folders/src/shs-renderer-lib/tests/semantic_id_open_registry_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
