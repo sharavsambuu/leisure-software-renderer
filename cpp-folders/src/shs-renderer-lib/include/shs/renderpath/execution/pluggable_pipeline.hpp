@@ -214,7 +214,7 @@ namespace shs
 
         static void update_runtime_capabilities(const PassExecutionResult& result, RuntimeCapabilities& caps)
         {
-            if (!result.executed) return;
+            if (!result.executed()) return;
             if (result.produced_depth)
             {
                 caps.depth_prepass_ready = true;

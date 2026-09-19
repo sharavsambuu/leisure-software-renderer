@@ -3,7 +3,7 @@
   "scope": "cpp-folders/src/shs-renderer-lib/include",
   "coverage": "all .h/.hpp public headers; literal includes in all conditional branches",
   "approval": "proposed paths are inventory only; reviewed migrations live in engine_header_migration_manifest.json",
-  "header_count": 234,
+  "header_count": 233,
   "headers": [
     {
       "current": "shs/app/backend/backend_factory.hpp",
@@ -801,28 +801,6 @@
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/pass_id_registry.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/planning/semantic_registry.hpp"
       ],
-      "build_target": "review-values-vs-aggregate"
-    },
-    {
-      "current": "shs/core/result.hpp",
-      "proposed_canonical": "shs/core/result.hpp",
-      "review_status": "already-named-review-dependencies",
-      "proposed_owner": "core",
-      "namespace_declarations": [
-        "core",
-        "shs"
-      ],
-      "visibility": "public-include-tree",
-      "direct_dependencies": [
-        "string",
-        "utility"
-      ],
-      "internal_dependencies": [],
-      "external_dependencies": [
-        "string",
-        "utility"
-      ],
-      "tracked_consumers": [],
       "build_target": "review-values-vs-aggregate"
     },
     {

@@ -19,7 +19,7 @@
 | Writer monad | Event/fact accumulation on the caller arena, both rails | §2, A.7 |
 | Either / Result monad | `std::expected<T, E>`: value rail vs error rail | §8, A.7 |
 | Kleisli arrow | One pipeline stage `Ctx -> expected<Ctx, Err>`, chained | §8, A.7 |
-| Railway-oriented programming | Linear `.and_then()` / `.transform()` / `.or_else()` chains instead of early-return ladders | §8 |
+| Railway-oriented programming (ROP) | Linear `.and_then()` / `.transform()` / `.or_else()` chains instead of early-return ladders. **External alias only** — canonical term stays *Kleisli pipeline* / *flat railway composition* (§8 vocabulary alias) | §8 |
 | Unit / Pure | Wrapping a raw value into the monad (`expected<T,E>{v}`) | §8 |
 | Bind / FlatMap (`.and_then()`) | Chain a fallible stage; short-circuits to the error rail | §8 |
 | Map / Functor (`.transform()`) | Infallible pure transform inside the container | §8 |

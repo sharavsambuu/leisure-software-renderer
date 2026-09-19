@@ -407,8 +407,8 @@ namespace shs
 
         PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
         {
-            if (!request.valid) return PassExecutionResult::not_executed();
-            if (!request.inputs.scene || !request.inputs.frame || !request.inputs.registry) return PassExecutionResult::not_executed();
+            if (!request.valid) return PassExecutionResult::invalid_request();
+            if (!request.inputs.scene || !request.inputs.frame || !request.inputs.registry) return PassExecutionResult::prerequisites_unmet();
             PassShadowMap::Inputs in{};
             in.scene = request.inputs.scene;
             in.fp = request.inputs.frame;
@@ -481,15 +481,15 @@ namespace shs
 
         PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
         {
-            if (!request.valid) return PassExecutionResult::not_executed();
-            if (!request.inputs.scene || !request.inputs.frame || !request.inputs.registry) return PassExecutionResult::not_executed();
+            if (!request.valid) return PassExecutionResult::invalid_request();
+            if (!request.inputs.scene || !request.inputs.frame || !request.inputs.registry) return PassExecutionResult::prerequisites_unmet();
             const bool produced_depth = execute_with_scratch(
                 ctx,
                 *request.inputs.scene,
                 *request.inputs.frame,
                 *request.inputs.registry,
                 request.find_named_rt("depth_prepass.scratch_hdr"));
-            if (!produced_depth) return PassExecutionResult::not_executed();
+            if (!produced_depth) return PassExecutionResult::declined();
             PassExecutionResult out = PassExecutionResult::executed_no_outputs();
             out.produced_depth = true;
             return out;
@@ -591,8 +591,8 @@ namespace shs
 
         PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
         {
-            if (!request.valid) return PassExecutionResult::not_executed();
-            if (!request.inputs.scene || !request.inputs.frame || !request.inputs.registry) return PassExecutionResult::not_executed();
+            if (!request.valid) return PassExecutionResult::invalid_request();
+            if (!request.inputs.scene || !request.inputs.frame || !request.inputs.registry) return PassExecutionResult::prerequisites_unmet();
             const bool produced_light_data = detail::execute_generic_light_culling(
                 ctx,
                 *request.inputs.scene,
@@ -602,7 +602,7 @@ namespace shs
                 request.inputs.light_culling,
                 request.depth_prepass_ready,
                 false);
-            if (!produced_light_data) return PassExecutionResult::not_executed();
+            if (!produced_light_data) return PassExecutionResult::declined();
             PassExecutionResult out = PassExecutionResult::executed_no_outputs();
             out.produced_light_grid = true;
             out.produced_light_index_list = true;
@@ -647,12 +647,12 @@ namespace shs
 
         PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
         {
-            if (!request.valid) return PassExecutionResult::not_executed();
-            if (!request.inputs.frame || !request.inputs.registry) return PassExecutionResult::not_executed();
+            if (!request.valid) return PassExecutionResult::invalid_request();
+            if (!request.inputs.frame || !request.inputs.registry) return PassExecutionResult::prerequisites_unmet();
 
             const FrameParams& fp = *request.inputs.frame;
             RTRegistry& rtr = *request.inputs.registry;
-            if (fp.technique.depth_prepass && !request.depth_prepass_ready) return PassExecutionResult::not_executed();
+            if (fp.technique.depth_prepass && !request.depth_prepass_ready) return PassExecutionResult::prerequisites_unmet();
 
             int w = fp.w;
             int h = fp.h;
@@ -665,10 +665,10 @@ namespace shs
                     h = motion->h;
                 }
             }
-            if (w <= 0 || h <= 0) return PassExecutionResult::not_executed();
+            if (w <= 0 || h <= 0) return PassExecutionResult::prerequisites_unmet();
 
             auto* fwdp = request.inputs.light_culling;
-            if (!fwdp) return PassExecutionResult::not_executed();
+            if (!fwdp) return PassExecutionResult::prerequisites_unmet();
             fwdp->tile_size = std::max<uint32_t>(1u, fp.technique.tile_size);
             fwdp->tile_count_x = (uint32_t)((w + (int)fwdp->tile_size - 1) / (int)fwdp->tile_size);
             fwdp->tile_count_y = (uint32_t)((h + (int)fwdp->tile_size - 1) / (int)fwdp->tile_size);
@@ -721,8 +721,8 @@ namespace shs
 
         PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
         {
-            if (!request.valid) return PassExecutionResult::not_executed();
-            if (!request.inputs.scene || !request.inputs.frame || !request.inputs.registry) return PassExecutionResult::not_executed();
+            if (!request.valid) return PassExecutionResult::invalid_request();
+            if (!request.inputs.scene || !request.inputs.frame || !request.inputs.registry) return PassExecutionResult::prerequisites_unmet();
             const bool produced_light_data = detail::execute_generic_light_culling(
                 ctx,
                 *request.inputs.scene,
@@ -732,7 +732,7 @@ namespace shs
                 request.inputs.light_culling,
                 request.depth_prepass_ready,
                 true);
-            if (!produced_light_data) return PassExecutionResult::not_executed();
+            if (!produced_light_data) return PassExecutionResult::declined();
             PassExecutionResult out = PassExecutionResult::executed_no_outputs();
             out.produced_light_grid = true;
             out.produced_light_index_list = true;
@@ -775,7 +775,7 @@ namespace shs
         PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
         {
             (void)ctx;
-            if (!request.valid) return PassExecutionResult::not_executed();
+            if (!request.valid) return PassExecutionResult::invalid_request();
             return PassExecutionResult::executed_no_outputs();
         }
     };
@@ -812,7 +812,7 @@ namespace shs
         PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
         {
             (void)ctx;
-            if (!request.valid) return PassExecutionResult::not_executed();
+            if (!request.valid) return PassExecutionResult::invalid_request();
             return PassExecutionResult::executed_no_outputs();
         }
     };
@@ -858,8 +858,8 @@ namespace shs
 
         PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
         {
-            if (!request.valid) return PassExecutionResult::not_executed();
-            if (!request.inputs.scene || !request.inputs.frame || !request.inputs.registry) return PassExecutionResult::not_executed();
+            if (!request.valid) return PassExecutionResult::invalid_request();
+            if (!request.inputs.scene || !request.inputs.frame || !request.inputs.registry) return PassExecutionResult::prerequisites_unmet();
             const Scene& scene = *request.inputs.scene;
             const FrameParams& fp = *request.inputs.frame;
             RTRegistry& rtr = *request.inputs.registry;
@@ -930,8 +930,8 @@ namespace shs
 
         PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
         {
-            if (!request.valid) return PassExecutionResult::not_executed();
-            if (!request.inputs.scene || !request.inputs.frame || !request.inputs.registry) return PassExecutionResult::not_executed();
+            if (!request.valid) return PassExecutionResult::invalid_request();
+            if (!request.inputs.scene || !request.inputs.frame || !request.inputs.registry) return PassExecutionResult::prerequisites_unmet();
             const Scene& scene = *request.inputs.scene;
             const FrameParams& fp = *request.inputs.frame;
             RTRegistry& rtr = *request.inputs.registry;
@@ -999,8 +999,8 @@ namespace shs
 
         PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
         {
-            if (!request.valid) return PassExecutionResult::not_executed();
-            if (!request.inputs.scene || !request.inputs.frame || !request.inputs.registry) return PassExecutionResult::not_executed();
+            if (!request.valid) return PassExecutionResult::invalid_request();
+            if (!request.inputs.scene || !request.inputs.frame || !request.inputs.registry) return PassExecutionResult::prerequisites_unmet();
             const Scene& scene = *request.inputs.scene;
             const FrameParams& fp = *request.inputs.frame;
             RTRegistry& rtr = *request.inputs.registry;
@@ -1063,8 +1063,8 @@ namespace shs
 
         PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
         {
-            if (!request.valid) return PassExecutionResult::not_executed();
-            if (!request.inputs.scene || !request.inputs.frame || !request.inputs.registry) return PassExecutionResult::not_executed();
+            if (!request.valid) return PassExecutionResult::invalid_request();
+            if (!request.inputs.scene || !request.inputs.frame || !request.inputs.registry) return PassExecutionResult::prerequisites_unmet();
             const Scene& scene = *request.inputs.scene;
             const FrameParams& fp = *request.inputs.frame;
             RTRegistry& rtr = *request.inputs.registry;
@@ -1127,8 +1127,8 @@ namespace shs
 
         PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
         {
-            if (!request.valid) return PassExecutionResult::not_executed();
-            if (!request.inputs.scene || !request.inputs.frame || !request.inputs.registry) return PassExecutionResult::not_executed();
+            if (!request.valid) return PassExecutionResult::invalid_request();
+            if (!request.inputs.scene || !request.inputs.frame || !request.inputs.registry) return PassExecutionResult::prerequisites_unmet();
             const Scene& scene = *request.inputs.scene;
             const FrameParams& fp = *request.inputs.frame;
             RTRegistry& rtr = *request.inputs.registry;
@@ -1187,8 +1187,8 @@ namespace shs
 
         PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
         {
-            if (!request.valid) return PassExecutionResult::not_executed();
-            if (!request.inputs.frame || !request.inputs.registry) return PassExecutionResult::not_executed();
+            if (!request.valid) return PassExecutionResult::invalid_request();
+            if (!request.inputs.frame || !request.inputs.registry) return PassExecutionResult::prerequisites_unmet();
             const FrameParams& fp = *request.inputs.frame;
             RTRegistry& rtr = *request.inputs.registry;
             PassTonemap::Inputs in{};
@@ -1265,8 +1265,8 @@ namespace shs
 
         PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
         {
-            if (!request.valid) return PassExecutionResult::not_executed();
-            if (!request.inputs.scene || !request.inputs.frame || !request.inputs.registry) return PassExecutionResult::not_executed();
+            if (!request.valid) return PassExecutionResult::invalid_request();
+            if (!request.inputs.scene || !request.inputs.frame || !request.inputs.registry) return PassExecutionResult::prerequisites_unmet();
             execute_with_tmp(
                 ctx,
                 *request.inputs.scene,
@@ -1357,8 +1357,8 @@ namespace shs
 
         PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
         {
-            if (!request.valid) return PassExecutionResult::not_executed();
-            if (!request.inputs.frame || !request.inputs.registry) return PassExecutionResult::not_executed();
+            if (!request.valid) return PassExecutionResult::invalid_request();
+            if (!request.inputs.frame || !request.inputs.registry) return PassExecutionResult::prerequisites_unmet();
             execute_with_tmp(
                 ctx,
                 *request.inputs.frame,
@@ -1419,7 +1419,7 @@ namespace shs
         PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
         {
             (void)ctx;
-            if (!request.valid) return PassExecutionResult::not_executed();
+            if (!request.valid) return PassExecutionResult::invalid_request();
             return PassExecutionResult::executed_no_outputs();
         }
     };
@@ -1463,11 +1463,11 @@ namespace shs
 
         PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
         {
-            if (!request.valid) return PassExecutionResult::not_executed();
-            if (!request.inputs.registry) return PassExecutionResult::not_executed();
+            if (!request.valid) return PassExecutionResult::invalid_request();
+            if (!request.inputs.registry) return PassExecutionResult::prerequisites_unmet();
             RTRegistry& rtr = *request.inputs.registry;
             auto* ldr = static_cast<RT_ColorLDR*>(rtr.get(rt_ldr_));
-            if (!ldr || ldr->w <= 0 || ldr->h <= 0) return PassExecutionResult::not_executed();
+            if (!ldr || ldr->w <= 0 || ldr->h <= 0) return PassExecutionResult::prerequisites_unmet();
 
             auto& taa = ctx.temporal_aa;
             const int w = ldr->w;

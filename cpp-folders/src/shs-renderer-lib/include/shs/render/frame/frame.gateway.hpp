@@ -31,7 +31,8 @@ namespace shs::frame
     {
     };
 
-    // Batch outcome summary (house shape per kdba_kleisli_migration_plan.md).
+    // Batch outcome summary (house shape per
+    // docs/outdated/kdba_kleisli_migration_plan.md).
     // An identity pod applies nothing — it counts what passed the seam.
     struct FrameStep
     {

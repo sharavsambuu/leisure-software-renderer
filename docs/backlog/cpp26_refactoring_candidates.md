@@ -28,20 +28,24 @@ Do not refactor here independently — execute
 `cpp26_native_switch_runbook.md`. In scope at GCC 16 (language + `<contracts>`
 library together); Clang: none yet.
 
-### 1.2 `std::expected` — candidate to supersede the house Result railway
+### 1.2 `std::expected` — VOID: the house Result was never a railway
 
-House `core/result.hpp` predates `std::expected` (C++23, libstdc++ 12+).
-Evaluation points when the trigger fires:
+**Void 2026-09-18.** This entry rested on a false premise. It described
+superseding a live "house Result railway", but `shs/core/result.hpp` had **zero
+includers** — no planner, gateway, or test ever returned it — and no
+`and_then`/`transform`/`or_else` at all, so there was no railway to migrate. It
+also contradicted standing law twice over: `bool ok` beside a payload is the
+`(payload, bool valid)` shape **banned** by Constitution II §8
+(`value_oriented_programming.md`), and a `std::string error` violates §3 (an
+error type stays a closed `enum class`). The header was **deleted** rather than
+migrated; nothing is left to supersede.
 
-- **Benefit**: one less core primitive to maintain; monadic API
-  (`and_then`/`transform`/`or_else`) already shaped like the house railway;
-  future stdlib interop.
-- **Risks**: the house Result may carry pmr-friendly error storage,
-  message formatting, or ergonomic aliases the std type lacks; every gateway
-  returning it is a P5 rim — behavior parity must be byte-verified via the
-  replay-test pattern before any mass migration.
-- **Verdict: pilot, don't mass-migrate.** Try one leaf module first; adopt
-  broadly only if the std type covers 100% of the house API surface.
+The question itself still has a recorded answer: **the railway is
+`std::expected` from the start.** The live monadic chains already use it
+(`renderpath.gateway.hpp`), so a new fallible rim should reach for the std type
+directly — or a closed-vocabulary `enum class` outcome when the failure set is
+domain facts rather than invented errors, per §8's decline-is-a-fact rule. This
+entry is kept, void, so the question cannot be re-opened from the same premise.
 
 ### 1.3 `std::flat_map` / `std::flat_set` — probably keep the house one
 

@@ -131,3 +131,12 @@ over shared PODs with one error/event language. Current contexts:
 Stages compose synchronously as Kleisli chains (KDBA gateway, Rule 11) — including across contexts inside a saga orchestrator pod; direct POD writes across boundaries stay forbidden. A multi-context
 workflow adds a saga orchestrator that is itself a pod (Core 4+1, §6.1);
 its `.or_else()` compensator consumes the receipt/fact per Rule 12 (transient SagaContext evaporates on failure).
+
+**Vocabulary alias (2026-09-18):** the Kleisli chains above are the pattern the
+wider industry calls **Railway-Oriented Programming (ROP)** — an **alias only**,
+never a canonical term. The renderer's canonical vocabulary stays *Kleisli
+pipeline* / *flat railway composition* / *atomic Kleisli arrow* (Constitution II
+§8, amended with the alias note; glossary row in
+`docs/education/monadic_domain_architecture_lessons.md` §1). Nothing is renamed
+by the alias, and this catalog's decision axes (§1) are unaffected.
+

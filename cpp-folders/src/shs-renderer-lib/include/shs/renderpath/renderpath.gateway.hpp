@@ -81,7 +81,7 @@ namespace shs::renderpath
     };
 
     // Batch outcome summary (K1.1 spike decision, recorded in
-    // docs/backlog/kdba_kleisli_migration_plan.md): the batch rim is
+    // docs/outdated/kdba_kleisli_migration_plan.md): the batch rim is
     // infallible — every real failure (compile rejection) is absorbed by the
     // per-command expected rail inside try_swap_plan and materialized as a
     // PATH_SWAP_REJECTED fact — so the value rail is a plain Step, not an
@@ -225,7 +225,7 @@ namespace shs::renderpath
         // Same-value commands emit an *Unchanged fact (a no-op is not a
         // failure — it never touches the error rail); rejected swaps emit
         // PATH_SWAP_REJECTED; accepted transitions emit their change fact.
-        // Decision recorded in docs/backlog/kdba_kleisli_migration_plan.md.
+        // Decision recorded in docs/outdated/kdba_kleisli_migration_plan.md.
 
         inline void apply_select_path_preset(
             RenderPathPodState& state,

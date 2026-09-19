@@ -91,24 +91,57 @@ namespace shs
         }
     };
 
+    // ROP-2 (owner ruling 2026-09-18). The pass rim used to answer with a
+    // `bool executed` beside output flags — the `(payload, bool valid)` shape
+    // banned by Constitution II §8 (`value_oriented_programming.md` §8). It
+    // also collapsed three distinct facts into one `false`: a malformed
+    // request, unmet (retryable) prerequisites, and a deliberate decline. The
+    // state is now a closed, string-free vocabulary, so no pass can report
+    // "did not run" without saying *why*, and a decline is a recorded fact
+    // rather than an inferred absence (ERROR_FLOW non-vacuity law).
+    enum class PassOutcome : uint8_t
+    {
+        InvalidRequest = 0,      // the request itself is unusable
+        PrerequisitesUnmet = 1,  // well-formed, but a dependency is absent/not ready
+        Declined = 2,            // dependencies satisfied; the pass chose no output
+        Executed = 3
+    };
+
     struct PassExecutionResult
     {
-        bool executed = false;
+        PassOutcome outcome = PassOutcome::InvalidRequest;
         bool produced_depth = false;
         bool produced_light_grid = false;
         bool produced_light_index_list = false;
 
-        static constexpr PassExecutionResult not_executed()
+        // The only non-executing factories. Each names its own fact and none of
+        // them can produce `Executed`, so the old reason-free
+        // `not_executed()` — which made all three collapses legal — is gone.
+        static constexpr PassExecutionResult invalid_request()
         {
-            return PassExecutionResult{};
+            return PassExecutionResult{PassOutcome::InvalidRequest, false, false, false};
+        }
+
+        static constexpr PassExecutionResult prerequisites_unmet()
+        {
+            return PassExecutionResult{PassOutcome::PrerequisitesUnmet, false, false, false};
+        }
+
+        static constexpr PassExecutionResult declined()
+        {
+            return PassExecutionResult{PassOutcome::Declined, false, false, false};
         }
 
         static constexpr PassExecutionResult executed_no_outputs()
         {
-            PassExecutionResult out{};
-            out.executed = true;
-            return out;
+            return PassExecutionResult{PassOutcome::Executed, false, false, false};
         }
+
+        // Derived query over the one stored source of truth — deliberately not
+        // a second bit that could disagree with `outcome`.
+        constexpr bool executed() const { return outcome == PassOutcome::Executed; }
+
+        bool operator==(const PassExecutionResult&) const = default;
     };
 
     enum class PassResourceType : uint32_t

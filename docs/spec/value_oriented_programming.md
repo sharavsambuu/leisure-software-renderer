@@ -571,6 +571,20 @@ requirements instead of aspirations.
 > (Rule 17). This section is the single normative source for the railway;
 > §2.3 binds through it.
 
+> **Vocabulary alias (2026-09-18) — ROP, name only, no rename.** The *flat
+> railway composition* this section legislates is the pattern the wider industry
+> calls **Railway-Oriented Programming (ROP)**: linear
+> `.and_then()` / `.transform()` / `.or_else()` chains keeping success and
+> failure on two typed rails instead of an early-return ladder. This is an
+> **external alias, never a canonical term** — canonical vocabulary stays
+> *Kleisli pipeline* / *flat railway composition* / *atomic Kleisli arrow*
+> (§8, Rule 11), and no rule, type, or file is renamed by this note. It is
+> recorded so prose may name the pattern without appearing to import a second
+> doctrine. Prior art inside this repo (continuity, not adoption); the term
+> predates the doctrine: `docs/education/monadic_domain_architecture_lessons.md`
+> §1 glossary row, and `docs/education/kdba_history/kdba_manifesto_v2.md` §2.3
+> "Railway-Oriented Semantics (Bifurcated Execution Tracks)".
+
 ### Mandatory Standards
 - `std::span<const T>`: For immutable non-owning views across gateways, AI evaluators, and tile jobs.
 - `std::pmr::vector`: For all transient vectors backed by `FrameMemoryResource`.

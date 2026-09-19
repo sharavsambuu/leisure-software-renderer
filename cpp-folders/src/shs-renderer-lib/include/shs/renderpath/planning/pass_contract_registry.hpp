@@ -251,7 +251,7 @@ namespace shs
         PassExecutionResult execute_resolved(Context& ctx, const PassExecutionRequest& request) override
         {
             (void)ctx;
-            if (!request.valid) return PassExecutionResult::not_executed();
+            if (!request.valid) return PassExecutionResult::invalid_request();
             return PassExecutionResult::executed_no_outputs();
         }
 

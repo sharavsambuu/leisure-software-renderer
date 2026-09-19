@@ -39,9 +39,10 @@ namespace shs::logic
         float dt = 0.0f;
     };
 
-    // Batch outcome summary (house shape per kdba_kleisli_migration_plan.md;
-    // the batch rim is infallible — invalid ids and no-rule matches are
-    // materialized facts, never an invented error enum).
+    // Batch outcome summary (house shape per
+    // docs/outdated/kdba_kleisli_migration_plan.md; the batch rim is
+    // infallible — invalid ids and no-rule matches are materialized facts,
+    // never an invented error enum).
     struct FsmStep
     {
         uint32_t commands_applied  = 0;  // commands that mutated pod state

@@ -501,10 +501,45 @@ if(SHS_RENDERER_BUILD_TESTS)
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/include_graph_tests.py")
     add_test(NAME shs_renderer_include_graph_gate
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_include_graph.py")
+    # ROP-4.3 (owner ruling 2026-09-18): doc-path gate — every `docs/....md`
+    # citation (in C++ and in live markdown) must exist, and relative markdown
+    # links must resolve. Archives are exempt: T2 makes `docs/outdated/` and
+    # `kdba_history/` read-only, so the gate must never be the reason an
+    # archive edits. The negative fixture proves each rule FAILs and that the
+    # documented exemptions (bare filenames, embedded paths, `file://` links)
+    # stay legal.
+    add_test(NAME shs_renderer_doc_paths_gate
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_doc_paths.py")
+    add_test(NAME shs_renderer_doc_paths_negative_test
+        COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_doc_paths_negative_test.sh")
+    # ROP-2.4 (owner ruling 2026-09-18): pass-execution shape gate — the pass
+    # rim's `(payload, bool valid)` shape (Constitution II §8) must not return:
+    # no stored `bool executed` / `bool valid`, no reason-free `not_executed()`,
+    # and `PassOutcome` stays a closed string-free `enum class`. The negative
+    # fixture proves each rule FAILs and that the ruled shape PASSES.
+    add_test(NAME shs_renderer_pass_execution_shape_gate
+        COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_pass_execution_shape.sh")
+    add_test(NAME shs_renderer_pass_execution_shape_negative_test
+        COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_pass_execution_shape_negative_test.sh")
+    # ROP-1.3 (owner ruling 2026-09-18): claimed-primitive gate — a core/
+    # primitive must have a live consumer or a recorded disposition. This is
+    # the guard whose absence let core/result.hpp rot unclaimed; the negative
+    # fixture proves R1/R2/R3 FAIL and that a recorded entry still reports KNOWN.
+    add_test(NAME shs_renderer_claimed_primitives_gate
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_claimed_primitives.py")
+    add_test(NAME shs_renderer_claimed_primitives_negative_test
+        COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_claimed_primitives_negative_test.sh")
     # P1 placement law (Rule 17 as amended): gate 8 negative fixture — a
     # contract macro in a math leaf / non-seam header FAILs, legal homes PASS.
     add_test(NAME shs_renderer_contract_placement_negative_test
         COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_contract_placement_negative_test.sh")
+    # G2.1 positive gate. Found dormant on 2026-09-18 (ROP sweep): the
+    # classification gate existed and passed on the real tree, but only its
+    # negative fixture was registered, so the actual header tree was never
+    # policed. Activated — a gate that never runs enforces nothing.
+    add_test(NAME shs_renderer_pure_value_library_check
+        COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_pure_value_libraries.sh"
+            "${CMAKE_CURRENT_SOURCE_DIR}/include/shs")
     # G2.1 (governance review 2026-09-18): Pure Domain Value Library
     # classification gate negative fixture — stateful machinery in a
     # stateless leaf fails; conforming leaf passes; empty/missing/vacuous

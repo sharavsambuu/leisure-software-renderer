@@ -13,7 +13,8 @@ namespace snake {
 
         glm::ivec2 head_spawn = { 9, 9 };              // initial head cell (bottom-left origin)
         // NOTE: glm::ivec2 elements REQUIRE double braces here — single-brace elision
-        // fails on GCC with "too many initializers" (see docs/dev/cmake-vcpkg-workflow.md).
+        // fails on GCC with "too many initializers"
+        // (see docs/dev/cpp_compilation_workflow.md).
         std::array<glm::ivec2, 2> body_spawn = {{
             { 8, 9 }, { 7, 9 }                          // initial body segments (excl. head; total length 3)
         }};

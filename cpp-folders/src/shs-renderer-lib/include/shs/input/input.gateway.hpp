@@ -6,7 +6,7 @@
     FILE: input.gateway.hpp
     MODULE: domains/input
     PURPOSE: CORE 4. GATEWAY — translation-support vocabulary. Step 4.1
-             (docs/backlog/engine_domain_separation_migration.md) split
+             (docs/outdated/engine_domain_separation_migration.md) split
              input translation from application: the state-mutating
              camera/render/session application arrows moved to the explicit
              app orchestrator, shs::app::session_orchestrate (supersedes the
@@ -27,8 +27,9 @@ namespace shs::input
         float dt = 0.0f;
     };
 
-    // Batch outcome summary (house shape per kdba_kleisli_migration_plan.md;
-    // the rim is infallible — every intent is valid for this pod).
+    // Batch outcome summary (house shape per
+    // docs/outdated/kdba_kleisli_migration_plan.md; the rim is infallible —
+    // every intent is valid for this pod).
     struct InputStep
     {
         uint32_t commands_applied = 0;  // commands that mutated pod state

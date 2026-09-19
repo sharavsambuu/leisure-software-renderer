@@ -52,7 +52,7 @@ namespace
         }
         shs::renderpath::PassExecutionResult execute_resolved(shs::app::Context&, const shs::renderpath::PassExecutionRequest& request) override
         {
-            if (!request.valid) return shs::PassExecutionResult::not_executed();
+            if (!request.valid) return shs::PassExecutionResult::invalid_request();
             return shs::PassExecutionResult::executed_no_outputs();
         }
 
@@ -89,7 +89,7 @@ namespace
         }
         shs::renderpath::PassExecutionResult execute_resolved(shs::app::Context&, const shs::renderpath::PassExecutionRequest& request) override
         {
-            if (!request.valid) return shs::PassExecutionResult::not_executed();
+            if (!request.valid) return shs::PassExecutionResult::invalid_request();
             if (execute_count_) ++(*execute_count_);
             return shs::PassExecutionResult::executed_no_outputs();
         }
@@ -110,7 +110,7 @@ namespace
         shs::renderpath::TechniquePassContract describe_contract() const override { return contract_; }
         shs::renderpath::PassExecutionResult execute_resolved(shs::app::Context&, const shs::renderpath::PassExecutionRequest& request) override
         {
-            if (!request.valid) return shs::PassExecutionResult::not_executed();
+            if (!request.valid) return shs::PassExecutionResult::invalid_request();
             return shs::PassExecutionResult::executed_no_outputs();
         }
 
@@ -139,7 +139,7 @@ namespace
         }
         shs::renderpath::PassExecutionResult execute_resolved(shs::app::Context&, const shs::renderpath::PassExecutionRequest& request) override
         {
-            if (!request.valid) return shs::PassExecutionResult::not_executed();
+            if (!request.valid) return shs::PassExecutionResult::invalid_request();
             if (resolved_count_) ++(*resolved_count_);
             return shs::PassExecutionResult::executed_no_outputs();
         }
@@ -401,6 +401,40 @@ namespace
         return true;
     }
 
+    // ROP-2.2 (owner ruling 2026-09-18): the pass rim's outcome is a closed
+    // vocabulary. The three refusals the old `bool executed` collapsed into one
+    // value must be distinguishable facts, and none of them may read as
+    // executed — otherwise the §8 `(payload, bool valid)` collapse is back.
+    bool test_pass_outcomes_are_distinguishable()
+    {
+        using shs::renderpath::PassExecutionResult;
+        using shs::renderpath::PassOutcome;
+
+        const PassExecutionResult invalid = PassExecutionResult::invalid_request();
+        const PassExecutionResult unmet = PassExecutionResult::prerequisites_unmet();
+        const PassExecutionResult declined = PassExecutionResult::declined();
+        const PassExecutionResult executed = PassExecutionResult::executed_no_outputs();
+
+        if (invalid.outcome != PassOutcome::InvalidRequest) return false;
+        if (unmet.outcome != PassOutcome::PrerequisitesUnmet) return false;
+        if (declined.outcome != PassOutcome::Declined) return false;
+        if (executed.outcome != PassOutcome::Executed) return false;
+
+        // Pairwise distinct: the collapse the old shape permitted is now
+        // unrepresentable, not merely discouraged.
+        if (invalid == unmet || invalid == declined || unmet == declined) return false;
+
+        // Only `Executed` reports executed; no refusal claims an output bit.
+        if (invalid.executed() || unmet.executed() || declined.executed()) return false;
+        if (!executed.executed()) return false;
+        if (invalid.produced_depth || unmet.produced_light_grid
+            || declined.produced_light_index_list) return false;
+
+        // Same reason builds the same value (the value-equality the kit relies on).
+        if (PassExecutionResult::declined() != declined) return false;
+        return true;
+    }
+
 }
 
 int main()
@@ -413,6 +447,7 @@ int main()
     const bool ok_profile_hint = test_profile_config_uses_mode_hints_before_instantiation();
     const bool ok_context_flags = test_execution_plan_ignores_context_runtime_flags();
     const bool ok_resolved_only = test_pipeline_runtime_uses_execute_resolved();
+    const bool ok_outcomes = test_pass_outcomes_are_distinguishable();
 
     if (!ok_commands) std::fprintf(stderr, "[kdba-tests] runtime command gateway failed\n");
     if (!ok_latch) std::fprintf(stderr, "[kdba-tests] runtime input latch gateway failed\n");
@@ -422,8 +457,9 @@ int main()
     if (!ok_profile_hint) std::fprintf(stderr, "[kdba-tests] profile mode-hint precheck failed\n");
     if (!ok_context_flags) std::fprintf(stderr, "[kdba-tests] context runtime-flag coupling check failed\n");
     if (!ok_resolved_only) std::fprintf(stderr, "[kdba-tests] runtime did not use execute_resolved path\n");
+    if (!ok_outcomes) std::fprintf(stderr, "[kdba-tests] pass outcome refusals are not distinguishable\n");
 
-    if (!(ok_commands && ok_latch && ok_plan && ok_cmds && ok_request_gate && ok_profile_hint && ok_context_flags && ok_resolved_only)) return 1;
+    if (!(ok_commands && ok_latch && ok_plan && ok_cmds && ok_request_gate && ok_profile_hint && ok_context_flags && ok_resolved_only && ok_outcomes)) return 1;
     std::fprintf(stderr, "[kdba-tests] all tests passed\n");
     return 0;
 }

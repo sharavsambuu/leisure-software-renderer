@@ -6,14 +6,14 @@
     FILE: session_orchestrator.hpp
     MODULE: app
     PURPOSE: EXPLICIT APP ORCHESTRATION (step 4.1,
-             docs/backlog/engine_domain_separation_migration.md):
+             docs/outdated/engine_domain_separation_migration.md):
              the orchestration host. Input intents are APPLIED here, to
              state owned HERE. Input translation (latch -> intents,
              value_commands) stays in the input pod; camera/render/session
              application leaves it. The camera rig moves out of the input
              pod's state aggregate, resolving the K1.4 interim note
-             (kdba_kleisli_migration_plan.md: "until an orchestrator host
-             exists").
+             (docs/outdated/kdba_kleisli_migration_plan.md: "until an
+             orchestrator host exists").
 
              Zero-signal-loss and the Kleisli shape are preserved verbatim
              from the retired shs::input::input_gateway: (State,

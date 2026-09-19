@@ -4,7 +4,7 @@
 // Every fact that can flow through the event log is registered here with its
 // producing pod. Reducers keep their own typed event structs; this registry
 // is the cross-pod VOCABULARY used by:
-//   - scripts/generate-event-flow.mjs  (docs/EVENT_FLOW.md generation)
+//   - scripts/generate-event-flow.mjs  (docs/pods/EVENT_FLOW.md generation)
 //   - future debug event-log dumps / mission scripting
 //
 // Law: a fact MUST have exactly one PRODUCER. Adding an emission requires

@@ -532,6 +532,71 @@ uniformity; preserve lesson-specific kernels (incl. demo 01's from-scratch
 barycentric lesson); tolerance envelopes preserved unless separately
 investigated.
 
+### A3. ROP hardening (owner: [`rop_hardening_todo.md`](rop_hardening_todo.md))
+
+Provenance: the 2026-09-18 audit that named this project's pattern
+**Railway-Oriented Programming (ROP)** and audited readiness against it. Every
+item is a sweep of *existing* law or a citation repoint — **no rule is rewritten
+and no canonical term renamed** (ROP is recorded as an external alias only).
+Companion findings: [`legacy_renderer_trees_findings_2026-09-18.md`](legacy_renderer_trees_findings_2026-09-18.md).
+
+- [x] **ROP-0 Vocabulary alias (name only, no rename).** **CLOSED 2026-09-18:**
+      `docs/spec/value_oriented_programming.md` §8 now carries the alias
+      blockquote; the teaching glossary row and `DOMAIN_GLOSSARY.md` §8 link it.
+      Finding worth keeping: the term is **prior art in this repo** — glossary row
+      plus `kdba_manifesto_v2.md` §2.3 "Railway-Oriented Semantics" — so the
+      amendment is *continuity, not adoption*, and canonical vocabulary stays
+      *Kleisli pipeline* / *flat railway composition*.
+- [x] **ROP-1 `core/result.hpp` retirement.** **CLOSED 2026-09-18:** header deleted
+      (zero includers re-verified immediately before); `cpp26_refactoring_candidates.md`
+      §1.2 rewritten as *"VOID: the house Result was never a railway"* so the false
+      premise is **gone, not restated**, and the stale summary in
+      `docs/education/README.md` was corrected in the same pass. Inventory
+      regenerated and verified (`header_count` 234 → 233). The residual R1
+      unclaimed-primitive guard was **granted and landed** — it immediately found
+      ROP-1.4.
+- [ ] **ROP-1.4 Two more unclaimed primitives (NEW — found by enacting R1 and not
+      raised by the audit).** **OPEN, needs an owner decision:** `core/log.hpp`
+      (`log_info`/`log_warn`/`log_error`) and `core/time.hpp` (`FrameClock`) have
+      **zero consumers repo-wide** and no gate test — the same unclaimed-primitive
+      class as ROP-1, but coherent rather than law-contradicting, so they were
+      recorded rather than deleted. Both sit in
+      `tools/unclaimed_core_primitives.json` as **OPEN DECISION**; the new gate
+      prints them `KNOWN` on every run. Decide per primitive: give it a consumer,
+      gate it, or delete it. (`core/context.hpp` is also on the list, but for a
+      different reason — it is a recorded pending proposal that owns its own move.)
+- [x] **ROP-2 Validity-bit family onto the ruled shape.** **CLOSED 2026-09-18
+      (result side).** Ruling R2 granted option **(A)** — the fact-carrying closed
+      outcome. `PassOutcome` plus three named refusal factories
+      (`invalid_request` / `prerequisites_unmet` / `declined`) replaced the
+      `bool executed`, with `executed()` kept as a *derived* query, all 43 sites
+      converted (**17 + 18 + 3** by class, plus the registry, the single reader and
+      4 test doubles), a distinguishability test, and a shape gate + negative twin.
+      **Deferred with reasons recorded** (not forgotten): the request-side
+      `PassExecutionRequest::valid` (a public-interface change, so it needs a
+      ruling rather than a sweep) and ROP-2.5's remaining **11** validity-bit sites
+      (a per-site justification pass over five subsystems).
+- [ ] **ROP-3 Kleisli coverage 5 → 11 ports** — gateways exist for `renderpath`,
+      `logic`, `frame`, `input`, `app/session_orchestrator`; missing `geometry`,
+      `lighting`, `sky`, `scene`, `resources`, `gfx` (six domains with full Core 4
+      triples and no arrow). **NOT STARTED, deliberately** — it is the one item
+      that is a multi-commit program (gateway + kit tests + glossary rows per
+      domain), and a half-ported domain would make the 5-of-11 census ambiguous.
+      Next up: one commit per domain in the K1.1 order, starting with `geometry`.
+      K1.4 camera is resolved — do not re-open. Residual R3 (shared `Step` type) was
+      **granted** as *concept, not a concrete type* (zero renames) but is **not yet
+      implemented** — see Bucket B.
+- [x] **ROP-4 Citation integrity.** **CLOSED 2026-09-18, and the census was an
+      undercount:** a full sweep found **10** broken sites, not 7 — six citations of
+      `kdba_kleisli_migration_plan.md` (2 qualified + 4 bare), **two of
+      `engine_domain_separation_migration.md` which the audit missed entirely**, and
+      two demo-side paths (one naming a file that exists nowhere). All repointed at
+      the *citing* site; archives untouched (T2 verified). The class is now gated:
+      ruling R4 granted, `check_doc_paths.py` + negative twin run in CTest with
+      three rules at **zero baseline violations**. The listed
+      `constitution_enforcement_plan.md:307` half was **VOID** — that column is
+      "Moved from", so the row was already correct and was deliberately not edited.
+
 ## Bucket B — Blocked on owner ruling
 
 - [ ] **C4.3 / P4 C++26 native contracts switch** (owner:
@@ -546,6 +611,40 @@ investigated.
       neither; mixed-toolchain items stay gated until Clang ships it.
       **Execution requires only the owner baseline ruling**; the replay-parity
       CTest is the release blocker when the switch fires.
+- [x] **R1 Unclaimed-primitive guard** (owner: [`rop_hardening_todo.md`](rop_hardening_todo.md)
+      §7) — **RULED YES, 2026-09-18, and landed.** A `core/` primitive now needs a
+      live consumer **or** a recorded disposition:
+      `tools/check_claimed_primitives.py` + `tools/unclaimed_core_primitives.json`
+      + negative twin, in CTest. Mechanism deviated from the recommendation — a
+      dedicated gate instead of growing `check_contract_placement.sh` /
+      `check_kdba_boundaries.sh`, so neither gate blurs its own subject. Enacting
+      it found ROP-1.4 (see Bucket A).
+- [x] **R2 Pass-execution shape** (owner: same §7) — **RULED (A), 2026-09-18, and
+      landed.** The fact-carrying closed outcome on the two-tier doctrine
+      (a decline is a recorded fact, not an invented error) and to keep the
+      per-pass path allocation-free. (B) rejected as the primary rail for that
+      last reason. Implemented as `PassOutcome` + named refusal factories +
+      derived `executed()`, with all 43 sites converted and a shape gate + twin.
+      See Bucket A / `rop_hardening_todo.md` §3.
+- [ ] **R3 Shared `Step` type** (owner: same §7) — **RULED 2026-09-18: concept, not
+      a concrete shared type** (zero renames of working code), **and deliberately
+      NOT yet implemented.** No longer ruling-blocked; the remaining work is the
+      concept itself plus a `static_assert` at each existing step plus a negative
+      fixture. Kept here only so the outstanding piece is visible next to the
+      ruling it implements.
+- [x] **R4 Doc-path existence gate** (owner: same §7) — **RULED YES, 2026-09-18,
+      and landed** as `tools/check_doc_paths.py` + negative twin in CTest, with
+      three rules measured at zero baseline violations. Scope narrowed after
+      measurement rather than by guesswork: bare filenames are not gated (they make
+      no path claim) and archives are exempt from the link rules (T2). A
+      line-scoped marker (`doc-paths: quoted`) lets an audit quote a defect without
+      the quote reading as a citation. Enacting it corrected the census: **10**
+      broken citations, not the 7 the audit reported.
+
+**No ROP ruling remains outstanding.** Bucket B's R1/R2/R4 are closed and R3 is
+ruled-but-unimplemented; the only open decisions in the ROP track are the two
+ROP-1.4 primitive dispositions (Bucket A).
+
 
 ## Bucket C — Blocked on demo/windowed host (P6, owner: kdba backlog)
 
