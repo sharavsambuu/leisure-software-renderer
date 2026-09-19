@@ -131,9 +131,12 @@ discipline.
   GPU-free) verifies identity against the authored `.slang` source that is
   actually compiled. Full CTest 73/73. Evidence:
   [`docs/backlog/shader_identity_manifest_evidence_2026-09-18.md`](../backlog/shader_identity_manifest_evidence_2026-09-18.md).
-  Still open in this phase: the `minimal_forward` recipe, the `minimal_scene` /
-  `tonemap` Slang modules, and consumer-owned shader ids (rule-of-two over the
-  pass-id registry shape).
+  Still open in this phase: the `minimal_forward` recipe and the `minimal_scene`
+  / `tonemap` Slang modules. Consumer-owned shader ids **landed 2026-09-18**
+  (`ShaderId` open registered range + `ShaderIdRegistry` owned by
+  `ShaderManifest` — rule-of-two over the pass-id registry shape, with the
+  offset law shared via `shs/core/open_id_hash.hpp`); see
+  [`docs/backlog/shader_id_open_registry_evidence_2026-09-18.md`](../backlog/shader_id_open_registry_evidence_2026-09-18.md).
 
 ### P2 — Reflection → pod driver
 - `slangc` reflection JSON → `build/shaders/slang/<pass>.json`.

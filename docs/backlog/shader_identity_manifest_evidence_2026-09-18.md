@@ -108,9 +108,14 @@ bodies — and the gate checks their outputs agree.
 
 ## 6. Deliberate non-claims (residuals)
 
-1. **No consumer/open shader ids.** `ShaderId` is a closed builtin vocabulary
-   plus a `Count` sentinel. Consumer-owned shader ids are the rule-of-two
-   follow-up and must reuse the `PassIdRegistry` shape, not invent a second one.
+1. **No consumer/open shader ids — CLOSED 2026-09-18.** This residual was the
+   owner line for arch §4 req 6, and it closed *with* that item, not in place of
+   it: `ShaderId` now has a builtin range plus an open **content-addressed**
+   registered range, and `ShaderManifest` owns the `ShaderIdRegistry` that mints
+   them (the `PassIdRegistry` shape, third instance — the offset law was hoisted
+   to `shs/core/open_id_hash.hpp` rather than copied). Evidence:
+   [`shader_id_open_registry_evidence_2026-09-18.md`](shader_id_open_registry_evidence_2026-09-18.md).
+   Note what is *not* closed here: residuals 2–6 below stand unchanged.
 2. **The Vulkan binding is descriptive truth, not yet loader input.** The
    manifest states which module and entries realize an identity; the Vulkan edge
    still loads `.spv` paths itself. Making the manifest the loader's input is P2

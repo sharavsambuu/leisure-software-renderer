@@ -57,6 +57,32 @@ int main()
         check(!shader_id_builtin_name(id).empty(), "a builtin id has no canonical name");
     }
 
+    // --- Range law: the vocabulary is open, the old reading is unchanged -----
+    // Opening the identity space added an acceptance (the open registered
+    // range); it must not have moved any value the closed vocabulary could
+    // already hold. This is the parity guard for that claim.
+    for (uint16_t i = 0; i <= static_cast<uint16_t>(ShaderId::Count); ++i)
+    {
+        const auto id = static_cast<ShaderId>(i);
+        const bool legacy = i != static_cast<uint16_t>(ShaderId::Unknown) &&
+                            i < static_cast<uint16_t>(ShaderId::Count);
+        check(shader_id_is_registerable(id) == legacy, "the builtin registerability reading changed");
+        check(shader_id_is_builtin(id) == legacy, "the builtin classification changed");
+        check(!shader_id_is_open(id), "a builtin-range value read as an open id");
+    }
+    check(shader_id_is_open(static_cast<ShaderId>(kShaderIdOpenBase)), "the open base is not open");
+    check(shader_id_in_valid_range(static_cast<ShaderId>(kShaderIdOpenMax)),
+        "the open max is not a valid id");
+    check(!shader_id_in_valid_range(static_cast<ShaderId>(kShaderIdReserved)),
+        "the reserved top slot is a valid id");
+    check(shader_id_name_or_null(ShaderId::BlinnPhong) != nullptr, "a builtin lost its static name");
+    check(shader_id_name_or_null(static_cast<ShaderId>(kShaderIdOpenBase)) == nullptr,
+        "an open id claimed a static name");
+    check(parse_shader_id(shader_id_builtin_name(ShaderId::PbrMetallicRoughness)) ==
+              ShaderId::PbrMetallicRoughness,
+        "parse_shader_id does not invert shader_id_builtin_name");
+    check(shader_id_in_valid_range(ShaderId::Unknown) == false, "Unknown reads as a valid id");
+
     // --- Registration is verified pairing, and every refusal is named -------
     ShaderManifest m{};
     ShaderDesc soft{};
@@ -114,6 +140,12 @@ int main()
     // --- Builtin value-tier identities: software realizations only ----------
     const ShaderManifest value = builtin_value_shader_manifest();
     check(value.size() == 6, "the builtin value manifest size drifted");
+    // The open half must be untouched by builtins: opening the range added
+    // capacity, not identities.
+    check(value.open_count() == 0, "a builtin manifest carries a minted open slot");
+    check(value.ids().empty(), "a builtin manifest minted an open name");
+    check(ShaderManifest::builtin_capacity() == kShaderIdBuiltinCount,
+        "the builtin slot extent drifted");
     for (ShaderId id : {ShaderId::BlinnPhong, ShaderId::PbrMetallicRoughness, ShaderId::LitDefault,
                         ShaderId::DebugViewAlbedo, ShaderId::DebugViewNormal, ShaderId::DebugViewDepth})
     {
@@ -132,6 +164,8 @@ int main()
     // --- One identity, two realizations (the authored offscreen pipeline) ---
     const ShaderManifest off = sw_offscreen_recipe::offscreen_shader_manifest();
     check(off.has(ShaderId::OffscreenPipeline), "the offscreen identity is not registered");
+    check(off.size() == 1, "the offscreen manifest size drifted");
+    check(off.open_count() == 0, "the offscreen manifest carries a minted open slot");
     const ShaderDesc* od = off.get(ShaderId::OffscreenPipeline);
     check(od != nullptr && od->name == "offscreen_pipeline", "the offscreen identity name drifted");
     check(od != nullptr && od->module == "offscreen_pipeline", "the offscreen module name drifted");

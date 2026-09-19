@@ -46,6 +46,7 @@
 #include <utility>
 #include <vector>
 
+#include "shs/core/open_id_hash.hpp"
 #include "shs/renderpath/planning/pass_id.hpp"
 
 namespace shs
@@ -68,16 +69,10 @@ namespace shs
         // no iteration order, no ambient seed.
         static constexpr uint16_t open_offset(std::string_view name)
         {
-            uint32_t h = 2166136261u;
-            for (const char c : name)
-            {
-                h ^= static_cast<uint32_t>(static_cast<unsigned char>(c));
-                h *= 16777619u;
-            }
-            h ^= h >> 16;
-            h *= 0x7feb352du;
-            h ^= h >> 15;
-            return static_cast<uint16_t>(h % static_cast<uint32_t>(capacity()));
+            // Shared law (shs/core/open_id_hash.hpp), not a local copy: the
+            // shader-id registry derives its offsets the same way, so a
+            // divergence cannot silently change which id a name maps to.
+            return core::open_id_offset(name, capacity());
         }
 
         // Resolve a name to a typed pass id. Total (no throw, no partial state):

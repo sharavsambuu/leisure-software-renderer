@@ -12,20 +12,31 @@
             backend-blind хэвээр үлдэж, realization-гүй backend чимээгүй
             ойролцоолохгүй, харин шууд татгалзана.
 
-    Хамрах хүрээ (энэ slice): builtin identity + backend-blind resolution +
-    realization-гүй тохиолдлын шууд refusal. Consumer/open shader id-ууд
-    ЗОРИУД орхигдсон: энэ нь PassIdRegistry-ийн shape-ийг дахин ашиглах
-    rule-of-two дараагийн алхам.
+    Хамрах хүрээ: builtin identity + backend-blind resolution + realization-гүй
+    тохиолдлын шууд refusal, БА open/consumer shader id (2026-09-18-нд
+    нээгдсэн): `ShaderId` нь builtin диапазон + open registered диапазонтой
+    болж, consumer нь `ShaderManifest::intern_shader` /
+    `register_named_shader`-ээр НЭРээсээ id үүсгэнэ — core-ийн enum-д гар
+    хүрэхгүй.
+
+    Энэ файл нь umbrella: id ба range law нь `shader_id.hpp`, mint registry нь
+    `shader_id_registry.hpp` (хоёулаа `renderpath/planning/pass_id.hpp` +
+    `execution/pass_id_registry.hpp`-ийн shape); manifest нь тэднийг
+    агуулна. Хуучин consumer-ууд энэ header-ээр бүгдийг харсаар байна.
 */
 
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <expected>
+#include <optional>
 #include <string_view>
 
 #include "shs/render/frame/backend_type.hpp"
 #include "shs/render/shader/program.hpp"
+#include "shs/render/shader/shader_id.hpp"
+#include "shs/render/shader/shader_id_registry.hpp"
 
 namespace shs
 {
@@ -65,62 +76,14 @@ namespace shs
     }
 
     // ---------------------------------------------------------------------
-    // Closed builtin vocabulary.
-    // Only identities with at least one *real* realization are enumerated;
-    // the frozen GLSL-era modules under shaders/vulkan are deliberately NOT
-    // listed until they migrate (Slang plan P3), so the manifest can never
-    // claim a realization that does not exist.
+    // ShaderId, its range law and the canonical builtin names now live in
+    // `shader_id.hpp` (mirroring planning/pass_id.hpp), with the open-range
+    // mint registry in `shader_id_registry.hpp` (mirroring
+    // execution/pass_id_registry.hpp). Both are included above, so every name
+    // this header used to provide — `ShaderId`, `kShaderIdCount`,
+    // `shader_id_is_registerable`, `shader_id_builtin_name` — is still visible
+    // here, unchanged, for existing consumers.
     // ---------------------------------------------------------------------
-    enum class ShaderId : uint16_t
-    {
-        Unknown = 0,
-
-        // Value-tier builtin programs. Software realization today; no GPU
-        // realization is wired, and the manifest says so in data.
-        BlinnPhong = 1,
-        PbrMetallicRoughness = 2,
-        LitDefault = 3,
-        DebugViewAlbedo = 4,
-        DebugViewNormal = 5,
-        DebugViewDepth = 6,
-
-        // The one identity with BOTH realizations today: the authored
-        // tests/shaders/offscreen_pipeline.slang module and its CPU counterpart
-        // (rhi/software/sw_offscreen.hpp). Exercised by four CTest gates.
-        OffscreenPipeline = 7,
-
-        Count = 8 // sentinel, never registerable
-    };
-
-    inline constexpr std::size_t kShaderIdCount = static_cast<std::size_t>(ShaderId::Count);
-
-    static_assert(static_cast<uint16_t>(ShaderId::Unknown) == 0, "Unknown must be 0");
-    static_assert(static_cast<uint16_t>(ShaderId::OffscreenPipeline) <
-                  static_cast<uint16_t>(ShaderId::Count), "builtin ids must stay below Count");
-
-    [[nodiscard]] constexpr bool shader_id_is_registerable(ShaderId id)
-    {
-        return id != ShaderId::Unknown && static_cast<uint16_t>(id) < kShaderIdCount;
-    }
-
-    // Canonical name of a builtin identity. Empty for Unknown, which is never
-    // registerable and therefore never resolvable.
-    [[nodiscard]] constexpr std::string_view shader_id_builtin_name(ShaderId id)
-    {
-        switch (id)
-        {
-        case ShaderId::BlinnPhong: return "blinn_phong";
-        case ShaderId::PbrMetallicRoughness: return "pbr_metallic_roughness";
-        case ShaderId::LitDefault: return "lit_default";
-        case ShaderId::DebugViewAlbedo: return "debug_view_albedo";
-        case ShaderId::DebugViewNormal: return "debug_view_normal";
-        case ShaderId::DebugViewDepth: return "debug_view_depth";
-        case ShaderId::OffscreenPipeline: return "offscreen_pipeline";
-        case ShaderId::Unknown:
-        case ShaderId::Count:
-        default: return {};
-        }
-    }
 
     // ---------------------------------------------------------------------
     // Realization masks: which backends this identity is realized on.
@@ -197,6 +160,10 @@ namespace shs
         MissingCppImpl,     // software realization declared without a program factory
         MissingModule,      // GPU realization declared without an authored module
         MissingEntryPoints, // declared realization without entry points
+
+        // --- open registered range (Constitution I §7; arch §4 req 6) --------
+        UnregisteredOpenId, // an open-range id this manifest never minted (foreign or stale)
+        NameCollision,      // two distinct names hashed to the same open slot; both refused
     };
 
     [[nodiscard]] constexpr std::string_view shader_identity_error_name(ShaderIdentityError e)
@@ -213,6 +180,8 @@ namespace shs
         case ShaderIdentityError::MissingCppImpl: return "missing_cpp_impl";
         case ShaderIdentityError::MissingModule: return "missing_module";
         case ShaderIdentityError::MissingEntryPoints: return "missing_entry_points";
+        case ShaderIdentityError::UnregisteredOpenId: return "unregistered_open_id";
+        case ShaderIdentityError::NameCollision: return "name_collision";
         default: return "unknown_error";
         }
     }
@@ -244,6 +213,13 @@ namespace shs
     // registration is *verified pairing* — an id and a name must agree with
     // the descriptor they are registered under, so a foreign or colliding
     // identity can never map onto a builtin slot.
+    //
+    // Open ids: the manifest OWNS a `ShaderIdRegistry` — the same shape as
+    // `PassIdRegistry`, which `PassFactoryRegistry` owns — so a consumer mints
+    // a shader identity from a name and registers a descriptor against it with
+    // no core edit. Storage therefore has two halves: the fixed builtin array
+    // (unchanged, so every builtin path keeps its exact previous behavior) and
+    // the minted open slots.
     // ---------------------------------------------------------------------
     class ShaderManifest
     {
@@ -254,49 +230,133 @@ namespace shs
             ShaderDesc desc{};
         };
 
+        // A minted (open-range) identity slot, keyed by its content-addressed
+        // offset. Lookup is a scan of typically a handful of entries, which is
+        // what keeps the manifest copyable and comparable.
+        //
+        // Held in a std::deque on purpose: `ShaderBinding::desc` hands out a
+        // POINTER into this storage, and deque guarantees that pushing further
+        // slots never invalidates references to existing elements. A vector
+        // would silently dangle an earlier binding when it reallocates.
+        struct OpenSlot
+        {
+            uint16_t offset = 0u;
+            ShaderDesc desc{};
+        };
+
+        // The fixed builtin array extent.
+        [[nodiscard]] static constexpr std::size_t builtin_capacity() { return kShaderIdBuiltinCount; }
+
+        // Total identity slots this manifest can hold: builtin + open range.
+        [[nodiscard]] static constexpr std::size_t capacity()
+        {
+            return kShaderIdBuiltinCount + ShaderIdRegistry::capacity();
+        }
+
+        // Mint a consumer/demo-owned shader identity from its name. Total: a
+        // builtin name resolves to its builtin id (a consumer can never shadow
+        // a core shader), a repeat is idempotent, and an empty name, the
+        // reserved open spelling or a real collision returns nullopt — see
+        // `ShaderIdRegistry` for why the id is a pure function of the name.
+        [[nodiscard]] std::optional<ShaderId> intern_shader(std::string_view name)
+        {
+            return ids_.intern(name);
+        }
+
+        // The owned mint registry (name resolution, enumeration, equality).
+        [[nodiscard]] const ShaderIdRegistry& ids() const { return ids_; }
+
+        // One-call consumer path: mint the name, then register its descriptor.
+        // Named refusals: an empty name is NameMismatch, a real hash collision
+        // is NameCollision, and everything `register_shader` refuses passes
+        // through unchanged.
+        [[nodiscard]] std::expected<ShaderId, ShaderIdentityError> register_named_shader(
+            std::string_view name, const ShaderDesc& desc)
+        {
+            if (name.empty()) return std::unexpected(ShaderIdentityError::NameMismatch);
+
+            const std::optional<ShaderId> id = ids_.intern(name);
+            if (!id.has_value()) return std::unexpected(ShaderIdentityError::NameCollision);
+
+            const std::expected<void, ShaderIdentityError> r = register_shader(*id, name, desc);
+            if (!r) return std::unexpected(r.error());
+            return *id;
+        }
+
         [[nodiscard]] std::expected<void, ShaderIdentityError> register_shader(
             ShaderId id, std::string_view name, const ShaderDesc& desc)
         {
-            if (!shader_id_is_registerable(id)) return std::unexpected(ShaderIdentityError::UnknownShader);
+            // The id must be a real identity slot before anything else can be
+            // judged about it: Unknown, the Count sentinel, the reserved gap
+            // below the open range and the reserved top slot are hard misses,
+            // exactly as before.
+            if (!shader_id_in_valid_range(id)) return std::unexpected(ShaderIdentityError::UnknownShader);
             if (name.empty() || desc.name != name) return std::unexpected(ShaderIdentityError::NameMismatch);
+
+            if (shader_id_is_open(id))
+            {
+                // Verified pairing against the OWNED registry: an open id this
+                // manifest never minted — a foreign manifest's id, or a stale
+                // one — is a hard miss, so a foreign id can never fill a slot
+                // here (the same anti-aliasing property the pass-id registry
+                // gets from `try_name`).
+                const std::optional<std::string_view> minted = ids_.try_name(id);
+                if (!minted.has_value() || *minted != name)
+                    return std::unexpected(ShaderIdentityError::UnregisteredOpenId);
+
+                const uint16_t offset = open_offset_of(id);
+                for (const OpenSlot& s : open_slots_)
+                {
+                    if (s.offset == offset) return std::unexpected(ShaderIdentityError::AlreadyRegistered);
+                }
+
+                const std::expected<void, ShaderIdentityError> v = validate_desc(desc);
+                if (!v) return v;
+
+                open_slots_.push_back(OpenSlot{offset, desc});
+                return {};
+            }
 
             Slot& slot = slots_[static_cast<std::size_t>(id)];
             if (slot.registered) return std::unexpected(ShaderIdentityError::AlreadyRegistered);
-            if (desc.realization_mask == kShaderRealizationNone)
-                return std::unexpected(ShaderIdentityError::NoRealization);
-            if ((desc.realization_mask & kShaderRealizationSoftware) != 0u && desc.cpp_impl == nullptr)
-                return std::unexpected(ShaderIdentityError::MissingCppImpl);
 
-            const uint8_t gpu_bits = static_cast<uint8_t>(kShaderRealizationVulkan | kShaderRealizationOpenGL);
-            if ((desc.realization_mask & gpu_bits) != 0u)
-            {
-                if (desc.module.empty()) return std::unexpected(ShaderIdentityError::MissingModule);
-                if (desc.entries.empty()) return std::unexpected(ShaderIdentityError::MissingEntryPoints);
-            }
+            const std::expected<void, ShaderIdentityError> v = validate_desc(desc);
+            if (!v) return v;
 
             slot.registered = true;
             slot.desc = desc;
             return {};
         }
 
-        [[nodiscard]] bool has(ShaderId id) const
-        {
-            return shader_id_is_registerable(id) && slots_[static_cast<std::size_t>(id)].registered;
-        }
+        [[nodiscard]] bool has(ShaderId id) const { return desc_of(id) != nullptr; }
 
-        [[nodiscard]] const ShaderDesc* get(ShaderId id) const
+        [[nodiscard]] const ShaderDesc* get(ShaderId id) const { return desc_of(id); }
+
+        // Name of a registered identity: the builtin table, or the name an open
+        // id was minted from. nullopt for anything this manifest cannot resolve
+        // — a foreign open id included.
+        [[nodiscard]] std::optional<std::string_view> shader_name(ShaderId id) const
         {
-            return has(id) ? &slots_[static_cast<std::size_t>(id)].desc : nullptr;
+            return ids_.try_name(id);
         }
 
         [[nodiscard]] std::size_t size() const
         {
-            std::size_t n = 0;
+            std::size_t n = open_slots_.size();
             for (const Slot& s : slots_) n += s.registered ? 1u : 0u;
             return n;
         }
 
-        void clear() { slots_ = {}; }
+        // Registered open identities (the builtin identities are the fixed
+        // census `slots()` reports).
+        [[nodiscard]] std::size_t open_count() const { return open_slots_.size(); }
+
+        void clear()
+        {
+            slots_ = {};
+            open_slots_.clear();
+            ids_.clear();
+        }
 
         [[nodiscard]] const Slot* slots() const { return slots_.data(); }
 
@@ -307,8 +367,9 @@ namespace shs
         [[nodiscard]] std::expected<ShaderBinding, ShaderIdentityError> resolve(
             ShaderId id, RenderBackendType backend, const ShaderEntryPoints& declared = {}) const
         {
-            if (!has(id)) return std::unexpected(ShaderIdentityError::UnknownShader);
-            const ShaderDesc& d = slots_[static_cast<std::size_t>(id)].desc;
+            const ShaderDesc* const p = desc_of(id);
+            if (p == nullptr) return std::unexpected(ShaderIdentityError::UnknownShader);
+            const ShaderDesc& d = *p;
 
             // An absent realization bit is a refusal, never a fallback: this is
             // exactly where an OpenGL resolve stops instead of quietly running
@@ -335,22 +396,93 @@ namespace shs
             return b;
         }
 
-        [[nodiscard]] static constexpr std::size_t capacity() { return kShaderIdCount; }
-
-        constexpr bool operator==(const ShaderManifest& other) const
+        // Value semantics. Two manifests are equal iff they hold the same
+        // registered descriptors AND the same minted names — a minted-but-
+        // unregistered identity is observable through `shader_name`, so it
+        // counts. Open slots compare by content-addressed offset, so the order
+        // in which names were registered can never make two equal manifests
+        // differ.
+        //
+        // Not constexpr, deliberately: the open half lives in
+        // std::deque / std::string, so no invocation could constant-evaluate
+        // this; claiming constexpr would be a lie the compiler may accept
+        // silently.
+        [[nodiscard]] bool operator==(const ShaderManifest& other) const
         {
-            for (std::size_t i = 0; i < kShaderIdCount; ++i)
+            if (ids_ != other.ids_) return false;
+
+            for (std::size_t i = 0; i < kShaderIdBuiltinCount; ++i)
             {
                 if (slots_[i].registered != other.slots_[i].registered) return false;
                 if (slots_[i].registered && slots_[i].desc != other.slots_[i].desc) return false;
             }
+
+            if (open_slots_.size() != other.open_slots_.size()) return false;
+            for (const OpenSlot& s : open_slots_)
+            {
+                bool found = false;
+                for (const OpenSlot& t : other.open_slots_)
+                {
+                    if (t.offset != s.offset) continue;
+                    found = (t.desc == s.desc);
+                    break;
+                }
+                if (!found) return false;
+            }
             return true;
         }
 
-        constexpr bool operator!=(const ShaderManifest& other) const { return !(*this == other); }
+        [[nodiscard]] bool operator!=(const ShaderManifest& other) const { return !(*this == other); }
 
     private:
-        std::array<Slot, kShaderIdCount> slots_{};
+        // Descriptor invariants, shared by the builtin and the open
+        // registration paths so the two cannot drift apart.
+        [[nodiscard]] static std::expected<void, ShaderIdentityError> validate_desc(const ShaderDesc& desc)
+        {
+            if (desc.realization_mask == kShaderRealizationNone)
+                return std::unexpected(ShaderIdentityError::NoRealization);
+            if ((desc.realization_mask & kShaderRealizationSoftware) != 0u && desc.cpp_impl == nullptr)
+                return std::unexpected(ShaderIdentityError::MissingCppImpl);
+
+            const uint8_t gpu_bits = static_cast<uint8_t>(kShaderRealizationVulkan | kShaderRealizationOpenGL);
+            if ((desc.realization_mask & gpu_bits) != 0u)
+            {
+                if (desc.module.empty()) return std::unexpected(ShaderIdentityError::MissingModule);
+                if (desc.entries.empty()) return std::unexpected(ShaderIdentityError::MissingEntryPoints);
+            }
+            return {};
+        }
+
+        // Offset of an open id inside the open range — the inverse of the
+        // registry's `open_offset`, used to key the open slots.
+        [[nodiscard]] static constexpr uint16_t open_offset_of(ShaderId id)
+        {
+            return static_cast<uint16_t>(static_cast<uint16_t>(id) - static_cast<uint16_t>(kShaderIdOpenBase));
+        }
+
+        // The one way to reach a descriptor: builtin array, or open slot, or
+        // nullptr. Everything public that asks "is this registered" goes
+        // through here, so neither half can be forgotten.
+        [[nodiscard]] const ShaderDesc* desc_of(ShaderId id) const
+        {
+            if (shader_id_is_open(id))
+            {
+                const uint16_t offset = open_offset_of(id);
+                for (const OpenSlot& s : open_slots_)
+                {
+                    if (s.offset == offset) return &s.desc;
+                }
+                return nullptr;
+            }
+            if (!shader_id_is_builtin(id)) return nullptr;
+
+            const Slot& slot = slots_[static_cast<std::size_t>(id)];
+            return slot.registered ? &slot.desc : nullptr;
+        }
+
+        std::array<Slot, kShaderIdBuiltinCount> slots_{};
+        std::deque<OpenSlot> open_slots_{};
+        ShaderIdRegistry ids_{};
     };
     } // inline namespace render
 } // namespace shs

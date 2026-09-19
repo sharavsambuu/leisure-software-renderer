@@ -3,7 +3,7 @@
   "scope": "cpp-folders/src/shs-renderer-lib/include",
   "coverage": "all .h/.hpp public headers; literal includes in all conditional branches",
   "approval": "proposed paths are inventory only; reviewed migrations live in engine_header_migration_manifest.json",
-  "header_count": 230,
+  "header_count": 233,
   "headers": [
     {
       "current": "shs/app/backend/backend_factory.hpp",
@@ -773,6 +773,33 @@
         "string"
       ],
       "tracked_consumers": [],
+      "build_target": "review-values-vs-aggregate"
+    },
+    {
+      "current": "shs/core/open_id_hash.hpp",
+      "proposed_canonical": "shs/core/open_id_hash.hpp",
+      "review_status": "already-named-review-dependencies",
+      "proposed_owner": "core",
+      "namespace_declarations": [
+        "core",
+        "shs"
+      ],
+      "visibility": "public-include-tree",
+      "direct_dependencies": [
+        "cstddef",
+        "cstdint",
+        "string_view"
+      ],
+      "internal_dependencies": [],
+      "external_dependencies": [
+        "cstddef",
+        "cstdint",
+        "string_view"
+      ],
+      "tracked_consumers": [
+        "cpp-folders/src/shs-renderer-lib/include/shs/render/shader/shader_id_registry.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/pass_id_registry.hpp"
+      ],
       "build_target": "review-values-vs-aggregate"
     },
     {
@@ -3117,6 +3144,7 @@
       ],
       "external_dependencies": [],
       "tracked_consumers": [
+        "cpp-folders/src/shs-renderer-lib/tests/shader_id_open_registry_tests.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/shader_identity_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
@@ -3187,6 +3215,70 @@
       "build_target": "review-values-vs-aggregate"
     },
     {
+      "current": "shs/render/shader/shader_id.hpp",
+      "proposed_canonical": "shs/render/shader/shader_id.hpp",
+      "review_status": "already-named-review-dependencies",
+      "proposed_owner": "render",
+      "namespace_declarations": [
+        "render",
+        "shs"
+      ],
+      "visibility": "public-include-tree",
+      "direct_dependencies": [
+        "cstddef",
+        "cstdint",
+        "string_view"
+      ],
+      "internal_dependencies": [],
+      "external_dependencies": [
+        "cstddef",
+        "cstdint",
+        "string_view"
+      ],
+      "tracked_consumers": [
+        "cpp-folders/src/shs-renderer-lib/include/shs/render/shader/shader_id_registry.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/render/shader/shader_identity.hpp"
+      ],
+      "build_target": "review-values-vs-aggregate"
+    },
+    {
+      "current": "shs/render/shader/shader_id_registry.hpp",
+      "proposed_canonical": "shs/render/shader/shader_id_registry.hpp",
+      "review_status": "already-named-review-dependencies",
+      "proposed_owner": "render",
+      "namespace_declarations": [
+        "render",
+        "shs"
+      ],
+      "visibility": "public-include-tree",
+      "direct_dependencies": [
+        "cstddef",
+        "optional",
+        "shs/core/open_id_hash.hpp",
+        "shs/render/shader/shader_id.hpp",
+        "string",
+        "string_view",
+        "utility",
+        "vector"
+      ],
+      "internal_dependencies": [
+        "shs/core/open_id_hash.hpp",
+        "shs/render/shader/shader_id.hpp"
+      ],
+      "external_dependencies": [
+        "cstddef",
+        "optional",
+        "string",
+        "string_view",
+        "utility",
+        "vector"
+      ],
+      "tracked_consumers": [
+        "cpp-folders/src/shs-renderer-lib/include/shs/render/shader/shader_identity.hpp"
+      ],
+      "build_target": "review-values-vs-aggregate"
+    },
+    {
       "current": "shs/render/shader/shader_identity.hpp",
       "proposed_canonical": "shs/render/shader/shader_identity.hpp",
       "review_status": "already-named-review-dependencies",
@@ -3200,20 +3292,28 @@
         "array",
         "cstddef",
         "cstdint",
+        "deque",
         "expected",
+        "optional",
         "shs/render/frame/backend_type.hpp",
         "shs/render/shader/program.hpp",
+        "shs/render/shader/shader_id.hpp",
+        "shs/render/shader/shader_id_registry.hpp",
         "string_view"
       ],
       "internal_dependencies": [
         "shs/render/frame/backend_type.hpp",
-        "shs/render/shader/program.hpp"
+        "shs/render/shader/program.hpp",
+        "shs/render/shader/shader_id.hpp",
+        "shs/render/shader/shader_id_registry.hpp"
       ],
       "external_dependencies": [
         "array",
         "cstddef",
         "cstdint",
+        "deque",
         "expected",
+        "optional",
         "string_view"
       ],
       "tracked_consumers": [
@@ -3723,6 +3823,7 @@
       "direct_dependencies": [
         "cstddef",
         "optional",
+        "shs/core/open_id_hash.hpp",
         "shs/renderpath/planning/pass_id.hpp",
         "string",
         "string_view",
@@ -3730,6 +3831,7 @@
         "vector"
       ],
       "internal_dependencies": [
+        "shs/core/open_id_hash.hpp",
         "shs/renderpath/planning/pass_id.hpp"
       ],
       "external_dependencies": [
@@ -3742,7 +3844,8 @@
       ],
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/pass_registry.hpp",
-        "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/render_path_runtime_layout.hpp"
+        "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/render_path_runtime_layout.hpp",
+        "cpp-folders/src/shs-renderer-lib/tests/shader_id_open_registry_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },

@@ -668,6 +668,23 @@ if(SHS_RENDERER_BUILD_TESTS)
         SHS_SHADER_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/shaders")
     add_test(NAME shs_renderer_shader_identity_tests COMMAND shs_renderer_shader_identity_tests)
 
+    # Open shader-id registry gate (Constitution I §7 — No User Lock-In;
+    # arch §4 graduation req 6): ShaderId gains a builtin + open registered
+    # range, a consumer mints a shader identity from a name (content-addressed,
+    # like PassIdRegistry), and the manifest resolves it through the same
+    # backend-blind path a builtin uses. Also pins that the shader and pass
+    # registries derive offsets from the SAME shared law. GPU-free, value-tier.
+    add_executable(shs_renderer_shader_id_open_tests
+        tests/shader_id_open_registry_tests.cpp
+    )
+    target_link_libraries(shs_renderer_shader_id_open_tests PRIVATE shs::renderer-values)
+    target_compile_features(shs_renderer_shader_id_open_tests PRIVATE cxx_std_23)
+    if(MSVC)
+        target_compile_options(shs_renderer_shader_id_open_tests PRIVATE /W4)
+    else()
+        target_compile_options(shs_renderer_shader_id_open_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+    add_test(NAME shs_renderer_shader_id_open_tests COMMAND shs_renderer_shader_id_open_tests)
     add_custom_target(shs_renderer_boundary_check
         COMMAND "${CMAKE_COMMAND}" -E env "PYTHON=${Python3_EXECUTABLE}"
             "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_kdba_boundaries.sh"
