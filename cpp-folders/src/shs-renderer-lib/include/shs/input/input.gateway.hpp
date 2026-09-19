@@ -18,6 +18,7 @@
 */
 
 #include <cstdint>
+#include "shs/core/step_shape.hpp"
 
 namespace shs::input
 {
@@ -36,4 +37,7 @@ namespace shs::input
 
         bool operator==(const InputStep&) const = default;
     };
+
+    // R3 (ROP-3.2): rim steps compose by shape — pinned at the definition site.
+    static_assert(shs::core::StepShape<InputStep>);
 } // namespace shs::input

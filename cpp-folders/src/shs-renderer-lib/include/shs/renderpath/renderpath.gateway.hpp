@@ -59,6 +59,7 @@
 #include <variant>
 
 #include "shs/core/contract_guardrails.hpp"
+#include "shs/core/step_shape.hpp"
 #include "shs/renderpath/renderpath.command.hpp"
 #include "shs/renderpath/renderpath.contract.hpp"
 #include "shs/renderpath/renderpath.event.hpp"
@@ -95,6 +96,9 @@ namespace shs::renderpath
 
         bool operator==(const RenderPathStep&) const = default;
     };
+
+    // R3 (ROP-3.2): rim steps compose by shape — pinned at the definition site.
+    static_assert(shs::core::StepShape<RenderPathStep>);
 
     // --- technique mapping -------------------------------------------------
 

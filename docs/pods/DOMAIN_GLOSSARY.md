@@ -101,6 +101,17 @@ second vocabulary.
 
 ## 7. Pod homes (Core 4 complete 11/11 — hardening campaign R1–R5b)
 
+> **Gateway-rim census amendment (2026-09-19, KP-0;** audit in
+> [`docs/backlog/kleisli_port_scope_todo.md`](../backlog/kleisli_port_scope_todo.md)**):**
+> "Core 4 complete" above counts the declared suffixes; the **gateway-rim census
+> is 5 rims + 6 lawful-empty pods**: rims exist for `renderpath`, `logic`,
+> `frame` (identity, pinned replay probe), `input` (+ the app orchestrator rim);
+> `geometry`, `lighting`, `sky`, `scene`, `resources`, `gfx` carry §6.1-legal
+> `std::variant<std::monostate>` command/event scaffolding with zero consumers
+> and **no rim until real intents arrive** (K1.4 camera precedent, ROP-3.3). A
+> monostate vocabulary's port is demand-driven (R5b registry/store edge
+> migration), never signature-only.
+
 Each pod: `<pod>.contract/command/event/gateway.hpp` (+ `plan.hpp` where the
 litmus demands; edge code under `<pod>/edge/`). Event catalog:
 `docs/pods/EVENT_FLOW.md` (drift-gated by `check_kdba_boundaries.sh`).

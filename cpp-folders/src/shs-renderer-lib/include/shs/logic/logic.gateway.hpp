@@ -25,6 +25,7 @@
 #include <variant>
 
 #include "shs/core/contract_guardrails.hpp"
+#include "shs/core/step_shape.hpp"
 #include "shs/logic/logic.command.hpp"
 #include "shs/logic/logic.contract.hpp"
 #include "shs/logic/logic.event.hpp"
@@ -51,6 +52,9 @@ namespace shs::logic
 
         bool operator==(const FsmStep&) const = default;
     };
+
+    // R3 (ROP-3.2): rim steps compose by shape — pinned at the definition site.
+    static_assert(shs::core::StepShape<FsmStep>);
 
     namespace fsm_detail
     {

@@ -5,7 +5,11 @@
 
 #include "shs/app/context.hpp"
 #include "shs/app/session_orchestrator.gateway.hpp"
+#include "shs/core/step_shape.hpp"
+#include "shs/logic/logic.gateway.hpp"
+#include "shs/render/frame/frame.gateway.hpp"
 #include "shs/render/frame/frame_params.hpp"
+#include "shs/renderpath/renderpath.gateway.hpp"
 #include "shs/input/storage/camera_commands.hpp"
 #include "shs/input/storage/command_processor.hpp"
 #include "shs/input/value_commands.hpp"
@@ -435,6 +439,80 @@ namespace
         return true;
     }
 
+    // --- R3 (ROP-3.2): StepShape concept — negative fixture ------------------
+    // Off-shape rim summaries must be REJECTED at compile time, not merely
+    // discouraged; the positive pins live at each step's definition site
+    // (*Step structs in the *.gateway.hpp headers). These static_asserts are
+    // the executable part of the ruling: the test binary fails to BUILD if
+    // the concept ever grows legs that accept a broken step, or shrinks to
+    // one that rejects a landed one.
+
+    struct NoEqualityStep
+    {
+        int commands = 0;   // no operator== — the kit could not replay-compare
+    };
+
+    struct NotCopyableStep
+    {
+        NotCopyableStep() = default;
+        NotCopyableStep(const NotCopyableStep&) = delete;
+        bool operator==(const NotCopyableStep&) const = default;
+    };
+
+    struct AbstractRimStep
+    {
+        virtual ~AbstractRimStep() = default;
+        virtual int count() const = 0;
+        bool operator==(const AbstractRimStep&) const = default;
+    };
+
+    struct NoZeroBatchStep
+    {
+        NoZeroBatchStep() = delete;
+        explicit NoZeroBatchStep(int c)
+            : commands(c)
+        {}
+        bool operator==(const NoZeroBatchStep&) const = default;
+        int commands = 0;
+    };
+
+    static_assert(!shs::core::StepShape<NoEqualityStep>, "a step without value equality is not a step");
+    static_assert(!shs::core::StepShape<NotCopyableStep>, "a step must return by value (copyable)");
+    static_assert(!shs::core::StepShape<AbstractRimStep>, "a polymorphic rim summary is not a value step");
+    static_assert(!shs::core::StepShape<NoZeroBatchStep>, "the zero batch must yield the zero step");
+    static_assert(!shs::core::StepShape<int&>, "a reference is not a step value");
+    static_assert(!shs::core::StepShape<void>, "void is not a step value");
+
+    // Positive pins, restated here so a regression in any definition-site pin
+    // fails this test binary too (and so the landed steps are enumerable).
+    static_assert(shs::core::StepShape<shs::logic::FsmStep>);
+    static_assert(shs::core::StepShape<shs::input::InputStep>);
+    static_assert(shs::core::StepShape<shs::frame::FrameStep>);
+    static_assert(shs::core::StepShape<shs::renderpath::RenderPathStep>);
+
+    bool test_step_shape_value_semantics()
+    {
+        // Zero batch -> zero step; equal steps compare equal (the value
+        // semantics the pod kit's replay/empty-log proofs rely on).
+        if (!(shs::logic::FsmStep{} == shs::logic::FsmStep{})) return false;
+        if (!(shs::input::InputStep{} == shs::input::InputStep{})) return false;
+        if (!(shs::frame::FrameStep{} == shs::frame::FrameStep{})) return false;
+        if (!(shs::renderpath::RenderPathStep{} == shs::renderpath::RenderPathStep{})) return false;
+
+        // Copy-constructible by shape: the kit re-runs a batch over a copy.
+        shs::logic::FsmStep stepped{};
+        stepped.commands_applied = 2;
+        stepped.facts_observed = 1;
+        const shs::logic::FsmStep copy = stepped;
+        if (!(copy == stepped)) return false;
+
+        // Distinct tallies compare distinct (equality is not vacuous).
+        shs::logic::FsmStep other{};
+        other.commands_applied = 3;
+        if (copy == other) return false;
+        return true;
+    }
+
 }
 
 int main()
@@ -448,6 +526,7 @@ int main()
     const bool ok_context_flags = test_execution_plan_ignores_context_runtime_flags();
     const bool ok_resolved_only = test_pipeline_runtime_uses_execute_resolved();
     const bool ok_outcomes = test_pass_outcomes_are_distinguishable();
+    const bool ok_steps = test_step_shape_value_semantics();
 
     if (!ok_commands) std::fprintf(stderr, "[kdba-tests] runtime command gateway failed\n");
     if (!ok_latch) std::fprintf(stderr, "[kdba-tests] runtime input latch gateway failed\n");
@@ -458,8 +537,9 @@ int main()
     if (!ok_context_flags) std::fprintf(stderr, "[kdba-tests] context runtime-flag coupling check failed\n");
     if (!ok_resolved_only) std::fprintf(stderr, "[kdba-tests] runtime did not use execute_resolved path\n");
     if (!ok_outcomes) std::fprintf(stderr, "[kdba-tests] pass outcome refusals are not distinguishable\n");
+    if (!ok_steps) std::fprintf(stderr, "[kdba-tests] step shape value semantics failed\n");
 
-    if (!(ok_commands && ok_latch && ok_plan && ok_cmds && ok_request_gate && ok_profile_hint && ok_context_flags && ok_resolved_only && ok_outcomes)) return 1;
+    if (!(ok_commands && ok_latch && ok_plan && ok_cmds && ok_request_gate && ok_profile_hint && ok_context_flags && ok_resolved_only && ok_outcomes && ok_steps)) return 1;
     std::fprintf(stderr, "[kdba-tests] all tests passed\n");
     return 0;
 }

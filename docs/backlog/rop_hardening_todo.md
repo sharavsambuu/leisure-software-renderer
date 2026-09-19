@@ -3,7 +3,8 @@
 > Status: **active — partly landed, 2026-09-18 sweep**. Landed and verified:
 > ROP-1.1, ROP-1.2, ROP-1.3, ROP-2.1–2.4, ROP-4.1, ROP-4.3 (+ three findings
 > discovered while sweeping: ROP-1.4, the §5 ROP-4.2 void, the dormant gate in
-> §9). Still open: ROP-2.5, ROP-3.1, ROP-3.2. See §9 for the landed ledger with
+> §9). Still open: ROP-2.5, ROP-3.1 (re-scoped 2026-09-19 — see its amendment);
+> ROP-3.2's concept landed 2026-09-19. See §9 for the landed ledger with
 > per-item evidence. Provenance: the 2026-09-18 library audit that
 > named this project's pattern **Railway-Oriented Programming** and then audited
 > readiness against it. Companion findings:
@@ -40,7 +41,7 @@ forbidden in writing; they were simply never swept. Consequently:
 | :--: | :--- | :--- |
 | 1 | `core/result.hpp`: `bool ok` + `std::string error`, **zero includers** | Violates §3 (error enum stays `enum class`, no `std::string` in `E`); violates §8's `(payload, bool)` clause; not a monad (no `and_then`/`transform`/`or_else`) |
 | 2 | `PassExecutionResult`: `bool executed` + output bits, no error channel; **38** `not_executed()` call sites | **Exact** target of §8 (`value_oriented_programming.md:591-592`, the `(payload, bool valid)` clause); silent-swallow class |
-| 3 | Kleisli coverage **5 of 11** planned ports | Coverage gap, not a violation; K1.1 DoD still open on the shared `Step` *type* |
+| 3 | Kleisli coverage **5 of 11** planned ports *(census corrected 2026-09-19: the six are lawful §6.1 monostate shells; ROP-3.1 closed-rescoped, ROP-3.2's `StepShape` landed — see §4)* | Coverage gap, not a violation; K1.1 DoD closed 2026-09-19 (the shared `Step` *type* resolved as the `StepShape` concept) |
 | 4 | `kdba_kleisli_migration_plan.md` cited at 6 code sites + 1 plan doc where it does not exist | Factual/drift error; the file lives in `docs/outdated/` |
 
 **Disposition after the 2026-09-18 sweep:**
@@ -52,7 +53,9 @@ forbidden in writing; they were simply never swept. Consequently:
    (ROP-2.1–2.4). The `PassExecutionRequest::valid` half is *deliberately
    deferred* with its reason recorded (ROP-2.3).
 3. **OPEN** — untouched by this sweep; the six missing gateway ports are ROP-3.1,
-   the largest item and a multi-commit program.
+   the largest item and a multi-commit program. *(2026-09-19 update: ROP-3.2's
+   concept landed; ROP-3.1 closed-rescoped — the six shells are lawful §6.1
+   monostate scaffolds with demand-driven ports. See §4.)*
 4. **CORRECTED — the census above undercounted.** A full sweep of every `docs/*.md`
    citation in C++ found **10** broken sites, not 7: six citations of
    `kdba_kleisli_migration_plan.md` (2 qualified + 4 bare), two of
@@ -342,7 +345,7 @@ gateways exist — `renderpath`, `logic`, `frame`, `input`,
 triples (`.contract` / `.command` / `.event`) and a declared pod home but **no
 arrow**: `geometry`, `lighting`, `sky`, `scene`, `resources`, `gfx`.
 
-- [ ] **ROP-3.1 Port the six missing gateways in the K1.1 order** — declared port
+- [x] **ROP-3.1 Port the six missing gateways in the K1.1 order** — declared port
       order is renderpath → logic → frame → **geometry → lighting → sky → scene →
       resources → gfx** → input (input last, largest monolith). The first three and
       input are done, so the remaining work is geometry, lighting, sky, scene,
@@ -361,7 +364,32 @@ arrow**: `geometry`, `lighting`, `sky`, `scene`, `resources`, `gfx`.
       per commit in the order above, starting with `geometry`**, with the
       per-domain DoD unchanged. Nothing in the landed work blocks or complicates
       it; the gateway shape it copies is the one this sweep verified.
-- [ ] **ROP-3.2 Resolve the open K1.1 point — the shared `Step` *type*** — the
+
+      > **AMENDMENT 2026-09-19 — scope re-scored by vocabulary audit, KP-0 executed**
+      > ([`kleisli_port_scope_todo.md`](kleisli_port_scope_todo.md)): the six
+      > "missing" Core 4 triples above are all `std::variant<std::monostate>` with
+      > zero consumers — lawful §6.1 monostate scaffolding, not live rims awaiting a
+      > mechanical copy (same finding family as ROP-3.3/K1.4: an empty vocabulary
+      > discards no real signal). The shells' own `static_assert`s name the landing
+      > path — new intents arrive as named `apply_*` arrows behind a real gateway —
+      > and the governing clarification atop
+      > [`kdba_conformance_backlog.md`](kdba_conformance_backlog.md) forbids
+      > signature-only ports and invented vacuous errors. Re-scope, therefore:
+      > three rims are demand-driven (`gfx`, `resources`, `scene` — deferred until
+      > their R5b registry/store edge migration supplies real intents), `geometry`
+      > is a pure value-lib leaf (no rim), `sky` defers until a backend
+      > sky-realization edge appears, `lighting` stays retired (step 4.5,
+      > `pod_identifier_law.md`). The per-domain DoD above is unchanged and remains
+      > the authority for what "ported" means when a port does fire.
+      >
+      > **CLOSED-RESCOPED 2026-09-19 (KP-6):** 5 rims stand (renderpath, logic,
+      > frame, input + the app orchestrator rim); the six remaining pods are
+      > lawful §6.1 monostate shells with no rim until their demand trigger fires
+      > (triggers in `kleisli_port_scope_todo.md` §1a: R5b for `gfx`/`resources`/
+      > `scene`; none for `geometry`; named for `sky`; retired for `lighting`).
+      > ROP-3.2's `StepShape` concept landed the same day; when a port does fire,
+      > the per-domain DoD above + the concept pin govern the landing.
+- [x] **ROP-3.2 Resolve the open K1.1 point — the shared `Step` *type*** — the
       gateways are today shape-uniform but **not** type-uniform: each pod names
       its own result type (`FsmStep`, `FrameStep`, …). K1.1's published
       vocabulary names a shared `Step{NextState, Events}`. This matters precisely
@@ -373,7 +401,19 @@ arrow**: `geometry`, `lighting`, `sky`, `scene`, `resources`, `gfx`.
       type is chosen, it lands with a concept enforcing the shape and **zero**
       renames of existing per-pod types beyond an alias — no silent rewrite of
       working code. **RULED 2026-09-18 (R3): keep per-pod named steps and add a
-      `Step`-shaped concept — but NOT IMPLEMENTED.** The ruling is recorded so the
+      `Step`-shaped concept — LANDED 2026-09-19 (KP-1 of
+      [`kleisli_port_scope_todo.md`](kleisli_port_scope_todo.md)).** Concept:
+      `shs::core::StepShape` in `shs/core/step_shape.hpp` — `is_object` +
+      default-constructible + copy-constructible + `std::equality_comparable`,
+      minimal by design (no trivial-copyability demand, so it cannot reject a
+      legal future step carrying a small value payload; value equality mandatory —
+      the kit's replay/empty-log proofs rely on `operator==`). Pins:
+      `static_assert` at all five step sites (`FsmStep`, `InputStep`,
+      `FrameStep`, `RenderPathStep`, and the orchestrator's reused `InputStep`).
+      Negative fixture (the executable part of the ruling): six
+      `static_assert(!StepShape<…>)` rejections in `tests/core_tests.cpp` — no
+      equality, non-copyable, polymorphic rim, no zero-batch step, reference,
+      void — plus restated positive pins. Zero renames. The ruling is recorded so the
       decision cannot be re-litigated; the concept itself did not land in this
       sweep. Why it was paused rather than rushed: "a `Step`-shaped concept"
       needs a precise, defensible definition of the shape *and* the pod set it
@@ -510,6 +550,8 @@ citations of the law.
 
 **Not started (and why):** ROP-3.1 (six gateway ports — a multi-commit program,
 see its item) and ROP-3.2's concept (a small follow-up, ruled but unimplemented).
+*(2026-09-19 update: ROP-3.2's concept landed as `shs::core::StepShape`; ROP-3.1
+closed-rescoped — see the item and §4.)*
 ROP-2.5 remains a per-site justification pass. Nothing landed is on the critical
 path of any of them.
 
@@ -567,7 +609,7 @@ dispositions and the ROP-2.3 request-side conversion, both recorded with reasons
 | :--: | :--- | :--- | :--- |
 | **R1** | Yes — a `core/` primitive needs a live consumer or a gate test. | `tools/check_claimed_primitives.py` + `tools/unclaimed_core_primitives.json` + negative twin; CTest `shs_renderer_claimed_primitives_gate`. | Mechanism only: a **dedicated** gate instead of an assertion grown inside `check_contract_placement.sh` / `check_kdba_boundaries.sh`, so neither gate blurs its own subject. Enacting it surfaced ROP-1.4. |
 | **R2** | Yes — option **(A)**, the fact-carrying closed outcome. | `PassOutcome` + three named refusal factories + derived `executed()` + the distinguishability test + the shape gate/twin. | The conversion landed as one reviewable sweep rather than per-adapter commits (ROP-2.3 Deviation 1); the request-side `valid` flag is deferred with its reason (Deviation 2). |
-| **R3** | Concept, not a concrete shared type — zero renames. | **Ruling recorded only; the concept is NOT implemented** (ROP-3.2). | None in substance — the ruling is what was in scope to record; the concept itself is listed as an open follow-up. |
+| **R3** | Concept, not a concrete shared type — zero renames. | **Ruling recorded only; the concept is NOT implemented** (ROP-3.2). **→ LANDED 2026-09-19 (KP-1):** `shs::core::StepShape` + five step-site `static_assert` pins + the negative fixture in `tests/core_tests.cpp`. | None in substance — the ruling is what was in scope to record; the concept itself is listed as an open follow-up. *(landed 2026-09-19)* |
 | **R4** | Yes — add a doc-path existence gate. | `tools/check_doc_paths.py` + negative twin; CTest `shs_renderer_doc_paths_gate`; three rules, zero baseline violations. | Scope narrowed after measurement: bare filenames are not gated (they make no path claim) and archives are exempt from the link rules (T2). |
 
 ## 8. Definition of done for this plan

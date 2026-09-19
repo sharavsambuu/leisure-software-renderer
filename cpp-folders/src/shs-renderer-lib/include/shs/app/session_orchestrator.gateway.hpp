@@ -34,6 +34,7 @@
 #include <glm/glm.hpp>
 
 #include "shs/core/contract_guardrails.hpp"
+#include "shs/core/step_shape.hpp"
 #include "shs/camera/camera_rig.hpp"
 #include "shs/input/input.command.hpp"
 #include "shs/input/input.event.hpp"
@@ -147,6 +148,9 @@ namespace shs::app
     // per-intent arrows above, Rule 2 as amended). Events land on the
     // caller's arena. This is the single canonical application path for
     // input intents (step 4.1).
+    // R3 (ROP-3.2): the orchestrator rim reuses shs::input::InputStep —
+    // pinned here so the app rim stays Step-shaped if the shared step forks.
+    static_assert(shs::core::StepShape<shs::input::InputStep>);
     inline shs::input::InputStep session_orchestrate(
         SessionState& state,
         std::span<const RuntimeCommand> commands,

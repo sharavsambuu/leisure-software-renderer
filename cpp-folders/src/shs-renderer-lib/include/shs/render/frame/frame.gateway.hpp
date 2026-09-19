@@ -21,6 +21,7 @@
 #include <variant>
 
 #include "shs/core/contract_guardrails.hpp"
+#include "shs/core/step_shape.hpp"
 #include "shs/render/frame/frame.command.hpp"
 #include "shs/render/frame/frame.contract.hpp"
 #include "shs/render/frame/frame.event.hpp"
@@ -40,6 +41,9 @@ namespace shs::frame
 
         bool operator==(const FrameStep&) const = default;
     };
+
+    // R3 (ROP-3.2): rim steps compose by shape — pinned at the definition site.
+    static_assert(shs::core::StepShape<FrameStep>);
 
     inline FrameStep frame_gateway(
         FrameParams&                     state,

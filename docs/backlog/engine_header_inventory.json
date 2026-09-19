@@ -3,7 +3,7 @@
   "scope": "cpp-folders/src/shs-renderer-lib/include",
   "coverage": "all .h/.hpp public headers; literal includes in all conditional branches",
   "approval": "proposed paths are inventory only; reviewed migrations live in engine_header_migration_manifest.json",
-  "header_count": 233,
+  "header_count": 234,
   "headers": [
     {
       "current": "shs/app/backend/backend_factory.hpp",
@@ -202,6 +202,7 @@
         "memory_resource",
         "shs/camera/camera_rig.hpp",
         "shs/core/contract_guardrails.hpp",
+        "shs/core/step_shape.hpp",
         "shs/input/input.command.hpp",
         "shs/input/input.event.hpp",
         "shs/input/input.gateway.hpp",
@@ -212,6 +213,7 @@
       "internal_dependencies": [
         "shs/camera/camera_rig.hpp",
         "shs/core/contract_guardrails.hpp",
+        "shs/core/step_shape.hpp",
         "shs/input/input.command.hpp",
         "shs/input/input.event.hpp",
         "shs/input/input.gateway.hpp"
@@ -800,6 +802,35 @@
         "cpp-folders/src/shs-renderer-lib/include/shs/render/shader/shader_id_registry.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/execution/pass_id_registry.hpp",
         "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/planning/semantic_registry.hpp"
+      ],
+      "build_target": "review-values-vs-aggregate"
+    },
+    {
+      "current": "shs/core/step_shape.hpp",
+      "proposed_canonical": "shs/core/step_shape.hpp",
+      "review_status": "already-named-review-dependencies",
+      "proposed_owner": "core",
+      "namespace_declarations": [
+        "core",
+        "shs"
+      ],
+      "visibility": "public-include-tree",
+      "direct_dependencies": [
+        "concepts",
+        "type_traits"
+      ],
+      "internal_dependencies": [],
+      "external_dependencies": [
+        "concepts",
+        "type_traits"
+      ],
+      "tracked_consumers": [
+        "cpp-folders/src/shs-renderer-lib/include/shs/app/session_orchestrator.gateway.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/input/input.gateway.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/logic/logic.gateway.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/render/frame/frame.gateway.hpp",
+        "cpp-folders/src/shs-renderer-lib/include/shs/renderpath/renderpath.gateway.hpp",
+        "cpp-folders/src/shs-renderer-lib/tests/core_tests.cpp"
       ],
       "build_target": "review-values-vs-aggregate"
     },
@@ -1955,9 +1986,12 @@
       ],
       "visibility": "public-include-tree",
       "direct_dependencies": [
-        "cstdint"
+        "cstdint",
+        "shs/core/step_shape.hpp"
       ],
-      "internal_dependencies": [],
+      "internal_dependencies": [
+        "shs/core/step_shape.hpp"
+      ],
       "external_dependencies": [
         "cstdint"
       ],
@@ -2651,6 +2685,7 @@
         "limits",
         "memory_resource",
         "shs/core/contract_guardrails.hpp",
+        "shs/core/step_shape.hpp",
         "shs/logic/logic.command.hpp",
         "shs/logic/logic.contract.hpp",
         "shs/logic/logic.event.hpp",
@@ -2660,6 +2695,7 @@
       ],
       "internal_dependencies": [
         "shs/core/contract_guardrails.hpp",
+        "shs/core/step_shape.hpp",
         "shs/logic/logic.command.hpp",
         "shs/logic/logic.contract.hpp",
         "shs/logic/logic.event.hpp"
@@ -2673,6 +2709,7 @@
         "variant"
       ],
       "tracked_consumers": [
+        "cpp-folders/src/shs-renderer-lib/tests/core_tests.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/logic_guardrail_tests.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/logic_tests.cpp"
       ],
@@ -3010,6 +3047,7 @@
         "cstdint",
         "memory_resource",
         "shs/core/contract_guardrails.hpp",
+        "shs/core/step_shape.hpp",
         "shs/render/frame/frame.command.hpp",
         "shs/render/frame/frame.contract.hpp",
         "shs/render/frame/frame.event.hpp",
@@ -3019,6 +3057,7 @@
       ],
       "internal_dependencies": [
         "shs/core/contract_guardrails.hpp",
+        "shs/core/step_shape.hpp",
         "shs/render/frame/frame.command.hpp",
         "shs/render/frame/frame.contract.hpp",
         "shs/render/frame/frame.event.hpp"
@@ -3033,6 +3072,7 @@
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/include/shs/app/vertical_slice_host.hpp",
         "cpp-folders/src/shs-renderer-lib/tests/contract_guardrails_replay_probe.cpp",
+        "cpp-folders/src/shs-renderer-lib/tests/core_tests.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/frame_guardrail_tests.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/frame_tests.cpp"
       ],
@@ -5309,6 +5349,7 @@
         "expected",
         "memory_resource",
         "shs/core/contract_guardrails.hpp",
+        "shs/core/step_shape.hpp",
         "shs/renderpath/renderpath.command.hpp",
         "shs/renderpath/renderpath.contract.hpp",
         "shs/renderpath/renderpath.event.hpp",
@@ -5319,6 +5360,7 @@
       ],
       "internal_dependencies": [
         "shs/core/contract_guardrails.hpp",
+        "shs/core/step_shape.hpp",
         "shs/renderpath/renderpath.command.hpp",
         "shs/renderpath/renderpath.contract.hpp",
         "shs/renderpath/renderpath.event.hpp"
@@ -5335,6 +5377,7 @@
       "tracked_consumers": [
         "cpp-folders/src/shs-renderer-lib/include/shs/app/vertical_slice_host.hpp",
         "cpp-folders/src/shs-renderer-lib/tests/contract_guardrails_pilot_tests.cpp",
+        "cpp-folders/src/shs-renderer-lib/tests/core_tests.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/lifecycle_semantics_tests.cpp",
         "cpp-folders/src/shs-renderer-lib/tests/renderpath_tests.cpp"
       ],
@@ -7715,7 +7758,9 @@
       "resources",
       "scene"
     ],
-    "input": [],
+    "input": [
+      "core"
+    ],
     "lighting": [
       "camera",
       "geometry",

@@ -576,7 +576,7 @@ Companion findings: [`legacy_renderer_trees_findings_2026-09-18.md`](legacy_rend
       `PassExecutionRequest::valid` (a public-interface change, so it needs a
       ruling rather than a sweep) and ROP-2.5's remaining **11** validity-bit sites
       (a per-site justification pass over five subsystems).
-- [ ] **ROP-3 Kleisli coverage 5 → 11 ports** — gateways exist for `renderpath`,
+- [x] **ROP-3 Kleisli coverage 5 → 11 ports** — gateways exist for `renderpath`,
       `logic`, `frame`, `input`, `app/session_orchestrator`; missing `geometry`,
       `lighting`, `sky`, `scene`, `resources`, `gfx` (six domains with full Core 4
       triples and no arrow). **NOT STARTED, deliberately** — it is the one item
@@ -585,7 +585,18 @@ Companion findings: [`legacy_renderer_trees_findings_2026-09-18.md`](legacy_rend
       Next up: one commit per domain in the K1.1 order, starting with `geometry`.
       K1.4 camera is resolved — do not re-open. Residual R3 (shared `Step` type) was
       **granted** as *concept, not a concrete type* (zero renames) but is **not yet
-      implemented** — see Bucket B.
+      implemented** — see Bucket B. **AMENDMENT 2026-09-19 (KP-0 executed):** the
+      six "missing" triples are all `std::variant<std::monostate>` with **zero
+      consumers** — lawful §6.1 monostate scaffolding, not live rims; ports are
+      demand-driven (R5b registry/store edge migration is the named trigger for
+      `gfx`/`resources`/`scene`; `geometry` = no rim, pure leaf; `sky` = defer
+      with a named trigger; `lighting` = retired per `pod_identifier_law.md`).
+      Audit + re-scope: [`kleisli_port_scope_todo.md`](kleisli_port_scope_todo.md).
+      This row ticks only in the same commit the owner-doc entry closes. —
+      **CLOSED 2026-09-19 (KP-6):** owner ROP-3.1 closed-rescoped in the same
+      commit (5 rims + 6 lawful-empty §6.1 shells; ports demand-driven on the
+      §1a triggers; `lighting` retired per pod law) and ROP-3.2's `StepShape`
+      concept landed.
 - [x] **ROP-4 Citation integrity.** **CLOSED 2026-09-18, and the census was an
       undercount:** a full sweep found **10** broken sites, not 7 — six citations of
       `kdba_kleisli_migration_plan.md` (2 qualified + 4 bare), **two of
@@ -626,12 +637,14 @@ Companion findings: [`legacy_renderer_trees_findings_2026-09-18.md`](legacy_rend
       last reason. Implemented as `PassOutcome` + named refusal factories +
       derived `executed()`, with all 43 sites converted and a shape gate + twin.
       See Bucket A / `rop_hardening_todo.md` §3.
-- [ ] **R3 Shared `Step` type** (owner: same §7) — **RULED 2026-09-18: concept, not
-      a concrete shared type** (zero renames of working code), **and deliberately
-      NOT yet implemented.** No longer ruling-blocked; the remaining work is the
-      concept itself plus a `static_assert` at each existing step plus a negative
-      fixture. Kept here only so the outstanding piece is visible next to the
-      ruling it implements.
+- [x] **R3 Shared `Step` type** (owner: same §7) — **RULED 2026-09-18: concept, not
+      a concrete shared type** (zero renames of working code), **LANDED 2026-09-19
+      (KP-1):** `shs::core::StepShape` in `shs/core/step_shape.hpp` (object +
+      default-constructible + copy-constructible + equality_comparable),
+      `static_assert` pins at all five step sites, negative fixture in
+      `tests/core_tests.cpp` (six off-shape rejections + restated positive pins),
+      zero renames. Owner entry: [`rop_hardening_todo.md`](rop_hardening_todo.md)
+      ROP-3.2.
 - [x] **R4 Doc-path existence gate** (owner: same §7) — **RULED YES, 2026-09-18,
       and landed** as `tools/check_doc_paths.py` + negative twin in CTest, with
       three rules measured at zero baseline violations. Scope narrowed after
