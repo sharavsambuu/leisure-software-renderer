@@ -413,11 +413,13 @@ spot" below):
    `shs_renderer_semantic_id_open_tests` (12 sub-checks; value-tier, GPU-free,
    added to the suite as test 4-adjacent).
 8. **Unify, then open, the render-technique vocabulary** — *not started; added
-   2026-09-18.* Two enums describe one axis and disagree:
+   2026-09-18.* **Three** enums describe one axis and disagree:
    `TechniqueMode` (`render/frame/technique_mode.hpp:19` — `Forward`,
-   `ForwardPlus`, `Deferred`, `TiledDeferred`, `ClusteredForward`) and
-   `RenderPathRenderingTechnique` (`planning/render_path_recipe.hpp:76` —
-   `ForwardLit`, `ForwardPlus`, `Deferred`). Both are **closed**, and the
+   `ForwardPlus`, `Deferred`, `TiledDeferred`, `ClusteredForward`),
+   `RenderPathPreset` (`planning/render_path_presets.hpp:31` — the same five
+   values, spelled identically), and `RenderPathRenderingTechnique`
+   (`planning/render_path_recipe.hpp:76` —
+   `ForwardLit`, `ForwardPlus`, `Deferred`). All are **closed**, and the
    consequence is not merely stylistic: `RenderPathRecipe::render_technique`
    carries the **3-value** enum and `technique_mode_for()`
    (`renderpath.gateway.hpp:102`) maps exactly those three, defaulting anything
@@ -427,14 +429,20 @@ spot" below):
    two) and making the relation total precedes opening the range, and opening
    additionally forces a **mask-representation decision**: `TechniqueMode` is
    used as a bitmask (`technique_mode_bit` is `1u << value`;
-   `supported_modes_mask` / `active_modes_mask` are `uint32_t`), so an open
-   range is bounded at 32 unless the mask widens or a side set of open ids is
-   added. The same closure blocks lightweight mobile lighting, which needs a
+   `supported_modes_mask` / `active_modes_mask` are `uint32_t`). **Ruled
+   2026-09-18 — cap to the representation: builtins 0–4 pinned, reserved 5, open
+   range 6–31 (26 consumer modes), no widening and no side set.** The evidence
+   for all three options, the retirement order (the 3-value enum's partial
+   relation must become total *before* the range opens, or an open mode would
+   silently resolve to `Forward`) and the exact range law are in
+   [`technique_vocabulary_mask_ruling_2026-09-18.md`](../backlog/technique_vocabulary_mask_ruling_2026-09-18.md).
+   The same closure blocks lightweight mobile lighting, which needs a
    cheap shading model: `ShadingModel` (`render/frame/frame_params.hpp:130`) and
    `RenderTechniquePreset` (`planning/render_technique_presets.hpp:24`) are a
    **second duplicate pair** on that axis (PBR/Blinn vs PBRMetalRough/BlinnPhong,
    bridged by `render_technique_preset_from_shading_model`), to be unified under
-   the same ruling. *Not started.*
+   the same ruling. *Mask-representation decision made 2026-09-18; implementation
+   not started.*
 
 Blind spot (stated 2026-09-18): this list scheduled passes (1), lights (2),
 materials (3), substrate (4), axes (5) and shader identity (6) — but **never

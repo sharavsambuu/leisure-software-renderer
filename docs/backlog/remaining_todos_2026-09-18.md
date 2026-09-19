@@ -303,21 +303,24 @@
       the enum. Evidence:
       [`semantic_id_open_registry_evidence_2026-09-18.md`](semantic_id_open_registry_evidence_2026-09-18.md).
 - [ ] **RP-5 — unify, then open, the render-technique vocabulary** (owner: same,
-      req 8). Two closed enums describe one axis and disagree: `TechniqueMode`
-      (`render/frame/technique_mode.hpp:19`, 5 values) and
-      `RenderPathRenderingTechnique` (`planning/render_path_recipe.hpp:76`,
-      3 values, names differ — `ForwardLit` vs `Forward`). `RenderPathRecipe`
+      req 8). **Three** closed enums describe one axis and disagree:
+      `TechniqueMode` (`render/frame/technique_mode.hpp:19`, 5 values),
+      `RenderPathPreset` (`planning/render_path_presets.hpp:31`, the same 5 values
+      with identical spellings), and `RenderPathRenderingTechnique`
+      (`planning/render_path_recipe.hpp:76`, 3 values, names differ — `ForwardLit`
+      vs `Forward`). `RenderPathRecipe`
       carries the 3-value one and `technique_mode_for()`
       (`renderpath.gateway.hpp:102`) maps exactly those three, defaulting the
       rest to `Forward` — so **`TiledDeferred` and `ClusteredForward` currently
       have no authoring path from a recipe**, which is precisely the goal named
       for this track. Retire one enum (rule of two), make the relation total,
-      then open. Carries one genuine design decision: `TechniqueMode` is used as
-      a `uint32_t` **bitmask** (`technique_mode_bit` = `1u << value`;
-      `supported_modes_mask` / `active_modes_mask`), so an open range is bounded
-      at 32 unless the mask widens (e.g. 64-bit, builtins 0–31 / open 32–63) or a
-      side set of open ids is added. Decide that first; it is the only item in
-      this series where opening does **not** drop in cleanly.
+      then open. The mask-representation decision this row was blocked on is
+      **made, 2026-09-18: cap at 32** — builtins 0–4 pinned, reserved 5, open
+      range 6–31 (26 consumer modes), no widening and no side set, because
+      `1u << v` is well-defined for `v ≤ 31` and therefore needs no representation
+      change at all. Retirement order, the evidence for each option, and the
+      exact range law: [`technique_vocabulary_mask_ruling_2026-09-18.md`](technique_vocabulary_mask_ruling_2026-09-18.md).
+      Unblocked; **not started**.
 - [ ] **RP-6 — unify, then open, the shading-model / technique-preset axis**
       (owner: same, req 8 second half → mobile lighting). `ShadingModel`
       (`render/frame/frame_params.hpp:130`, PBRMetalRough/BlinnPhong) and
@@ -384,6 +387,23 @@
       fails ~1 run in 25 on `thread_pool_shutdown_order` (a
       `ThreadPoolJobSystem` race, zero render-path involvement). Flakiness must
       be fixed before these gates can be trusted as CI blocking signals.
+      **Also: one gate is mis-argued for the common case, and fails with a
+      misleading message.** `shs_renderer_package_consumer_test`
+      (`tests/package_consumer_test.sh`) takes
+      `<build-dir> <source-dir> [toolchain] [cxx]`, but `CMakeLists.txt` only
+      appends the toolchain argument `if(CMAKE_TOOLCHAIN_FILE)`. A configure with
+      no toolchain file therefore shifts every later argument: the C++ compiler
+      lands in the `[toolchain]` slot and the prefix path in `[cxx]`, so the
+      nested consumer configure runs `-DCMAKE_TOOLCHAIN_FILE=/usr/bin/c++`
+      (CMake then tries to *include the compiler binary* as a script — "Parse
+      error. Expected a command name, got unquoted argument with text \"ELF\"")
+      and `-DCMAKE_CXX_COMPILER=<vcpkg prefix>`, ending in "unable to find a build
+      program" rather than anything that names the real cause. Found 2026-09-18
+      while verifying the RP-1…RP-4 split in a fresh out-of-tree build dir; the
+      canonical `cpp-folders/build` sets a toolchain file, which is why the gate is
+      green there and the bug stayed invisible. Fix: pass the toolchain slot as an
+      explicit empty positional, or key the arguments off their names rather than
+      their positions.
 - Host-blocked, not startable: **P6** replay/rollback (PATH_COMPILED-driven executor
   rebuilds) and **C4.3** (needs `__cpp_contracts` + `<contracts>`; GCC 13.3.0 lacks
   both — owner baseline ruling outstanding).
