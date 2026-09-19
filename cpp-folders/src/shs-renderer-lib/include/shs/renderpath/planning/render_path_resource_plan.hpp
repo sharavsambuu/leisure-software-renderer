@@ -11,7 +11,9 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -19,6 +21,7 @@
 #include "shs/renderpath/planning/pass_contract.hpp"
 #include "shs/renderpath/planning/pass_contract_registry.hpp"
 #include "shs/renderpath/planning/pass_id.hpp"
+#include "shs/renderpath/planning/semantic_registry.hpp"
 #include "shs/renderpath/execution/pass_registry.hpp"
 #include "shs/renderpath/planning/render_path_compiler.hpp"
 #include "shs/renderpath/planning/render_path_recipe.hpp"
@@ -129,9 +132,29 @@ namespace shs
             case PassSemantic::HistoryDepth: return "history_depth";
             case PassSemantic::HistoryMotion: return "history_motion";
             case PassSemantic::Unknown:
-            default:
                 return "unknown";
+            default:
+                // An open-registered semantic has no name here — see the registry
+                // overload below. `kPassSemanticOpenSpelling` is honest but NOT
+                // distinguishing: two distinct open semantics both land on it and
+                // would merge into one planned resource. Use the registry
+                // overload wherever a real name is available.
+                return pass_semantic_is_open(semantic) ? kPassSemanticOpenSpelling : "unknown";
         }
+    }
+
+    // Registry-aware id: the path that keeps distinct open semantics distinct.
+    // Builtins resolve to their builtin name; an open semantic resolves to the
+    // name its registry registered; anything unresolvable falls back to the
+    // (documented, non-distinguishing) open spelling or "unknown".
+    inline std::string render_path_resource_id_for_semantic(
+        PassSemantic semantic,
+        const PassSemanticRegistry& registry)
+    {
+        if (pass_semantic_is_builtin(semantic)) return render_path_resource_id_for_semantic(semantic);
+        if (const std::optional<std::string_view> name = registry.try_name(semantic))
+            return std::string(*name);
+        return render_path_resource_id_for_semantic(semantic);
     }
 
     inline RenderPathResourceSpec make_default_resource_spec_for_semantic(
@@ -196,6 +219,19 @@ namespace shs
                 break;
         }
 
+        return spec;
+    }
+
+    // Registry-aware spec builder: identical to the overload above except the
+    // resource id comes from the registered name, so distinct open semantics
+    // produce distinct resources instead of aliasing on the open spelling.
+    inline RenderPathResourceSpec make_default_resource_spec_for_semantic(
+        PassSemantic semantic,
+        const RenderPathRecipe& recipe,
+        const PassSemanticRegistry& registry)
+    {
+        RenderPathResourceSpec spec = make_default_resource_spec_for_semantic(semantic, recipe);
+        spec.id = render_path_resource_id_for_semantic(semantic, registry);
         return spec;
     }
 

@@ -685,6 +685,30 @@ if(SHS_RENDERER_BUILD_TESTS)
         target_compile_options(shs_renderer_shader_id_open_tests PRIVATE -Wall -Wextra -Wpedantic)
     endif()
     add_test(NAME shs_renderer_shader_id_open_tests COMMAND shs_renderer_shader_id_open_tests)
+    # Open pass-semantic registry gate (Constitution I §7 — No User Lock-In;
+    # arch §4 graduation req 7): PassSemantic gains a builtin + open registered
+    # range so a technique names its own channel (custom G-buffer layout, tiled
+    # or mobile-lighting payload) with zero core edits, over the SAME
+    # content-addressed law as the pass-id and shader-id registries. Pins the
+    # four switch surfaces (name, descriptor, resolution class, resource id),
+    # that the registry-aware resource id stays DISTINGUISHING where the bare
+    # spelling would alias, and that every builtin path — including Unknown,
+    # which the open-range guard must not catch — is byte-for-byte unchanged.
+    # GPU-free, value-tier.
+    add_executable(shs_renderer_semantic_id_open_tests
+        tests/semantic_id_open_registry_tests.cpp
+    )
+    target_link_libraries(shs_renderer_semantic_id_open_tests PRIVATE shs::renderer-values)
+    target_compile_features(shs_renderer_semantic_id_open_tests PRIVATE cxx_std_23)
+    if(MSVC)
+        target_compile_options(shs_renderer_semantic_id_open_tests PRIVATE /W4)
+    else()
+        target_compile_options(shs_renderer_semantic_id_open_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+    add_test(NAME shs_renderer_semantic_id_open_tests COMMAND shs_renderer_semantic_id_open_tests)
+
+
+
     add_custom_target(shs_renderer_boundary_check
         COMMAND "${CMAKE_COMMAND}" -E env "PYTHON=${Python3_EXECUTABLE}"
             "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_kdba_boundaries.sh"

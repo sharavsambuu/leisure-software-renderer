@@ -154,13 +154,32 @@ whatever parts they want, whenever they want:
 1. **Additive, not closed** — passes, techniques, materials, lights, light
    volumes, and compute effects are added *through* extension points
    (registries, contracts, recipes), never by editing the core. Builtin enums
-   (`PassId`, technique/light presets) expose open registered ranges so
-   consumer-owned abstractions need no core change: **`PassId` does as of
+   (`PassId`, `ShaderId`, technique/light presets) expose open registered ranges
+   so consumer-owned abstractions need no core change: **`PassId` does as of
    2026-09-18** (`PassIdRegistry` — a content-addressed open range, so a
    consumer pass is first-class with zero core edits; see
    `docs/arch/render_path_architecture.md` §4 req 1 and
-   `docs/backlog/open_pass_id_registry_evidence_2026-09-18.md`). Technique/light
-   presets and the light-volume registry remain tracked in that §4 (req 2).
+   `docs/backlog/open_pass_id_registry_evidence_2026-09-18.md`), and
+   **`ShaderId` does as of 2026-09-18** (`ShaderIdRegistry`, owned by
+   `ShaderManifest` — a consumer shader identity is minted from a name and
+   resolved through the same backend-blind path a builtin uses; see §4 req 6 and
+   `docs/backlog/shader_id_open_registry_evidence_2026-09-18.md`). Both derive
+   their ids from one shared law (`shs/core/open_id_hash.hpp`), so the mechanism
+   is single-sourced rather than duplicated. On 2026-09-18 the **semantic
+   vocabulary joined them** (`PassSemanticRegistry`, req 7 — same shared law,
+   same three properties, and deliberately the *third* namespace rather than a
+   fourth mechanism; `PassSemanticEncoding` stayed closed on purpose, since it
+   is the attachment-packing axis). Technique/light presets and the light-volume
+   registry remain tracked in that §4 — **and that list was corrected on
+   2026-09-18**: an audit found it had only ever scheduled passes (req 1), lights
+   (req 2), materials (req 3), substrate (req 4), axes (req 5) and shader
+   identity (req 6), and had **never scheduled semantic or technique
+   vocabulary** — so two consumer-authorable axes
+   (`PassSemantic`/`PassSemanticEncoding`, and the duplicated
+   `TechniqueMode`/`RenderPathRenderingTechnique` pair) were closed while being
+   counted as covered. They are now reqs 7 and 8; **req 7 shipped the same day**
+   (gate `shs_renderer_semantic_id_open_tests`), req 8 is open. See §4's "Blind
+   spot" note.
 2. **Backend choice is never a fork** — `SHS_RENDER_BACKEND` selects software /
    OpenGL / Vulkan at runtime; a build without GPU support degrades gracefully
    to software (backend factory fallback + hybrid auxiliary backends), never

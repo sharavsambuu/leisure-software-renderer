@@ -54,6 +54,66 @@ namespace shs
         HistoryMotion = 15
     };
 
+    // --- Pass-semantic range law (Constitution I §7; arch §4 graduation req 7) -
+    // Same shape and the same reasoning as the pass-id range law in
+    // planning/pass_id.hpp, and deliberately so: an author who understands one
+    // namespace's open range understands both.
+    //
+    // The builtin vocabulary is the closed enum above; consumer-owned semantics
+    // (an engine's own G-buffer channels, a technique's private intermediate)
+    // live in an open *registered* range, so a consumer names its own semantic
+    // without a core edit. Ids in the open range are minted only by
+    // `PassSemanticRegistry`
+    // (`shs/renderpath/planning/semantic_registry.hpp`) from a registered NAME
+    // via the shared content-addressing law (core/open_id_hash.hpp) -- never by
+    // hashing a name at the call site, because id assignment must not depend on
+    // hash/iteration order (replay/determinism law).
+    //
+    // The bounds are intentionally identical to the pass-id bounds; the two
+    // namespaces are typed separately (a PassId can never be passed where a
+    // PassSemantic is expected), so the shared numerics are not aliasing.
+    inline constexpr uint16_t kPassSemanticUnknown = 0u;
+    inline constexpr uint16_t kPassSemanticBuiltinMin = 1u;
+    inline constexpr uint16_t kPassSemanticBuiltinMax = 1023u;
+    inline constexpr uint16_t kPassSemanticOpenBase = 1024u;
+    inline constexpr uint16_t kPassSemanticOpenMax = 65534u;
+    inline constexpr uint16_t kPassSemanticReserved = 65535u;
+
+    // Vocabulary pins: the null semantic stays null and the builtin enum can
+    // never silently grow into the open range (which would alias consumer
+    // semantics -- the collision would be silent and load-bearing, since a
+    // resource spec keys off the semantic).
+    static_assert(static_cast<uint16_t>(PassSemantic::Unknown) == kPassSemanticUnknown,
+                  "PassSemantic::Unknown must stay the null semantic");
+    static_assert(static_cast<uint16_t>(PassSemantic::HistoryMotion) <= kPassSemanticBuiltinMax,
+                  "builtin PassSemantic vocabulary overflowed into the open registered range");
+
+    inline constexpr bool pass_semantic_is_builtin(PassSemantic s)
+    {
+        const uint16_t raw = static_cast<uint16_t>(s);
+        return raw >= kPassSemanticBuiltinMin && raw <= kPassSemanticBuiltinMax;
+    }
+
+    inline constexpr bool pass_semantic_is_open(PassSemantic s)
+    {
+        const uint16_t raw = static_cast<uint16_t>(s);
+        return raw >= kPassSemanticOpenBase && raw <= kPassSemanticOpenMax;
+    }
+
+    // A typed semantic a plan or a registry may legitimately carry: builtin or
+    // minted.
+    inline constexpr bool pass_semantic_in_valid_range(PassSemantic s)
+    {
+        return pass_semantic_is_builtin(s) || pass_semantic_is_open(s);
+    }
+
+    // Honest, deterministic spelling for an open-range semantic that carries no
+    // resolvable registry here. Deliberately NOT a registration key: the owning
+    // registry holds the real name -- resolve it through
+    // `PassSemanticRegistry::try_name`. Callers building resource ids or contract
+    // canonical keys must go through the registry, never through this spelling.
+    inline constexpr const char* kPassSemanticOpenSpelling = "open_semantic";
+
     enum class ContractAccess : uint8_t
     {
         Read = 1,
@@ -270,8 +330,43 @@ namespace shs
             case PassSemantic::HistoryColor: return "history_color";
             case PassSemantic::HistoryDepth: return "history_depth";
             case PassSemantic::HistoryMotion: return "history_motion";
+            default:
+                // New values can only be open-range (the builtin pins above hold).
+                return pass_semantic_is_open(s) ? kPassSemanticOpenSpelling : "unknown";
         }
-        return "unknown";
+    }
+
+    // Static name for a builtin semantic, nullptr when the name lives in a
+    // registry. The honest counterpart of `pass_id_name_or_null`: a caller that
+    // must have a *real* name for an open semantic has to resolve it through the
+    // owning PassSemanticRegistry rather than accept the open spelling.
+    inline const char* pass_semantic_name_or_null(PassSemantic s)
+    {
+        if (pass_semantic_is_builtin(s)) return pass_semantic_name(s);
+        return nullptr;
+    }
+
+    // Parse a builtin semantic name. Open names are NOT parseable here by
+    // construction -- their ids are minted by a registry from the same name, and
+    // parsing one back would be a second, drifting definition of that mapping.
+    inline PassSemantic parse_pass_semantic(std::string_view s)
+    {
+        if (s == "depth") return PassSemantic::Depth;
+        if (s == "shadow_map") return PassSemantic::ShadowMap;
+        if (s == "color_hdr") return PassSemantic::ColorHDR;
+        if (s == "color_ldr") return PassSemantic::ColorLDR;
+        if (s == "motion_vectors") return PassSemantic::MotionVectors;
+        if (s == "light_grid") return PassSemantic::LightGrid;
+        if (s == "light_index_list") return PassSemantic::LightIndexList;
+        if (s == "light_clusters") return PassSemantic::LightClusters;
+        if (s == "albedo") return PassSemantic::Albedo;
+        if (s == "normal") return PassSemantic::Normal;
+        if (s == "material") return PassSemantic::Material;
+        if (s == "ambient_occlusion") return PassSemantic::AmbientOcclusion;
+        if (s == "history_color") return PassSemantic::HistoryColor;
+        if (s == "history_depth") return PassSemantic::HistoryDepth;
+        if (s == "history_motion") return PassSemantic::HistoryMotion;
+        return PassSemantic::Unknown;
     }
 
     inline bool contract_access_has_read(ContractAccess a)
@@ -364,6 +459,15 @@ namespace shs
         out.temporal_role = PassSemanticTemporalRole::CurrentFrame;
         out.sampled = true;
         out.storage = false;
+
+        // Open-registered semantics take these neutral defaults, deliberately and
+        // by early return. The core cannot know a consumer's channel intent, and
+        // it must NOT guess: an author that needs a specific space/encoding/
+        // lifetime states it through `make_semantic_ref`'s overrides, which are
+        // applied ON TOP of this descriptor. Returning here keeps the builtin
+        // switch exhaustive over the builtin vocabulary instead of relying on
+        // fall-through, and leaves Unknown and every builtin path untouched.
+        if (pass_semantic_is_open(semantic)) return out;
 
         switch (semantic)
         {
