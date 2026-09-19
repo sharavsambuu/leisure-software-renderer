@@ -120,7 +120,40 @@ Already first-class in the value vocabulary:
 Graduation requirements (tracked; reqs 1, 4, 5, 6 and 7 have since shipped; reqs
 2, 3 and 8 are open, and this list was amended 2026-09-18 to add reqs 7–8 after
 an audit found two consumer-authorable axes it had never named — see "Blind
-spot" below):
+spot" below). Canonical status lives with each RP-series row in
+[`remaining_todos_2026-09-18.md`](../backlog/remaining_todos_2026-09-18.md); the
+table below is a view across them, refreshed 2026-09-18.
+
+| Req | Row | Status | What it opened / will open | Gate |
+| :-- | :-- | :-- | :-- | :-- |
+| 1 | A0 P3-box-6 (shipped) + **RP-8** (residual) | ✅ open pass ids shipped; ⬜ composition-tier residual | `PassId` open range + content-addressed registry; then composition-tier substrate policy + contract-registry axis split | `shs_renderer_pass_id_open_tests` |
+| 2 | **RP-7** | ⬜ not started | Light attenuation model + `RenderPathLightVolumeProvider` (audit first — `light_types.hpp` is richer than this req implies) | — |
+| 3 | — | ⬜ not started, unscheduled | Material graph compiler | — |
+| 4 | **RP-1** | ✅ DONE 2026-09-18 | Substrate resolution at plan time: intent + policy → software / device / hybrid | `shs_renderer_renderpath_tests` |
+| 5 | **RP-2** | ✅ DONE 2026-09-18 | `ExecutionUnit` × `Substrate` as two axes | `shs_renderer_renderpath_tests` |
+| 6 | **RP-3** | ✅ DONE 2026-09-18 | Open `ShaderId`, registry owned by the manifest | `shs_renderer_shader_id_open_tests` |
+| 7 | **RP-4** | ✅ DONE 2026-09-18 | Open `PassSemantic`, all four switch surfaces answered | `shs_renderer_semantic_id_open_tests` |
+| 8 | **RP-5** → **RP-6** | 🟡 mask decision **made** 2026-09-18, code **not started** | Technique-mode vocabulary, then shading model | — |
+
+RP-0 (re-enable the consumer-verification build) is an **enabler, not a
+requirement**, and closed deliberately unstarted: recon found the parked `exps`
+trees need a whole-tree alias/include-path migration, and that even the *active*
+demo tree is not a render-path consumer. Every row above therefore stands on
+library gates alone, which proves capability but not consumer integration.
+
+**Goal coverage** — what the four goals this track exists to serve actually have.
+The distinction that matters is *orchestration* dynamism (shipped with reqs 4–6)
+versus *vocabulary* dynamism (reqs 7–8, where the gaps were):
+
+| Owner-stated goal | Orchestration | Vocabulary | Verdict |
+| :-- | :-- | :-- | :-- |
+| One recipe → software / device / hybrid, no consumer-side recipe cloning | ✅ reqs 4–5 | n/a | met, except composition-tier choice (RP-8 residual) |
+| Tiled / clustered / deferred / forward+ | — | ❌ req 8 | **not met** — `TiledDeferred` / `ClusteredForward` have no authoring path from a recipe |
+| Arbitrary G-buffer layouts | — | ⚠️ partial, req 7 | channel *naming* is open; the physical attachment-packing schema is unscheduled |
+| Lightweight mobile lighting | — | ❌ reqs 8, 2 | **not met** — shading model and light vocabulary both closed |
+
+Suite trajectory for this track: 50/50 at the tracker's baseline → 73/73 (reqs 4–5)
+→ 74/74 (req 6) → **75/75** (req 7), re-verified against `HEAD` 2026-09-18.
 
 1. **Open pass IDs** — ✅ **DONE 2026-09-18.** `PassId` keeps its builtin
    vocabulary and gains an open registered range: the range law lives in
@@ -508,7 +541,11 @@ tracked in their own roadmaps (`global_illumination_roadmap.md`,
 
 ---
 
-## 4. Current Implementation Status (L4 Maturity)
+## 5. Current Implementation Status (L4 Maturity)
+
+*(Renumbered 2026-09-18 from a duplicate `## 4.`: `## 4.` collided with the
+Long-Term Extensibility Contract above, which is the section every "arch §4
+…" citation in the tree actually means — nothing referenced this one by number.)*
 
 The system is currently at **L4 Maturity**, meaning:
 *   Pass orchestration is library-owned (managed by the Dispatcher).
@@ -518,7 +555,7 @@ The system is currently at **L4 Maturity**, meaning:
 
 ---
 
-## 5. Key Files
+## 6. Key Files
 - **Logic**: `shs/renderpath/execution/render_path_executor.hpp`
 - **Presets**: `shs/renderpath/planning/render_composition_presets.hpp`
 - **Compiler**: `shs/renderpath/planning/render_path_compiler.hpp`

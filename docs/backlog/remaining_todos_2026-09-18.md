@@ -643,7 +643,10 @@ meshlet pipeline, or LOD framework is authorized by listing them.
    (lights). `Substrate` itself and the attachment-packing schema are explicitly
    *not* in this series. Cost honesty: RP-4 landed at roughly the predicted
    scale; RP-5…RP-7 are each roughly RP-3-sized (~1.3k lines across headers plus
-   a named gate, an evidence doc and mutation probes).
+   a named gate, an evidence doc and mutation probes). For the same information
+   as a scannable table — req × row × status × gate, plus the four owner goals
+   against orchestration vs vocabulary dynamism — see the status index at the head
+   of arch §4 ([`render_path_architecture.md`](../arch/render_path_architecture.md)).
 2. **Adventure demo track (A2)** — AD5 + AD6 next (single-source shared inputs,
    then execution-format adapters), then the AD7 roll-out and close-out of the
    remaining five pairs onto AD3's preparation/execution/error shape. Gives
